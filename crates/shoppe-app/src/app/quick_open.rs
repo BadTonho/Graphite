@@ -62,15 +62,27 @@ impl App {
         let Some(state) = &mut self.quick_open else {
             return;
         };
-        match &event.logical_key {
-            Key::Named(NamedKey::Escape) => {
-                self.quick_open = None;
-                self.search_generation = self.search_generation.wrapping_add(1);
-                self.search_cancel
-                    .store(self.search_generation, Ordering::Relaxed);
+        if !self.ime_composing && !self.modifiers.control_key() && !self.modifiers.alt_key() {
+            if let Some(text) = &event.text {
+                if !text.chars().any(char::is_control) {
+                    state.query.push_str(text);
+                    self.request_quick_open();
+                }
             }
-            Key::Named(NamedKey::Enter) => {
-                let path = state.paths.get(state.index).cloned();
+        }
+    }
+
+    pub(super) fn execute_quick_open_command(&mut self, command: &str) {
+        let Some(state) = &mut self.quick_open else {
+            return;
+        };
+        match command {
+            "quickOpen.close" | "quickOpen.accept" => {
+                let path = if command == "quickOpen.accept" {
+                    state.paths.get(state.index).cloned()
+                } else {
+                    None
+                };
                 self.quick_open = None;
                 self.search_generation = self.search_generation.wrapping_add(1);
                 self.search_cancel
@@ -79,23 +91,15 @@ impl App {
                     self.open_file(path);
                 }
             }
-            Key::Named(NamedKey::ArrowDown) if !state.paths.is_empty() => {
+            "quickOpen.next" if !state.paths.is_empty() => {
                 state.index = (state.index + 1) % state.paths.len()
             }
-            Key::Named(NamedKey::ArrowUp) if !state.paths.is_empty() => {
+            "quickOpen.previous" if !state.paths.is_empty() => {
                 state.index = (state.index + state.paths.len() - 1) % state.paths.len()
             }
-            Key::Named(NamedKey::Backspace) => {
+            "quickOpen.deleteLeft" => {
                 state.query.pop();
                 self.request_quick_open();
-            }
-            _ if !self.modifiers.control_key() && !self.modifiers.alt_key() => {
-                if let Some(text) = &event.text {
-                    if !text.chars().any(char::is_control) {
-                        state.query.push_str(text);
-                        self.request_quick_open();
-                    }
-                }
             }
             _ => {}
         }

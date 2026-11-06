@@ -645,6 +645,29 @@ mod tests {
     }
 
     #[test]
+    fn ime_cleared_preedit_commit_and_cancel_do_not_duplicate_or_modify_readonly_text() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.ime_preedit("に".into());
+        app.ime_preedit(String::new());
+        app.ime_commit("日本");
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        app.ime_preedit("あ".into());
+        app.ime_preedit(String::new());
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        app.tabs[0].buffer.set_read_only(true);
+        app.ime_preedit("字".into());
+        app.ime_preedit(String::new());
+        app.ime_commit("字");
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        app.start_quick_open();
+        app.ime_preedit("東".into());
+        app.ime_preedit(String::new());
+        app.ime_commit("東京");
+        assert_eq!(app.quick_open.as_ref().unwrap().query, "東京");
+    }
+
+    #[test]
     fn accessibility_text_positions_map_to_buffer_offsets() {
         let mut b = Buffer::new();
         b.insert("one\ntwo");

@@ -117,43 +117,52 @@ impl App {
         };
         let ctrl = self.modifiers.control_key();
         let alt = self.modifiers.alt_key();
-        match &event.logical_key {
-            Key::Named(NamedKey::Escape) => {
+        if !self.ime_composing && !ctrl && !alt {
+            if let Some(text) = &event.text {
+                if !text.chars().any(char::is_control) {
+                    if search.edit_replacement {
+                        search.replacement.push_str(text);
+                    } else {
+                        search.query.push_str(text);
+                    }
+                }
+            }
+        }
+        self.local_search = Some(search);
+    }
+
+    pub(super) fn execute_find_command(&mut self, command: &str) {
+        let Some(mut search) = self.local_search.take() else {
+            return;
+        };
+        match command {
+            "closeFindWidget" => {
                 self.status = "Find closed".into();
                 return;
             }
-            Key::Named(NamedKey::Tab) if search.replace => {
+            "find.toggleField" if search.replace => {
                 search.edit_replacement = !search.edit_replacement
             }
-            Key::Named(NamedKey::Enter) if ctrl && search.replace => {
-                self.local_replace_all(&mut search)
-            }
-            Key::Named(NamedKey::Enter) if alt && search.replace => {
+            "editor.action.nextMatchFindAction" => self.local_search_next(&mut search, false),
+            "editor.action.previousMatchFindAction" => self.local_search_next(&mut search, true),
+            "editor.action.replaceAll" if search.replace => self.local_replace_all(&mut search),
+            "editor.action.replaceOne" if search.replace => {
                 self.local_replace_selected(&mut search)
             }
-            Key::Named(NamedKey::Enter) => {
-                self.local_search_next(&mut search, self.modifiers.shift_key())
-            }
-            Key::Named(NamedKey::Backspace) => {
+            "find.deleteLeft" => {
                 if search.edit_replacement {
                     search.replacement.pop();
                 } else {
                     search.query.pop();
                 }
             }
-            Key::Character(c) if alt && c.eq_ignore_ascii_case("r") => {
-                search.options.regex = !search.options.regex
-            }
-            Key::Character(c) if alt && c.eq_ignore_ascii_case("c") => {
-                search.options.case_sensitive = !search.options.case_sensitive
-            }
-            Key::Character(c) if alt && c.eq_ignore_ascii_case("w") => {
-                search.options.whole_word = !search.options.whole_word
-            }
-            Key::Character(c) if alt && c.eq_ignore_ascii_case("p") => {
+            "find.toggleRegex" => search.options.regex = !search.options.regex,
+            "find.toggleCase" => search.options.case_sensitive = !search.options.case_sensitive,
+            "find.toggleWholeWord" => search.options.whole_word = !search.options.whole_word,
+            "find.togglePreserveCase" => {
                 search.options.preserve_case = !search.options.preserve_case
             }
-            Key::Character(c) if alt && c.eq_ignore_ascii_case("s") => {
+            "find.toggleSelection" => {
                 search.scope = if search.scope.is_some() {
                     None
                 } else {
@@ -162,17 +171,6 @@ impl App {
                         .selection()
                         .map(|s| s.anchor.min(s.head)..s.anchor.max(s.head))
                 };
-            }
-            _ if !ctrl && !alt => {
-                if let Some(text) = &event.text {
-                    if !text.chars().any(char::is_control) {
-                        if search.edit_replacement {
-                            search.replacement.push_str(text);
-                        } else {
-                            search.query.push_str(text);
-                        }
-                    }
-                }
             }
             _ => {}
         }

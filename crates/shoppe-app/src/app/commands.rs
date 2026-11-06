@@ -58,12 +58,31 @@ impl App {
             ),
             ("terminalFocus".into(), self.terminal_focused.to_string()),
             (
+                "suggestWidgetVisible".into(),
+                (!self.completion_items.is_empty()).to_string(),
+            ),
+            (
+                "findReplace".into(),
+                self.local_search
+                    .as_ref()
+                    .is_some_and(|search| search.replace)
+                    .to_string(),
+            ),
+            (
                 "findWidgetVisible".into(),
                 self.local_search.is_some().to_string(),
             ),
             (
                 "quickOpenVisible".into(),
                 self.quick_open.is_some().to_string(),
+            ),
+            (
+                "projectSearchVisible".into(),
+                self.search_query.is_some().to_string(),
+            ),
+            (
+                "snippetVisible".into(),
+                self.snippet_query.is_some().to_string(),
             ),
         ]);
         match self.keymap.resolve(stroke, &context) {
@@ -81,7 +100,100 @@ impl App {
     }
 
     pub(crate) fn execute_custom_command(&mut self, command: &str) {
+        if !command.starts_with("suggest.") && command != "editor.action.triggerSuggest" {
+            self.completion_items.clear();
+        }
+        use graphite_text::CursorMotion;
+        let motion = match command {
+            "cursorLeft" | "cursorLeftSelect" => Some(CursorMotion::Left),
+            "cursorRight" | "cursorRightSelect" => Some(CursorMotion::Right),
+            "cursorUp" | "cursorUpSelect" => Some(CursorMotion::Up),
+            "cursorDown" | "cursorDownSelect" => Some(CursorMotion::Down),
+            "cursorHome" | "cursorHomeSelect" => Some(CursorMotion::Home),
+            "cursorEnd" | "cursorEndSelect" => Some(CursorMotion::End),
+            _ => None,
+        };
+        if let Some(motion) = motion {
+            self.smart_selection_history.clear();
+            self.smart_selection_guard = None;
+            let extend = command.ends_with("Select");
+            if self.word_wrap
+                && matches!(motion, CursorMotion::Up | CursorMotion::Down)
+                && self.move_visual_selections(matches!(motion, CursorMotion::Down), extend)
+            {
+                return;
+            }
+            self.tabs[self.active_tab]
+                .buffer
+                .move_selections(motion, extend);
+            return;
+        }
         match command {
+            "suggest.close" => self.completion_items.clear(),
+            "suggest.accept" => self.accept_completion(),
+            "suggest.previous" => {
+                if !self.completion_items.is_empty() {
+                    self.completion_index = self
+                        .completion_index
+                        .checked_sub(1)
+                        .unwrap_or(self.completion_items.len() - 1);
+                }
+            }
+            "suggest.next" => {
+                if !self.completion_items.is_empty() {
+                    self.completion_index =
+                        (self.completion_index + 1) % self.completion_items.len();
+                }
+            }
+            "snippet.close" => self.snippet_query = None,
+            "snippet.deleteLeft" => {
+                if let Some(query) = &mut self.snippet_query {
+                    query.pop();
+                }
+            }
+            "snippet.accept" => {
+                if let Some(query) = self.snippet_query.take() {
+                    if let Some(snippet) =
+                        self.snippets.iter().find(|s| s.prefix.starts_with(&query))
+                    {
+                        self.tabs[self.active_tab].buffer.insert(&snippet.body);
+                    }
+                }
+            }
+            "quickOpen.close"
+            | "quickOpen.accept"
+            | "quickOpen.previous"
+            | "quickOpen.next"
+            | "quickOpen.deleteLeft" => self.execute_quick_open_command(command),
+            "projectSearch.close"
+            | "projectSearch.accept"
+            | "projectSearch.previous"
+            | "projectSearch.next"
+            | "projectSearch.deleteLeft" => self.execute_project_search_command(command),
+            "closeFindWidget"
+            | "find.toggleField"
+            | "editor.action.nextMatchFindAction"
+            | "editor.action.previousMatchFindAction"
+            | "editor.action.replaceAll"
+            | "editor.action.replaceOne"
+            | "find.deleteLeft"
+            | "find.toggleRegex"
+            | "find.toggleCase"
+            | "find.toggleWholeWord"
+            | "find.togglePreserveCase"
+            | "find.toggleSelection" => self.execute_find_command(command),
+            "deleteLeft" => self.tabs[self.active_tab].buffer.backspace(),
+            "deleteRight" => self.tabs[self.active_tab].buffer.delete(),
+            "typeNewline" => self.tabs[self.active_tab].buffer.insert("\n"),
+            "tab" => {
+                let tab = &mut self.tabs[self.active_tab];
+                let indentation = if tab.indentation.insert_spaces {
+                    " ".repeat(tab.indentation.tab_size)
+                } else {
+                    "\t".into()
+                };
+                tab.buffer.insert(&indentation);
+            }
             "workbench.action.quickOpen" => self.start_quick_open(),
             "workbench.action.splitEditorRight" => {
                 self.split_editor_group(super::editor_groups::SplitDirection::Vertical);
@@ -284,5 +396,149 @@ mod tests {
         assert!(app.handle_keybinding_stroke("ctrl+k"));
         assert!(app.handle_keybinding_stroke("ctrl+\\"));
         assert_eq!(app.editor_groups.group_count(), 2);
+    }
+
+    #[test]
+    fn navigation_bindings_extend_and_collapse_unicode_selections() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("aé🙂b");
+        app.tabs[0].buffer.set_selections(vec![
+            graphite_text::Selection { anchor: 1, head: 1 },
+            graphite_text::Selection { anchor: 3, head: 3 },
+        ]);
+        assert!(app.handle_keybinding_stroke("shift+right"));
+        assert_eq!(app.tabs[0].buffer.selected_texts(), ["é", "b"]);
+        assert!(app.handle_keybinding_stroke("left"));
+        assert_eq!(
+            app.tabs[0].buffer.selections(),
+            vec![
+                graphite_text::Selection { anchor: 1, head: 1 },
+                graphite_text::Selection { anchor: 3, head: 3 },
+            ]
+        );
+        assert!(app.handle_keybinding_stroke("backspace"));
+        assert_eq!(app.tabs[0].buffer.text(), "éb");
+        assert!(app.handle_keybinding_stroke("ctrl+z"));
+        assert_eq!(app.tabs[0].buffer.text(), "aé🙂b");
+    }
+
+    #[test]
+    fn suggestion_widget_keeps_arrow_and_enter_for_completion() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.completion_items.push(lsp_types::CompletionItem {
+            label: "first".into(),
+            ..Default::default()
+        });
+        app.completion_items.push(lsp_types::CompletionItem {
+            label: "second".into(),
+            ..Default::default()
+        });
+        assert!(app.handle_keybinding_stroke("down"));
+        assert_eq!(app.completion_index, 1);
+        assert!(app.handle_keybinding_stroke("enter"));
+        assert_eq!(app.tabs[0].buffer.text(), "second");
+        assert!(app.completion_items.is_empty());
+    }
+
+    #[test]
+    fn snippets_and_suggestions_accept_remapped_commands() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.snippet_query = Some("hel".into());
+        app.snippets.push(config::Snippet {
+            prefix: "hello".into(),
+            body: "hello 🙂".into(),
+        });
+        app.keymap
+            .reload(
+                r#"[
+            {"key":"enter","command":"-snippet.accept","when":"snippetVisible"},
+            {"key":"ctrl+j","command":"snippet.accept","when":"snippetVisible"}
+        ]"#,
+            )
+            .unwrap();
+        assert!(app.handle_keybinding_stroke("enter"));
+        assert_eq!(app.tabs[0].buffer.text(), "");
+        assert!(app.handle_keybinding_stroke("ctrl+j"));
+        assert_eq!(app.tabs[0].buffer.text(), "hello 🙂");
+        assert!(app.snippet_query.is_none());
+        app.tabs[0].buffer.undo();
+        assert_eq!(app.tabs[0].buffer.text(), "");
+    }
+
+    #[test]
+    fn find_commands_respect_context_remapping_and_invalid_regex() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("é one one");
+        app.open_local_search(true);
+        app.local_search.as_mut().unwrap().query = "one".into();
+        assert!(app.handle_keybinding_stroke("enter"));
+        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("one"));
+        app.keymap
+            .reload(
+                r#"[
+          {"key":"alt+r","command":"-find.toggleRegex","when":"findWidgetVisible"},
+          {"key":"ctrl+r","command":"find.toggleRegex","when":"findWidgetVisible"}
+        ]"#,
+            )
+            .unwrap();
+        assert!(app.handle_keybinding_stroke("alt+r"));
+        assert!(!app.local_search.as_ref().unwrap().options.regex);
+        assert!(app.handle_keybinding_stroke("ctrl+r"));
+        app.local_search.as_mut().unwrap().query = "(".into();
+        let revision = app.tabs[0].buffer.revision();
+        assert!(app.handle_keybinding_stroke("ctrl+enter"));
+        assert_eq!(app.tabs[0].buffer.revision(), revision);
+        assert!(app
+            .local_search
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("Invalid regex"));
+        assert!(app.handle_keybinding_stroke("escape"));
+        assert!(app.local_search.is_none());
+    }
+
+    #[test]
+    fn quick_open_keybindings_navigate_open_and_cancel_stale_requests() {
+        let dir = crate::test_support::TempDir::new();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        std::fs::write(&a, "alpha").unwrap();
+        std::fs::write(&b, "beta").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.start_quick_open();
+        let generation = app.search_generation;
+        app.quick_open.as_mut().unwrap().paths = vec![a, b.clone()];
+        assert!(app.handle_keybinding_stroke("down"));
+        assert_eq!(app.quick_open.as_ref().unwrap().index, 1);
+        assert!(app.handle_keybinding_stroke("enter"));
+        assert!(app.quick_open.is_none());
+        assert_eq!(app.tabs[app.active_tab].buffer.path(), Some(b.as_path()));
+        assert!(!app.accept_quick_open("", generation, vec![b]));
+    }
+
+    #[test]
+    fn project_search_modal_binding_can_be_removed_and_remapped() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.search_query = Some("abc".into());
+        app.keymap
+            .reload(
+                r#"[
+          {"key":"backspace", "command":"-projectSearch.deleteLeft"},
+          {"key":"ctrl+j", "command":"projectSearch.deleteLeft", "when":"projectSearchVisible"}
+        ]"#,
+            )
+            .unwrap();
+        assert!(app.handle_keybinding_stroke("backspace"));
+        assert_eq!(app.search_query.as_deref(), Some("abc"));
+        assert!(app.handle_keybinding_stroke("ctrl+j"));
+        assert_eq!(app.search_query.as_deref(), Some("ab"));
+        assert!(app.handle_keybinding_stroke("escape"));
+        assert!(app.search_query.is_none());
     }
 }
