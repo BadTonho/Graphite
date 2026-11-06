@@ -27,6 +27,14 @@ impl Buffer {
         if ordered.is_empty() {
             return Ok(Vec::new());
         }
+        let position_edits: Vec<_> = ordered
+            .iter()
+            .map(|(_, edit)| PositionEdit {
+                start: edit.range.start,
+                end: edit.range.end,
+                inserted_chars: edit.text.chars().count(),
+            })
+            .collect();
         let start = ordered.first().unwrap().1.range.start;
         let end = ordered.last().unwrap().1.range.end;
         let mut result = String::new();
@@ -47,7 +55,15 @@ impl Buffer {
         for chunk in self.rope.slice(previous..end).chunks() {
             result.push_str(chunk);
         }
+        let revision = self.revision;
         self.replace(start, end, &result);
+        if self.revision != revision {
+            self.last_position_edits = position_edits.clone();
+            self.undo
+                .last_mut()
+                .expect("replacement recorded in history")
+                .position_edits = position_edits;
+        }
         Ok(cursors)
     }
 
@@ -66,6 +82,12 @@ impl Buffer {
         self.rope.remove(start..end);
         self.rope.insert(start, text);
         let after = start + text.chars().count();
+        let position_edits = vec![PositionEdit {
+            start,
+            end,
+            inserted_chars: text.chars().count(),
+        }];
+        self.last_position_edits = position_edits.clone();
         self.cursor.char_idx = after;
         self.selection = None;
         self.extra_selections.clear();
@@ -79,6 +101,7 @@ impl Buffer {
             before_extra,
             after_extra: Vec::new(),
             after_selection: None,
+            position_edits,
         });
         self.redo.clear();
         self.dirty = true;
@@ -90,6 +113,7 @@ impl Buffer {
             return;
         }
         if let Some(edit) = self.undo.pop() {
+            self.last_position_edits = inverse_position_edits(&edit.position_edits);
             let end = edit.start + edit.inserted.chars().count();
             self.record_change(edit.start, end, &edit.removed);
             self.rope.remove(edit.start..end);
@@ -108,6 +132,7 @@ impl Buffer {
             return;
         }
         if let Some(edit) = self.redo.pop() {
+            self.last_position_edits = edit.position_edits.clone();
             let end = edit.start + edit.removed.chars().count();
             self.record_change(edit.start, end, &edit.inserted);
             self.rope.remove(edit.start..end);
@@ -120,4 +145,21 @@ impl Buffer {
             self.revision += 1;
         }
     }
+}
+
+fn inverse_position_edits(changes: &[PositionEdit]) -> Vec<PositionEdit> {
+    let mut delta = 0isize;
+    changes
+        .iter()
+        .map(|change| {
+            let start = change.start.saturating_add_signed(delta);
+            let inverse = PositionEdit {
+                start,
+                end: start + change.inserted_chars,
+                inserted_chars: change.end - change.start,
+            };
+            delta += change.inserted_chars as isize - (change.end - change.start) as isize;
+            inverse
+        })
+        .collect()
 }

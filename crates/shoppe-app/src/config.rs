@@ -1,7 +1,9 @@
 mod import;
+mod import_themes;
 mod paths;
 mod settings;
 mod snippets;
+mod theme_includes;
 mod themes;
 #[cfg(test)]
 use import::import_from_with;
@@ -9,7 +11,8 @@ pub use import::import_vscode;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, terminal_shell};
 pub use settings::editor_prefs_for_workspace;
-use settings::{parse_jsonc, project_settings};
+pub(crate) use settings::parse_jsonc;
+use settings::project_settings;
 #[cfg(test)]
 use snippets::expand_snippet;
 pub use snippets::{load_snippets, Snippet};
@@ -61,6 +64,10 @@ mod tests {
             parse_jsonc("{ // settings\n \"editor.tabSize\": 2, } ").unwrap()["editor.tabSize"],
             2
         );
+        assert_eq!(
+            parse_jsonc("{\"text\":\"x, }\", // trailing\n}").unwrap()["text"],
+            "x, }"
+        );
     }
 
     #[test]
@@ -90,6 +97,25 @@ mod tests {
             .contains("editor.tabSize"));
         fs::write(&workspace, "{").unwrap();
         assert!(settings::read_editor_prefs(&paths).is_err());
+    }
+
+    #[test]
+    fn color_customizations_merge_across_settings_layers() {
+        let temp = crate::test_support::TempDir::new();
+        let user = temp.path().join("user.json");
+        let workspace = temp.path().join("workspace.json");
+        fs::write(&user, r##"{"workbench.colorTheme":"A","workbench.colorCustomizations":{"editor.background":"#111111","editor.foreground":"#222222"}}"##).unwrap();
+        fs::write(&workspace, r##"{"workbench.colorTheme":"B","workbench.colorCustomizations":{"editor.background":"#333333"}}"##).unwrap();
+        let merged = settings::merge_settings(&[user, workspace]).unwrap();
+        assert_eq!(merged["workbench.colorTheme"], "B");
+        assert_eq!(
+            merged["workbench.colorCustomizations"]["editor.background"],
+            "#333333"
+        );
+        assert_eq!(
+            merged["workbench.colorCustomizations"]["editor.foreground"],
+            "#222222"
+        );
     }
     #[test]
     fn import_copies_valid_files_and_preserves_sources() {
@@ -146,6 +172,144 @@ mod tests {
             colors.get("syntax.keyword").map(String::as_str),
             Some("#ff0000")
         );
+    }
+
+    #[test]
+    fn theme_jsonc_includes_inherit_and_override_colors_and_tokens() {
+        let temp = crate::test_support::TempDir::new();
+        fs::write(
+            temp.path().join("base.json"),
+            r##"{ // base
+            "colors": {"editor.background": "#101010", "editor.foreground": "#cccccc"},
+            "tokenColors": [{"scope": "keyword", "settings": {"foreground": "#112233"}}],
+        }"##,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("child.json"),
+            r##"{
+            "name": "Custom", "include": "./base.json",
+            "colors": {"editor.background": "#202020"},
+            "tokenColors": [{"scope": "keyword", "settings": {"foreground": "#aabbcc"}}]
+        }"##,
+        )
+        .unwrap();
+        let settings = serde_json::json!({"workbench.colorTheme": "Custom"});
+        let colors = themes::resolve_theme_colors(&settings, temp.path()).unwrap();
+        assert_eq!(
+            colors.get("editor.background").map(String::as_str),
+            Some("#202020")
+        );
+        assert_eq!(
+            colors.get("editor.foreground").map(String::as_str),
+            Some("#cccccc")
+        );
+        assert_eq!(
+            colors.get("syntax.keyword").map(String::as_str),
+            Some("#aabbcc")
+        );
+    }
+
+    #[test]
+    fn theme_include_cycles_and_missing_files_are_reported() {
+        let temp = crate::test_support::TempDir::new();
+        let child = temp.path().join("child.json");
+        fs::write(&child, r#"{"name":"Loop","include":"base.json"}"#).unwrap();
+        let settings = serde_json::json!({"workbench.colorTheme": "Loop"});
+        assert!(themes::resolve_theme_colors(&settings, temp.path())
+            .unwrap_err()
+            .contains("Cannot open theme"));
+        fs::write(temp.path().join("base.json"), r#"{"include":"child.json"}"#).unwrap();
+        assert!(themes::resolve_theme_colors(&settings, temp.path())
+            .unwrap_err()
+            .contains("Circular"));
+    }
+
+    #[test]
+    fn imports_nested_extension_theme_and_its_relative_dependency() {
+        let temp = crate::test_support::TempDir::new();
+        let source = temp.path().join("user");
+        let target = temp.path().join("imported");
+        let extensions = temp.path().join("extensions");
+        let package = extensions.join("publisher.theme");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(package.join("themes")).unwrap();
+        fs::create_dir_all(package.join("shared")).unwrap();
+        let child =
+            r##"{"include":"../shared/base.json", "colors":{"editor.background":"#123456"}}"##;
+        fs::write(
+            source.join("settings.json"),
+            r#"{"workbench.colorTheme":"Custom"}"#,
+        )
+        .unwrap();
+        fs::write(package.join("themes/custom.json"), child).unwrap();
+        fs::write(
+            package.join("package.json"),
+            r#"{"contributes":{"themes":[{"label":"Custom","path":"./themes/custom.json"}]}}"#,
+        )
+        .unwrap();
+        fs::write(
+            package.join("shared/base.json"),
+            r##"{// base
+          "colors":{"editor.foreground":"#eeeeee"},
+        }"##,
+        )
+        .unwrap();
+        let report = import_from_with(&source, &target, Some(&extensions), |_| {});
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(
+            fs::read_to_string(package.join("themes/custom.json")).unwrap(),
+            child
+        );
+        assert!(target
+            .join("themes/publisher.theme/shared/base.json")
+            .exists());
+        let settings = serde_json::json!({"workbench.colorTheme":"Custom"});
+        let colors = themes::resolve_theme_colors(&settings, &target.join("themes")).unwrap();
+        assert_eq!(
+            colors.get("editor.background").map(String::as_str),
+            Some("#123456")
+        );
+        assert_eq!(
+            colors.get("editor.foreground").map(String::as_str),
+            Some("#eeeeee")
+        );
+    }
+
+    #[test]
+    fn theme_import_reports_missing_references_and_cycles() {
+        let temp = crate::test_support::TempDir::new();
+        let source = temp.path().join("user");
+        let target = temp.path().join("target");
+        fs::create_dir_all(source.join("themes")).unwrap();
+        fs::write(
+            source.join("themes/cycle.json"),
+            r#"{"name":"cycle","include":"cycle.json"}"#,
+        )
+        .unwrap();
+        fs::write(
+            source.join("themes/missing.json"),
+            r#"{"name":"missing","include":"no-such-file.json"}"#,
+        )
+        .unwrap();
+        let report = import_from_with(&source, &target, None, |_| {});
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Circular theme include")),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Cannot read theme")),
+            "{:?}",
+            report.warnings
+        );
+        assert!(source.join("themes/cycle.json").exists());
     }
 
     #[test]

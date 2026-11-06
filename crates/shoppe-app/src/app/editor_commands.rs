@@ -80,6 +80,8 @@ impl App {
     }
 
     pub(crate) fn close_active_tab(&mut self) {
+        self.smart_selection_history.clear();
+        self.smart_selection_guard = None;
         if self.tabs.len() == 1 {
             if let Some(path) = self.tabs[0].buffer.path().map(PathBuf::from) {
                 self.lsp_manager.close(&path);

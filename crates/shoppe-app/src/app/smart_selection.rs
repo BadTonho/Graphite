@@ -3,11 +3,31 @@ use shoppe_text::Selection;
 
 impl App {
     pub(crate) fn smart_select(&mut self, expand: bool) {
+        let current = self.tabs[self.active_tab]
+            .buffer
+            .selection()
+            .unwrap_or(Selection {
+                anchor: self.tabs[self.active_tab].buffer.cursor().char_idx,
+                head: self.tabs[self.active_tab].buffer.cursor().char_idx,
+            });
+        let guard = (
+            self.active_tab,
+            self.tabs[self.active_tab].buffer.revision(),
+            current,
+        );
+        if self
+            .smart_selection_guard
+            .is_some_and(|expected| expected != guard)
+        {
+            self.smart_selection_history.clear();
+            self.smart_selection_guard = None;
+        }
         if !expand {
             if let Some(selection) = self.smart_selection_history.pop() {
                 self.tabs[self.active_tab]
                     .buffer
                     .set_selection(selection.anchor, selection.head);
+                self.smart_selection_guard = Some((self.active_tab, guard.1, selection));
             }
             return;
         }
@@ -31,6 +51,14 @@ impl App {
         if let Some(next) = next {
             self.smart_selection_history.push(before);
             tab.buffer.set_selection(next.start, next.end);
+            self.smart_selection_guard = Some((
+                self.active_tab,
+                guard.1,
+                Selection {
+                    anchor: next.start,
+                    head: next.end,
+                },
+            ));
         }
     }
 }

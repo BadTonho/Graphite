@@ -460,3 +460,182 @@ fn selected_lines_sort_and_deduplicate_with_single_undo() {
     b.undo();
     assert_eq!(b.text(), "outside\r\nzé\r\na\r\nzé\r\nend");
 }
+
+#[test]
+fn line_commands_apply_to_disjoint_cursors_as_one_undo_step() {
+    let mut b = Buffer::new();
+    let original = "zero\r\none\r\ntwo\r\nthree\r\nfour";
+    b.insert(original);
+    let one = b.line_start_char(1);
+    let three = b.line_start_char(3);
+    b.set_selections(vec![
+        Selection {
+            anchor: one,
+            head: one,
+        },
+        Selection {
+            anchor: three,
+            head: three,
+        },
+    ]);
+    let selected = b.selections();
+    b.move_line(-1);
+    assert_eq!(b.text(), "one\r\nzero\r\nthree\r\ntwo\r\nfour");
+    assert_eq!(
+        b.selections()
+            .iter()
+            .map(|s| b.rope().char_to_line(s.head))
+            .collect::<Vec<_>>(),
+        [0, 2]
+    );
+    b.undo();
+    assert_eq!(b.text(), original);
+    assert_eq!(b.selections(), selected);
+    b.duplicate_line(true);
+    assert_eq!(
+        b.text(),
+        "zero\r\none\r\none\r\ntwo\r\nthree\r\nthree\r\nfour"
+    );
+    assert_eq!(
+        b.selections()
+            .iter()
+            .map(|s| b.rope().char_to_line(s.head))
+            .collect::<Vec<_>>(),
+        [2, 5]
+    );
+    b.undo();
+    assert_eq!(b.selections(), selected);
+    b.delete_line();
+    assert_eq!(b.text(), "zero\r\ntwo\r\nfour");
+    b.undo();
+    assert_eq!(b.text(), original);
+    assert_eq!(b.selections(), selected);
+}
+
+#[test]
+fn moving_a_multiline_selection_preserves_range_and_endings() {
+    let mut b = Buffer::new();
+    b.insert("zero\r\none\r\ntwo\r\nthree\r\nfour");
+    let start = b.line_start_char(1);
+    let end = b.line_start_char(3);
+    b.set_selection(start, end);
+    b.move_line(1);
+    assert_eq!(b.text(), "zero\r\nthree\r\none\r\ntwo\r\nfour");
+    assert_eq!(b.selected_text().as_deref(), Some("one\r\ntwo\r\n"));
+    b.undo();
+    assert_eq!(b.selected_text().as_deref(), Some("one\r\ntwo\r\n"));
+}
+
+#[test]
+fn sort_and_deduplicate_multiple_selected_line_blocks() {
+    let mut b = Buffer::new();
+    let original = "z\na\nz\nseparator\ny\nb\ny\n";
+    b.insert(original);
+    b.set_selections(vec![
+        Selection {
+            anchor: b.line_start_char(0),
+            head: b.line_start_char(3),
+        },
+        Selection {
+            anchor: b.line_start_char(4),
+            head: b.line_start_char(7),
+        },
+    ]);
+    b.deduplicate_lines();
+    assert_eq!(b.text(), "z\na\nseparator\ny\nb\n");
+    b.undo();
+    assert_eq!(b.text(), original);
+    b.sort_lines();
+    assert_eq!(b.text(), "a\nz\nz\nseparator\nb\ny\ny\n");
+    b.undo();
+    assert_eq!(b.text(), original);
+}
+
+#[test]
+fn duplicate_and_delete_selected_last_line_without_final_newline() {
+    let mut b = Buffer::new();
+    b.insert("first\r\nlast");
+    b.set_cursor_line_col(1, 2);
+    b.duplicate_line(true);
+    assert_eq!(b.text(), "first\r\nlast\r\nlast");
+    assert_eq!(b.cursor_line_col(), (2, 2));
+    b.delete_line();
+    assert_eq!(b.text(), "first\r\nlast");
+    b.undo();
+    assert_eq!(b.text(), "first\r\nlast\r\nlast");
+    b.undo();
+    assert_eq!(b.text(), "first\r\nlast");
+}
+#[test]
+fn position_changes_track_disjoint_unicode_transactions_and_history() {
+    use shoppe_text::{map_position, Buffer, PositionEdit, TextReplacement};
+    let mut buffer = Buffer::new();
+    buffer.insert("aé日z!");
+    buffer
+        .apply_transaction(&[
+            TextReplacement {
+                range: 1..2,
+                text: "🦀🙂".into(),
+            },
+            TextReplacement {
+                range: 4..5,
+                text: "".into(),
+            },
+        ])
+        .unwrap();
+    assert_eq!(buffer.text(), "a🦀🙂日z");
+    assert_eq!(
+        buffer.last_position_edits(),
+        &[
+            PositionEdit {
+                start: 1,
+                end: 2,
+                inserted_chars: 2
+            },
+            PositionEdit {
+                start: 4,
+                end: 5,
+                inserted_chars: 0
+            },
+        ]
+    );
+    assert_eq!(map_position(3, buffer.last_position_edits()), 4);
+    buffer.undo();
+    assert_eq!(buffer.text(), "aé日z!");
+    assert_eq!(map_position(4, buffer.last_position_edits()), 3);
+    buffer.redo();
+    assert_eq!(map_position(3, buffer.last_position_edits()), 4);
+}
+
+#[test]
+fn position_mapping_follows_insertions_and_clamps_deleted_text() {
+    use shoppe_text::{map_position, PositionEdit};
+    let insert = [PositionEdit {
+        start: 2,
+        end: 2,
+        inserted_chars: 3,
+    }];
+    assert_eq!(map_position(1, &insert), 1);
+    assert_eq!(map_position(2, &insert), 5);
+    assert_eq!(map_position(3, &insert), 6);
+    let deletion = [PositionEdit {
+        start: 2,
+        end: 5,
+        inserted_chars: 0,
+    }];
+    assert_eq!(map_position(3, &deletion), 2);
+    assert_eq!(map_position(6, &deletion), 3);
+    let adjacent = [
+        PositionEdit {
+            start: 0,
+            end: 2,
+            inserted_chars: 1,
+        },
+        PositionEdit {
+            start: 2,
+            end: 2,
+            inserted_chars: 3,
+        },
+    ];
+    assert_eq!(map_position(2, &adjacent), 4);
+}

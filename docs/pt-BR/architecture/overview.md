@@ -21,10 +21,12 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
 - **Pipeline:** um único pipeline de quads texturizados. Retângulos amostram um bloco sólido 2×2 reservado no atlas; glifos amostram um atlas de cobertura `R8` preenchido sob demanda por um empacotador de prateleiras.
 - **Cache de texto:** linhas já moldadas são cacheadas por `(texto, tamanho da fonte)`; cada glifo é rasterizado uma vez por `CacheKey`.
 - **Formato da superfície:** não-sRGB quando disponível, para que as cores apareçam como definidas.
+- **Recorte:** retângulos e glifos são recortados aos limites do editor, com as coordenadas de textura ajustadas para glifos parcialmente visíveis. A mesma operação poderá delimitar painéis divididos.
 
 ## Texto e highlighting
 
 - O texto fica em um `ropey::Rope`; o cursor é um deslocamento em caracteres. Toda edição incrementa um contador `revision`.
+- Transações registram seus intervalos em caracteres para mapear posições durante edições, desfazer e refazer. Essa é uma base para visualizações independentes de um documento compartilhado; grupos de editores ainda não foram implementados.
 - `shoppe-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
 
 ## Plataformas

@@ -42,6 +42,35 @@ pub struct TextReplacement {
     pub text: String,
 }
 
+/// One replacement expressed in character offsets of the preceding revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PositionEdit {
+    pub start: usize,
+    pub end: usize,
+    pub inserted_chars: usize,
+}
+
+/// Map an offset from the preceding revision to the new one. At an insertion
+/// boundary the position follows the inserted text.
+pub fn map_position(position: usize, changes: &[PositionEdit]) -> usize {
+    let mut delta = 0isize;
+    for change in changes {
+        if position < change.start {
+            break;
+        }
+        if position < change.end || (position == change.start && change.start == change.end) {
+            let within = if change.start == change.end {
+                change.inserted_chars
+            } else {
+                (position - change.start).min(change.inserted_chars)
+            };
+            return change.start.saturating_add_signed(delta) + within;
+        }
+        delta += change.inserted_chars as isize - (change.end - change.start) as isize;
+    }
+    position.saturating_add_signed(delta)
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum TransactionError {
     #[error("document is read-only")]
@@ -76,6 +105,7 @@ struct Edit {
     before_extra: Vec<Selection>,
     after_extra: Vec<Selection>,
     after_selection: Option<Selection>,
+    position_edits: Vec<PositionEdit>,
 }
 
 #[derive(Debug, Default)]
@@ -91,6 +121,7 @@ pub struct Buffer {
     redo: Vec<Edit>,
     saved_text: Rope,
     last_change: Option<TextChange>,
+    last_position_edits: Vec<PositionEdit>,
     read_only: bool,
 }
 
@@ -109,6 +140,11 @@ impl Buffer {
     }
     pub fn last_change(&self) -> Option<TextChange> {
         self.last_change
+    }
+
+    /// Changes for the most recent revision, sorted by their original offsets.
+    pub fn last_position_edits(&self) -> &[PositionEdit] {
+        &self.last_position_edits
     }
 
     fn record_change(&mut self, start: usize, end: usize, inserted: &str) {

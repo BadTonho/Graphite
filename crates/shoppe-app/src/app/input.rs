@@ -19,6 +19,9 @@ impl App {
             }
             return;
         }
+        if !self.close_confirm && !self.ime_composing && self.handle_custom_keybinding(event) {
+            return;
+        }
         if ctrl
             && (matches!(&event.logical_key, Key::Character(c) if c == "`")
                 || matches!(event.physical_key, PhysicalKey::Code(KeyCode::Backquote)))
@@ -350,10 +353,12 @@ impl App {
         match &event.logical_key {
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("i") => {
                 let report = config::import_vscode();
-                DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-                Theme::set_imported_colors(config::imported_theme_colors());
-                let settings_error = match config::editor_prefs_for_workspace(self.tree.root()) {
-                    Ok(prefs) => {
+                let settings = config::editor_prefs_for_workspace(self.tree.root());
+                let theme = config::imported_theme_colors(self.tree.root());
+                let settings_error = match (settings, theme) {
+                    (Ok(prefs), Ok(colors)) => {
+                        DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
+                        Theme::set_imported_colors(colors);
                         self.font_size = prefs.font_size;
                         self.tab_size = prefs.tab_size;
                         self.insert_spaces = prefs.insert_spaces;
@@ -363,7 +368,7 @@ impl App {
                         self.rulers = prefs.rulers;
                         None
                     }
-                    Err(error) => Some(error),
+                    (Err(error), _) | (_, Err(error)) => Some(error),
                 };
                 if let Some(gpu) = &mut self.gpu {
                     gpu.renderer
