@@ -1,6 +1,5 @@
 //! Flattened, expandable file tree built on top of `shoppe-workspace`.
 
-use shoppe_workspace::SearchResult;
 use shoppe_workspace::{Entry, Workspace};
 use std::{collections::HashSet, path::PathBuf};
 
@@ -72,10 +71,6 @@ impl FileTree {
     }
     pub fn root(&self) -> &std::path::Path {
         self.workspace.root()
-    }
-
-    pub fn search(&self, query: &str) -> Vec<SearchResult> {
-        self.workspace.search(query)
     }
 
     /// Toggles a directory row; returns the file path if the row is a file.

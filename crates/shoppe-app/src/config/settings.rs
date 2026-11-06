@@ -7,6 +7,10 @@ pub fn project_settings(value: &Value) -> (Value, Vec<String>) {
         "editor.insertSpaces",
         "workbench.colorTheme",
         "workbench.colorCustomizations",
+        "files.readonlyInclude",
+        "editor.detectIndentation",
+        "files.trimTrailingWhitespace",
+        "editor.rulers",
     ];
     let mut supported = Map::new();
     let mut warnings = Vec::new();
@@ -77,30 +81,121 @@ pub(super) fn parse_jsonc(text: &str) -> Result<Value, serde_json::Error> {
     }
     serde_json::from_str(&out)
 }
-pub fn editor_prefs() -> EditorPrefs {
-    let parsed = fs::read_to_string(app_config_dir().join("imported/settings.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    let font = parsed
-        .as_ref()
-        .and_then(|v| v.get("editor.fontSize"))
-        .and_then(Value::as_f64)
-        .unwrap_or(15.0)
-        .clamp(8.0, 40.0) as f32;
-    let tab = parsed
-        .as_ref()
-        .and_then(|v| v.get("editor.tabSize"))
-        .and_then(Value::as_u64)
-        .unwrap_or(4)
-        .clamp(1, 8) as usize;
-    let spaces = parsed
-        .as_ref()
-        .and_then(|v| v.get("editor.insertSpaces"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    EditorPrefs {
-        font_size: font,
-        tab_size: tab,
-        insert_spaces: spaces,
+pub fn editor_prefs_for_workspace(workspace: &Path) -> Result<EditorPrefs, String> {
+    let config = app_config_dir();
+    read_editor_prefs(&[
+        config.join("imported/settings.json"),
+        config.join("settings.json"),
+        workspace.join(".vscode/settings.json"),
+    ])
+}
+
+pub(super) fn read_editor_prefs(paths: &[PathBuf]) -> Result<EditorPrefs, String> {
+    let mut prefs = EditorPrefs {
+        font_size: 15.0,
+        tab_size: 4,
+        insert_spaces: false,
+        read_only_patterns: Vec::new(),
+        detect_indentation: true,
+        trim_trailing_whitespace: false,
+        rulers: Vec::new(),
+    };
+    for path in paths {
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
+        };
+        let value =
+            parse_jsonc(&raw).map_err(|e| format!("Invalid settings {}: {e}", path.display()))?;
+        if !value.is_object() {
+            return Err(format!("Settings {} must be an object", path.display()));
+        }
+        if let Some(value) = value.get("editor.fontSize") {
+            prefs.font_size = value
+                .as_f64()
+                .filter(|v| (8.0..=40.0).contains(v))
+                .ok_or_else(|| format!("Invalid editor.fontSize in {}", path.display()))?
+                as f32;
+        }
+        if let Some(value) = value.get("editor.tabSize") {
+            prefs.tab_size = value
+                .as_u64()
+                .filter(|v| (1..=8).contains(v))
+                .ok_or_else(|| format!("Invalid editor.tabSize in {}", path.display()))?
+                as usize;
+        }
+        if let Some(value) = value.get("editor.insertSpaces") {
+            prefs.insert_spaces = value
+                .as_bool()
+                .ok_or_else(|| format!("Invalid editor.insertSpaces in {}", path.display()))?;
+        }
+        if let Some(value) = value.get("files.readonlyInclude") {
+            let mut result = Vec::new();
+            let patterns: Vec<&str> = if let Some(items) = value.as_array() {
+                items
+                    .iter()
+                    .map(|v| {
+                        v.as_str().ok_or_else(|| {
+                            format!("Invalid files.readonlyInclude in {}", path.display())
+                        })
+                    })
+                    .collect::<Result<_, _>>()?
+            } else if let Some(items) = value.as_object() {
+                let mut patterns = Vec::new();
+                for (pattern, enabled) in items {
+                    match enabled.as_bool() {
+                        Some(true) => patterns.push(pattern.as_str()),
+                        Some(false) => {}
+                        None => {
+                            return Err(format!(
+                                "Invalid files.readonlyInclude in {}",
+                                path.display()
+                            ))
+                        }
+                    }
+                }
+                patterns
+            } else {
+                return Err(format!(
+                    "Invalid files.readonlyInclude in {}",
+                    path.display()
+                ));
+            };
+            for pattern in patterns {
+                globset::Glob::new(pattern)
+                    .map_err(|e| format!("Invalid read-only pattern in {}: {e}", path.display()))?;
+                result.push(pattern.to_owned());
+            }
+            prefs.read_only_patterns = result;
+        }
+        if let Some(value) = value.get("editor.detectIndentation") {
+            prefs.detect_indentation = value
+                .as_bool()
+                .ok_or_else(|| format!("Invalid editor.detectIndentation in {}", path.display()))?;
+        }
+        if let Some(value) = value.get("files.trimTrailingWhitespace") {
+            prefs.trim_trailing_whitespace = value.as_bool().ok_or_else(|| {
+                format!("Invalid files.trimTrailingWhitespace in {}", path.display())
+            })?;
+        }
+        if let Some(value) = value.get("editor.rulers") {
+            let values = value
+                .as_array()
+                .ok_or_else(|| format!("Invalid editor.rulers in {}", path.display()))?;
+            let mut rulers = Vec::new();
+            for ruler in values {
+                let column = ruler
+                    .as_u64()
+                    .or_else(|| ruler.get("column").and_then(Value::as_u64))
+                    .filter(|column| (1..=1000).contains(column))
+                    .ok_or_else(|| format!("Invalid editor.rulers in {}", path.display()))?;
+                rulers.push(column as usize);
+            }
+            rulers.sort_unstable();
+            rulers.dedup();
+            prefs.rulers = rulers;
+        }
     }
+    Ok(prefs)
 }

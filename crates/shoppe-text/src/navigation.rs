@@ -1,6 +1,17 @@
 use super::*;
 
 impl Buffer {
+    pub(super) fn line_content_len(&self, line: usize) -> usize {
+        let slice = self.rope.line(line);
+        let mut len = slice.len_chars();
+        if len > 0 && slice.char(len - 1) == '\n' {
+            len -= 1;
+            if len > 0 && slice.char(len - 1) == '\r' {
+                len -= 1;
+            }
+        }
+        len
+    }
     /// Cursor as (line, column) in characters.
     pub fn cursor_line_col(&self) -> (usize, usize) {
         let line = self.rope.char_to_line(self.cursor.char_idx);
@@ -8,6 +19,10 @@ impl Buffer {
     }
 
     pub fn insert(&mut self, text: &str) {
+        if !self.extra_selections.is_empty() {
+            self.replace_selections(text, false, false);
+            return;
+        }
         let (start, end) = self
             .selection
             .map(|s| (s.anchor.min(s.head), s.anchor.max(s.head)))
@@ -17,38 +32,53 @@ impl Buffer {
 
     /// Deletes the character before the cursor.
     pub fn backspace(&mut self) {
+        if !self.extra_selections.is_empty() {
+            self.replace_selections("", true, false);
+            return;
+        }
         if let Some(s) = self.selection {
             self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
             return;
         }
         let i = self.cursor.char_idx;
         if i > 0 {
-            self.replace(i - 1, i, "");
+            let mut start = i - 1;
+            if start > 0 && self.rope.char(start) == '\n' && self.rope.char(start - 1) == '\r' {
+                start -= 1;
+            }
+            self.replace(start, i, "");
         }
     }
 
     /// Deletes the character after the cursor.
     pub fn delete(&mut self) {
+        if !self.extra_selections.is_empty() {
+            self.replace_selections("", false, true);
+            return;
+        }
         if let Some(s) = self.selection {
             self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
             return;
         }
         let i = self.cursor.char_idx;
         if i < self.rope.len_chars() {
-            self.replace(i, i + 1, "");
+            let mut end = i + 1;
+            if self.rope.char(i) == '\r'
+                && end < self.rope.len_chars()
+                && self.rope.char(end) == '\n'
+            {
+                end += 1;
+            }
+            self.replace(i, end, "");
         }
     }
 
     /// Places the cursor at (line, column), clamping to valid positions.
     pub fn set_cursor_line_col(&mut self, line: usize, col: usize) {
         self.selection = None;
+        self.extra_selections.clear();
         let line = line.min(self.rope.len_lines() - 1);
-        let line_len = self.rope.line(line).len_chars();
-        let max_col = if line + 1 == self.rope.len_lines() {
-            line_len
-        } else {
-            line_len.saturating_sub(1)
-        };
+        let max_col = self.line_content_len(line);
         self.cursor.char_idx = self.rope.line_to_char(line) + col.min(max_col);
     }
 
@@ -67,23 +97,31 @@ impl Buffer {
     pub fn move_left(&mut self) {
         self.selection = None;
         self.cursor.char_idx = self.cursor.char_idx.saturating_sub(1);
+        if self.cursor.char_idx > 0
+            && self.rope.char(self.cursor.char_idx) == '\n'
+            && self.rope.char(self.cursor.char_idx - 1) == '\r'
+        {
+            self.cursor.char_idx -= 1;
+        }
     }
 
     pub fn move_right(&mut self) {
         self.selection = None;
         self.cursor.char_idx = (self.cursor.char_idx + 1).min(self.rope.len_chars());
+        if self.cursor.char_idx < self.rope.len_chars()
+            && self.rope.char(self.cursor.char_idx) == '\n'
+            && self.cursor.char_idx > 0
+            && self.rope.char(self.cursor.char_idx - 1) == '\r'
+        {
+            self.cursor.char_idx += 1;
+        }
     }
 
     pub fn move_vertical(&mut self, delta: isize) {
         self.selection = None;
         let (line, col) = self.cursor_line_col();
         let target = (line as isize + delta).clamp(0, self.rope.len_lines() as isize - 1) as usize;
-        let line_len = self.rope.line(target).len_chars();
-        let max_col = if target + 1 == self.rope.len_lines() {
-            line_len
-        } else {
-            line_len.saturating_sub(1)
-        };
+        let max_col = self.line_content_len(target);
         self.cursor.char_idx = self.rope.line_to_char(target) + col.min(max_col);
     }
 }

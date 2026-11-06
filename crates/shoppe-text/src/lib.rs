@@ -8,7 +8,14 @@ use std::{
 
 mod edit;
 mod file_io;
+mod indentation;
+pub use indentation::Indentation;
+mod lines;
+mod multicursor;
 mod navigation;
+pub use multicursor::CursorMotion;
+mod search;
+pub use search::{SearchMatch, SearchOptions};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BufferError {
@@ -26,6 +33,23 @@ pub struct Cursor {
 pub struct Selection {
     pub anchor: usize,
     pub head: usize,
+}
+
+/// A replacement whose range is expressed in character offsets of the same revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextReplacement {
+    pub range: std::ops::Range<usize>,
+    pub text: String,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum TransactionError {
+    #[error("document is read-only")]
+    ReadOnly,
+    #[error("replacement range is invalid or outside the document")]
+    InvalidRange,
+    #[error("replacement ranges overlap or contain duplicate cursors")]
+    OverlappingRanges,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +73,9 @@ struct Edit {
     before: usize,
     after: usize,
     before_selection: Option<Selection>,
+    before_extra: Vec<Selection>,
+    after_extra: Vec<Selection>,
+    after_selection: Option<Selection>,
 }
 
 #[derive(Debug, Default)]
@@ -59,10 +86,12 @@ pub struct Buffer {
     dirty: bool,
     revision: u64,
     selection: Option<Selection>,
+    extra_selections: Vec<Selection>,
     undo: Vec<Edit>,
     redo: Vec<Edit>,
     saved_text: Rope,
     last_change: Option<TextChange>,
+    read_only: bool,
 }
 
 impl Buffer {
@@ -115,6 +144,15 @@ impl Buffer {
         self.dirty
     }
 
+    /// A read-only buffer rejects all text mutations and history operations.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+    }
+
     pub fn len_chars(&self) -> usize {
         self.rope.len_chars()
     }
@@ -160,6 +198,7 @@ impl Buffer {
         let head = head.min(len);
         self.selection = (anchor != head).then_some(Selection { anchor, head });
         self.cursor.char_idx = head;
+        self.extra_selections.clear();
     }
 }
 

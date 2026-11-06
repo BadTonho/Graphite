@@ -1,5 +1,18 @@
 use super::*;
 
+pub(crate) fn ruler_positions(
+    columns: &[usize],
+    text_x: f32,
+    char_width: f32,
+    width: f32,
+) -> Vec<f32> {
+    columns
+        .iter()
+        .map(|column| text_x + *column as f32 * char_width)
+        .filter(|x| *x < width)
+        .collect()
+}
+
 impl App {
     pub(crate) fn visible_lines(&self, renderer: &Renderer) -> usize {
         let panel = if self.terminal_visible {
@@ -28,5 +41,18 @@ impl App {
             .len()
             .max(3);
         digits as f32 * char_w + PAD * 2.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rulers_only_include_columns_inside_editor_width() {
+        assert_eq!(
+            ruler_positions(&[80, 100, 120], 100.0, 8.0, 950.0),
+            [740.0, 900.0]
+        );
     }
 }

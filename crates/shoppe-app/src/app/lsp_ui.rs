@@ -111,13 +111,13 @@ impl App {
         Some((path, lsp::position_at_char(&tab.buffer.text(), char_index)))
     }
 
-    pub(crate) fn editor_state(&self) -> (usize, usize, u64, Option<shoppe_text::Selection>) {
+    pub(crate) fn editor_state(&self) -> (usize, usize, u64, Vec<shoppe_text::Selection>) {
         let tab = &self.tabs[self.active_tab];
         (
             self.active_tab,
             tab.buffer.cursor().char_idx,
             tab.buffer.revision(),
-            tab.buffer.selection(),
+            tab.buffer.selections(),
         )
     }
 

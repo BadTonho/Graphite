@@ -30,6 +30,7 @@ impl App {
                 &titles,
                 &self.tabs[self.active_tab].buffer.text(),
                 accessible_panel.as_deref(),
+                self.tabs[self.active_tab].buffer.is_read_only(),
             )
         });
 
@@ -117,11 +118,20 @@ impl App {
             tab_x += label.chars().count() as f32 * cw * 1.8;
         }
         let (cur_line, cur_col) = self.tabs[self.active_tab].buffer.cursor_line_col();
+        for x in super::layout::ruler_positions(&self.rulers, text_x, cw, w) {
+            r.draw_rect(
+                x,
+                lh * 1.5,
+                1.0,
+                (h - lh * 2.5).max(0.0),
+                rgb(Theme::color(0x404040, 0xdddddd)),
+            );
+        }
         let last = (self.tabs[self.active_tab].scroll_line + visible)
             .min(self.tabs[self.active_tab].buffer.len_lines());
         for line in self.tabs[self.active_tab].scroll_line..last {
             let y = lh * 1.5 + (line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
-            if let Some(selection) = self.tabs[self.active_tab].buffer.selection() {
+            for selection in self.tabs[self.active_tab].buffer.selections() {
                 let line_start = self.tabs[self.active_tab].buffer.line_start_char(line);
                 let line_end = line_start
                     + self.tabs[self.active_tab]
@@ -169,7 +179,32 @@ impl App {
                 text_x,
                 y,
                 cw,
-                self.tab_size,
+                self.tabs[self.active_tab].indentation.tab_size,
+            );
+        }
+        for selection in self.tabs[self.active_tab]
+            .buffer
+            .selections()
+            .into_iter()
+            .skip(1)
+        {
+            let buffer = &self.tabs[self.active_tab].buffer;
+            let line = buffer.rope().char_to_line(selection.head);
+            if !(self.tabs[self.active_tab].scroll_line..last).contains(&line) {
+                continue;
+            }
+            let column = selection.head - buffer.line_start_char(line);
+            let prefix: String = buffer.line(line).chars().take(column).collect();
+            let column = display_line(&prefix, self.tabs[self.active_tab].indentation.tab_size)
+                .chars()
+                .count();
+            let y = lh * 1.5 + (line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
+            r.draw_rect(
+                text_x + column as f32 * cw,
+                y,
+                2.0,
+                lh,
+                rgb(Theme::color(Theme::CURSOR, 0x202020)),
             );
         }
         if (self.tabs[self.active_tab].scroll_line..last).contains(&cur_line) {
@@ -179,7 +214,9 @@ impl App {
                 .chars()
                 .take(cur_col)
                 .collect();
-            let col = display_line(&prefix, self.tab_size).chars().count();
+            let col = display_line(&prefix, self.tabs[self.active_tab].indentation.tab_size)
+                .chars()
+                .count();
             let y = lh * 1.5 + (cur_line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
             r.draw_rect(
                 text_x + col as f32 * cw,
@@ -188,6 +225,28 @@ impl App {
                 lh,
                 rgb(Theme::color(Theme::CURSOR, 0x202020)),
             );
+            if !self.ime_preedit.is_empty()
+                && self.local_search.is_none()
+                && self.quick_open.is_none()
+                && self.search_query.is_none()
+                && self.snippet_query.is_none()
+                && !self.terminal_focused
+            {
+                let x = text_x + col as f32 * cw;
+                r.draw_text(
+                    &self.ime_preedit,
+                    x,
+                    y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+                r.draw_rect(
+                    x,
+                    y + lh - 2.0,
+                    self.ime_preedit.chars().count() as f32 * cw,
+                    1.0,
+                    rgb(Theme::color(Theme::CURSOR, 0x202020)),
+                );
+            }
         }
 
         // Status bar
@@ -197,9 +256,14 @@ impl App {
             ""
         };
         let status = format!(
-            " {}{}   Ln {}, Col {}",
+            " {}{}{}   Ln {}, Col {}",
             self.status,
             dirty,
+            if self.tabs[self.active_tab].buffer.is_read_only() {
+                " 🔒 Read-only"
+            } else {
+                ""
+            },
             cur_line + 1,
             cur_col + 1
         );
@@ -211,9 +275,117 @@ impl App {
             rgb(Theme::color(Theme::STATUS, 0x005a9e)),
         );
         r.draw_text(&status, 0.0, h - lh, rgb(0xffffff));
+        if let Some(quick) = &self.quick_open {
+            let count = quick.paths.len().min(8);
+            let height = lh * (count as f32 + 1.5);
+            let y = lh * 1.5;
+            r.draw_rect(
+                SIDEBAR_WIDTH,
+                y,
+                w - SIDEBAR_WIDTH,
+                height,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            r.draw_text(
+                &format!("Open file: {}{}", quick.query, self.ime_preedit),
+                SIDEBAR_WIDTH + PAD,
+                y + PAD,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            let start = quick
+                .index
+                .saturating_sub(7)
+                .min(quick.paths.len().saturating_sub(8));
+            for (row, (i, path)) in quick
+                .paths
+                .iter()
+                .enumerate()
+                .skip(start)
+                .take(8)
+                .enumerate()
+            {
+                let item_y = y + lh * (row as f32 + 1.0);
+                if i == quick.index {
+                    r.draw_rect(
+                        SIDEBAR_WIDTH,
+                        item_y,
+                        w - SIDEBAR_WIDTH,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                let relative = path.strip_prefix(self.tree.root()).unwrap_or(path);
+                r.draw_text(
+                    &relative.display().to_string(),
+                    SIDEBAR_WIDTH + PAD,
+                    item_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
+        if let Some(search) = &self.local_search {
+            let height = if search.replace { lh * 3.5 } else { lh * 2.5 };
+            let y = h - lh - height;
+            r.draw_rect(
+                SIDEBAR_WIDTH,
+                y,
+                w - SIDEBAR_WIDTH,
+                height,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            let label = format!(
+                "{} Find: {}   {}",
+                if search.edit_replacement { " " } else { ">" },
+                format!(
+                    "{}{}",
+                    search.query,
+                    if search.edit_replacement {
+                        ""
+                    } else {
+                        &self.ime_preedit
+                    }
+                ),
+                search.message
+            );
+            r.draw_text(
+                &label,
+                SIDEBAR_WIDTH + PAD,
+                y + PAD,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            if search.replace {
+                let replacement = format!(
+                    "{} Replace: {}   (Tab: field; Alt+Enter: one; Ctrl+Enter: all)",
+                    if search.edit_replacement { ">" } else { " " },
+                    format!(
+                        "{}{}",
+                        search.replacement,
+                        if search.edit_replacement {
+                            &self.ime_preedit
+                        } else {
+                            ""
+                        }
+                    )
+                );
+                r.draw_text(
+                    &replacement,
+                    SIDEBAR_WIDTH + PAD,
+                    y + lh + PAD,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+            let opts = format!("Alt+R regex:{}  Alt+C case:{}  Alt+W word:{}  Alt+P preserve:{}  Alt+S selection:{}", search.options.regex, search.options.case_sensitive, search.options.whole_word, search.options.preserve_case, search.scope.is_some());
+            r.draw_text(
+                &opts,
+                SIDEBAR_WIDTH + PAD,
+                y + height - lh,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+        }
         if let Some(query) = &self.search_query {
             let label = format!(
-                "Search: {query}  ({} matches; Up/Down, Enter, Esc)",
+                "Search: {query}{}  ({} matches; Up/Down, Enter, Esc)",
+                self.ime_preedit,
                 self.search_results.len()
             );
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
@@ -282,7 +454,7 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &format!("Snippet prefix: {query}"),
+                &format!("Snippet prefix: {query}{}", self.ime_preedit),
                 SIDEBAR_WIDTH + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),

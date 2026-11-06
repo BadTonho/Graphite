@@ -49,9 +49,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.process_accessibility_actions();
         match event {
             WindowEvent::CloseRequested => {
-                self.lsp_manager.shutdown();
-                self.terminal.take();
-                event_loop.exit();
+                self.request_window_close();
             }
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = &mut self.gpu {
@@ -72,6 +70,7 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                self.smart_selection_history.clear();
                 let editor_state = self.editor_state();
                 self.click();
                 if editor_state != self.editor_state() {
@@ -117,26 +116,18 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.sync_lsp_active();
             }
-            WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_composing = true,
-            WindowEvent::Ime(winit::event::Ime::Preedit(_, _)) => self.ime_composing = true,
-            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                if self.terminal_focused {
-                    if let Some(terminal) = &self.terminal {
-                        terminal.input(text.into_bytes());
-                    }
-                } else {
-                    let editor_state = self.editor_state();
-                    self.tabs[self.active_tab].buffer.insert(&text);
-                    if editor_state != self.editor_state() {
-                        self.invalidate_lsp_requests();
-                    }
-                    self.sync_lsp_active();
-                }
-                self.ime_composing = false;
-            }
-            WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_composing = false,
+            WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_preedit(String::new()),
+            WindowEvent::Ime(winit::event::Ime::Preedit(text, _)) => self.ime_preedit(text),
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => self.ime_commit(&text),
+            WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_preedit(String::new()),
             WindowEvent::RedrawRequested => self.draw(),
             _ => return,
+        }
+        if self.exit_requested {
+            self.lsp_manager.shutdown();
+            self.terminal.take();
+            event_loop.exit();
+            return;
         }
         if let Some(gpu) = &self.gpu {
             gpu.window.request_redraw();
@@ -165,6 +156,28 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::TerminalWake => {
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
+                }
+            }
+            UserEvent::ProjectSearch {
+                query,
+                generation,
+                results,
+            } => {
+                if self.accept_project_search(&query, generation, results) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                }
+            }
+            UserEvent::QuickOpen {
+                query,
+                generation,
+                paths,
+            } => {
+                if self.accept_quick_open(&query, generation, paths) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
                 }
             }
         }

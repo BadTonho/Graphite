@@ -19,13 +19,21 @@ impl Buffer {
             dirty: false,
             revision: 0,
             selection: None,
+            extra_selections: Vec::new(),
             undo: Vec::new(),
             redo: Vec::new(),
             last_change: None,
+            read_only: fs::metadata(path)?.permissions().readonly()
+                || matches!(OpenOptions::new().write(true).open(path), Err(ref e) if e.kind() == io::ErrorKind::PermissionDenied),
         })
     }
 
     pub fn save(&mut self) -> Result<(), BufferError> {
+        if self.read_only {
+            return Err(
+                io::Error::new(io::ErrorKind::PermissionDenied, "document is read-only").into(),
+            );
+        }
         let path = self
             .path
             .as_ref()
