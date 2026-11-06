@@ -1,6 +1,51 @@
 use super::*;
 
 impl App {
+    pub(super) fn execute_project_search_command(&mut self, command: &str) {
+        if self.search_query.is_none() {
+            return;
+        }
+        match command {
+            "projectSearch.close" => {
+                self.search_query = None;
+                self.search_generation = self.search_generation.wrapping_add(1);
+                self.search_cancel
+                    .store(self.search_generation, Ordering::Relaxed);
+                self.status = "Search closed".into();
+            }
+            "projectSearch.deleteLeft" => {
+                if let Some(query) = &mut self.search_query {
+                    query.pop();
+                }
+                self.start_project_search();
+            }
+            "projectSearch.next" if !self.search_results.is_empty() => {
+                self.search_index = (self.search_index + 1) % self.search_results.len()
+            }
+            "projectSearch.previous" if !self.search_results.is_empty() => {
+                self.search_index = self
+                    .search_index
+                    .checked_sub(1)
+                    .unwrap_or(self.search_results.len() - 1)
+            }
+            "projectSearch.accept" => {
+                if let Some(hit) = self.search_results.get(self.search_index).cloned() {
+                    self.open_file(hit.path);
+                    let b = &mut self.tabs[self.active_tab].buffer;
+                    let col = hit.text.get(..hit.start).unwrap_or("").chars().count();
+                    b.set_cursor_line_col(hit.line, col);
+                    self.search_query = None;
+                    self.search_generation = self.search_generation.wrapping_add(1);
+                    self.search_cancel
+                        .store(self.search_generation, Ordering::Relaxed);
+                } else {
+                    self.status = "No matches".into();
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub(crate) fn accept_project_search(
         &mut self,
         query: &str,
