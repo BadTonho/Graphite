@@ -331,6 +331,23 @@ pub fn app_config_dir() -> PathBuf {
     base.join("VsCodeShoppe")
 }
 
+pub fn lsp_config_path() -> PathBuf {
+    app_config_dir().join("lsp.json")
+}
+
+pub fn terminal_shell() -> Option<String> {
+    std::env::var("VSCODESHOPPE_SHELL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            fs::read_to_string(app_config_dir().join("terminal.json"))
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                .and_then(|value| value.get("shell")?.as_str().map(str::to_owned))
+                .filter(|s| !s.trim().is_empty())
+        })
+}
+
 pub fn vscode_user_dir() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {

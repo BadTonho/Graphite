@@ -2,7 +2,7 @@
 
 A native **Rust** code editor aiming to recreate the VS Code experience — with a fraction of the RAM — and, long term, to run **VS Code extensions** (`.vsix`).
 
-> Status: **v0.2 implementation complete** — automated workspace tests and Windows compilation pass; manual Windows/Linux interaction checks remain unverified.
+> Status: **v0.3 implementation in place** — workspace tests and the Windows build pass; full Windows/Linux UI verification has not been completed.
 
 ## Why
 
@@ -17,7 +17,7 @@ cargo test --workspace
 
 Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
-## Controls (v0.2)
+## Controls (v0.3)
 
 | Action | Input |
 |---|---|
@@ -32,7 +32,12 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 | Toggle light/dark theme | `Ctrl+Alt+T` |
 | Import VS Code user settings, snippets and themes | `Ctrl+Shift+I` |
 | Find and insert an imported snippet | `Ctrl+Shift+P`, type its prefix, `Enter` |
+| Completion / go to definition | `Ctrl+Space` / `F12` |
+| Hover / next or previous diagnostic | `Ctrl+K`, `Ctrl+I` / `F8` / `Shift+F8` |
+| Show diagnostics / toggle terminal | `Ctrl+Shift+M` / `Ctrl+grave` |
 | Move / edit | Arrow keys, Home, End, Backspace, Delete, Enter, Tab |
+
+LSP servers are user-installed executables configured in `lsp.json` in the app configuration directory. The terminal uses the system shell by default and can be changed in `terminal.json` or with `VSCODESHOPPE_SHELL`.
 
 ## Workspace layout
 
@@ -43,6 +48,8 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 | `shoppe-syntax` | tree-sitter syntax highlighting |
 | `shoppe-render` | `wgpu` renderer + `cosmic-text` glyph atlas |
 | `shoppe-app` | `winit` window, file tree, editor UI |
+
+The app also includes a generic Language Server Protocol client and an ANSI terminal backed by a cross-platform PTY.
 
 ## Documentation
 
