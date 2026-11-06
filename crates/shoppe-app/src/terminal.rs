@@ -416,9 +416,32 @@ mod tests {
     }
 
     #[test]
+    fn ansi_cursor_movement_replaces_text_and_reset_restores_color() {
+        let (events, _rx) = mpsc::channel();
+        let mut term = Term::new(
+            Config::default(),
+            &TerminalSize {
+                rows: 2,
+                columns: 20,
+            },
+            TerminalEvents(events),
+        );
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, b"abc\r\x1b[31mZ\x1b[0mX");
+        let snapshot = Arc::new(Mutex::new(TerminalSnapshot::default()));
+        publish_snapshot(&term, &snapshot);
+        let state = snapshot.lock().unwrap();
+        assert_eq!(state.rows[0][0].character, 'Z');
+        assert_eq!(state.rows[0][0].foreground, [205, 49, 49]);
+        assert_eq!(state.rows[0][1].character, 'X');
+        assert_ne!(state.rows[0][1].foreground, state.rows[0][0].foreground);
+        assert_eq!(state.rows[0][2].character, 'c');
+    }
+
+    #[test]
     fn pty_captures_shell_output_and_reports_exit() {
-        let root = std::env::temp_dir().join("graphite_terminal_pty_test");
-        std::fs::create_dir_all(&root).unwrap();
+        let temp = crate::test_support::TempDir::new();
+        let root = temp.path();
         #[cfg(windows)]
         let shell = "cmd.exe";
         #[cfg(not(windows))]
@@ -469,6 +492,5 @@ mod tests {
         }
         assert!(exited, "terminal did not report the shell exit");
         drop(session);
-        let _ = std::fs::remove_dir_all(root);
     }
 }

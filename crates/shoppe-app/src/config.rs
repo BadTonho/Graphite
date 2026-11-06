@@ -4,7 +4,7 @@ mod settings;
 mod snippets;
 mod themes;
 #[cfg(test)]
-use import::import_from;
+use import::import_from_with;
 pub use import::import_vscode;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, terminal_shell};
@@ -60,8 +60,8 @@ mod tests {
     }
     #[test]
     fn import_copies_valid_files_and_preserves_sources() {
-        let root = std::env::temp_dir().join("graphite_import_test");
-        let _ = fs::remove_dir_all(&root);
+        let dir = crate::test_support::TempDir::new();
+        let root = dir.path();
         let source = root.join("vscode");
         let target = root.join("app");
         fs::create_dir_all(source.join("snippets")).unwrap();
@@ -79,7 +79,7 @@ mod tests {
             br#"{"name":"sample","type":"dark"}"#,
         )
         .unwrap();
-        let report = import_from(&source, &target);
+        let report = import_from_with(&source, &target, None, |_| {});
         assert_eq!(fs::read(source.join("settings.json")).unwrap(), settings);
         assert_eq!(
             serde_json::from_slice::<Value>(&fs::read(target.join("settings.json")).unwrap())
@@ -96,14 +96,12 @@ mod tests {
             .warnings
             .iter()
             .any(|w| w.contains("Unsupported setting")));
-        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
     fn imported_theme_tokens_map_to_editor_color_roles() {
-        let dir = std::env::temp_dir().join("graphite_theme_tokens_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let temp = crate::test_support::TempDir::new();
+        let dir = temp.path();
         fs::write(dir.join("theme.json"),r##"{"name":"Sample","colors":{"editor.background":"#101010"},"tokenColors":[{"scope":["keyword.control"],"settings":{"foreground":"#ff0000"}}]}"##).unwrap();
         let settings: Value = serde_json::from_str(r#"{"workbench.colorTheme":"Sample"}"#).unwrap();
         let colors = theme_colors_from(&settings, &dir);
@@ -115,6 +113,27 @@ mod tests {
             colors.get("syntax.keyword").map(String::as_str),
             Some("#ff0000")
         );
-        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn malformed_import_is_reported_without_overwriting_existing_settings() {
+        let temp = crate::test_support::TempDir::new();
+        let source = temp.path().join("source");
+        let target = temp.path().join("target");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("settings.json"), "{").unwrap();
+        fs::write(target.join("settings.json"), "original").unwrap();
+        let report = import_from_with(&source, &target, None, |_| {
+            panic!("unexpected theme change")
+        });
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Invalid VS Code settings")));
+        assert_eq!(
+            fs::read_to_string(target.join("settings.json")).unwrap(),
+            "original"
+        );
     }
 }

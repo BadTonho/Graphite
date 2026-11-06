@@ -11,6 +11,18 @@ pub fn import_vscode() -> ImportReport {
 }
 
 pub fn import_from(user_dir: &Path, target: &Path) -> ImportReport {
+    let extensions = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(|home| PathBuf::from(home).join(".vscode/extensions"));
+    import_from_with(user_dir, target, extensions.as_deref(), save_dark_theme)
+}
+
+pub(super) fn import_from_with(
+    user_dir: &Path,
+    target: &Path,
+    extensions: Option<&Path>,
+    set_theme: impl Fn(bool),
+) -> ImportReport {
     let mut report = ImportReport::default();
     if let Err(e) = fs::create_dir_all(&target) {
         report
@@ -25,7 +37,7 @@ pub fn import_from(user_dir: &Path, target: &Path) -> ImportReport {
                 let (supported, warnings) = project_settings(&value);
                 report.warnings.extend(warnings);
                 if let Some(name) = value.get("workbench.colorTheme").and_then(Value::as_str) {
-                    save_dark_theme(!name.to_ascii_lowercase().contains("light"));
+                    set_theme(!name.to_ascii_lowercase().contains("light"));
                 }
                 if fs::write(
                     target.join("settings.json"),
@@ -88,8 +100,7 @@ pub fn import_from(user_dir: &Path, target: &Path) -> ImportReport {
             Err(e) => report.warnings.push(format!("Cannot read {folder}: {e}")),
         }
     }
-    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
-        let extensions = PathBuf::from(home).join(".vscode/extensions");
+    if let Some(extensions) = extensions {
         if let Ok(entries) = fs::read_dir(extensions) {
             for ext in entries.flatten() {
                 let themes = ext.path().join("themes");

@@ -235,4 +235,28 @@ mod tests {
         let mut fresh = IncrementalHighlighter::new();
         assert_eq!(changed, fresh.highlight_rope(Language::Rust, &rope, None));
     }
+
+    #[test]
+    fn incremental_deletion_across_lines_matches_full_reparse() {
+        let old = "fn main() {\n    /* 🌎\n       comment */\n    let x = 1;\n}\n";
+        let start = old.find("/*").unwrap();
+        let end = old.find("let x").unwrap();
+        let new = format!("{}{}", &old[..start], &old[end..]);
+        let mut incremental = IncrementalHighlighter::new();
+        incremental.highlight(Language::Rust, old, None);
+        let actual = incremental.highlight(
+            Language::Rust,
+            &new,
+            Some(TextEdit {
+                start_byte: start,
+                old_end_byte: end,
+                new_end_byte: start,
+                start_position: (1, 4),
+                old_end_position: (3, 4),
+                new_end_position: (1, 4),
+            }),
+        );
+        let mut fresh = IncrementalHighlighter::new();
+        assert_eq!(actual, fresh.highlight(Language::Rust, &new, None));
+    }
 }

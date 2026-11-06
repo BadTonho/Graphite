@@ -8,6 +8,8 @@ use app::theme::{Theme, DARK_THEME};
 mod config;
 mod lsp;
 mod terminal;
+#[cfg(test)]
+mod test_support;
 mod tree;
 
 use accesskit::{
@@ -107,6 +109,14 @@ impl App {
         root: PathBuf,
         event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     ) -> Self {
+        Self::new_with_options(root, event_proxy, false)
+    }
+
+    fn new_with_options(
+        root: PathBuf,
+        event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
+        isolated: bool,
+    ) -> Self {
         let workspace = Workspace::open(&root).expect("failed to open folder");
         let (lsp_sender, lsp_receiver) = std::sync::mpsc::channel();
         let lsp_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -124,17 +134,32 @@ impl App {
                 })
                 .expect("failed to create LSP event thread");
         }
-        let lsp_manager = match LspManager::load_config(&config::lsp_config_path()) {
-            Ok(config) => LspManager::from_config(config),
-            Err(error) if config::lsp_config_path().exists() => {
-                let _ = lsp_sender.send(LspUiEvent::Status(format!("LSP config error: {error}")));
-                LspManager::default()
+        let lsp_manager = if isolated {
+            LspManager::default()
+        } else {
+            match LspManager::load_config(&config::lsp_config_path()) {
+                Ok(config) => LspManager::from_config(config),
+                Err(error) if config::lsp_config_path().exists() => {
+                    let _ =
+                        lsp_sender.send(LspUiEvent::Status(format!("LSP config error: {error}")));
+                    LspManager::default()
+                }
+                Err(_) => LspManager::default(),
             }
-            Err(_) => LspManager::default(),
         };
-        DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-        Theme::set_imported_colors(config::imported_theme_colors());
-        let prefs = config::editor_prefs();
+        if !isolated {
+            DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
+            Theme::set_imported_colors(config::imported_theme_colors());
+        }
+        let prefs = if isolated {
+            config::EditorPrefs {
+                font_size: 15.0,
+                tab_size: 4,
+                insert_spaces: false,
+            }
+        } else {
+            config::editor_prefs()
+        };
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
@@ -158,7 +183,11 @@ impl App {
             search_results: Vec::new(),
             search_index: 0,
             snippet_query: None,
-            snippets: config::load_snippets(),
+            snippets: if isolated {
+                Vec::new()
+            } else {
+                config::load_snippets()
+            },
             font_size: prefs.font_size,
             tab_size: prefs.tab_size,
             insert_spaces: prefs.insert_spaces,
@@ -223,14 +252,13 @@ mod tests {
 
     #[test]
     fn opening_same_path_reuses_tab_and_documents_keep_separate_buffers() {
-        let root = std::env::temp_dir().join("graphite_app_tabs_test");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let dir = crate::test_support::TempDir::new();
+        let root = dir.path();
         let first = root.join("first.rs");
         let second = root.join("second.rs");
         fs::write(&first, "one").unwrap();
         fs::write(&second, "two").unwrap();
-        let mut app = App::new(root.clone(), None);
+        let mut app = App::new_with_options(root.to_path_buf(), None, true);
         app.open_file(first.clone());
         app.tabs[app.active_tab].buffer.set_cursor_line_col(0, 3);
         app.tabs[app.active_tab].buffer.insert("!");
@@ -240,7 +268,61 @@ mod tests {
         assert_eq!(app.tabs[app.active_tab].buffer.text(), "one!");
         assert_eq!(app.tabs[0].buffer.text(), "one!");
         assert_eq!(app.tabs[1].buffer.text(), "two");
-        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn tab_switch_save_and_close_preserve_other_document() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("one.rs");
+        let second = dir.path().join("two.rs");
+        fs::write(&first, "fn first() {}\n").unwrap();
+        fs::write(&second, "fn second() {}\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first.clone());
+        app.tabs[0].buffer.set_cursor_line_col(0, 2);
+        app.tabs[0].buffer.insert("🌎");
+        app.open_file(second);
+        app.close_active_tab();
+        assert_eq!(app.tabs.len(), 1);
+        assert!(app.tabs[0].buffer.is_dirty());
+        app.save();
+        assert_eq!(fs::read_to_string(first).unwrap(), "fn🌎 first() {}\n");
+        assert!(!app.tabs[0].buffer.is_dirty());
+    }
+
+    #[test]
+    fn open_failure_does_not_discard_unsaved_document() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("unsaved 🌎");
+        app.open_file(dir.path().join("missing.rs"));
+        assert_eq!(app.tabs.len(), 1);
+        assert_eq!(app.tabs[0].buffer.text(), "unsaved 🌎");
+        assert!(app.tabs[0].buffer.is_dirty());
+        assert!(app.status.starts_with("Cannot open"));
+    }
+
+    #[test]
+    fn highlighting_tracks_edits_undo_and_skipped_revisions() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("main.rs");
+        fs::write(&path, "fn main() { let x = 1; }\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.refresh_highlights();
+        app.tabs[0].buffer.set_cursor_line_col(0, 0);
+        app.tabs[0].buffer.insert("// é\n");
+        app.refresh_highlights();
+        app.tabs[0].buffer.undo();
+        app.tabs[0].buffer.insert("/* note */\n");
+        app.refresh_highlights();
+        let actual = app.tabs[0].highlights.as_ref().unwrap();
+        assert_eq!(actual.revision, app.tabs[0].buffer.revision());
+        let mut fresh = IncrementalHighlighter::new();
+        assert_eq!(
+            actual.lines,
+            fresh.highlight_rope(Language::Rust, app.tabs[0].buffer.rope(), None)
+        );
     }
 
     #[test]
