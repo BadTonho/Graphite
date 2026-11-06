@@ -27,7 +27,7 @@ pub fn project_settings(value: &Value) -> (Value, Vec<String>) {
     (Value::Object(supported), warnings)
 }
 
-pub(super) fn parse_jsonc(text: &str) -> Result<Value, serde_json::Error> {
+pub(crate) fn parse_jsonc(text: &str) -> Result<Value, serde_json::Error> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     let (mut i, mut quoted, mut escape) = (0, false, false);
@@ -79,15 +79,86 @@ pub(super) fn parse_jsonc(text: &str) -> Result<Value, serde_json::Error> {
         out.push(c);
         i += 1;
     }
-    serde_json::from_str(&out)
+    // Remove trailing commas after comments have been stripped, including
+    // `value, // comment\n}`. Preserve commas inside quoted strings.
+    let chars: Vec<char> = out.chars().collect();
+    let mut cleaned = String::with_capacity(out.len());
+    let (mut i, mut quoted, mut escape) = (0, false, false);
+    while i < chars.len() {
+        let c = chars[i];
+        if quoted {
+            cleaned.push(c);
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                quoted = false;
+            }
+        } else if c == '"' {
+            quoted = true;
+            cleaned.push(c);
+        } else if c == ',' {
+            let mut next = i + 1;
+            while next < chars.len() && chars[next].is_whitespace() {
+                next += 1;
+            }
+            if !matches!(chars.get(next), Some('}' | ']')) {
+                cleaned.push(c);
+            }
+        } else {
+            cleaned.push(c);
+        }
+        i += 1;
+    }
+    serde_json::from_str(&cleaned)
 }
 pub fn editor_prefs_for_workspace(workspace: &Path) -> Result<EditorPrefs, String> {
+    read_editor_prefs(&settings_paths(workspace))
+}
+
+pub(super) fn settings_paths(workspace: &Path) -> [PathBuf; 3] {
     let config = app_config_dir();
-    read_editor_prefs(&[
+    [
         config.join("imported/settings.json"),
         config.join("settings.json"),
         workspace.join(".vscode/settings.json"),
-    ])
+    ]
+}
+
+pub(super) fn merge_settings(paths: &[PathBuf]) -> Result<Value, String> {
+    let mut merged = Map::new();
+    for path in paths {
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
+        };
+        let value =
+            parse_jsonc(&raw).map_err(|e| format!("Invalid settings {}: {e}", path.display()))?;
+        let values = value
+            .as_object()
+            .ok_or_else(|| format!("Settings {} must be an object", path.display()))?;
+        for (key, value) in values {
+            if key == "workbench.colorCustomizations" {
+                let custom = value.as_object().ok_or_else(|| {
+                    format!(
+                        "Invalid workbench.colorCustomizations in {}",
+                        path.display()
+                    )
+                })?;
+                let target = merged
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::Object(Map::new()));
+                if let Some(target) = target.as_object_mut() {
+                    target.extend(custom.clone());
+                }
+            } else {
+                merged.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    Ok(Value::Object(merged))
 }
 
 pub(super) fn read_editor_prefs(paths: &[PathBuf]) -> Result<EditorPrefs, String> {

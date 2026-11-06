@@ -1,14 +1,10 @@
 use super::*;
 
-pub fn imported_theme_colors() -> std::collections::HashMap<String, String> {
-    let settings_path = app_config_dir().join("imported/settings.json");
-    let Ok(settings) = fs::read_to_string(settings_path) else {
-        return Default::default();
-    };
-    let Ok(settings) = serde_json::from_str::<Value>(&settings) else {
-        return Default::default();
-    };
-    let mut colors = theme_colors_from(&settings, &app_config_dir().join("imported/themes"));
+pub fn imported_theme_colors(
+    workspace: &Path,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let settings = super::settings::merge_settings(&super::settings::settings_paths(workspace))?;
+    let mut colors = resolve_theme_colors(&settings, &app_config_dir().join("imported/themes"))?;
     if let Some(custom) = settings
         .get("workbench.colorCustomizations")
         .and_then(Value::as_object)
@@ -19,24 +15,51 @@ pub fn imported_theme_colors() -> std::collections::HashMap<String, String> {
                 .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_owned()))),
         );
     }
-    colors
+    Ok(colors)
 }
 
+#[cfg(test)]
 pub(super) fn theme_colors_from(
     settings: &Value,
     theme_dir: &Path,
 ) -> std::collections::HashMap<String, String> {
+    resolve_theme_colors(settings, theme_dir).unwrap_or_default()
+}
+
+pub(super) fn resolve_theme_colors(
+    settings: &Value,
+    theme_dir: &Path,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let mut colors = std::collections::HashMap::new();
-    let selected = settings.get("workbench.colorTheme").and_then(Value::as_str);
-    if let (Some(selected), Ok(files)) = (selected, fs::read_dir(theme_dir)) {
-        for file in files.flatten() {
-            let Ok(theme) = fs::read(file.path()) else {
+    let mut found = false;
+    let selected = match settings.get("workbench.colorTheme") {
+        Some(Value::String(name)) => Some(name.as_str()),
+        Some(_) => return Err("Invalid workbench.colorTheme".into()),
+        None => None,
+    };
+    if let Some(selected) = selected {
+        let mut files = Vec::new();
+        collect_theme_files(theme_dir, &mut files);
+        files.sort();
+        for file in files {
+            let Ok(theme) = fs::read_to_string(&file) else {
                 continue;
             };
-            let Ok(theme) = serde_json::from_slice::<Value>(&theme) else {
+            let Ok(theme) = parse_jsonc(&theme) else {
                 continue;
             };
-            if theme.get("name").and_then(Value::as_str) == Some(selected) {
+            let path = if theme.get("name").and_then(Value::as_str) == Some(selected) {
+                Some(file.clone())
+            } else {
+                theme
+                    .get("shoppeThemes")
+                    .and_then(|catalog| catalog.get(selected))
+                    .and_then(Value::as_str)
+                    .map(|relative| file.parent().unwrap_or(theme_dir).join(relative))
+            };
+            if let Some(path) = path {
+                found = true;
+                let theme = super::theme_includes::load(&path, theme_dir)?;
                 if let Some(values) = theme.get("colors").and_then(Value::as_object) {
                     colors.extend(
                         values
@@ -93,7 +116,33 @@ pub(super) fn theme_colors_from(
             }
         }
     }
-    colors
+    if let Some(selected) = selected {
+        if !found {
+            return Err(format!("Theme not found: {selected}"));
+        }
+    }
+    Ok(colors)
+}
+
+fn collect_theme_files(dir: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            collect_theme_files(&entry.path(), files);
+        } else if kind.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            files.push(entry.path());
+        }
+    }
 }
 
 pub fn load_dark_theme() -> bool {

@@ -69,6 +69,10 @@ pub(super) fn import_from_with(
                 .push(format!("Cannot create {folder} import folder: {e}"));
             continue;
         }
+        if folder == "themes" {
+            super::import_themes::import_directory(&source, &source, &dest, &mut report);
+            continue;
+        }
         match fs::read_dir(source) {
             Ok(entries) => {
                 for entry in entries.flatten() {
@@ -76,8 +80,9 @@ pub(super) fn import_from_with(
                     if path.is_file()
                         && (folder == "snippets" || path.extension().is_some_and(|e| e == "json"))
                     {
-                        if let Err(e) =
-                            serde_json::from_slice::<Value>(&fs::read(&path).unwrap_or_default())
+                        if let Err(e) = fs::read_to_string(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|raw| parse_jsonc(&raw).map_err(|e| e.to_string()))
                         {
                             report.warnings.push(format!(
                                 "Invalid {} file {}: {e}",
@@ -103,29 +108,11 @@ pub(super) fn import_from_with(
     if let Some(extensions) = extensions {
         if let Ok(entries) = fs::read_dir(extensions) {
             for ext in entries.flatten() {
-                let themes = ext.path().join("themes");
-                if let Ok(files) = fs::read_dir(themes) {
-                    for file in files.flatten() {
-                        let path = file.path();
-                        if path.extension().is_some_and(|e| e == "json") {
-                            if serde_json::from_slice::<Value>(&fs::read(&path).unwrap_or_default())
-                                .is_err()
-                            {
-                                report
-                                    .warnings
-                                    .push(format!("Invalid theme file: {}", path.display()));
-                                continue;
-                            }
-                            let dest = target.join("themes");
-                            let _ = fs::create_dir_all(&dest);
-                            match fs::copy(&path, dest.join(path.file_name().unwrap_or_default())) {
-                                Ok(_) => report.imported += 1,
-                                Err(e) => report
-                                    .warnings
-                                    .push(format!("Cannot import theme {}: {e}", path.display())),
-                            }
-                        }
-                    }
+                let package = ext.path();
+                let themes = package.join("themes");
+                let destination = target.join("themes").join(ext.file_name());
+                if themes.is_dir() {
+                    super::import_themes::import_extension(&package, &destination, &mut report);
                 }
             }
         }

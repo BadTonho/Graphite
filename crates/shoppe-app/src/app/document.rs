@@ -39,6 +39,8 @@ impl App {
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf) {
+        self.smart_selection_history.clear();
+        self.smart_selection_guard = None;
         if let Some(index) = self.tabs.iter().position(|t| {
             t.buffer
                 .path()

@@ -8,6 +8,7 @@ use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
 
 mod config;
+mod keybindings;
 mod lsp;
 mod terminal;
 #[cfg(test)]
@@ -78,6 +79,7 @@ struct App {
     active_tab: usize,
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
+    keymap: keybindings::Keymap,
     selecting: bool,
     ime_composing: bool,
     ime_preedit: String,
@@ -93,6 +95,7 @@ struct App {
     local_search: Option<LocalSearch>,
     quick_open: Option<QuickOpen>,
     smart_selection_history: Vec<graphite_text::Selection>,
+    smart_selection_guard: Option<(usize, u64, graphite_text::Selection)>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
     font_size: f32,
@@ -162,11 +165,14 @@ impl App {
                 Err(_) => LspManager::default(),
             }
         };
+        let mut settings_error = None;
         if !isolated {
             DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-            Theme::set_imported_colors(config::imported_theme_colors());
+            match config::imported_theme_colors(&root) {
+                Ok(colors) => Theme::set_imported_colors(colors),
+                Err(error) => settings_error = Some(error),
+            }
         }
-        let mut settings_error = None;
         let prefs = if isolated {
             config::EditorPrefs {
                 font_size: 15.0,
@@ -191,6 +197,21 @@ impl App {
                 }
             })
         };
+        let mut keymap = keybindings::Keymap::default();
+        if !isolated {
+            let path = config::app_config_dir().join("keybindings.json");
+            match std::fs::read_to_string(&path) {
+                Ok(source) => {
+                    if let Err(error) = keymap.reload(&source) {
+                        settings_error = Some(format!("Keybindings: {error}"));
+                    }
+                }
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                    settings_error = Some(format!("Keybindings: {error}"));
+                }
+                Err(_) => {}
+            }
+        }
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
@@ -210,6 +231,7 @@ impl App {
             active_tab: 0,
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
+            keymap,
             selecting: false,
             ime_composing: false,
             ime_preedit: String::new(),
@@ -225,6 +247,7 @@ impl App {
             local_search: None,
             quick_open: None,
             smart_selection_history: Vec::new(),
+            smart_selection_guard: None,
             snippet_query: None,
             snippets: if isolated {
                 Vec::new()
@@ -523,6 +546,26 @@ mod tests {
         app.smart_select(false);
         assert_eq!(app.tabs[0].buffer.cursor().char_idx, original);
         assert_eq!(app.tabs[0].buffer.selection(), None);
+    }
+
+    #[test]
+    fn syntax_selection_history_is_invalidated_by_external_cursor_or_text_changes() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("main.rs");
+        fs::write(&path, "fn main() { let value = 1; }\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.tabs[0].buffer.set_cursor_line_col(0, 18);
+        app.smart_select(true);
+        app.tabs[0].buffer.set_cursor_line_col(0, 0);
+        app.smart_select(false);
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 0);
+        app.tabs[0].buffer.set_cursor_line_col(0, 18);
+        app.smart_select(true);
+        app.tabs[0].buffer.insert("other");
+        let cursor = app.tabs[0].buffer.cursor().char_idx;
+        app.smart_select(false);
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, cursor);
     }
 
     #[test]

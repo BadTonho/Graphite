@@ -1,5 +1,6 @@
 //! GPU renderer: solid rectangles and cosmic-text glyphs drawn as textured quads.
 
+mod clip;
 mod text;
 use text::measure_char_width;
 
@@ -74,6 +75,7 @@ pub struct Renderer {
     char_width: f32,
     metrics: Metrics,
     suspended: bool,
+    clip: Option<[f32; 4]>,
 }
 
 impl Renderer {
@@ -279,6 +281,7 @@ impl Renderer {
             char_width,
             metrics,
             suspended: size.width == 0 || size.height == 0,
+            clip: None,
         })
     }
 
@@ -316,6 +319,11 @@ impl Renderer {
         self.clear = color;
     }
 
+    /// Restrict subsequent rectangles and text to a pixel rectangle, or clear it.
+    pub fn set_clip(&mut self, clip: Option<[f32; 4]>) {
+        self.clip = clip;
+    }
+
     pub fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
         // Sample the middle of the reserved solid block.
         let uv = [1.0 / ATLAS_SIZE as f32, 1.0 / ATLAS_SIZE as f32];
@@ -333,6 +341,11 @@ impl Renderer {
         uv1: [f32; 2],
         color: Color,
     ) {
+        let Some(([x0, y0, x1, y1], uv0, uv1)) =
+            clip::clip_quad([x0, y0, x1, y1], uv0, uv1, self.clip)
+        else {
+            return;
+        };
         let v = |x, y, u, t| Vertex {
             pos: [x, y],
             uv: [u, t],

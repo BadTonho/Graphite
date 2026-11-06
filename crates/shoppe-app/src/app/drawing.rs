@@ -82,6 +82,14 @@ impl App {
         }
 
         // Editor
+        let editor_bottom = h
+            - lh
+            - if self.terminal_visible {
+                terminal_panel_height(h)
+            } else {
+                0.0
+            };
+        r.set_clip(Some([SIDEBAR_WIDTH, 0.0, w, editor_bottom]));
         let gutter = self.gutter_width(cw);
         let text_x = SIDEBAR_WIDTH + gutter;
         let mut tab_x = SIDEBAR_WIDTH;
@@ -250,6 +258,7 @@ impl App {
         }
 
         // Status bar
+        r.set_clip(None);
         let dirty = if self.tabs[self.active_tab].buffer.is_dirty() {
             " ●"
         } else {
