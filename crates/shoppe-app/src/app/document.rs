@@ -3,7 +3,11 @@ use super::*;
 impl App {
     /// Re-highlights the buffer only when its text changed since the last run.
     pub(crate) fn refresh_highlights(&mut self) {
-        let tab = &mut self.tabs[self.active_tab];
+        self.refresh_document_highlights(self.active_tab);
+    }
+
+    pub(crate) fn refresh_document_highlights(&mut self, document: usize) {
+        let tab = &mut self.tabs[document];
         let Some(lang) = tab.language else {
             tab.highlights = None;
             return;
@@ -46,7 +50,7 @@ impl App {
                 .path()
                 .is_some_and(|open_path| same_file_path(open_path, &path))
         }) {
-            self.active_tab = index;
+            self.activate_editor_document(index);
             self.status = path.display().to_string();
             return;
         }
@@ -75,6 +79,7 @@ impl App {
                     tab_size: self.tab_size,
                 });
                 let tab = Tab {
+                    id: next_document_id(),
                     buffer,
                     scroll_line: 0,
                     language: Language::from_path(&path),
@@ -85,14 +90,18 @@ impl App {
                     indentation,
                 };
                 if self.tabs.len() == 1
+                    && self.editor_groups.group_count() == 1
                     && self.tabs[0].buffer.path().is_none()
                     && !self.tabs[0].buffer.is_dirty()
                 {
                     self.tabs[0] = tab;
                     self.active_tab = 0;
+                    self.editor_groups = super::editor_groups::EditorGroups::new(0);
+                    self.snapshot_editor_view();
                 } else {
+                    self.snapshot_editor_view();
                     self.tabs.push(tab);
-                    self.active_tab = self.tabs.len() - 1;
+                    self.activate_editor_document(self.tabs.len() - 1);
                 }
                 self.register_lsp_active();
                 self.status = path.display().to_string();

@@ -55,6 +55,7 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.renderer.resize(size.width, size.height);
                 }
+                self.reveal_cursor = true;
             }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::CursorMoved { position, .. } => {
@@ -99,10 +100,29 @@ impl ApplicationHandler<UserEvent> for App {
                         terminal.scroll((lines * 3.0) as i32);
                     }
                 } else {
-                    let max = self.tabs[self.active_tab]
-                        .buffer
-                        .len_lines()
-                        .saturating_sub(1) as f32;
+                    let tab = &self.tabs[self.active_tab];
+                    let max = if self.word_wrap {
+                        if let Some(gpu) = &self.gpu {
+                            let (width, height) = gpu.renderer.size();
+                            let cw = gpu.renderer.char_width();
+                            let rect =
+                                self.focused_group_rect(width, height, gpu.renderer.line_height());
+                            let columns =
+                                (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
+                            super::visual_lines::document_position(
+                                &tab.buffer,
+                                tab.buffer.len_chars(),
+                                columns,
+                                tab.indentation.tab_size,
+                                self.wrapping_indent,
+                            )
+                            .0
+                        } else {
+                            0
+                        }
+                    } else {
+                        tab.buffer.len_lines().saturating_sub(1)
+                    } as f32;
                     self.tabs[self.active_tab].scroll_line =
                         (self.tabs[self.active_tab].scroll_line as f32 + lines).clamp(0.0, max)
                             as usize;
@@ -110,15 +130,23 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 let editor_state = self.editor_state();
+                let before = self.begin_editor_event();
                 self.handle_key(&event);
+                self.end_editor_event(before);
                 if editor_state != self.editor_state() {
+                    self.reveal_cursor = true;
                     self.invalidate_lsp_requests();
                 }
                 self.sync_lsp_active();
             }
             WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_preedit(String::new()),
             WindowEvent::Ime(winit::event::Ime::Preedit(text, _)) => self.ime_preedit(text),
-            WindowEvent::Ime(winit::event::Ime::Commit(text)) => self.ime_commit(&text),
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                let before = self.begin_editor_event();
+                self.ime_commit(&text);
+                self.end_editor_event(before);
+                self.reveal_cursor = true;
+            }
             WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_preedit(String::new()),
             WindowEvent::RedrawRequested => self.draw(),
             _ => return,
@@ -140,6 +168,7 @@ impl ApplicationHandler<UserEvent> for App {
                 let editor_state = self.editor_state();
                 self.process_accessibility_actions();
                 if editor_state != self.editor_state() {
+                    self.reveal_cursor = true;
                     self.invalidate_lsp_requests();
                 }
                 self.sync_lsp_active();

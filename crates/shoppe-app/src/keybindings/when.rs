@@ -12,9 +12,13 @@ pub(super) enum Expr {
 impl Expr {
     pub(super) fn evaluate(&self, context: &HashMap<String, String>) -> bool {
         match self {
-            Self::Key(key) => context
-                .get(key)
-                .is_some_and(|value| !value.is_empty() && value != "false" && value != "0"),
+            Self::Key(key) => match key.as_str() {
+                "true" => true,
+                "false" => false,
+                _ => context
+                    .get(key)
+                    .is_some_and(|value| !value.is_empty() && value != "false" && value != "0"),
+            },
             Self::Compare(key, expected, equal) => {
                 (context.get(key).map(String::as_str).unwrap_or("") == expected) == *equal
             }
@@ -198,5 +202,6 @@ mod tests {
         assert!(!expression.evaluate(&context));
         assert!(parse("focus && (").is_err());
         assert!(parse("lang =~ /rust/").is_err());
+        assert!(parse("true && !false").unwrap().evaluate(&HashMap::new()));
     }
 }

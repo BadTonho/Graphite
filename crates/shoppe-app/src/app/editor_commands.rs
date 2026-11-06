@@ -82,11 +82,24 @@ impl App {
     pub(crate) fn close_active_tab(&mut self) {
         self.smart_selection_history.clear();
         self.smart_selection_guard = None;
-        if self.tabs.len() == 1 {
-            if let Some(path) = self.tabs[0].buffer.path().map(PathBuf::from) {
+        self.snapshot_editor_view();
+        let document = self.active_tab;
+        let last_view = self.editor_groups.view_count(document) == 1;
+        if self.editor_groups.close_active(false) {
+            if last_view {
+                if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
+                    self.lsp_manager.close(&path);
+                }
+                self.tabs.remove(document);
+                self.editor_groups.forget_document(document);
+            }
+            self.restore_editor_view();
+        } else {
+            if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
                 self.lsp_manager.close(&path);
             }
-            self.tabs[0] = Tab {
+            self.tabs[document] = Tab {
+                id: next_document_id(),
                 buffer: Buffer::new(),
                 scroll_line: 0,
                 language: None,
@@ -99,12 +112,7 @@ impl App {
                     tab_size: self.tab_size,
                 },
             };
-        } else {
-            if let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) {
-                self.lsp_manager.close(&path);
-            }
-            self.tabs.remove(self.active_tab);
-            self.active_tab = self.active_tab.min(self.tabs.len() - 1);
+            self.snapshot_editor_view();
         }
         self.status = "Tab closed".into();
     }

@@ -1,10 +1,10 @@
 use super::*;
 
-pub(crate) fn accessibility_position_to_char(buffer: &Buffer, node: NodeId, index: usize) -> usize {
-    let row = node.0.saturating_sub(1_000) as usize;
+pub(crate) fn accessibility_position_to_char(buffer: &Buffer, row: usize, index: usize) -> usize {
     let row = row.min(buffer.len_lines().saturating_sub(1));
     let text = buffer.line(row);
-    buffer.line_start_char(row) + index.min(text.trim_end_matches(['\n', '\r']).chars().count())
+    buffer.line_start_char(row)
+        + index.min(super::accessibility::line_content(&text).chars().count())
 }
 
 pub(crate) fn terminal_panel_height(height: f32) -> f32 {
