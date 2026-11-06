@@ -1,0 +1,172 @@
+use super::*;
+
+impl ApplicationHandler<UserEvent> for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.gpu.is_some() {
+            return;
+        }
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_title("VsCodeShoppe")
+                        .with_visible(false)
+                        .with_inner_size(LogicalSize::new(1200.0, 760.0)),
+                )
+                .expect("failed to create window"),
+        );
+        let scale = window.scale_factor() as f32;
+        let renderer =
+            Renderer::new(window.clone(), self.font_size * scale).expect("failed to init renderer");
+        let accessibility_actions = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let accessibility = accesskit_winit::Adapter::with_direct_handlers(
+            event_loop,
+            &window,
+            AccessibilityActivation,
+            AccessibilityActionQueue {
+                queue: accessibility_actions.clone(),
+                proxy: self
+                    .event_proxy
+                    .clone()
+                    .expect("event loop proxy is required"),
+            },
+            AccessibilityDeactivation,
+        );
+        window.set_visible(true);
+        window.set_ime_allowed(true);
+        self.gpu = Some(Gpu {
+            window,
+            renderer,
+            accessibility,
+            accessibility_actions,
+        });
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let Some(gpu) = &mut self.gpu {
+            gpu.accessibility.process_event(&gpu.window, &event);
+        }
+        self.process_accessibility_actions();
+        match event {
+            WindowEvent::CloseRequested => {
+                self.lsp_manager.shutdown();
+                self.terminal.take();
+                event_loop.exit();
+            }
+            WindowEvent::Resized(size) => {
+                if let Some(gpu) = &mut self.gpu {
+                    gpu.renderer.resize(size.width, size.height);
+                }
+            }
+            WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse = position;
+                let editor_state = self.editor_state();
+                self.drag_select();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                let editor_state = self.editor_state();
+                self.click();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => self.selecting = false,
+            WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
+                    MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
+                };
+                let over_panel = self.terminal_visible
+                    && self.gpu.as_ref().is_some_and(|gpu| {
+                        self.mouse.y as f32
+                            >= gpu.renderer.size().1
+                                - gpu.renderer.line_height()
+                                - terminal_panel_height(gpu.renderer.size().1)
+                    });
+                if over_panel && !self.terminal_problems {
+                    if let Some(terminal) = &self.terminal {
+                        terminal.scroll((lines * 3.0) as i32);
+                    }
+                } else {
+                    let max = self.tabs[self.active_tab]
+                        .buffer
+                        .len_lines()
+                        .saturating_sub(1) as f32;
+                    self.tabs[self.active_tab].scroll_line =
+                        (self.tabs[self.active_tab].scroll_line as f32 + lines).clamp(0.0, max)
+                            as usize;
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                let editor_state = self.editor_state();
+                self.handle_key(&event);
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+                self.sync_lsp_active();
+            }
+            WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_composing = true,
+            WindowEvent::Ime(winit::event::Ime::Preedit(_, _)) => self.ime_composing = true,
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                if self.terminal_focused {
+                    if let Some(terminal) = &self.terminal {
+                        terminal.input(text.into_bytes());
+                    }
+                } else {
+                    let editor_state = self.editor_state();
+                    self.tabs[self.active_tab].buffer.insert(&text);
+                    if editor_state != self.editor_state() {
+                        self.invalidate_lsp_requests();
+                    }
+                    self.sync_lsp_active();
+                }
+                self.ime_composing = false;
+            }
+            WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_composing = false,
+            WindowEvent::RedrawRequested => self.draw(),
+            _ => return,
+        }
+        if let Some(gpu) = &self.gpu {
+            gpu.window.request_redraw();
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        match event {
+            UserEvent::AccessibilityWake => {
+                let editor_state = self.editor_state();
+                self.process_accessibility_actions();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+                self.sync_lsp_active();
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::LspWake => {
+                self.process_lsp_events();
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::TerminalWake => {
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+        }
+    }
+}

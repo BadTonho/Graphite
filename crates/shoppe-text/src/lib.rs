@@ -2,9 +2,13 @@
 
 use ropey::Rope;
 use std::{
-    fs, io,
+    io,
     path::{Path, PathBuf},
 };
+
+mod edit;
+mod file_io;
+mod navigation;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BufferError {
@@ -57,44 +61,13 @@ pub struct Buffer {
     selection: Option<Selection>,
     undo: Vec<Edit>,
     redo: Vec<Edit>,
-    saved_text: String,
+    saved_text: Rope,
     last_change: Option<TextChange>,
 }
 
 impl Buffer {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, BufferError> {
-        let path = path.as_ref();
-        let text = fs::read_to_string(path)?;
-        Ok(Self {
-            rope: Rope::from_str(&text),
-            path: Some(path.to_path_buf()),
-            cursor: Cursor::default(),
-            dirty: false,
-            revision: 0,
-            selection: None,
-            undo: Vec::new(),
-            redo: Vec::new(),
-            saved_text: text,
-            last_change: None,
-        })
-    }
-
-    pub fn save(&mut self) -> Result<(), BufferError> {
-        if let Some(path) = &self.path {
-            fs::write(path, self.rope.to_string())?;
-            self.saved_text = self.rope.to_string();
-            self.dirty = false;
-        }
-        Ok(())
-    }
-
-    pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), BufferError> {
-        self.path = Some(path.as_ref().to_path_buf());
-        self.save()
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -161,6 +134,10 @@ impl Buffer {
         self.rope.to_string()
     }
 
+    pub fn rope(&self) -> &Rope {
+        &self.rope
+    }
+
     pub fn cursor(&self) -> Cursor {
         self.cursor
     }
@@ -184,151 +161,12 @@ impl Buffer {
         self.selection = (anchor != head).then_some(Selection { anchor, head });
         self.cursor.char_idx = head;
     }
-
-    fn replace(&mut self, start: usize, end: usize, text: &str) {
-        let removed = self.rope.slice(start..end).to_string();
-        if removed == text {
-            return;
-        }
-        let before = self.cursor.char_idx;
-        let before_selection = self.selection;
-        self.record_change(start, end, text);
-        self.rope.remove(start..end);
-        self.rope.insert(start, text);
-        let after = start + text.chars().count();
-        self.cursor.char_idx = after;
-        self.selection = None;
-        self.undo.push(Edit {
-            start,
-            removed,
-            inserted: text.to_owned(),
-            before,
-            after,
-            before_selection,
-        });
-        self.redo.clear();
-        self.dirty = true;
-        self.revision += 1;
-    }
-
-    pub fn undo(&mut self) {
-        if let Some(edit) = self.undo.pop() {
-            let end = edit.start + edit.inserted.chars().count();
-            self.record_change(edit.start, end, &edit.removed);
-            self.rope.remove(edit.start..end);
-            self.rope.insert(edit.start, &edit.removed);
-            self.cursor.char_idx = edit.before.min(self.rope.len_chars());
-            self.selection = edit.before_selection;
-            self.dirty = self.rope.to_string() != self.saved_text;
-            self.redo.push(edit);
-            self.revision += 1;
-        }
-    }
-
-    pub fn redo(&mut self) {
-        if let Some(edit) = self.redo.pop() {
-            let end = edit.start + edit.removed.chars().count();
-            self.record_change(edit.start, end, &edit.inserted);
-            self.rope.remove(edit.start..end);
-            self.rope.insert(edit.start, &edit.inserted);
-            self.cursor.char_idx = edit.after.min(self.rope.len_chars());
-            self.selection = None;
-            self.dirty = self.rope.to_string() != self.saved_text;
-            self.undo.push(edit);
-            self.revision += 1;
-        }
-    }
-
-    /// Cursor as (line, column) in characters.
-    pub fn cursor_line_col(&self) -> (usize, usize) {
-        let line = self.rope.char_to_line(self.cursor.char_idx);
-        (line, self.cursor.char_idx - self.rope.line_to_char(line))
-    }
-
-    pub fn insert(&mut self, text: &str) {
-        let (start, end) = self
-            .selection
-            .map(|s| (s.anchor.min(s.head), s.anchor.max(s.head)))
-            .unwrap_or((self.cursor.char_idx, self.cursor.char_idx));
-        self.replace(start, end, text);
-    }
-
-    /// Deletes the character before the cursor.
-    pub fn backspace(&mut self) {
-        if let Some(s) = self.selection {
-            self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
-            return;
-        }
-        let i = self.cursor.char_idx;
-        if i > 0 {
-            self.replace(i - 1, i, "");
-        }
-    }
-
-    /// Deletes the character after the cursor.
-    pub fn delete(&mut self) {
-        if let Some(s) = self.selection {
-            self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
-            return;
-        }
-        let i = self.cursor.char_idx;
-        if i < self.rope.len_chars() {
-            self.replace(i, i + 1, "");
-        }
-    }
-
-    /// Places the cursor at (line, column), clamping to valid positions.
-    pub fn set_cursor_line_col(&mut self, line: usize, col: usize) {
-        self.selection = None;
-        let line = line.min(self.rope.len_lines() - 1);
-        let line_len = self.rope.line(line).len_chars();
-        let max_col = if line + 1 == self.rope.len_lines() {
-            line_len
-        } else {
-            line_len.saturating_sub(1)
-        };
-        self.cursor.char_idx = self.rope.line_to_char(line) + col.min(max_col);
-    }
-
-    pub fn move_home(&mut self) {
-        self.selection = None;
-        let (line, _) = self.cursor_line_col();
-        self.cursor.char_idx = self.rope.line_to_char(line);
-    }
-
-    pub fn move_end(&mut self) {
-        self.selection = None;
-        let (line, _) = self.cursor_line_col();
-        self.set_cursor_line_col(line, usize::MAX);
-    }
-
-    pub fn move_left(&mut self) {
-        self.selection = None;
-        self.cursor.char_idx = self.cursor.char_idx.saturating_sub(1);
-    }
-
-    pub fn move_right(&mut self) {
-        self.selection = None;
-        self.cursor.char_idx = (self.cursor.char_idx + 1).min(self.rope.len_chars());
-    }
-
-    pub fn move_vertical(&mut self, delta: isize) {
-        self.selection = None;
-        let (line, col) = self.cursor_line_col();
-        let target = (line as isize + delta).clamp(0, self.rope.len_lines() as isize - 1) as usize;
-        let line_len = self.rope.line(target).len_chars();
-        let max_col = if target + 1 == self.rope.len_lines() {
-            line_len
-        } else {
-            line_len.saturating_sub(1)
-        };
-        self.cursor.char_idx = self.rope.line_to_char(target) + col.min(max_col);
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn insert_and_backspace() {
@@ -415,5 +253,43 @@ mod tests {
             ),
             (1, 1, 1, 5)
         );
+    }
+
+    #[test]
+    fn large_unicode_file_roundtrip_and_saved_history() {
+        let path = std::env::temp_dir().join(format!("shoppe_large_{}.txt", std::process::id()));
+        let content = "Olá 🌎\r\n".repeat(150_000);
+        fs::write(&path, &content).unwrap();
+        let mut b = Buffer::open(&path).unwrap();
+        assert_eq!(b.rope().len_bytes(), content.len());
+        b.set_cursor_line_col(149_999, 2);
+        b.insert("🙂");
+        b.undo();
+        assert!(!b.is_dirty());
+        b.redo();
+        b.save().unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), b.text());
+        assert!(!b.is_dirty());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn failed_io_keeps_document_and_original_path() {
+        let dir = std::env::temp_dir().join(format!("shoppe_failed_io_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("original.txt");
+        fs::write(&path, "original").unwrap();
+        let mut b = Buffer::open(&path).unwrap();
+        b.insert("é");
+        let revision = b.revision();
+        assert!(b.save_as(dir.join("missing").join("file")).is_err());
+        assert_eq!(b.path(), Some(path.as_path()));
+        assert_eq!(b.text(), "éoriginal");
+        assert_eq!(b.revision(), revision);
+        assert!(b.is_dirty());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert!(Buffer::open(dir.join("missing-file")).is_err());
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(dir).unwrap();
     }
 }

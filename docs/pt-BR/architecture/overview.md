@@ -9,6 +9,12 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
            └─► shoppe-syntax     (tree-sitter)
 ```
 
+## Responsabilidades dos módulos
+
+- `shoppe-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo.
+- `shoppe-text` separa entrada e saída de arquivos, edições e histórico, e navegação do cursor. `shoppe-workspace` separa a busca no projeto da listagem de pastas.
+- `shoppe-render` separa a modelagem do texto e rasterização de glifos do pipeline da superfície GPU. `shoppe-syntax` mantém os mecanismos de realce incremental e de documento completo em módulos distintos.
+
 ## Renderização
 
 - **Stack de UI:** UI própria sobre `wgpu` (desenho na GPU) e `cosmic-text` (shaping, fontes, bidi, fallback), com `winit` para janelas e entrada. Escolhida em vez de egui/GPUI/iced por independência, controle de desempenho e licenças limpas.
@@ -19,17 +25,16 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
 ## Texto e highlighting
 
 - O texto fica em um `ropey::Rope`; o cursor é um deslocamento em caracteres. Toda edição incrementa um contador `revision`.
-- `shoppe-syntax` roda o `tree-sitter-highlight` e devolve spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o highlight quando a revisão muda.
+- `shoppe-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
 
 ## Plataformas
 
 Windows e Linux; as diferenças de plataforma ficam a cargo de `winit`, `wgpu` e `cosmic-text`.
 
-## Limitações conhecidas (v0.1)
+## Limitações conhecidas
 
-- Re-highlight do arquivo inteiro a cada edição (ainda sem parsing incremental).
-- Sem seleção, área de transferência, desfazer/refazer ou abas.
+- O realce incremental pode invalidar o restante do documento após uma edição.
 - O cache de glifos nunca é limpo.
 - Glifos coloridos (emoji) são desenhados como máscaras de alpha.
-- Acessibilidade (`accesskit`) e IME ainda não foram integrados.
+- A verificação interativa da janela e da recuperação da GPU ainda está pendente no Windows e no Linux.
 
