@@ -1,3 +1,4 @@
+use super::editor_groups::GroupRect;
 use super::*;
 
 pub(crate) fn ruler_positions(
@@ -15,17 +16,67 @@ pub(crate) fn ruler_positions(
 
 impl App {
     pub(crate) fn visible_lines(&self, renderer: &Renderer) -> usize {
+        let (width, height) = renderer.size();
+        let rect = self.focused_group_rect(width, height, renderer.line_height());
+        (((rect.height - renderer.line_height() * 1.5).max(0.0) / renderer.line_height()) as usize)
+            .max(1)
+    }
+
+    pub(super) fn group_rectangles(
+        &self,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) -> Vec<GroupRect> {
         let panel = if self.terminal_visible {
-            terminal_panel_height(renderer.size().1)
+            terminal_panel_height(height)
         } else {
             0.0
         };
-        let h = renderer.size().1 - panel - renderer.line_height() * 2.5;
-        ((h / renderer.line_height()) as usize).max(1)
+        self.editor_groups.rectangles(GroupRect {
+            id: 0,
+            x: SIDEBAR_WIDTH,
+            y: 0.0,
+            width: (width - SIDEBAR_WIDTH).max(0.0),
+            height: (height - panel - line_height).max(0.0),
+        })
     }
 
-    pub(crate) fn keep_cursor_visible(&mut self, visible: usize) {
-        let (line, _) = self.tabs[self.active_tab].buffer.cursor_line_col();
+    pub(super) fn focused_group_rect(
+        &self,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) -> GroupRect {
+        self.group_rectangles(width, height, line_height)
+            .into_iter()
+            .find(|rect| rect.id == self.editor_groups.focused())
+            .expect("focused group has a rectangle")
+    }
+
+    pub(crate) fn keep_cursor_visible(
+        &mut self,
+        visible: usize,
+        width: f32,
+        height: f32,
+        lh: f32,
+        cw: f32,
+    ) {
+        let line = if self.word_wrap {
+            let rect = self.focused_group_rect(width, height, lh);
+            let columns = (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
+            let tab = &self.tabs[self.active_tab];
+            super::visual_lines::document_position(
+                &tab.buffer,
+                tab.buffer.cursor().char_idx,
+                columns,
+                tab.indentation.tab_size,
+                self.wrapping_indent,
+            )
+            .0
+        } else {
+            self.tabs[self.active_tab].buffer.cursor_line_col().0
+        };
         if line < self.tabs[self.active_tab].scroll_line {
             self.tabs[self.active_tab].scroll_line = line;
         } else if line >= self.tabs[self.active_tab].scroll_line + visible {

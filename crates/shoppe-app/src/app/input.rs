@@ -22,99 +22,19 @@ impl App {
         if !self.close_confirm && !self.ime_composing && self.handle_custom_keybinding(event) {
             return;
         }
-        if ctrl
-            && (matches!(&event.logical_key, Key::Character(c) if c == "`")
-                || matches!(event.physical_key, PhysicalKey::Code(KeyCode::Backquote)))
-        {
-            self.toggle_terminal();
-            return;
-        }
-        if ctrl
-            && shift
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("m"))
-        {
-            self.terminal_visible = true;
-            self.terminal_problems = true;
-            self.terminal_focused = false;
-            self.resize_terminal();
-            return;
-        }
         if self.terminal_focused {
             self.handle_terminal_key(event);
-            return;
-        }
-        if ctrl
-            && !shift
-            && !self.modifiers.alt_key()
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("p"))
-        {
-            self.start_quick_open();
             return;
         }
         if self.quick_open.is_some() {
             self.handle_quick_open(event);
             return;
         }
-        if ctrl
-            && !shift
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("f") || c.eq_ignore_ascii_case("h"))
-        {
-            let replace =
-                matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("h"));
-            self.open_local_search(replace);
-            return;
-        }
         if self.local_search.is_some() {
             self.handle_local_search(event);
             return;
         }
-        if self.modifiers.alt_key() && shift && !ctrl {
-            match event.logical_key {
-                Key::Named(NamedKey::ArrowRight) => {
-                    self.smart_select(true);
-                    return;
-                }
-                Key::Named(NamedKey::ArrowLeft) => {
-                    self.smart_select(false);
-                    return;
-                }
-                _ => {}
-            }
-        }
         self.smart_selection_history.clear();
-        if self.lsp_chord {
-            self.lsp_chord = false;
-            if ctrl
-                && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("i"))
-            {
-                self.request_lsp("hover");
-                return;
-            }
-        }
-        if ctrl
-            && (matches!(&event.logical_key, Key::Character(c) if c == " ")
-                || matches!(event.logical_key, Key::Named(NamedKey::Space)))
-        {
-            self.completion_items.clear();
-            self.request_lsp("completion");
-            return;
-        }
-        if matches!(event.logical_key, Key::Named(NamedKey::F12)) {
-            self.request_lsp("definition");
-            return;
-        }
-        if ctrl
-            && !shift
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k"))
-        {
-            self.lsp_chord = true;
-            self.status = "Press Ctrl+I for hover information".into();
-            return;
-        }
-        if matches!(event.logical_key, Key::Named(NamedKey::F8)) {
-            self.navigate_diagnostic(if shift { -1 } else { 1 });
-            return;
-        }
         if !self.completion_items.is_empty() {
             match event.logical_key {
                 Key::Named(NamedKey::ArrowDown) => {
@@ -140,15 +60,6 @@ impl App {
                 _ => {}
             }
             self.completion_items.clear();
-        }
-        if ctrl
-            && self.modifiers.alt_key()
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("t"))
-        {
-            let dark = !DARK_THEME.load(Ordering::Relaxed);
-            DARK_THEME.store(dark, Ordering::Relaxed);
-            config::save_dark_theme(dark);
-            return;
         }
         if self.close_confirm {
             let key = event.text.as_deref().unwrap_or("").to_ascii_lowercase();
@@ -202,78 +113,16 @@ impl App {
             }
             return;
         }
-        if self.search_query.is_none() && self.modifiers.alt_key() && !ctrl {
-            match event.logical_key {
-                Key::Named(NamedKey::ArrowUp) if shift => {
-                    self.tabs[self.active_tab].buffer.duplicate_line(false);
+        if self.word_wrap && self.search_query.is_none() && !ctrl && !self.modifiers.alt_key() {
+            let down = match event.logical_key {
+                Key::Named(NamedKey::ArrowUp) => Some(false),
+                Key::Named(NamedKey::ArrowDown) => Some(true),
+                _ => None,
+            };
+            if let Some(down) = down {
+                if self.move_visual_selections(down, shift) {
                     return;
                 }
-                Key::Named(NamedKey::ArrowDown) if shift => {
-                    self.tabs[self.active_tab].buffer.duplicate_line(true);
-                    return;
-                }
-                Key::Named(NamedKey::ArrowUp) => {
-                    self.tabs[self.active_tab].buffer.move_line(-1);
-                    return;
-                }
-                Key::Named(NamedKey::ArrowDown) => {
-                    self.tabs[self.active_tab].buffer.move_line(1);
-                    return;
-                }
-                _ => {}
-            }
-        }
-        if self.search_query.is_none()
-            && ctrl
-            && shift
-            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k"))
-        {
-            self.tabs[self.active_tab].buffer.delete_line();
-            return;
-        }
-        if self.search_query.is_none() && ctrl && shift && self.modifiers.alt_key() {
-            match &event.logical_key {
-                Key::Character(c) if c.eq_ignore_ascii_case("i") => {
-                    let tab = &mut self.tabs[self.active_tab];
-                    let mut target = tab.indentation;
-                    target.insert_spaces = !target.insert_spaces;
-                    match tab.buffer.convert_indentation(target) {
-                        Ok(_) => {
-                            tab.indentation = target;
-                            self.status = if target.insert_spaces {
-                                "Indentation converted to spaces"
-                            } else {
-                                "Indentation converted to tabs"
-                            }
-                            .into();
-                        }
-                        Err(error) => self.status = error.to_string(),
-                    }
-                    return;
-                }
-                Key::Character(c) if c.eq_ignore_ascii_case("s") => {
-                    self.tabs[self.active_tab].buffer.sort_lines();
-                    return;
-                }
-                Key::Character(c) if c.eq_ignore_ascii_case("d") => {
-                    self.tabs[self.active_tab].buffer.deduplicate_lines();
-                    return;
-                }
-                _ => {}
-            }
-        }
-        if self.search_query.is_none() && ctrl && !self.modifiers.alt_key() {
-            if matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("d"))
-                && !shift
-            {
-                self.tabs[self.active_tab].buffer.select_occurrences(false);
-                return;
-            }
-            if matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("l"))
-                && shift
-            {
-                self.tabs[self.active_tab].buffer.select_occurrences(true);
-                return;
             }
         }
         if self.search_query.is_none()
@@ -351,123 +200,10 @@ impl App {
             return;
         }
         match &event.logical_key {
-            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("i") => {
-                let report = config::import_vscode();
-                let settings = config::editor_prefs_for_workspace(self.tree.root());
-                let theme = config::imported_theme_colors(self.tree.root());
-                let settings_error = match (settings, theme) {
-                    (Ok(prefs), Ok(colors)) => {
-                        DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-                        Theme::set_imported_colors(colors);
-                        self.font_size = prefs.font_size;
-                        self.tab_size = prefs.tab_size;
-                        self.insert_spaces = prefs.insert_spaces;
-                        self.read_only_patterns = prefs.read_only_patterns;
-                        self.detect_indentation = prefs.detect_indentation;
-                        self.trim_trailing_whitespace = prefs.trim_trailing_whitespace;
-                        self.rulers = prefs.rulers;
-                        None
-                    }
-                    (Err(error), _) | (_, Err(error)) => Some(error),
-                };
-                if let Some(gpu) = &mut self.gpu {
-                    gpu.renderer
-                        .set_font_size(self.font_size * gpu.window.scale_factor() as f32);
-                }
-                self.snippets = config::load_snippets();
-                self.status = if let Some(error) = settings_error {
-                    format!("Settings unchanged: {error}")
-                } else if report.warnings.is_empty() {
-                    format!("Imported {} VS Code items", report.imported)
-                } else {
-                    format!(
-                        "Imported {} items; {} warning(s): {}",
-                        report.imported,
-                        report.warnings.len(),
-                        report.warnings[0]
-                    )
-                };
-            }
-            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("p") => {
-                self.snippets = config::load_snippets();
-                self.snippet_query = Some(String::new());
-                self.status = "Snippet: type prefix, Enter inserts, Esc closes".into();
-            }
-            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("f") => {
-                self.search_query = Some(String::new());
-                self.search_generation = self.search_generation.wrapping_add(1);
-                self.search_cancel
-                    .store(self.search_generation, Ordering::Relaxed);
-                self.search_results.clear();
-                self.search_index = 0;
-                self.status = "Search: type query; Up/Down select, Enter opens result".into();
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("s") && self.close_confirm => {
-                self.save();
-                self.close_confirm = false;
-                self.close_active_tab();
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("d") && self.close_confirm => {
-                self.close_confirm = false;
-                self.close_active_tab();
-            }
-            Key::Named(NamedKey::Tab) if ctrl => {
-                self.active_tab = (self.active_tab + 1) % self.tabs.len()
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("s") => self.save(),
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("z") => {
-                self.tabs[self.active_tab].buffer.undo()
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("y") => {
-                self.tabs[self.active_tab].buffer.redo()
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("a") => {
-                let len = self.tabs[self.active_tab].buffer.len_chars();
-                self.tabs[self.active_tab].buffer.set_selection(0, len);
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("w") => {
-                if self.tabs[self.active_tab].buffer.is_dirty() {
-                    self.close_confirm = true;
-                    self.status = "Unsaved tab: S save, D discard, Esc cancel".into();
-                } else {
-                    self.close_active_tab();
-                }
-            }
-            Key::Named(NamedKey::Escape) if self.close_confirm => {
-                self.close_confirm = false;
-                self.status = "Close cancelled".into();
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("c") => {
-                let selected = self.tabs[self.active_tab].buffer.selected_texts();
-                if !selected.is_empty() {
-                    let text = selected.join("\n");
-                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                        let _ = clipboard.set_text(text);
-                    }
-                }
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("x") => {
-                let selected = self.tabs[self.active_tab].buffer.selected_texts();
-                if !selected.is_empty() {
-                    let text = selected.join("\n");
-                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                        if clipboard.set_text(text).is_ok() {
-                            self.tabs[self.active_tab].buffer.insert("");
-                        }
-                    }
-                }
-            }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("v") => {
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    if let Ok(text) = clipboard.get_text() {
-                        self.tabs[self.active_tab].buffer.paste(&text);
-                    }
-                }
-            }
             Key::Named(NamedKey::Backspace) => self.tabs[self.active_tab].buffer.backspace(),
             Key::Named(NamedKey::Delete) => self.tabs[self.active_tab].buffer.delete(),
             Key::Named(NamedKey::Enter) => self.tabs[self.active_tab].buffer.insert("\n"),
-            Key::Named(NamedKey::Tab) => {
+            Key::Named(NamedKey::Tab) if !ctrl && !self.modifiers.alt_key() => {
                 let indentation = self.tabs[self.active_tab].indentation;
                 let value = if indentation.insert_spaces {
                     " ".repeat(indentation.tab_size)

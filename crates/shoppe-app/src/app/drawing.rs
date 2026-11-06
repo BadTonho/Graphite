@@ -11,28 +11,13 @@ impl App {
         let (lh, cw) = (r.line_height(), r.char_width());
 
         let visible = self.visible_lines(r);
-        self.keep_cursor_visible(visible);
+        if self.reveal_cursor {
+            self.keep_cursor_visible(visible, w, h, lh, cw);
+            self.reveal_cursor = false;
+        }
         self.refresh_highlights();
-        let accessible_panel = self.accessible_panel_text();
-        let titles: Vec<_> = self
-            .tabs
-            .iter()
-            .map(|t| {
-                t.buffer
-                    .path()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "Untitled".into())
-            })
-            .collect();
-        gpu.accessibility.update_if_active(|| {
-            accessibility_tree(
-                &titles,
-                &self.tabs[self.active_tab].buffer.text(),
-                accessible_panel.as_deref(),
-                self.tabs[self.active_tab].buffer.is_read_only(),
-            )
-        });
+        gpu.accessibility
+            .update_if_active(|| self.grouped_accessibility_tree(w, h, lh));
 
         // Sidebar
         r.draw_rect(
@@ -81,181 +66,11 @@ impl App {
             );
         }
 
-        // Editor
-        let editor_bottom = h
-            - lh
-            - if self.terminal_visible {
-                terminal_panel_height(h)
-            } else {
-                0.0
-            };
-        r.set_clip(Some([SIDEBAR_WIDTH, 0.0, w, editor_bottom]));
-        let gutter = self.gutter_width(cw);
-        let text_x = SIDEBAR_WIDTH + gutter;
-        let mut tab_x = SIDEBAR_WIDTH;
-        for (i, tab) in self.tabs.iter().enumerate() {
-            let label = tab
-                .buffer
-                .path()
-                .and_then(|p| p.file_name())
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "Untitled".into());
-            let label = format!(
-                " {}{} ",
-                label,
-                if tab.buffer.is_dirty() { " ●" } else { "" }
-            );
-            let color = if i == self.active_tab {
-                Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
-            } else {
-                Theme::color(Theme::SIDEBAR, 0xf3f3f3)
-            };
-            r.draw_rect(
-                tab_x,
-                0.0,
-                label.chars().count() as f32 * cw * 1.8,
-                lh * 1.5,
-                rgb(color),
-            );
-            r.draw_text(
-                &label,
-                tab_x + PAD,
-                lh * 0.25,
-                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-            );
-            tab_x += label.chars().count() as f32 * cw * 1.8;
-        }
+        let rects = self.group_rectangles(w, h, lh);
+        self.draw_editor_groups(r, &rects, lh, cw);
+        let focused_rect = self.focused_group_rect(w, h, lh);
+        let text_x = focused_rect.x + self.gutter_width(cw);
         let (cur_line, cur_col) = self.tabs[self.active_tab].buffer.cursor_line_col();
-        for x in super::layout::ruler_positions(&self.rulers, text_x, cw, w) {
-            r.draw_rect(
-                x,
-                lh * 1.5,
-                1.0,
-                (h - lh * 2.5).max(0.0),
-                rgb(Theme::color(0x404040, 0xdddddd)),
-            );
-        }
-        let last = (self.tabs[self.active_tab].scroll_line + visible)
-            .min(self.tabs[self.active_tab].buffer.len_lines());
-        for line in self.tabs[self.active_tab].scroll_line..last {
-            let y = lh * 1.5 + (line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
-            for selection in self.tabs[self.active_tab].buffer.selections() {
-                let line_start = self.tabs[self.active_tab].buffer.line_start_char(line);
-                let line_end = line_start
-                    + self.tabs[self.active_tab]
-                        .buffer
-                        .line(line)
-                        .trim_end_matches(['\n', '\r'])
-                        .chars()
-                        .count();
-                let sel_start = selection.anchor.min(selection.head);
-                let sel_end = selection.anchor.max(selection.head);
-                let a = sel_start.max(line_start);
-                let b = sel_end.min(line_end);
-                if a < b {
-                    r.draw_rect(
-                        text_x + (a - line_start) as f32 * cw,
-                        y,
-                        (b - a) as f32 * cw,
-                        lh,
-                        rgb(0x264f78),
-                    );
-                }
-            }
-            let color = if line == cur_line {
-                Theme::color(Theme::TEXT, 0x1e1e1e)
-            } else {
-                Theme::color(Theme::DIM, 0x616161)
-            };
-            let num = format!(
-                "{:>width$}",
-                line + 1,
-                width = ((gutter - PAD * 2.0) / cw) as usize
-            );
-            if self.tabs[self.active_tab]
-                .diagnostics
-                .iter()
-                .any(|d| d.range.start.line as usize == line)
-            {
-                r.draw_rect(SIDEBAR_WIDTH + 2.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
-            }
-            r.draw_text(&num, SIDEBAR_WIDTH + PAD, y, rgb(color));
-            draw_code_line(
-                r,
-                &self.tabs[self.active_tab].buffer.line(line),
-                spans_for(&self.tabs[self.active_tab].highlights, line),
-                text_x,
-                y,
-                cw,
-                self.tabs[self.active_tab].indentation.tab_size,
-            );
-        }
-        for selection in self.tabs[self.active_tab]
-            .buffer
-            .selections()
-            .into_iter()
-            .skip(1)
-        {
-            let buffer = &self.tabs[self.active_tab].buffer;
-            let line = buffer.rope().char_to_line(selection.head);
-            if !(self.tabs[self.active_tab].scroll_line..last).contains(&line) {
-                continue;
-            }
-            let column = selection.head - buffer.line_start_char(line);
-            let prefix: String = buffer.line(line).chars().take(column).collect();
-            let column = display_line(&prefix, self.tabs[self.active_tab].indentation.tab_size)
-                .chars()
-                .count();
-            let y = lh * 1.5 + (line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
-            r.draw_rect(
-                text_x + column as f32 * cw,
-                y,
-                2.0,
-                lh,
-                rgb(Theme::color(Theme::CURSOR, 0x202020)),
-            );
-        }
-        if (self.tabs[self.active_tab].scroll_line..last).contains(&cur_line) {
-            let prefix: String = self.tabs[self.active_tab]
-                .buffer
-                .line(cur_line)
-                .chars()
-                .take(cur_col)
-                .collect();
-            let col = display_line(&prefix, self.tabs[self.active_tab].indentation.tab_size)
-                .chars()
-                .count();
-            let y = lh * 1.5 + (cur_line - self.tabs[self.active_tab].scroll_line) as f32 * lh;
-            r.draw_rect(
-                text_x + col as f32 * cw,
-                y,
-                2.0,
-                lh,
-                rgb(Theme::color(Theme::CURSOR, 0x202020)),
-            );
-            if !self.ime_preedit.is_empty()
-                && self.local_search.is_none()
-                && self.quick_open.is_none()
-                && self.search_query.is_none()
-                && self.snippet_query.is_none()
-                && !self.terminal_focused
-            {
-                let x = text_x + col as f32 * cw;
-                r.draw_text(
-                    &self.ime_preedit,
-                    x,
-                    y,
-                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-                );
-                r.draw_rect(
-                    x,
-                    y + lh - 2.0,
-                    self.ime_preedit.chars().count() as f32 * cw,
-                    1.0,
-                    rgb(Theme::color(Theme::CURSOR, 0x202020)),
-                );
-            }
-        }
 
         // Status bar
         r.set_clip(None);
@@ -486,11 +301,12 @@ impl App {
                 .enumerate()
                 .collect::<Vec<_>>();
             let box_height = lh * visible_items.len() as f32;
-            let y = (lh
-                * (cur_line.saturating_sub(self.tabs[self.active_tab].scroll_line) as f32 + 1.5)
+            let y = (focused_rect.y
+                + lh * (cur_line.saturating_sub(self.tabs[self.active_tab].scroll_line) as f32
+                    + 1.5)
                 + 2.0)
-                .min(h - box_height - lh);
-            let x = (text_x + cur_col as f32 * cw).min(w - 300.0);
+                .min(focused_rect.y + focused_rect.height - box_height);
+            let x = (text_x + cur_col as f32 * cw).min(focused_rect.x + focused_rect.width - 300.0);
             r.draw_rect(
                 x,
                 y,
@@ -520,11 +336,11 @@ impl App {
         if let Some(hover) = self.hover_text.as_deref().filter(|text| !text.is_empty()) {
             let lines = hover.lines().take(6).collect::<Vec<_>>();
             let box_h = lh * lines.len() as f32 + PAD;
-            let y = (lh * 1.6).min(h - box_h - lh);
+            let y = (focused_rect.y + lh * 1.6).min(focused_rect.y + focused_rect.height - box_h);
             r.draw_rect(
                 text_x,
                 y,
-                (w - text_x - PAD).max(120.0),
+                (focused_rect.x + focused_rect.width - text_x - PAD).max(0.0),
                 box_h,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );

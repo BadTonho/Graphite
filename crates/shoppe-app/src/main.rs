@@ -62,6 +62,7 @@ struct Gpu {
 }
 
 struct Tab {
+    id: u64,
     buffer: Buffer,
     scroll_line: usize,
     language: Option<Language>,
@@ -72,15 +73,22 @@ struct Tab {
     indentation: graphite_text::Indentation,
 }
 
+fn next_document_id() -> u64 {
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
+
 struct App {
     gpu: Option<Gpu>,
     tree: FileTree,
     tabs: Vec<Tab>,
     active_tab: usize,
+    editor_groups: app::editor_groups::EditorGroups,
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
     keymap: keybindings::Keymap,
     selecting: bool,
+    reveal_cursor: bool,
     ime_composing: bool,
     ime_preedit: String,
     status: String,
@@ -104,6 +112,8 @@ struct App {
     detect_indentation: bool,
     trim_trailing_whitespace: bool,
     rulers: Vec<usize>,
+    word_wrap: bool,
+    wrapping_indent: config::WrapIndent,
     read_only_patterns: Vec<String>,
     event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     lsp_manager: LspManager,
@@ -113,7 +123,6 @@ struct App {
     completion_index: usize,
     hover_text: Option<String>,
     lsp_request_id: u64,
-    lsp_chord: bool,
     terminal: Option<TerminalSession>,
     terminal_visible: bool,
     terminal_focused: bool,
@@ -182,6 +191,8 @@ impl App {
                 detect_indentation: true,
                 trim_trailing_whitespace: false,
                 rulers: Vec::new(),
+                word_wrap: false,
+                wrapping_indent: config::WrapIndent::Same,
             }
         } else {
             config::editor_prefs_for_workspace(&root).unwrap_or_else(|error| {
@@ -194,6 +205,8 @@ impl App {
                     detect_indentation: true,
                     trim_trailing_whitespace: false,
                     rulers: Vec::new(),
+                    word_wrap: false,
+                    wrapping_indent: config::WrapIndent::Same,
                 }
             })
         };
@@ -216,6 +229,7 @@ impl App {
             gpu: None,
             tree: FileTree::new(workspace),
             tabs: vec![Tab {
+                id: next_document_id(),
                 buffer: Buffer::new(),
                 scroll_line: 0,
                 language: None,
@@ -229,10 +243,12 @@ impl App {
                 },
             }],
             active_tab: 0,
+            editor_groups: app::editor_groups::EditorGroups::new(0),
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             keymap,
             selecting: false,
+            reveal_cursor: true,
             ime_composing: false,
             ime_preedit: String::new(),
             status: settings_error.unwrap_or_else(|| String::from("Ctrl+S to save")),
@@ -260,6 +276,8 @@ impl App {
             detect_indentation: prefs.detect_indentation,
             trim_trailing_whitespace: prefs.trim_trailing_whitespace,
             rulers: prefs.rulers,
+            word_wrap: prefs.word_wrap,
+            wrapping_indent: prefs.wrapping_indent,
             read_only_patterns: prefs.read_only_patterns,
             event_proxy,
             lsp_manager,
@@ -269,7 +287,6 @@ impl App {
             completion_index: 0,
             hover_text: None,
             lsp_request_id: 0,
-            lsp_chord: false,
             terminal: None,
             terminal_visible: false,
             terminal_focused: false,
@@ -631,6 +648,6 @@ mod tests {
     fn accessibility_text_positions_map_to_buffer_offsets() {
         let mut b = Buffer::new();
         b.insert("one\ntwo");
-        assert_eq!(accessibility_position_to_char(&b, NodeId(1_001), 2), 6);
+        assert_eq!(accessibility_position_to_char(&b, 1, 2), 6);
     }
 }

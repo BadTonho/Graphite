@@ -11,6 +11,8 @@ pub fn project_settings(value: &Value) -> (Value, Vec<String>) {
         "editor.detectIndentation",
         "files.trimTrailingWhitespace",
         "editor.rulers",
+        "editor.wordWrap",
+        "editor.wrappingIndent",
     ];
     let mut supported = Map::new();
     let mut warnings = Vec::new();
@@ -170,6 +172,8 @@ pub(super) fn read_editor_prefs(paths: &[PathBuf]) -> Result<EditorPrefs, String
         detect_indentation: true,
         trim_trailing_whitespace: false,
         rulers: Vec::new(),
+        word_wrap: false,
+        wrapping_indent: WrapIndent::Same,
     };
     for path in paths {
         let raw = match fs::read_to_string(path) {
@@ -200,6 +204,32 @@ pub(super) fn read_editor_prefs(paths: &[PathBuf]) -> Result<EditorPrefs, String
             prefs.insert_spaces = value
                 .as_bool()
                 .ok_or_else(|| format!("Invalid editor.insertSpaces in {}", path.display()))?;
+        }
+        if let Some(value) = value.get("editor.wordWrap") {
+            prefs.word_wrap = match value.as_str() {
+                Some("on") => true,
+                Some("off") => false,
+                _ => {
+                    return Err(format!(
+                        "Invalid or unsupported editor.wordWrap in {}",
+                        path.display()
+                    ))
+                }
+            };
+        }
+        if let Some(value) = value.get("editor.wrappingIndent") {
+            prefs.wrapping_indent = match value.as_str() {
+                Some("none") => WrapIndent::None,
+                Some("same") => WrapIndent::Same,
+                Some("indent") => WrapIndent::Indent,
+                Some("deepIndent") => WrapIndent::DeepIndent,
+                _ => {
+                    return Err(format!(
+                        "Invalid editor.wrappingIndent in {}",
+                        path.display()
+                    ))
+                }
+            };
         }
         if let Some(value) = value.get("files.readonlyInclude") {
             let mut result = Vec::new();

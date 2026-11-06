@@ -6,7 +6,11 @@ mod document;
 mod drawing;
 pub(super) mod drawing_helpers;
 mod editor_commands;
+#[allow(dead_code)]
+pub(super) mod editor_groups;
+mod group_drawing;
 mod ime;
+mod import_settings;
 mod input;
 mod layout;
 pub(super) mod local_search;
@@ -19,4 +23,6 @@ mod terminal_drawing;
 mod terminal_input;
 mod terminal_ui;
 pub(super) mod theme;
+mod visual_lines;
 mod window_events;
+mod wrap_drawing;

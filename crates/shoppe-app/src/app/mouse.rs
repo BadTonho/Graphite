@@ -5,6 +5,7 @@ impl App {
         let Some(gpu) = &self.gpu else { return };
         let lh = gpu.renderer.line_height();
         let cw = gpu.renderer.char_width();
+        let (window_width, window_height) = gpu.renderer.size();
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
 
         if self.terminal_visible {
@@ -31,27 +32,66 @@ impl App {
                 }
             }
         } else {
-            if my < lh * 1.5 {
-                let mut x = SIDEBAR_WIDTH;
-                for (i, tab) in self.tabs.iter().enumerate() {
-                    let label = tab
-                        .buffer
-                        .path()
-                        .and_then(|p| p.file_name())
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "Untitled".into());
-                    let width = (label.chars().count() as f32 + 4.0) * cw * 1.8;
+            let Some(rect) = self
+                .group_rectangles(window_width, window_height, lh)
+                .into_iter()
+                .find(|rect| {
+                    mx >= rect.x
+                        && mx < rect.x + rect.width
+                        && my >= rect.y
+                        && my < rect.y + rect.height
+                })
+            else {
+                return;
+            };
+            self.focus_editor_group(rect.id);
+            self.terminal_focused = false;
+            if my < rect.y + lh * 1.5 {
+                let mut x = rect.x;
+                let documents: Vec<_> = self
+                    .editor_groups
+                    .views(rect.id)
+                    .unwrap()
+                    .0
+                    .iter()
+                    .map(|view| view.document)
+                    .collect();
+                for document in documents {
+                    let width = super::group_drawing::tab_width(&self.tabs[document], cw);
                     if mx >= x && mx < x + width {
-                        self.active_tab = i;
+                        self.activate_editor_document(document);
                         return;
                     }
                     x += width;
                 }
                 return;
             }
-            let text_x = SIDEBAR_WIDTH + self.gutter_width(cw);
-            let line =
-                self.tabs[self.active_tab].scroll_line + ((my - lh * 1.5).max(0.0) / lh) as usize;
+            let text_x = rect.x + self.gutter_width(cw);
+            if self.word_wrap {
+                let row = self.tabs[self.active_tab].scroll_line
+                    + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
+                let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
+                let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
+                let tab = &mut self.tabs[self.active_tab];
+                let offset = super::visual_lines::document_offset(
+                    &tab.buffer,
+                    row,
+                    col,
+                    columns,
+                    tab.indentation.tab_size,
+                    self.wrapping_indent,
+                );
+                if self.modifiers.alt_key() {
+                    tab.buffer.add_cursor(offset);
+                    self.selecting = false;
+                } else {
+                    tab.buffer.set_selection(offset, offset);
+                    self.selecting = true;
+                }
+                return;
+            }
+            let line = self.tabs[self.active_tab].scroll_line
+                + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.modifiers.alt_key() {
                 let b = &mut self.tabs[self.active_tab].buffer;
@@ -75,9 +115,33 @@ impl App {
         let Some(gpu) = &self.gpu else { return };
         let lh = gpu.renderer.line_height();
         let cw = gpu.renderer.char_width();
-        let text_x = SIDEBAR_WIDTH + self.gutter_width(cw);
+        let (width, height) = gpu.renderer.size();
+        let rect = self.focused_group_rect(width, height, lh);
+        let text_x = rect.x + self.gutter_width(cw);
+        if self.word_wrap {
+            let row = self.tabs[self.active_tab].scroll_line
+                + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize;
+            let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
+            let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
+            let tab = &mut self.tabs[self.active_tab];
+            let head = super::visual_lines::document_offset(
+                &tab.buffer,
+                row,
+                col,
+                columns,
+                tab.indentation.tab_size,
+                self.wrapping_indent,
+            );
+            let anchor = tab
+                .buffer
+                .selection()
+                .map(|s| s.anchor)
+                .unwrap_or(tab.buffer.cursor().char_idx);
+            tab.buffer.set_selection(anchor, head);
+            return;
+        }
         let line = (self.tabs[self.active_tab].scroll_line
-            + ((self.mouse.y as f32 - lh * 1.5).max(0.0) / lh) as usize)
+            + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize)
             .min(self.tabs[self.active_tab].buffer.len_lines() - 1);
         let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
         let head = self.tabs[self.active_tab].buffer.line_start_char(line)

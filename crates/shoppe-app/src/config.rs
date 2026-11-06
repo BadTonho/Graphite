@@ -40,10 +40,38 @@ pub struct EditorPrefs {
     pub detect_indentation: bool,
     pub trim_trailing_whitespace: bool,
     pub rulers: Vec<usize>,
+    pub word_wrap: bool,
+    pub wrapping_indent: WrapIndent,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrapIndent {
+    None,
+    Same,
+    Indent,
+    DeepIndent,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wrapping_settings_follow_layers_and_reject_unsupported_values() {
+        let temp = crate::test_support::TempDir::new();
+        let user = temp.path().join("user.json");
+        let workspace = temp.path().join("workspace.json");
+        fs::write(
+            &user,
+            r#"{"editor.wordWrap":"on","editor.wrappingIndent":"indent"}"#,
+        )
+        .unwrap();
+        fs::write(&workspace, r#"{"editor.wrappingIndent":"deepIndent"}"#).unwrap();
+        let prefs = settings::read_editor_prefs(&[user, workspace.clone()]).unwrap();
+        assert!(prefs.word_wrap);
+        assert_eq!(prefs.wrapping_indent, WrapIndent::DeepIndent);
+        fs::write(&workspace, r#"{"editor.wordWrap":"bounded"}"#).unwrap();
+        assert!(settings::read_editor_prefs(&[workspace]).is_err());
+    }
     #[test]
     fn expands_common_vscode_snippet_placeholders() {
         assert_eq!(expand_snippet("fn ${1:name}() { $0 }"), "fn name() {  }");

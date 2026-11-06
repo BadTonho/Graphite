@@ -1,4 +1,5 @@
 //! Parsing and resolving user keybindings independently of the event loop.
+mod defaults;
 mod when;
 
 use std::collections::HashMap;
@@ -18,10 +19,31 @@ pub(crate) enum Resolution {
     Unbound,
 }
 
-#[derive(Default)]
 pub(crate) struct Keymap {
+    defaults: Vec<Binding>,
     bindings: Vec<Binding>,
     pending: Vec<String>,
+}
+
+impl Default for Keymap {
+    fn default() -> Self {
+        let defaults = defaults::BINDINGS
+            .iter()
+            .map(|(key, command, condition)| Binding {
+                keys: key
+                    .split_whitespace()
+                    .map(|stroke| normalize_stroke(stroke).expect("valid default key"))
+                    .collect(),
+                command: (*command).into(),
+                condition: Some(when::parse(condition).expect("valid default context")),
+            })
+            .collect();
+        Self {
+            defaults,
+            bindings: Vec::new(),
+            pending: Vec::new(),
+        }
+    }
 }
 
 impl Keymap {
@@ -82,29 +104,40 @@ impl Keymap {
         self.pending.push(stroke.clone());
         let mut retried = false;
         loop {
-            let matching: Vec<_> = self
-                .bindings
-                .iter()
-                .rev()
-                .filter(|binding| {
-                    binding.keys.starts_with(&self.pending)
-                        && binding
-                            .condition
-                            .as_ref()
-                            .is_none_or(|condition| condition.evaluate(context))
-                })
-                .collect();
-            if let Some(binding) = matching.first() {
+            let all: Vec<_> = self.defaults.iter().chain(&self.bindings).collect();
+            let active = |binding: &Binding| {
+                binding
+                    .condition
+                    .as_ref()
+                    .is_none_or(|condition| condition.evaluate(context))
+            };
+            let matching = all.iter().enumerate().rev().find_map(|(index, binding)| {
+                if binding.command.starts_with('-')
+                    || !binding.keys.starts_with(&self.pending)
+                    || !active(binding)
+                {
+                    return None;
+                }
+                let removed = all[index + 1..].iter().any(|removal| {
+                    removal.keys == binding.keys
+                        && removal.command.strip_prefix('-') == Some(binding.command.as_str())
+                        && active(removal)
+                });
+                (!removed).then_some(*binding)
+            });
+            if let Some(binding) = matching {
                 if binding.keys.len() > self.pending.len() {
                     return Resolution::Pending;
                 }
                 let command = binding.command.clone();
                 self.pending.clear();
-                return if command.starts_with('-') {
-                    Resolution::Unbound
-                } else {
-                    Resolution::Command(command)
-                };
+                return Resolution::Command(command);
+            }
+            if all.iter().any(|binding| {
+                binding.command.starts_with('-') && binding.keys == self.pending && active(binding)
+            }) {
+                self.pending.clear();
+                return Resolution::Unbound;
             }
             if self.pending.len() > 1 && !retried {
                 self.pending = vec![stroke.clone()];
@@ -192,6 +225,54 @@ mod tests {
         assert_eq!(
             map.resolve("ctrl+p", &HashMap::new()),
             Resolution::Command("open".into())
+        );
+    }
+
+    #[test]
+    fn defaults_support_context_chords_overrides_and_targeted_removal() {
+        let mut map = Keymap::default();
+        let editor = HashMap::from([("editorTextFocus".into(), "true".into())]);
+        assert_eq!(
+            map.resolve("ctrl+s", &editor),
+            Resolution::Command("workbench.action.files.save".into())
+        );
+        assert_eq!(map.resolve("ctrl+k", &editor), Resolution::Pending);
+        assert_eq!(
+            map.resolve("ctrl+\\", &editor),
+            Resolution::Command("workbench.action.splitEditorDown".into())
+        );
+        map.reload(
+            r#"[
+          {"key":"ctrl+s","command":"-workbench.action.files.save"},
+          {"key":"ctrl+s","command":"other", "when":"editorReadonly"},
+          {"key":"ctrl+q","command":"workbench.action.files.save"}
+        ]"#,
+        )
+        .unwrap();
+        assert_eq!(map.resolve("ctrl+s", &editor), Resolution::Unbound);
+        assert_eq!(
+            map.resolve("ctrl+q", &editor),
+            Resolution::Command("workbench.action.files.save".into())
+        );
+        let readonly = HashMap::from([
+            ("editorTextFocus".into(), "true".into()),
+            ("editorReadonly".into(), "true".into()),
+        ]);
+        assert_eq!(
+            map.resolve("ctrl+s", &readonly),
+            Resolution::Command("other".into())
+        );
+    }
+
+    #[test]
+    fn removing_an_unrelated_command_does_not_mask_the_default() {
+        let mut map = Keymap::default();
+        map.reload(r#"[{"key":"ctrl+s","command":"-unrelated"}]"#)
+            .unwrap();
+        let editor = HashMap::from([("editorTextFocus".into(), "true".into())]);
+        assert_eq!(
+            map.resolve("ctrl+s", &editor),
+            Resolution::Command("workbench.action.files.save".into())
         );
     }
 }
