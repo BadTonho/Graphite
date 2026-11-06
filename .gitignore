@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.sqlite
+.vscode/
+.idea/
+
+ideia.md
