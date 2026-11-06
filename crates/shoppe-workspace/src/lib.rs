@@ -33,10 +33,11 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
-        let root = root.as_ref().to_path_buf();
-        if !root.is_dir() {
-            return Err(WorkspaceError::NotADirectory(root));
+        let requested_root = root.as_ref().to_path_buf();
+        if !requested_root.is_dir() {
+            return Err(WorkspaceError::NotADirectory(requested_root));
         }
+        let root = requested_root.canonicalize().unwrap_or(requested_root);
         Ok(Self { root })
     }
 

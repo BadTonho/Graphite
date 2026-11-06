@@ -1,12 +1,15 @@
 //! Graphite desktop application (v0.1): window, file tree and text editor.
 
 mod config;
+mod lsp;
+mod terminal;
 mod tree;
 
 use accesskit::{
     Action, ActionData, ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, Node,
     NodeId, Role, Tree, TreeUpdate,
 };
+use lsp::{LspManager, LspUiEvent};
 use graphite_render::{rgb, Color, Renderer};
 use graphite_syntax::{Class, IncrementalHighlighter, Language, Span, TextEdit};
 use graphite_text::Buffer;
@@ -17,14 +20,18 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     OnceLock, RwLock,
 };
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use terminal::TerminalSession;
 use tree::FileTree;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    keyboard::{Key, ModifiersState, NamedKey},
+    keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -125,12 +132,14 @@ struct Gpu {
 struct AccessibilityActivation;
 impl ActivationHandler for AccessibilityActivation {
     fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
-        Some(accessibility_tree(&[], "Graphite editor"))
+        Some(accessibility_tree(&[], "Graphite editor", None))
     }
 }
 #[derive(Debug)]
 enum UserEvent {
     AccessibilityWake,
+    LspWake,
+    TerminalWake,
 }
 
 struct AccessibilityActionQueue {
@@ -149,17 +158,27 @@ struct AccessibilityDeactivation;
 impl DeactivationHandler for AccessibilityDeactivation {
     fn deactivate_accessibility(&mut self) {}
 }
-fn accessibility_tree(titles: &[String], value: &str) -> TreeUpdate {
+fn accessibility_tree(titles: &[String], value: &str, panel: Option<&str>) -> TreeUpdate {
     let root = NodeId(0);
     let tablist = NodeId(1);
     let editor = NodeId(2);
     let tab_ids: Vec<_> = (0..titles.len()).map(|i| NodeId(10 + i as u64)).collect();
     let mut root_node = Node::new(Role::Window);
-    root_node.set_children([tablist, editor]);
+    let mut root_children = vec![tablist, editor, NodeId(3), NodeId(4)];
+    if panel.is_some() {
+        root_children.push(NodeId(5));
+    }
+    root_node.set_children(root_children);
     root_node.set_label("Graphite");
     let mut tabs_node = Node::new(Role::TabList);
     tabs_node.set_children(tab_ids.clone());
     let mut nodes = vec![(root, root_node), (tablist, tabs_node)];
+    let mut terminal_button = Node::new(Role::Button);
+    terminal_button.set_label("Toggle integrated terminal");
+    nodes.push((NodeId(3), terminal_button));
+    let mut problems_button = Node::new(Role::Button);
+    problems_button.set_label("Show diagnostics");
+    nodes.push((NodeId(4), problems_button));
     for (id, title) in tab_ids.iter().zip(titles) {
         let mut tab = Node::new(Role::Tab);
         tab.set_label(title.as_str());
@@ -178,11 +197,16 @@ fn accessibility_tree(titles: &[String], value: &str) -> TreeUpdate {
         run.set_character_lengths(vec![1; text.chars().count()]);
         nodes.push((*id, run));
     }
+    if let Some(panel) = panel {
+        let mut panel_node = Node::new(Role::Label);
+        panel_node.set_label(panel);
+        nodes.push((NodeId(5), panel_node));
+    }
     TreeUpdate {
         nodes,
         tree: Some(Tree::new(root)),
         tree_id: accesskit::TreeId::ROOT,
-        focus: editor,
+        focus: if panel.is_some() { NodeId(5) } else { editor },
     }
 }
 
@@ -192,6 +216,8 @@ struct Tab {
     language: Option<Language>,
     highlights: Option<HighlightCache>,
     highlighter: IncrementalHighlighter,
+    diagnostics: Vec<lsp_types::Diagnostic>,
+    lsp_revision: Option<u64>,
 }
 
 struct App {
@@ -214,6 +240,20 @@ struct App {
     tab_size: usize,
     insert_spaces: bool,
     event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
+    lsp_manager: LspManager,
+    lsp_sender: std::sync::mpsc::Sender<LspUiEvent>,
+    lsp_queue: Arc<std::sync::Mutex<Vec<LspUiEvent>>>,
+    completion_items: Vec<lsp_types::CompletionItem>,
+    completion_index: usize,
+    hover_text: Option<String>,
+    lsp_request_id: u64,
+    lsp_chord: bool,
+    terminal: Option<TerminalSession>,
+    terminal_visible: bool,
+    terminal_focused: bool,
+    terminal_problems: bool,
+    terminal_status: Option<String>,
+    terminal_size: (u16, u16),
 }
 
 impl App {
@@ -222,6 +262,30 @@ impl App {
         event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     ) -> Self {
         let workspace = Workspace::open(&root).expect("failed to open folder");
+        let (lsp_sender, lsp_receiver) = std::sync::mpsc::channel();
+        let lsp_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
+        if let Some(proxy) = event_proxy.clone() {
+            let queue = lsp_queue.clone();
+            std::thread::Builder::new()
+                .name("graphite-lsp-events".into())
+                .spawn(move || {
+                    while let Ok(event) = lsp_receiver.recv() {
+                        if let Ok(mut pending) = queue.lock() {
+                            pending.push(event);
+                        }
+                        let _ = proxy.send_event(UserEvent::LspWake);
+                    }
+                })
+                .expect("failed to create LSP event thread");
+        }
+        let lsp_manager = match LspManager::load_config(&config::lsp_config_path()) {
+            Ok(config) => LspManager::from_config(config),
+            Err(error) if config::lsp_config_path().exists() => {
+                let _ = lsp_sender.send(LspUiEvent::Status(format!("LSP config error: {error}")));
+                LspManager::default()
+            }
+            Err(_) => LspManager::default(),
+        };
         DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
         Theme::set_imported_colors(config::imported_theme_colors());
         let prefs = config::editor_prefs();
@@ -234,6 +298,8 @@ impl App {
                 language: None,
                 highlights: None,
                 highlighter: IncrementalHighlighter::new(),
+                diagnostics: Vec::new(),
+                lsp_revision: None,
             }],
             active_tab: 0,
             mouse: PhysicalPosition::new(0.0, 0.0),
@@ -251,6 +317,20 @@ impl App {
             tab_size: prefs.tab_size,
             insert_spaces: prefs.insert_spaces,
             event_proxy,
+            lsp_manager,
+            lsp_sender,
+            lsp_queue,
+            completion_items: Vec::new(),
+            completion_index: 0,
+            hover_text: None,
+            lsp_request_id: 0,
+            lsp_chord: false,
+            terminal: None,
+            terminal_visible: false,
+            terminal_focused: false,
+            terminal_problems: false,
+            terminal_status: None,
+            terminal_size: (0, 0),
         }
     }
 
@@ -290,11 +370,11 @@ impl App {
     }
 
     fn open_file(&mut self, path: PathBuf) {
-        if let Some(index) = self
-            .tabs
-            .iter()
-            .position(|t| t.buffer.path() == Some(path.as_path()))
-        {
+        if let Some(index) = self.tabs.iter().position(|t| {
+            t.buffer
+                .path()
+                .is_some_and(|open_path| same_file_path(open_path, &path))
+        }) {
             self.active_tab = index;
             self.status = path.display().to_string();
             return;
@@ -307,6 +387,8 @@ impl App {
                     language: Language::from_path(&path),
                     highlights: None,
                     highlighter: IncrementalHighlighter::new(),
+                    diagnostics: Vec::new(),
+                    lsp_revision: None,
                 };
                 if self.tabs.len() == 1
                     && self.tabs[0].buffer.path().is_none()
@@ -318,6 +400,7 @@ impl App {
                     self.tabs.push(tab);
                     self.active_tab = self.tabs.len() - 1;
                 }
+                self.register_lsp_active();
                 self.status = path.display().to_string();
             }
             Err(e) => self.status = format!("Cannot open {}: {e}", path.display()),
@@ -325,6 +408,7 @@ impl App {
     }
 
     fn save(&mut self) {
+        let path = self.tabs[self.active_tab].buffer.path().map(PathBuf::from);
         self.status = match self.tabs[self.active_tab].buffer.path() {
             None => "No file to save".into(),
             Some(_) => match self.tabs[self.active_tab].buffer.save() {
@@ -332,6 +416,217 @@ impl App {
                 Err(e) => format!("Save failed: {e}"),
             },
         };
+        if self.status == "Saved" {
+            if let Some(path) = path {
+                self.lsp_manager
+                    .save(&path, self.tabs[self.active_tab].buffer.text());
+            }
+        }
+    }
+
+    fn register_lsp_active(&mut self) {
+        let tab = &mut self.tabs[self.active_tab];
+        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
+            return;
+        };
+        if !self.lsp_manager.supports_path(&path) {
+            return;
+        }
+        let version = tab.buffer.revision() as i32;
+        self.lsp_manager.open(
+            &path,
+            self.tree.root(),
+            tab.buffer.text(),
+            version,
+            self.lsp_sender.clone(),
+        );
+        tab.lsp_revision = Some(tab.buffer.revision());
+    }
+
+    fn sync_lsp_active(&mut self) {
+        let tab = &mut self.tabs[self.active_tab];
+        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
+            return;
+        };
+        let revision = tab.buffer.revision();
+        if tab.lsp_revision == Some(revision) {
+            return;
+        }
+        if tab.lsp_revision.is_none() {
+            self.register_lsp_active();
+            return;
+        }
+        self.lsp_manager
+            .change(&path, tab.buffer.text(), revision as i32);
+        tab.lsp_revision = Some(revision);
+    }
+
+    fn process_lsp_events(&mut self) {
+        let events = self
+            .lsp_queue
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default();
+        for event in events {
+            match event {
+                LspUiEvent::Status(status) => self.status = status,
+                LspUiEvent::Diagnostics {
+                    uri,
+                    version,
+                    diagnostics,
+                } => {
+                    if let Some(path) = lsp::uri_to_path(&uri) {
+                        if let Some(index) = self.tabs.iter().position(|t| {
+                            t.buffer
+                                .path()
+                                .is_some_and(|open_path| same_file_path(open_path, &path))
+                        }) {
+                            let tab = &mut self.tabs[index];
+                            if !lsp::diagnostics_are_current(tab.lsp_revision, version) {
+                                continue;
+                            }
+                            tab.diagnostics = diagnostics;
+                            if index == self.active_tab {
+                                self.status = format!("{} diagnostic(s)", tab.diagnostics.len());
+                            }
+                        }
+                    }
+                }
+                LspUiEvent::Completion { request_id, items }
+                    if request_id == self.lsp_request_id =>
+                {
+                    self.completion_items = items;
+                    self.completion_index = 0;
+                }
+                LspUiEvent::Definition {
+                    request_id,
+                    location,
+                } if request_id == self.lsp_request_id => {
+                    if let Some(location) = location {
+                        if let Some(path) = lsp::uri_to_path(location.uri.as_str()) {
+                            self.open_file(path);
+                            let line = location.range.start.line as usize;
+                            let col = utf16_column_to_chars(
+                                &self.tabs[self.active_tab].buffer.line(line),
+                                location.range.start.character,
+                            );
+                            self.tabs[self.active_tab]
+                                .buffer
+                                .set_cursor_line_col(line, col);
+                            self.status = "Definition opened".into();
+                        }
+                    } else {
+                        self.status = "No definition found".into();
+                    }
+                }
+                LspUiEvent::Hover { request_id, text } if request_id == self.lsp_request_id => {
+                    self.hover_text = text;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn active_lsp_position(&self) -> Option<(PathBuf, lsp_types::Position)> {
+        let tab = &self.tabs[self.active_tab];
+        let path = tab.buffer.path()?.to_path_buf();
+        let char_index = tab.buffer.cursor().char_idx;
+        Some((path, lsp::position_at_char(&tab.buffer.text(), char_index)))
+    }
+
+    fn editor_state(&self) -> (usize, usize, u64, Option<graphite_text::Selection>) {
+        let tab = &self.tabs[self.active_tab];
+        (
+            self.active_tab,
+            tab.buffer.cursor().char_idx,
+            tab.buffer.revision(),
+            tab.buffer.selection(),
+        )
+    }
+
+    fn invalidate_lsp_requests(&mut self) {
+        self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
+        self.completion_items.clear();
+        self.hover_text = None;
+    }
+
+    fn request_lsp(&mut self, kind: &str) {
+        let Some((path, position)) = self.active_lsp_position() else {
+            self.status = "Save this file to use language features".into();
+            return;
+        };
+        if !self.lsp_manager.supports_path(&path) {
+            self.status = "No language server configured for this file type".into();
+            return;
+        }
+        self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
+        match kind {
+            "completion" => {
+                self.lsp_manager
+                    .request_completion(&path, position, self.lsp_request_id)
+            }
+            "definition" => {
+                self.lsp_manager
+                    .request_definition(&path, position, self.lsp_request_id)
+            }
+            "hover" => self
+                .lsp_manager
+                .request_hover(&path, position, self.lsp_request_id),
+            _ => {}
+        }
+    }
+
+    fn toggle_terminal(&mut self) {
+        if !self.terminal_visible {
+            if self.terminal.is_none() {
+                let Some(proxy) = self.event_proxy.clone() else {
+                    self.status = "Terminal unavailable in this app context".into();
+                    return;
+                };
+                let wake = Arc::new(move || {
+                    let _ = proxy.send_event(UserEvent::TerminalWake);
+                });
+                match TerminalSession::start(
+                    self.tree.root(),
+                    config::terminal_shell().as_deref(),
+                    wake,
+                ) {
+                    Ok(session) => {
+                        self.terminal = Some(session);
+                        self.terminal_status = None;
+                    }
+                    Err(error) => {
+                        self.terminal_status = Some(error.clone());
+                        self.status = error;
+                    }
+                }
+            }
+            self.terminal_visible = self.terminal.is_some();
+        } else {
+            self.terminal_visible = false;
+        }
+        self.terminal_focused = self.terminal_visible;
+        self.terminal_problems = false;
+        self.resize_terminal();
+    }
+
+    fn resize_terminal(&mut self) {
+        if !self.terminal_visible {
+            return;
+        }
+        let Some(gpu) = &self.gpu else { return };
+        let lh = gpu.renderer.line_height().max(1.0);
+        let cw = gpu.renderer.char_width().max(1.0);
+        let (w, h) = gpu.renderer.size();
+        let panel_h = (h * 0.32).clamp(150.0, 300.0);
+        let rows = ((panel_h - lh * 1.5) / lh).max(1.0) as u16;
+        let columns = ((w - SIDEBAR_WIDTH - PAD * 2.0) / cw).max(1.0) as u16;
+        if self.terminal_size != (rows, columns) {
+            if let Some(terminal) = &self.terminal {
+                terminal.resize(rows, columns, cw as u16, lh as u16);
+                self.terminal_size = (rows, columns);
+            }
+        }
     }
 
     fn process_accessibility_actions(&mut self) {
@@ -347,6 +642,17 @@ impl App {
             .unwrap_or_default();
         for request in actions {
             let id = request.target_node.0;
+            if id == 3 && request.action == Action::Click {
+                self.toggle_terminal();
+                continue;
+            }
+            if id == 4 && request.action == Action::Click {
+                self.terminal_visible = true;
+                self.terminal_problems = true;
+                self.terminal_focused = false;
+                self.resize_terminal();
+                continue;
+            }
             if id >= 10 && id < 10 + self.tabs.len() as u64 && request.action == Action::Click {
                 self.active_tab = (id - 10) as usize;
                 continue;
@@ -382,8 +688,44 @@ impl App {
         }
     }
 
+    fn accessible_panel_text(&self) -> Option<String> {
+        if !self.terminal_visible {
+            return None;
+        }
+        if self.terminal_problems {
+            let diagnostics = &self.tabs[self.active_tab].diagnostics;
+            return Some(
+                diagnostics
+                    .iter()
+                    .map(|d| format!("Line {}: {}", d.range.start.line + 1, d.message))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+        }
+        self.terminal.as_ref().map(|terminal| {
+            terminal
+                .snapshot()
+                .rows
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|cell| cell.character)
+                        .collect::<String>()
+                        .trim_end()
+                        .to_owned()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+    }
+
     fn visible_lines(&self, renderer: &Renderer) -> usize {
-        let h = renderer.size().1 - renderer.line_height() * 2.5;
+        let panel = if self.terminal_visible {
+            terminal_panel_height(renderer.size().1)
+        } else {
+            0.0
+        };
+        let h = renderer.size().1 - panel - renderer.line_height() * 2.5;
         ((h / renderer.line_height()) as usize).max(1)
     }
 
@@ -411,6 +753,21 @@ impl App {
         let lh = gpu.renderer.line_height();
         let cw = gpu.renderer.char_width();
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+
+        if self.terminal_visible {
+            let panel_top = gpu.renderer.size().1
+                - gpu.renderer.line_height()
+                - terminal_panel_height(gpu.renderer.size().1);
+            if my >= panel_top {
+                if my < panel_top + lh * 1.4 {
+                    self.terminal_problems = mx < SIDEBAR_WIDTH + cw * 9.0;
+                    self.terminal_focused = !self.terminal_problems;
+                } else if !self.terminal_problems {
+                    self.terminal_focused = true;
+                }
+                return;
+            }
+        }
 
         if mx < SIDEBAR_WIDTH {
             let first_row_y = lh * 1.5;
@@ -484,6 +841,83 @@ impl App {
     fn handle_key(&mut self, event: &winit::event::KeyEvent) {
         let ctrl = self.modifiers.control_key();
         let shift = self.modifiers.shift_key();
+        if ctrl
+            && (matches!(&event.logical_key, Key::Character(c) if c == "`")
+                || matches!(event.physical_key, PhysicalKey::Code(KeyCode::Backquote)))
+        {
+            self.toggle_terminal();
+            return;
+        }
+        if ctrl
+            && shift
+            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("m"))
+        {
+            self.terminal_visible = true;
+            self.terminal_problems = true;
+            self.terminal_focused = false;
+            self.resize_terminal();
+            return;
+        }
+        if self.terminal_focused {
+            self.handle_terminal_key(event);
+            return;
+        }
+        if self.lsp_chord {
+            self.lsp_chord = false;
+            if ctrl
+                && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("i"))
+            {
+                self.request_lsp("hover");
+                return;
+            }
+        }
+        if ctrl
+            && (matches!(&event.logical_key, Key::Character(c) if c == " ")
+                || matches!(event.logical_key, Key::Named(NamedKey::Space)))
+        {
+            self.completion_items.clear();
+            self.request_lsp("completion");
+            return;
+        }
+        if matches!(event.logical_key, Key::Named(NamedKey::F12)) {
+            self.request_lsp("definition");
+            return;
+        }
+        if ctrl && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k")) {
+            self.lsp_chord = true;
+            self.status = "Press Ctrl+I for hover information".into();
+            return;
+        }
+        if matches!(event.logical_key, Key::Named(NamedKey::F8)) {
+            self.navigate_diagnostic(if shift { -1 } else { 1 });
+            return;
+        }
+        if !self.completion_items.is_empty() {
+            match event.logical_key {
+                Key::Named(NamedKey::ArrowDown) => {
+                    self.completion_index =
+                        (self.completion_index + 1) % self.completion_items.len();
+                    return;
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    self.completion_index = self
+                        .completion_index
+                        .checked_sub(1)
+                        .unwrap_or(self.completion_items.len() - 1);
+                    return;
+                }
+                Key::Named(NamedKey::Escape) => {
+                    self.completion_items.clear();
+                    return;
+                }
+                Key::Named(NamedKey::Enter | NamedKey::Tab) => {
+                    self.accept_completion();
+                    return;
+                }
+                _ => {}
+            }
+            self.completion_items.clear();
+        }
         if ctrl
             && self.modifiers.alt_key()
             && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("t"))
@@ -746,16 +1180,112 @@ impl App {
         }
     }
 
+    fn handle_terminal_key(&mut self, event: &winit::event::KeyEvent) {
+        let mut bytes = Vec::new();
+        let ctrl = self.modifiers.control_key();
+        match &event.logical_key {
+            Key::Named(NamedKey::Enter) => bytes.extend_from_slice(b"\r"),
+            Key::Named(NamedKey::Backspace) => bytes.push(0x7f),
+            Key::Named(NamedKey::Tab) => bytes.push(b'\t'),
+            Key::Named(NamedKey::Escape) => bytes.push(0x1b),
+            Key::Named(NamedKey::ArrowUp) => bytes.extend_from_slice(b"\x1b[A"),
+            Key::Named(NamedKey::ArrowDown) => bytes.extend_from_slice(b"\x1b[B"),
+            Key::Named(NamedKey::ArrowRight) => bytes.extend_from_slice(b"\x1b[C"),
+            Key::Named(NamedKey::ArrowLeft) => bytes.extend_from_slice(b"\x1b[D"),
+            Key::Named(NamedKey::Home) => bytes.extend_from_slice(b"\x1b[H"),
+            Key::Named(NamedKey::End) => bytes.extend_from_slice(b"\x1b[F"),
+            Key::Named(NamedKey::Delete) => bytes.extend_from_slice(b"\x1b[3~"),
+            Key::Named(NamedKey::PageUp) => bytes.extend_from_slice(b"\x1b[5~"),
+            Key::Named(NamedKey::PageDown) => bytes.extend_from_slice(b"\x1b[6~"),
+            Key::Character(c) if ctrl => {
+                if let Some(ch) = c.chars().next() {
+                    let upper = ch.to_ascii_uppercase();
+                    if upper.is_ascii_alphabetic() {
+                        bytes.push(upper as u8 - b'@');
+                    }
+                }
+            }
+            _ => {
+                if let Some(text) = &event.text {
+                    bytes.extend_from_slice(text.as_bytes());
+                }
+            }
+        }
+        if !bytes.is_empty() {
+            if let Some(terminal) = &self.terminal {
+                terminal.input(bytes);
+            }
+        }
+    }
+
+    fn accept_completion(&mut self) {
+        let Some(item) = self.completion_items.get(self.completion_index).cloned() else {
+            return;
+        };
+        let text = item.insert_text.unwrap_or_else(|| item.label.clone());
+        let buffer = &mut self.tabs[self.active_tab].buffer;
+        let chars: Vec<char> = buffer.text().chars().collect();
+        let cursor = buffer.cursor().char_idx.min(chars.len());
+        let mut start = cursor;
+        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+            start -= 1;
+        }
+        buffer.set_selection(start, cursor);
+        buffer.insert(&text);
+        self.completion_items.clear();
+        self.hover_text = None;
+    }
+
+    fn navigate_diagnostic(&mut self, direction: isize) {
+        let diagnostics = self.tabs[self.active_tab].diagnostics.clone();
+        if diagnostics.is_empty() {
+            self.status = "No diagnostics in this file".into();
+            return;
+        }
+        let (line, _) = self.tabs[self.active_tab].buffer.cursor_line_col();
+        let next = if direction > 0 {
+            diagnostics
+                .iter()
+                .find(|d| d.range.start.line as usize > line)
+                .or_else(|| diagnostics.first())
+        } else {
+            diagnostics
+                .iter()
+                .rev()
+                .find(|d| (d.range.start.line as usize) < line)
+                .or_else(|| diagnostics.last())
+        };
+        if let Some(diagnostic) = next {
+            let line = diagnostic.range.start.line as usize;
+            let col = utf16_column_to_chars(
+                &self.tabs[self.active_tab].buffer.line(line),
+                diagnostic.range.start.character,
+            );
+            self.tabs[self.active_tab]
+                .buffer
+                .set_cursor_line_col(line, col);
+            self.status = diagnostic.message.clone();
+        }
+    }
+
     fn close_active_tab(&mut self) {
         if self.tabs.len() == 1 {
+            if let Some(path) = self.tabs[0].buffer.path().map(PathBuf::from) {
+                self.lsp_manager.close(&path);
+            }
             self.tabs[0] = Tab {
                 buffer: Buffer::new(),
                 scroll_line: 0,
                 language: None,
                 highlights: None,
                 highlighter: IncrementalHighlighter::new(),
+                diagnostics: Vec::new(),
+                lsp_revision: None,
             };
         } else {
+            if let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) {
+                self.lsp_manager.close(&path);
+            }
             self.tabs.remove(self.active_tab);
             self.active_tab = self.active_tab.min(self.tabs.len() - 1);
         }
@@ -763,6 +1293,7 @@ impl App {
     }
 
     fn draw(&mut self) {
+        self.resize_terminal();
         let Some(mut gpu) = self.gpu.take() else {
             return;
         };
@@ -774,6 +1305,7 @@ impl App {
         self.keep_cursor_visible(visible);
         self.refresh_highlights();
         let accessible_text = self.tabs[self.active_tab].buffer.text();
+        let accessible_panel = self.accessible_panel_text();
         let titles: Vec<_> = self
             .tabs
             .iter()
@@ -785,8 +1317,9 @@ impl App {
                     .unwrap_or_else(|| "Untitled".into())
             })
             .collect();
-        gpu.accessibility
-            .update_if_active(|| accessibility_tree(&titles, &accessible_text));
+        gpu.accessibility.update_if_active(|| {
+            accessibility_tree(&titles, &accessible_text, accessible_panel.as_deref())
+        });
 
         // Sidebar
         r.draw_rect(
@@ -909,6 +1442,13 @@ impl App {
                 line + 1,
                 width = ((gutter - PAD * 2.0) / cw) as usize
             );
+            if self.tabs[self.active_tab]
+                .diagnostics
+                .iter()
+                .any(|d| d.range.start.line as usize == line)
+            {
+                r.draw_rect(SIDEBAR_WIDTH + 2.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
+            }
             r.draw_text(&num, SIDEBAR_WIDTH + PAD, y, rgb(color));
             draw_code_line(
                 r,
@@ -1045,9 +1585,197 @@ impl App {
             }
         }
 
+        if !self.completion_items.is_empty() {
+            let visible_items = self
+                .completion_items
+                .iter()
+                .take(7)
+                .enumerate()
+                .collect::<Vec<_>>();
+            let box_height = lh * visible_items.len() as f32;
+            let y = (lh
+                * (cur_line.saturating_sub(self.tabs[self.active_tab].scroll_line) as f32 + 1.5)
+                + 2.0)
+                .min(h - box_height - lh);
+            let x = (text_x + cur_col as f32 * cw).min(w - 300.0);
+            r.draw_rect(
+                x,
+                y,
+                300.0,
+                box_height,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            for (i, item) in visible_items {
+                let row_y = y + i as f32 * lh;
+                if i == self.completion_index {
+                    r.draw_rect(
+                        x,
+                        row_y,
+                        300.0,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                r.draw_text(
+                    &item.label,
+                    x + PAD,
+                    row_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
+        if let Some(hover) = self.hover_text.as_deref().filter(|text| !text.is_empty()) {
+            let lines = hover.lines().take(6).collect::<Vec<_>>();
+            let box_h = lh * lines.len() as f32 + PAD;
+            let y = (lh * 1.6).min(h - box_h - lh);
+            r.draw_rect(
+                text_x,
+                y,
+                (w - text_x - PAD).max(120.0),
+                box_h,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            for (i, line) in lines.iter().enumerate() {
+                r.draw_text(
+                    line,
+                    text_x + PAD,
+                    y + i as f32 * lh + PAD * 0.5,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
+        if self.terminal_visible {
+            self.draw_terminal_panel(r, w, h, lh, cw);
+        }
+
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();
         self.gpu = Some(gpu);
+    }
+
+    fn draw_terminal_panel(
+        &self,
+        renderer: &mut Renderer,
+        width: f32,
+        height: f32,
+        line_height: f32,
+        cell_width: f32,
+    ) {
+        let panel_height = terminal_panel_height(height);
+        let top = height - line_height - panel_height;
+        renderer.draw_rect(
+            SIDEBAR_WIDTH,
+            top,
+            width - SIDEBAR_WIDTH,
+            panel_height,
+            rgb(0x181818),
+        );
+        renderer.draw_rect(
+            SIDEBAR_WIDTH,
+            top,
+            width - SIDEBAR_WIDTH,
+            line_height * 1.35,
+            rgb(0x252526),
+        );
+        renderer.draw_text(
+            "TERMINAL",
+            SIDEBAR_WIDTH + PAD,
+            top,
+            rgb(if !self.terminal_problems {
+                0xffffff
+            } else {
+                0x858585
+            }),
+        );
+        renderer.draw_text(
+            "PROBLEMS",
+            SIDEBAR_WIDTH + cell_width * 9.0,
+            top,
+            rgb(if self.terminal_problems {
+                0xffffff
+            } else {
+                0x858585
+            }),
+        );
+        if self.terminal_problems {
+            let diagnostics = &self.tabs[self.active_tab].diagnostics;
+            if diagnostics.is_empty() {
+                renderer.draw_text(
+                    "No diagnostics",
+                    SIDEBAR_WIDTH + PAD,
+                    top + line_height * 1.5,
+                    rgb(0x858585),
+                );
+            }
+            for (index, diagnostic) in diagnostics
+                .iter()
+                .take(((panel_height / line_height) as usize).saturating_sub(1))
+                .enumerate()
+            {
+                let severity = match diagnostic.severity {
+                    Some(lsp_types::DiagnosticSeverity::ERROR) => "error",
+                    Some(lsp_types::DiagnosticSeverity::WARNING) => "warning",
+                    Some(lsp_types::DiagnosticSeverity::INFORMATION) => "info",
+                    _ => "hint",
+                };
+                let text = format!(
+                    "{}:{}  [{}] {}",
+                    diagnostic.range.start.line + 1,
+                    diagnostic.range.start.character + 1,
+                    severity,
+                    diagnostic.message
+                );
+                renderer.draw_text(
+                    &text,
+                    SIDEBAR_WIDTH + PAD,
+                    top + line_height * (index as f32 + 1.5),
+                    rgb(0xd4d4d4),
+                );
+            }
+        } else if let Some(status) = self.terminal_status.as_deref() {
+            renderer.draw_text(
+                status,
+                SIDEBAR_WIDTH + PAD,
+                top + line_height * 1.5,
+                rgb(0xf14c4c),
+            );
+        } else if let Some(terminal) = &self.terminal {
+            let snapshot = terminal.snapshot();
+            for (row_index, row) in snapshot.rows.iter().enumerate() {
+                let y = top + line_height * (row_index as f32 + 1.5);
+                if y + line_height > height - line_height {
+                    break;
+                }
+                for (column, cell) in row.iter().enumerate() {
+                    let x = SIDEBAR_WIDTH + PAD + column as f32 * cell_width;
+                    if cell.background != [30, 30, 30] {
+                        let hex = ((cell.background[0] as u32) << 16)
+                            | ((cell.background[1] as u32) << 8)
+                            | cell.background[2] as u32;
+                        renderer.draw_rect(x, y, cell_width, line_height, rgb(hex));
+                    }
+                    if cell.character != ' ' && !cell.hidden && !cell.wide_spacer {
+                        let hex = ((cell.foreground[0] as u32) << 16)
+                            | ((cell.foreground[1] as u32) << 8)
+                            | cell.foreground[2] as u32;
+                        renderer.draw_text(&cell.character.to_string(), x, y, rgb(hex));
+                    }
+                }
+            }
+            if let Some((row, column)) = snapshot.cursor {
+                let x = SIDEBAR_WIDTH + PAD + column as f32 * cell_width;
+                let y = top + line_height * (row as f32 + 1.5);
+                renderer.draw_rect(x, y, 2.0, line_height, rgb(0xd4d4d4));
+            }
+            if let Some(exited) = snapshot.exited {
+                renderer.draw_text(
+                    &exited,
+                    SIDEBAR_WIDTH + PAD,
+                    top + line_height * 1.5,
+                    rgb(0x858585),
+                );
+            }
+        }
     }
 }
 
@@ -1056,6 +1784,24 @@ fn accessibility_position_to_char(buffer: &Buffer, node: NodeId, index: usize) -
     let row = row.min(buffer.len_lines().saturating_sub(1));
     let text = buffer.line(row);
     buffer.line_start_char(row) + index.min(text.trim_end_matches(['\n', '\r']).chars().count())
+}
+
+fn terminal_panel_height(height: f32) -> f32 {
+    (height * 0.32).clamp(150.0, 300.0)
+}
+
+fn utf16_column_to_chars(line: &str, units: u32) -> usize {
+    let mut consumed = 0;
+    let mut chars = 0;
+    for ch in line.trim_end_matches(['\n', '\r']).chars() {
+        let width = ch.len_utf16() as u32;
+        if consumed + width > units {
+            break;
+        }
+        consumed += width;
+        chars += 1;
+    }
+    chars
 }
 
 fn spans_for(cache: &Option<HighlightCache>, line: usize) -> &[Span] {
@@ -1175,7 +1921,11 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.process_accessibility_actions();
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.lsp_manager.shutdown();
+                self.terminal.take();
+                event_loop.exit();
+            }
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.renderer.resize(size.width, size.height);
@@ -1184,14 +1934,22 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse = position;
+                let editor_state = self.editor_state();
                 self.drag_select();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } => {
+                let editor_state = self.editor_state();
                 self.click();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,
@@ -1203,21 +1961,50 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
-                let max = self.tabs[self.active_tab]
-                    .buffer
-                    .len_lines()
-                    .saturating_sub(1) as f32;
-                self.tabs[self.active_tab].scroll_line =
-                    (self.tabs[self.active_tab].scroll_line as f32 + lines).clamp(0.0, max)
-                        as usize;
+                let over_panel = self.terminal_visible
+                    && self.gpu.as_ref().is_some_and(|gpu| {
+                        self.mouse.y as f32
+                            >= gpu.renderer.size().1
+                                - gpu.renderer.line_height()
+                                - terminal_panel_height(gpu.renderer.size().1)
+                    });
+                if over_panel && !self.terminal_problems {
+                    if let Some(terminal) = &self.terminal {
+                        terminal.scroll((lines * 3.0) as i32);
+                    }
+                } else {
+                    let max = self.tabs[self.active_tab]
+                        .buffer
+                        .len_lines()
+                        .saturating_sub(1) as f32;
+                    self.tabs[self.active_tab].scroll_line =
+                        (self.tabs[self.active_tab].scroll_line as f32 + lines).clamp(0.0, max)
+                            as usize;
+                }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                let editor_state = self.editor_state();
                 self.handle_key(&event);
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+                self.sync_lsp_active();
             }
             WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_composing = true,
             WindowEvent::Ime(winit::event::Ime::Preedit(_, _)) => self.ime_composing = true,
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                self.tabs[self.active_tab].buffer.insert(&text);
+                if self.terminal_focused {
+                    if let Some(terminal) = &self.terminal {
+                        terminal.input(text.into_bytes());
+                    }
+                } else {
+                    let editor_state = self.editor_state();
+                    self.tabs[self.active_tab].buffer.insert(&text);
+                    if editor_state != self.editor_state() {
+                        self.invalidate_lsp_requests();
+                    }
+                    self.sync_lsp_active();
+                }
                 self.ime_composing = false;
             }
             WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_composing = false,
@@ -1232,12 +2019,48 @@ impl ApplicationHandler<UserEvent> for App {
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::AccessibilityWake => {
+                let editor_state = self.editor_state();
                 self.process_accessibility_actions();
+                if editor_state != self.editor_state() {
+                    self.invalidate_lsp_requests();
+                }
+                self.sync_lsp_active();
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::LspWake => {
+                self.process_lsp_events();
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::TerminalWake => {
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
                 }
             }
         }
+    }
+}
+
+fn same_file_path(a: &Path, b: &Path) -> bool {
+    let normalized_a = a.canonicalize().unwrap_or_else(|_| a.to_path_buf());
+    let normalized_b = b.canonicalize().unwrap_or_else(|_| b.to_path_buf());
+    #[cfg(windows)]
+    {
+        let normalize = |path: &Path| {
+            let value = path.to_string_lossy().replace('/', "\\");
+            value
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&value)
+                .to_ascii_lowercase()
+        };
+        normalize(&normalized_a) == normalize(&normalized_b)
+    }
+    #[cfg(not(windows))]
+    {
+        normalized_a == normalized_b
     }
 }
 
