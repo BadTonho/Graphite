@@ -112,24 +112,22 @@ impl App {
 
     pub(crate) fn save(&mut self) {
         let path = self.tabs[self.active_tab].buffer.path().map(PathBuf::from);
-        if path.is_some()
-            && self.trim_trailing_whitespace
-            && !self.tabs[self.active_tab].buffer.is_read_only()
-        {
-            let previous = self.tabs[self.active_tab].buffer.revision();
-            let _ = self.tabs[self.active_tab].buffer.trim_trailing_whitespace();
-            if self.tabs[self.active_tab].buffer.revision() != previous {
-                self.sync_lsp_active();
-            }
-        }
+        let previous = self.tabs[self.active_tab].buffer.revision();
         self.status = match self.tabs[self.active_tab].buffer.path() {
             None => "No file to save".into(),
-            Some(_) => match self.tabs[self.active_tab].buffer.save() {
+            Some(_) => match if self.trim_trailing_whitespace {
+                self.tabs[self.active_tab].buffer.save_with_trim()
+            } else {
+                self.tabs[self.active_tab].buffer.save()
+            } {
                 Ok(()) => "Saved".into(),
                 Err(e) => format!("Save failed: {e}"),
             },
         };
         if self.status == "Saved" {
+            if self.tabs[self.active_tab].buffer.revision() != previous {
+                self.sync_lsp_active();
+            }
             if let Some(path) = path {
                 self.lsp_manager
                     .save(&path, self.tabs[self.active_tab].buffer.text());

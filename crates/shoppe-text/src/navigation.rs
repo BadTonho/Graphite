@@ -1,6 +1,43 @@
 use super::*;
 
 impl Buffer {
+    /// Insert line breaks using each cursor's local line-ending convention.
+    pub fn insert_newline(&mut self) {
+        if self.read_only {
+            return;
+        }
+        let edits: Vec<_> = self
+            .selections()
+            .into_iter()
+            .map(|selection| {
+                let start = selection.anchor.min(selection.head);
+                let end = selection.anchor.max(selection.head);
+                let line = self.rope.char_to_line(start);
+                let ending = (0..=line)
+                    .rev()
+                    .find_map(|index| {
+                        let text = self.rope.line(index);
+                        let len = text.len_chars();
+                        if len > 0 && text.char(len - 1) == '\n' {
+                            Some(if len > 1 && text.char(len - 2) == '\r' {
+                                "\r\n"
+                            } else {
+                                "\n"
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("\n");
+                TextReplacement {
+                    range: start..end,
+                    text: ending.into(),
+                }
+            })
+            .collect();
+        self.apply_cursor_replacements(&edits);
+    }
+
     pub(super) fn line_content_len(&self, line: usize) -> usize {
         let slice = self.rope.line(line);
         let mut len = slice.len_chars();

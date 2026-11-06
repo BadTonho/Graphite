@@ -11,6 +11,46 @@ pub enum CursorMotion {
 }
 
 impl Buffer {
+    /// Complete the word at each cursor, or replace each selected range, as one edit.
+    pub fn complete_word(&mut self, text: &str) {
+        if self.read_only {
+            return;
+        }
+        let mut ranges: Vec<_> = self
+            .selections()
+            .into_iter()
+            .map(|selection| {
+                let mut start = selection.anchor.min(selection.head);
+                let end = selection.anchor.max(selection.head);
+                if start == end {
+                    while start > 0 && is_word(self.rope.char(start - 1)) {
+                        start -= 1;
+                    }
+                }
+                start..end
+            })
+            .collect();
+        ranges.sort_by_key(|range| (range.start, range.end));
+        let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+        for range in ranges {
+            if let Some(last) = merged.last_mut() {
+                if range.start < last.end || range.start == last.start {
+                    last.end = last.end.max(range.end);
+                    continue;
+                }
+            }
+            merged.push(range);
+        }
+        let edits: Vec<_> = merged
+            .into_iter()
+            .map(|range| TextReplacement {
+                range,
+                text: text.into(),
+            })
+            .collect();
+        self.apply_cursor_replacements(&edits);
+    }
+
     /// Apply edits while keeping cursor and selection positions attached to the text.
     pub(super) fn apply_preserving_selections(
         &mut self,
@@ -210,8 +250,13 @@ impl Buffer {
                 text: if distribute { lines[index] } else { text }.to_owned(),
             })
             .collect();
+        self.apply_cursor_replacements(&edits);
+    }
+
+    /// Apply replacements as one history entry and keep the resulting cursors.
+    pub(super) fn apply_cursor_replacements(&mut self, edits: &[TextReplacement]) {
         let revision = self.revision();
-        if let Ok(cursors) = self.apply_transaction(&edits) {
+        if let Ok(cursors) = self.apply_transaction(edits) {
             if self.revision() == revision {
                 return;
             }
@@ -282,26 +327,7 @@ impl Buffer {
                 text: text.into(),
             })
             .collect();
-        let revision = self.revision();
-        if let Ok(cursors) = self.apply_transaction(&edits) {
-            if self.revision() == revision {
-                return;
-            }
-            self.set_selections(
-                cursors
-                    .into_iter()
-                    .map(|head| Selection { anchor: head, head })
-                    .collect(),
-            );
-            let after = self.cursor.char_idx;
-            let selection = self.selection;
-            let extra = self.extra_selections.clone();
-            if let Some(edit) = self.undo.last_mut() {
-                edit.after = after;
-                edit.after_selection = selection;
-                edit.after_extra = extra;
-            }
-        }
+        self.apply_cursor_replacements(&edits);
     }
 
     pub fn move_selections(&mut self, motion: CursorMotion, extend: bool) {

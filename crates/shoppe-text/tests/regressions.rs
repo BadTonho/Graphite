@@ -639,3 +639,111 @@ fn position_mapping_follows_insertions_and_clamps_deleted_text() {
     ];
     assert_eq!(map_position(2, &adjacent), 4);
 }
+#[test]
+fn failed_trimmed_save_preserves_text_selection_revision_and_redo() {
+    use shoppe_text::Buffer;
+    let temp = TempDir::new();
+    let path = temp.path().join("document.txt");
+    std::fs::write(&path, "é  \r\nsecond \n").unwrap();
+    let mut buffer = Buffer::open(&path).unwrap();
+    buffer.set_selection(1, 1);
+    buffer.insert("X");
+    buffer.undo();
+    buffer.set_selection(1, 3);
+    let revision = buffer.revision();
+    let selection = buffer.selections();
+    let dirty = buffer.is_dirty();
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    assert!(buffer.save_with_trim().is_err());
+    assert_eq!(buffer.text(), "é  \r\nsecond \n");
+    assert_eq!(buffer.revision(), revision);
+    assert_eq!(buffer.selections(), selection);
+    assert_eq!(buffer.is_dirty(), dirty);
+    assert_eq!(buffer.path(), Some(path.as_path()));
+    buffer.redo();
+    assert_eq!(buffer.text(), "éX  \r\nsecond \n");
+}
+
+#[test]
+fn readonly_save_as_cannot_write_a_new_file() {
+    use shoppe_text::Buffer;
+    let temp = TempDir::new();
+    let target = temp.path().join("new.txt");
+    let mut buffer = Buffer::new();
+    buffer.insert("protected");
+    buffer.set_read_only(true);
+    assert!(buffer.save_as(&target).is_err());
+    assert!(!target.exists());
+    assert!(buffer.path().is_none());
+    assert_eq!(buffer.text(), "protected");
+}
+#[test]
+fn newline_uses_each_cursors_line_ending_and_is_one_undo_step() {
+    let mut buffer = Buffer::new();
+    buffer.insert("a\r\nb\nc");
+    buffer.set_selections(vec![
+        Selection { anchor: 1, head: 1 },
+        Selection { anchor: 4, head: 4 },
+        Selection { anchor: 6, head: 6 },
+    ]);
+    let before = buffer.selections();
+    buffer.insert_newline();
+    assert_eq!(buffer.text(), "a\r\n\r\nb\n\nc\n");
+    let after = buffer.selections();
+    buffer.undo();
+    assert_eq!(buffer.text(), "a\r\nb\nc");
+    assert_eq!(buffer.selections(), before);
+    buffer.redo();
+    assert_eq!(buffer.text(), "a\r\n\r\nb\n\nc\n");
+    assert_eq!(buffer.selections(), after);
+}
+
+#[test]
+fn newline_in_last_unterminated_crlf_line_and_readonly_document() {
+    let mut buffer = Buffer::new();
+    buffer.insert("é\r\nlast");
+    buffer.insert_newline();
+    assert_eq!(buffer.text(), "é\r\nlast\r\n");
+    buffer.set_read_only(true);
+    let revision = buffer.revision();
+    buffer.insert_newline();
+    assert_eq!(buffer.revision(), revision);
+    assert_eq!(buffer.text(), "é\r\nlast\r\n");
+}
+#[test]
+fn completion_applies_to_all_unicode_cursors_as_one_edit() {
+    let mut buffer = Buffer::new();
+    buffer.insert("café café");
+    buffer.set_selections(vec![
+        Selection { anchor: 4, head: 4 },
+        Selection { anchor: 9, head: 9 },
+    ]);
+    let before = buffer.selections();
+    buffer.complete_word("crème");
+    assert_eq!(buffer.text(), "crème crème");
+    let after = buffer.selections();
+    buffer.undo();
+    assert_eq!(buffer.text(), "café café");
+    assert_eq!(buffer.selections(), before);
+    buffer.redo();
+    assert_eq!(buffer.text(), "crème crème");
+    assert_eq!(buffer.selections(), after);
+}
+
+#[test]
+fn completion_merges_overlapping_prefixes_and_respects_readonly() {
+    let mut buffer = Buffer::new();
+    buffer.insert("café");
+    buffer.set_selections(vec![
+        Selection { anchor: 2, head: 2 },
+        Selection { anchor: 4, head: 4 },
+    ]);
+    buffer.complete_word("éclair");
+    assert_eq!(buffer.text(), "éclair");
+    buffer.set_read_only(true);
+    let selection = buffer.selections();
+    buffer.complete_word("ignored");
+    assert_eq!(buffer.text(), "éclair");
+    assert_eq!(buffer.selections(), selection);
+}

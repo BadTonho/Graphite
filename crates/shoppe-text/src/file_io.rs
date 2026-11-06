@@ -44,12 +44,49 @@ impl Buffer {
     }
 
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), BufferError> {
+        if self.read_only {
+            return Err(
+                io::Error::new(io::ErrorKind::PermissionDenied, "document is read-only").into(),
+            );
+        }
         self.write_to_path(path.as_ref())?;
         self.path = Some(path.as_ref().to_path_buf());
         Ok(())
     }
 
     fn write_to_path(&mut self, path: &Path) -> Result<(), BufferError> {
+        Self::write_rope_to_path(path, &self.rope)?;
+        self.saved_text = self.rope.clone();
+        self.dirty = false;
+        Ok(())
+    }
+
+    /// Save trimmed content atomically, modifying the buffer and history only after the write succeeds.
+    pub fn save_with_trim(&mut self) -> Result<(), BufferError> {
+        if self.read_only {
+            return Err(
+                io::Error::new(io::ErrorKind::PermissionDenied, "document is read-only").into(),
+            );
+        }
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file path"))?
+            .clone();
+        let edits = self.trailing_whitespace_edits();
+        let mut trimmed = self.rope.clone();
+        for edit in edits.iter().rev() {
+            trimmed.remove(edit.range.clone());
+        }
+        Self::write_rope_to_path(&path, &trimmed)?;
+        self.apply_preserving_selections(&edits)
+            .expect("validated trimming edits");
+        self.saved_text = self.rope.clone();
+        self.dirty = false;
+        Ok(())
+    }
+
+    fn write_rope_to_path(path: &Path, rope: &Rope) -> Result<(), BufferError> {
         // Replace the target only after the complete new contents have been written.
         // Resolve existing symlinks so saving does not replace the link itself.
         let target = match fs::symlink_metadata(path) {
@@ -73,6 +110,8 @@ impl Buffer {
                     )
                     .into());
                 }
+                // A directory may permit replacement even when ACLs deny writes to the file.
+                OpenOptions::new().write(true).open(&target)?;
                 Some(metadata.permissions())
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
@@ -102,7 +141,7 @@ impl Buffer {
             if let Some(permissions) = permissions {
                 file.set_permissions(permissions)?;
             }
-            self.rope.write_to(&mut file)?;
+            rope.write_to(&mut file)?;
             file.sync_all()?;
             drop(file);
             fs::rename(&temp_path, &target)?;
@@ -112,8 +151,6 @@ impl Buffer {
             let _ = fs::remove_file(&temp_path);
         }
         result?;
-        self.saved_text = self.rope.clone();
-        self.dirty = false;
         Ok(())
     }
 }
