@@ -36,3 +36,11 @@ These rules are mandatory for all development, file operations, documentation, a
 - Always evaluate options by technical merit and quality, then **present the single best option as the default** and execute it.
 - If trade-offs genuinely exist, state them factually and briefly; never use them to stall decisions or talk the user out of a direction.
 - The user decides *when* work starts or stops (see Rule 5); once authorized, proceed with the best solution fully, without hedging or second-guessing scope.
+
+---
+
+## 8. Native Tests and Regression Prevention
+- Add or update meaningful automated tests for new or changed behavior and for each bug fix, covering relevant success and failure cases. Tests must verify observable behavior and avoid reliance on personal files, network services, or external language servers.
+- Run the relevant tests and `cargo test --workspace` before completing a code change; run `cargo build --workspace` when build validation is applicable. Do not claim success when a required check fails or was not run.
+- Use isolated temporary test data and preserve Windows and Linux compatibility. Testing both operating systems in the same run is not required.
+- Document-only or configuration-only changes need tests only when they change executable behavior. If a test or manual UI/GPU check cannot be performed, report the reason and the affected platform explicitly.

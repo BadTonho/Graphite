@@ -10,6 +10,42 @@ pub struct TreeRow {
     pub expanded: bool,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn expanding_and_collapsing_folders_honors_ignore_rules() {
+        let temp = crate::test_support::TempDir::new();
+        let root = temp.path();
+        fs::create_dir(root.join("src")).unwrap();
+        fs::write(root.join(".gitignore"), "src/ignored.rs\n").unwrap();
+        fs::write(root.join("src/ignored.rs"), "ignored").unwrap();
+        fs::write(root.join("src/main.rs"), "visible").unwrap();
+        let mut tree = FileTree::new(Workspace::open(root).unwrap());
+        let folder = tree
+            .rows
+            .iter()
+            .position(|row| row.entry.name == "src")
+            .unwrap();
+        assert!(tree.activate(folder).is_none());
+        let file = tree
+            .rows
+            .iter()
+            .position(|row| row.entry.name == "main.rs")
+            .unwrap();
+        assert_eq!(tree.rows[file].depth, 1);
+        assert!(!tree.rows.iter().any(|row| row.entry.name == "ignored.rs"));
+        assert_eq!(
+            tree.activate(file),
+            Some(root.join("src/main.rs").canonicalize().unwrap())
+        );
+        assert!(tree.activate(folder).is_none());
+        assert!(!tree.rows.iter().any(|row| row.entry.name == "main.rs"));
+    }
+}
+
 pub struct FileTree {
     workspace: Workspace,
     expanded: HashSet<PathBuf>,

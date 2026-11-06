@@ -348,8 +348,20 @@ mod tests {
     }
 
     #[test]
+    fn incremental_change_replaces_multiline_astral_text_in_utf16() {
+        let event = incremental_text_change("prefix 🌎\nold end", "prefix é\nnew end");
+        assert_eq!(
+            event.range,
+            Some(Range::new(Position::new(0, 7), Position::new(1, 3)))
+        );
+        assert_eq!(event.range_length, Some(6));
+        assert_eq!(event.text, "é\nnew");
+    }
+
+    #[test]
     fn server_config_normalizes_extensions_and_rejects_duplicates() {
-        let path = std::env::temp_dir().join("shoppe_lsp_config_test.json");
+        let temp = crate::test_support::TempDir::new();
+        let path = temp.path().join("config.json");
         std::fs::write(
             &path,
             r#"{"servers":[{"extension":".rs","languageId":"rust","command":"rust-analyzer"}]}"#,
@@ -359,19 +371,16 @@ mod tests {
         assert_eq!(config[0].extension, "rs");
         std::fs::write(&path, r#"{"servers":[{"extension":"rs","languageId":"rust","command":"rust-analyzer"},{"extension":".rs","languageId":"rust","command":"other"}]}"#).unwrap();
         assert!(LspManager::load_config(&path).is_err());
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]
     fn file_uri_round_trip_handles_spaces_and_unicode() {
-        let root = std::env::temp_dir().join("shoppe uri 🌎");
-        std::fs::create_dir_all(&root).unwrap();
-        let path = root.join("a file.rs");
+        let temp = crate::test_support::TempDir::new();
+        let path = temp.path().join("a file 🌎.rs");
         std::fs::write(&path, "").unwrap();
         let uri = path_to_uri(&path).unwrap();
         assert!(uri.contains("%20"));
         assert_eq!(uri_to_path(&uri), Some(path.clone()));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
