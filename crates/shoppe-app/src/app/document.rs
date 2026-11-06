@@ -49,7 +49,29 @@ impl App {
             return;
         }
         match Buffer::open(&path) {
-            Ok(buffer) => {
+            Ok(mut buffer) => {
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                let relative = canonical
+                    .strip_prefix(self.tree.root())
+                    .unwrap_or(&canonical)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let matches_pattern = self.read_only_patterns.iter().any(|pattern| {
+                    globset::Glob::new(pattern)
+                        .is_ok_and(|glob| glob.compile_matcher().is_match(&relative))
+                });
+                if matches_pattern {
+                    buffer.set_read_only(true);
+                }
+                let indentation = if self.detect_indentation {
+                    buffer.detect_indentation()
+                } else {
+                    None
+                }
+                .unwrap_or(graphite_text::Indentation {
+                    insert_spaces: self.insert_spaces,
+                    tab_size: self.tab_size,
+                });
                 let tab = Tab {
                     buffer,
                     scroll_line: 0,
@@ -58,6 +80,7 @@ impl App {
                     highlighter: IncrementalHighlighter::new(),
                     diagnostics: Vec::new(),
                     lsp_revision: None,
+                    indentation,
                 };
                 if self.tabs.len() == 1
                     && self.tabs[0].buffer.path().is_none()
@@ -78,6 +101,16 @@ impl App {
 
     pub(crate) fn save(&mut self) {
         let path = self.tabs[self.active_tab].buffer.path().map(PathBuf::from);
+        if path.is_some()
+            && self.trim_trailing_whitespace
+            && !self.tabs[self.active_tab].buffer.is_read_only()
+        {
+            let previous = self.tabs[self.active_tab].buffer.revision();
+            let _ = self.tabs[self.active_tab].buffer.trim_trailing_whitespace();
+            if self.tabs[self.active_tab].buffer.revision() != previous {
+                self.sync_lsp_active();
+            }
+        }
         self.status = match self.tabs[self.active_tab].buffer.path() {
             None => "No file to save".into(),
             Some(_) => match self.tabs[self.active_tab].buffer.save() {

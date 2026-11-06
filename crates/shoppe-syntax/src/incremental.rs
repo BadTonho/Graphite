@@ -16,6 +16,32 @@ impl Default for IncrementalHighlighter {
     }
 }
 impl IncrementalHighlighter {
+    /// Syntax-node byte ranges from the innermost named node to the root.
+    pub fn selection_ranges(&self, start: usize, end: usize) -> Vec<std::ops::Range<usize>> {
+        let Some(tree) = &self.tree else {
+            return Vec::new();
+        };
+        let root = tree.root_node();
+        if start > root.end_byte() || end > root.end_byte() {
+            return Vec::new();
+        }
+        let mut node = root.descendant_for_byte_range(start, end).unwrap_or(root);
+        let mut result = Vec::new();
+        loop {
+            let range = node.byte_range();
+            if node.is_named()
+                && range.start <= start
+                && range.end >= end
+                && result.last() != Some(&range)
+            {
+                result.push(range);
+            }
+            let Some(parent) = node.parent() else { break };
+            node = parent;
+        }
+        result
+    }
+
     pub fn new() -> Self {
         Self {
             parser: Parser::new(),

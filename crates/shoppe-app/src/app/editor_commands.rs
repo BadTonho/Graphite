@@ -1,6 +1,34 @@
 use super::*;
 
 impl App {
+    pub(crate) fn request_window_close(&mut self) {
+        if self.tabs.iter().any(|tab| tab.buffer.is_dirty()) {
+            self.close_window_confirm = true;
+            self.status = "Unsaved documents: S save all, D discard, Esc cancel".into();
+        } else {
+            self.exit_requested = true;
+        }
+    }
+
+    pub(crate) fn save_all_before_close(&mut self) {
+        let previous = self.active_tab;
+        for index in 0..self.tabs.len() {
+            if !self.tabs[index].buffer.is_dirty() {
+                continue;
+            }
+            self.active_tab = index;
+            self.save();
+            if self.tabs[index].buffer.is_dirty() {
+                self.status = format!("Cannot close: {}", self.status);
+                self.close_window_confirm = false;
+                return;
+            }
+        }
+        self.active_tab = previous;
+        self.close_window_confirm = false;
+        self.exit_requested = true;
+    }
+
     pub(crate) fn accept_completion(&mut self) {
         let Some(item) = self.completion_items.get(self.completion_index).cloned() else {
             return;
@@ -64,6 +92,10 @@ impl App {
                 highlighter: IncrementalHighlighter::new(),
                 diagnostics: Vec::new(),
                 lsp_revision: None,
+                indentation: graphite_text::Indentation {
+                    insert_spaces: self.insert_spaces,
+                    tab_size: self.tab_size,
+                },
             };
         } else {
             if let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) {

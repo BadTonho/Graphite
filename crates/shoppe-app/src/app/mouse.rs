@@ -53,6 +53,14 @@ impl App {
             let line =
                 self.tabs[self.active_tab].scroll_line + ((my - lh * 1.5).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
+            if self.modifiers.alt_key() {
+                let b = &mut self.tabs[self.active_tab].buffer;
+                let line = line.min(b.len_lines() - 1);
+                let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
+                b.add_cursor(b.line_start_char(line) + col.min(width));
+                self.selecting = false;
+                return;
+            }
             self.tabs[self.active_tab]
                 .buffer
                 .set_cursor_line_col(line, col);

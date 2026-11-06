@@ -8,7 +8,7 @@ use import::import_from_with;
 pub use import::import_vscode;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, terminal_shell};
-pub use settings::editor_prefs;
+pub use settings::editor_prefs_for_workspace;
 use settings::{parse_jsonc, project_settings};
 #[cfg(test)]
 use snippets::expand_snippet;
@@ -28,11 +28,15 @@ pub struct ImportReport {
     pub imported: usize,
     pub warnings: Vec<String>,
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EditorPrefs {
     pub font_size: f32,
     pub tab_size: usize,
     pub insert_spaces: bool,
+    pub read_only_patterns: Vec<String>,
+    pub detect_indentation: bool,
+    pub trim_trailing_whitespace: bool,
+    pub rulers: Vec<usize>,
 }
 #[cfg(test)]
 mod tests {
@@ -57,6 +61,35 @@ mod tests {
             parse_jsonc("{ // settings\n \"editor.tabSize\": 2, } ").unwrap()["editor.tabSize"],
             2
         );
+    }
+
+    #[test]
+    fn settings_layers_validate_and_override_in_order() {
+        let temp = crate::test_support::TempDir::new();
+        let imported = temp.path().join("imported.json");
+        let user = temp.path().join("user.json");
+        let workspace = temp.path().join("workspace.json");
+        fs::write(&imported, r#"{"editor.fontSize": 13, "editor.tabSize": 2}"#).unwrap();
+        fs::write(
+            &user,
+            "{ // user\n \"editor.fontSize\": 17, \"editor.insertSpaces\": true, }",
+        )
+        .unwrap();
+        fs::write(&workspace, r#"{"editor.tabSize": 8, "editor.rulers": [100, {"column": 80}, 100], "files.readonlyInclude": {"generated/**": true, "src/**": false}}"#).unwrap();
+        let paths = [imported, user, workspace.clone()];
+        let prefs = settings::read_editor_prefs(&paths).unwrap();
+        assert_eq!(
+            (prefs.font_size, prefs.tab_size, prefs.insert_spaces),
+            (17.0, 8, true)
+        );
+        assert_eq!(prefs.read_only_patterns, ["generated/**"]);
+        assert_eq!(prefs.rulers, [80, 100]);
+        fs::write(&workspace, r#"{"editor.tabSize": 0}"#).unwrap();
+        assert!(settings::read_editor_prefs(&paths)
+            .unwrap_err()
+            .contains("editor.tabSize"));
+        fs::write(&workspace, "{").unwrap();
+        assert!(settings::read_editor_prefs(&paths).is_err());
     }
     #[test]
     fn import_copies_valid_files_and_preserves_sources() {

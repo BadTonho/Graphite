@@ -1,5 +1,6 @@
 //! Workspace folder model: a lazily-loaded file tree that respects `.gitignore`.
 
+mod quick_open;
 mod search;
 
 use ignore::WalkBuilder;
@@ -127,6 +128,87 @@ mod tests {
             entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
             ["visible.txt"]
         );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cancelled_search_does_not_scan_files() {
+        let dir = std::env::temp_dir().join(format!("graphite_cancel_search_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("file.txt"), "needle").unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        assert!(ws.search_cancellable("needle", || true).is_empty());
+        assert_eq!(ws.search("needle").len(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cancellation_interrupts_scanning_a_large_file_without_matches() {
+        let dir = std::env::temp_dir().join(format!("graphite_cancel_large_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("large.txt");
+        fs::write(
+            &path,
+            format!(
+                "{}needle\n",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n".repeat(200_000)
+            ),
+        )
+        .unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        let checks = std::cell::Cell::new(0);
+        let results = ws.search_cancellable("needle", || {
+            checks.set(checks.get() + 1);
+            checks.get() >= 5
+        });
+        assert!(results.is_empty());
+        assert!(checks.get() >= 5);
+        assert_eq!(ws.search("needle").len(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn fuzzy_open_ranks_files_and_honors_ignored_paths() {
+        let dir = std::env::temp_dir().join(format!("graphite_quick_open_{}", std::process::id()));
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(dir.join(".gitignore"), "ignored.rs\n").unwrap();
+        fs::write(dir.join("ignored.rs"), "").unwrap();
+        fs::write(dir.join("src/main.rs"), "").unwrap();
+        fs::write(dir.join("src/model.rs"), "").unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        let paths = ws.fuzzy_files("mnrs", 10, || false);
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("main.rs"));
+        assert!(ws.fuzzy_files("ignored", 10, || false).is_empty());
+        assert!(ws.fuzzy_files("main", 10, || true).is_empty());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn search_prefers_unsaved_content_without_including_ignored_files() {
+        let dir =
+            std::env::temp_dir().join(format!("graphite_overlay_search_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(".gitignore"), "ignored.txt\n").unwrap();
+        fs::write(dir.join("visible.txt"), "disk needle").unwrap();
+        fs::write(dir.join("ignored.txt"), "needle").unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        let overlays = std::collections::HashMap::from([
+            (
+                dir.join("visible.txt").canonicalize().unwrap(),
+                "new 🌎 needle".to_owned(),
+            ),
+            (
+                dir.join("ignored.txt").canonicalize().unwrap(),
+                "needle".to_owned(),
+            ),
+        ]);
+        let result = ws.search_with_overlays("needle", &overlays, || false);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text, "new 🌎 needle");
+        assert!(ws
+            .search_with_overlays("disk", &overlays, || false)
+            .is_empty());
         fs::remove_dir_all(dir).unwrap();
     }
 }

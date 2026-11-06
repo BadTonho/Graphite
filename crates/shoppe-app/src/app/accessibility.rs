@@ -3,7 +3,7 @@ use super::*;
 pub(crate) struct AccessibilityActivation;
 impl ActivationHandler for AccessibilityActivation {
     fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
-        Some(accessibility_tree(&[], "Graphite editor", None))
+        Some(accessibility_tree(&[], "Graphite editor", None, false))
     }
 }
 #[derive(Debug)]
@@ -11,6 +11,16 @@ pub(crate) enum UserEvent {
     AccessibilityWake,
     LspWake,
     TerminalWake,
+    ProjectSearch {
+        query: String,
+        generation: u64,
+        results: Vec<SearchResult>,
+    },
+    QuickOpen {
+        query: String,
+        generation: u64,
+        paths: Vec<PathBuf>,
+    },
 }
 
 pub(crate) struct AccessibilityActionQueue {
@@ -33,6 +43,7 @@ pub(crate) fn accessibility_tree(
     titles: &[String],
     value: &str,
     panel: Option<&str>,
+    read_only: bool,
 ) -> TreeUpdate {
     let root = NodeId(0);
     let tablist = NodeId(1);
@@ -60,6 +71,9 @@ pub(crate) fn accessibility_tree(
         nodes.push((*id, tab));
     }
     let mut editor_node = Node::new(Role::TextInput);
+    if read_only {
+        editor_node.set_read_only();
+    }
     editor_node.set_value(value);
     let lines: Vec<_> = value.split_inclusive('\n').collect();
     let run_ids: Vec<_> = (0..lines.len()).map(|i| NodeId(1_000 + i as u64)).collect();

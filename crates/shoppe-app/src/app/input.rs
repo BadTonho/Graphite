@@ -4,6 +4,21 @@ impl App {
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
         let ctrl = self.modifiers.control_key();
         let shift = self.modifiers.shift_key();
+        if self.close_window_confirm {
+            match &event.logical_key {
+                Key::Character(c) if c.eq_ignore_ascii_case("s") => self.save_all_before_close(),
+                Key::Character(c) if c.eq_ignore_ascii_case("d") => {
+                    self.close_window_confirm = false;
+                    self.exit_requested = true;
+                }
+                Key::Named(NamedKey::Escape) => {
+                    self.close_window_confirm = false;
+                    self.status = "Close cancelled".into();
+                }
+                _ => {}
+            }
+            return;
+        }
         if ctrl
             && (matches!(&event.logical_key, Key::Character(c) if c == "`")
                 || matches!(event.physical_key, PhysicalKey::Code(KeyCode::Backquote)))
@@ -25,6 +40,45 @@ impl App {
             self.handle_terminal_key(event);
             return;
         }
+        if ctrl
+            && !shift
+            && !self.modifiers.alt_key()
+            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("p"))
+        {
+            self.start_quick_open();
+            return;
+        }
+        if self.quick_open.is_some() {
+            self.handle_quick_open(event);
+            return;
+        }
+        if ctrl
+            && !shift
+            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("f") || c.eq_ignore_ascii_case("h"))
+        {
+            let replace =
+                matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("h"));
+            self.open_local_search(replace);
+            return;
+        }
+        if self.local_search.is_some() {
+            self.handle_local_search(event);
+            return;
+        }
+        if self.modifiers.alt_key() && shift && !ctrl {
+            match event.logical_key {
+                Key::Named(NamedKey::ArrowRight) => {
+                    self.smart_select(true);
+                    return;
+                }
+                Key::Named(NamedKey::ArrowLeft) => {
+                    self.smart_select(false);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        self.smart_selection_history.clear();
         if self.lsp_chord {
             self.lsp_chord = false;
             if ctrl
@@ -46,7 +100,10 @@ impl App {
             self.request_lsp("definition");
             return;
         }
-        if ctrl && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k")) {
+        if ctrl
+            && !shift
+            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k"))
+        {
             self.lsp_chord = true;
             self.status = "Press Ctrl+I for hover information".into();
             return;
@@ -142,18 +199,117 @@ impl App {
             }
             return;
         }
+        if self.search_query.is_none() && self.modifiers.alt_key() && !ctrl {
+            match event.logical_key {
+                Key::Named(NamedKey::ArrowUp) if shift => {
+                    self.tabs[self.active_tab].buffer.duplicate_line(false);
+                    return;
+                }
+                Key::Named(NamedKey::ArrowDown) if shift => {
+                    self.tabs[self.active_tab].buffer.duplicate_line(true);
+                    return;
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    self.tabs[self.active_tab].buffer.move_line(-1);
+                    return;
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    self.tabs[self.active_tab].buffer.move_line(1);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        if self.search_query.is_none()
+            && ctrl
+            && shift
+            && matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("k"))
+        {
+            self.tabs[self.active_tab].buffer.delete_line();
+            return;
+        }
+        if self.search_query.is_none() && ctrl && shift && self.modifiers.alt_key() {
+            match &event.logical_key {
+                Key::Character(c) if c.eq_ignore_ascii_case("i") => {
+                    let tab = &mut self.tabs[self.active_tab];
+                    let mut target = tab.indentation;
+                    target.insert_spaces = !target.insert_spaces;
+                    match tab.buffer.convert_indentation(target) {
+                        Ok(_) => {
+                            tab.indentation = target;
+                            self.status = if target.insert_spaces {
+                                "Indentation converted to spaces"
+                            } else {
+                                "Indentation converted to tabs"
+                            }
+                            .into();
+                        }
+                        Err(error) => self.status = error.to_string(),
+                    }
+                    return;
+                }
+                Key::Character(c) if c.eq_ignore_ascii_case("s") => {
+                    self.tabs[self.active_tab].buffer.sort_lines();
+                    return;
+                }
+                Key::Character(c) if c.eq_ignore_ascii_case("d") => {
+                    self.tabs[self.active_tab].buffer.deduplicate_lines();
+                    return;
+                }
+                _ => {}
+            }
+        }
+        if self.search_query.is_none() && ctrl && !self.modifiers.alt_key() {
+            if matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("d"))
+                && !shift
+            {
+                self.tabs[self.active_tab].buffer.select_occurrences(false);
+                return;
+            }
+            if matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("l"))
+                && shift
+            {
+                self.tabs[self.active_tab].buffer.select_occurrences(true);
+                return;
+            }
+        }
+        if self.search_query.is_none()
+            && !ctrl
+            && !self.modifiers.alt_key()
+            && self.tabs[self.active_tab].buffer.selections().len() > 1
+        {
+            let motion = match event.logical_key {
+                Key::Named(NamedKey::ArrowLeft) => Some(graphite_text::CursorMotion::Left),
+                Key::Named(NamedKey::ArrowRight) => Some(graphite_text::CursorMotion::Right),
+                Key::Named(NamedKey::ArrowUp) => Some(graphite_text::CursorMotion::Up),
+                Key::Named(NamedKey::ArrowDown) => Some(graphite_text::CursorMotion::Down),
+                Key::Named(NamedKey::Home) => Some(graphite_text::CursorMotion::Home),
+                Key::Named(NamedKey::End) => Some(graphite_text::CursorMotion::End),
+                _ => None,
+            };
+            if let Some(motion) = motion {
+                self.tabs[self.active_tab]
+                    .buffer
+                    .move_selections(motion, shift);
+                return;
+            }
+        }
         let before = self.tabs[self.active_tab].buffer.cursor().char_idx;
         let mut moved = false;
         if self.search_query.is_some() {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) => {
                     self.search_query = None;
+                    self.search_generation = self.search_generation.wrapping_add(1);
+                    self.search_cancel
+                        .store(self.search_generation, Ordering::Relaxed);
                     self.status = "Search closed".into();
                 }
                 Key::Named(NamedKey::Backspace) => {
                     if let Some(q) = &mut self.search_query {
                         q.pop();
                     }
+                    self.start_project_search();
                 }
                 Key::Named(NamedKey::ArrowDown) if !self.search_results.is_empty() => {
                     self.search_index = (self.search_index + 1) % self.search_results.len()
@@ -171,6 +327,9 @@ impl App {
                         let col = hit.text.get(..hit.start).unwrap_or("").chars().count();
                         b.set_cursor_line_col(hit.line, col);
                         self.search_query = None;
+                        self.search_generation = self.search_generation.wrapping_add(1);
+                        self.search_cancel
+                            .store(self.search_generation, Ordering::Relaxed);
                     } else {
                         self.status = "No matches".into();
                     }
@@ -180,8 +339,8 @@ impl App {
                         if !text.chars().any(char::is_control) {
                             if let Some(q) = &mut self.search_query {
                                 q.push_str(text);
-                                self.search_results = self.tree.search(q);
                             }
+                            self.start_project_search();
                         }
                     }
                 }
@@ -193,16 +352,27 @@ impl App {
                 let report = config::import_vscode();
                 DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
                 Theme::set_imported_colors(config::imported_theme_colors());
-                let prefs = config::editor_prefs();
-                self.font_size = prefs.font_size;
-                self.tab_size = prefs.tab_size;
-                self.insert_spaces = prefs.insert_spaces;
+                let settings_error = match config::editor_prefs_for_workspace(self.tree.root()) {
+                    Ok(prefs) => {
+                        self.font_size = prefs.font_size;
+                        self.tab_size = prefs.tab_size;
+                        self.insert_spaces = prefs.insert_spaces;
+                        self.read_only_patterns = prefs.read_only_patterns;
+                        self.detect_indentation = prefs.detect_indentation;
+                        self.trim_trailing_whitespace = prefs.trim_trailing_whitespace;
+                        self.rulers = prefs.rulers;
+                        None
+                    }
+                    Err(error) => Some(error),
+                };
                 if let Some(gpu) = &mut self.gpu {
                     gpu.renderer
                         .set_font_size(self.font_size * gpu.window.scale_factor() as f32);
                 }
                 self.snippets = config::load_snippets();
-                self.status = if report.warnings.is_empty() {
+                self.status = if let Some(error) = settings_error {
+                    format!("Settings unchanged: {error}")
+                } else if report.warnings.is_empty() {
                     format!("Imported {} VS Code items", report.imported)
                 } else {
                     format!(
@@ -218,8 +388,11 @@ impl App {
                 self.snippet_query = Some(String::new());
                 self.status = "Snippet: type prefix, Enter inserts, Esc closes".into();
             }
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("f") => {
+            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("f") => {
                 self.search_query = Some(String::new());
+                self.search_generation = self.search_generation.wrapping_add(1);
+                self.search_cancel
+                    .store(self.search_generation, Ordering::Relaxed);
                 self.search_results.clear();
                 self.search_index = 0;
                 self.status = "Search: type query; Up/Down select, Enter opens result".into();
@@ -260,14 +433,18 @@ impl App {
                 self.status = "Close cancelled".into();
             }
             Key::Character(c) if ctrl && c.eq_ignore_ascii_case("c") => {
-                if let Some(text) = self.tabs[self.active_tab].buffer.selected_text() {
+                let selected = self.tabs[self.active_tab].buffer.selected_texts();
+                if !selected.is_empty() {
+                    let text = selected.join("\n");
                     if let Ok(mut clipboard) = arboard::Clipboard::new() {
                         let _ = clipboard.set_text(text);
                     }
                 }
             }
             Key::Character(c) if ctrl && c.eq_ignore_ascii_case("x") => {
-                if let Some(text) = self.tabs[self.active_tab].buffer.selected_text() {
+                let selected = self.tabs[self.active_tab].buffer.selected_texts();
+                if !selected.is_empty() {
+                    let text = selected.join("\n");
                     if let Ok(mut clipboard) = arboard::Clipboard::new() {
                         if clipboard.set_text(text).is_ok() {
                             self.tabs[self.active_tab].buffer.insert("");
@@ -278,7 +455,7 @@ impl App {
             Key::Character(c) if ctrl && c.eq_ignore_ascii_case("v") => {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     if let Ok(text) = clipboard.get_text() {
-                        self.tabs[self.active_tab].buffer.insert(&text);
+                        self.tabs[self.active_tab].buffer.paste(&text);
                     }
                 }
             }
@@ -286,8 +463,9 @@ impl App {
             Key::Named(NamedKey::Delete) => self.tabs[self.active_tab].buffer.delete(),
             Key::Named(NamedKey::Enter) => self.tabs[self.active_tab].buffer.insert("\n"),
             Key::Named(NamedKey::Tab) => {
-                let value = if self.insert_spaces {
-                    " ".repeat(self.tab_size)
+                let indentation = self.tabs[self.active_tab].indentation;
+                let value = if indentation.insert_spaces {
+                    " ".repeat(indentation.tab_size)
                 } else {
                     "\t".into()
                 };

@@ -3,6 +3,8 @@
 mod app;
 use app::accessibility::*;
 use app::drawing_helpers::*;
+use app::local_search::LocalSearch;
+use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
 
 mod config;
@@ -66,6 +68,7 @@ struct Tab {
     highlighter: IncrementalHighlighter,
     diagnostics: Vec<lsp_types::Diagnostic>,
     lsp_revision: Option<u64>,
+    indentation: graphite_text::Indentation,
 }
 
 struct App {
@@ -77,16 +80,28 @@ struct App {
     modifiers: ModifiersState,
     selecting: bool,
     ime_composing: bool,
+    ime_preedit: String,
     status: String,
     close_confirm: bool,
+    close_window_confirm: bool,
+    exit_requested: bool,
     search_query: Option<String>,
     search_results: Vec<SearchResult>,
     search_index: usize,
+    search_generation: u64,
+    search_cancel: Arc<std::sync::atomic::AtomicU64>,
+    local_search: Option<LocalSearch>,
+    quick_open: Option<QuickOpen>,
+    smart_selection_history: Vec<graphite_text::Selection>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
     font_size: f32,
     tab_size: usize,
     insert_spaces: bool,
+    detect_indentation: bool,
+    trim_trailing_whitespace: bool,
+    rulers: Vec<usize>,
+    read_only_patterns: Vec<String>,
     event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     lsp_manager: LspManager,
     lsp_sender: std::sync::mpsc::Sender<LspUiEvent>,
@@ -151,14 +166,30 @@ impl App {
             DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
             Theme::set_imported_colors(config::imported_theme_colors());
         }
+        let mut settings_error = None;
         let prefs = if isolated {
             config::EditorPrefs {
                 font_size: 15.0,
                 tab_size: 4,
                 insert_spaces: false,
+                read_only_patterns: Vec::new(),
+                detect_indentation: true,
+                trim_trailing_whitespace: false,
+                rulers: Vec::new(),
             }
         } else {
-            config::editor_prefs()
+            config::editor_prefs_for_workspace(&root).unwrap_or_else(|error| {
+                settings_error = Some(error);
+                config::EditorPrefs {
+                    font_size: 15.0,
+                    tab_size: 4,
+                    insert_spaces: false,
+                    read_only_patterns: Vec::new(),
+                    detect_indentation: true,
+                    trim_trailing_whitespace: false,
+                    rulers: Vec::new(),
+                }
+            })
         };
         Self {
             gpu: None,
@@ -171,17 +202,29 @@ impl App {
                 highlighter: IncrementalHighlighter::new(),
                 diagnostics: Vec::new(),
                 lsp_revision: None,
+                indentation: graphite_text::Indentation {
+                    insert_spaces: prefs.insert_spaces,
+                    tab_size: prefs.tab_size,
+                },
             }],
             active_tab: 0,
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             selecting: false,
             ime_composing: false,
-            status: String::from("Ctrl+S to save"),
+            ime_preedit: String::new(),
+            status: settings_error.unwrap_or_else(|| String::from("Ctrl+S to save")),
             close_confirm: false,
+            close_window_confirm: false,
+            exit_requested: false,
             search_query: None,
             search_results: Vec::new(),
             search_index: 0,
+            search_generation: 0,
+            search_cancel: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            local_search: None,
+            quick_open: None,
+            smart_selection_history: Vec::new(),
             snippet_query: None,
             snippets: if isolated {
                 Vec::new()
@@ -191,6 +234,10 @@ impl App {
             font_size: prefs.font_size,
             tab_size: prefs.tab_size,
             insert_spaces: prefs.insert_spaces,
+            detect_indentation: prefs.detect_indentation,
+            trim_trailing_whitespace: prefs.trim_trailing_whitespace,
+            rulers: prefs.rulers,
+            read_only_patterns: prefs.read_only_patterns,
             event_proxy,
             lsp_manager,
             lsp_sender,
@@ -303,6 +350,71 @@ mod tests {
     }
 
     #[test]
+    fn configured_readonly_pattern_blocks_document_edits() {
+        let dir = crate::test_support::TempDir::new();
+        fs::create_dir(dir.path().join("generated")).unwrap();
+        let file = dir.path().join("generated/data.rs");
+        fs::write(&file, "original").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.read_only_patterns = vec!["generated/**".into()];
+        app.open_file(file);
+        assert!(app.tabs[0].buffer.is_read_only());
+        app.tabs[0].buffer.insert("no");
+        assert_eq!(app.tabs[0].buffer.text(), "original");
+    }
+
+    #[test]
+    fn detect_indentation_and_trim_on_save_are_undoable() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("file.rs");
+        fs::write(&file, "fn main() { \n    let x = 1;  \n}\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(file.clone());
+        assert_eq!(
+            app.tabs[0].indentation,
+            graphite_text::Indentation {
+                insert_spaces: true,
+                tab_size: 4
+            }
+        );
+        app.trim_trailing_whitespace = true;
+        app.save();
+        assert_eq!(
+            fs::read_to_string(file).unwrap(),
+            "fn main() {\n    let x = 1;\n}\n"
+        );
+        app.tabs[0].buffer.undo();
+        assert_eq!(
+            app.tabs[0].buffer.text(),
+            "fn main() { \n    let x = 1;  \n}\n"
+        );
+        assert!(app.tabs[0].buffer.is_dirty());
+    }
+
+    #[test]
+    fn closing_window_saves_dirty_files_and_refuses_untitled_document() {
+        let temp = crate::test_support::TempDir::new();
+        let file = temp.path().join("first.rs");
+        fs::write(&file, "a").unwrap();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.open_file(file.clone());
+        app.tabs[0].buffer.insert("b");
+        app.request_window_close();
+        assert!(app.close_window_confirm);
+        assert!(!app.exit_requested);
+        app.save_all_before_close();
+        assert!(app.exit_requested);
+        assert_eq!(fs::read_to_string(file).unwrap(), "ba");
+        let mut untitled = App::new_with_options(temp.path().to_path_buf(), None, true);
+        untitled.tabs[0].buffer.insert("unsaved");
+        untitled.request_window_close();
+        untitled.save_all_before_close();
+        assert!(!untitled.exit_requested);
+        assert!(untitled.tabs[0].buffer.is_dirty());
+        assert!(untitled.status.contains("Cannot close"));
+    }
+
+    #[test]
     fn highlighting_tracks_edits_undo_and_skipped_revisions() {
         let dir = crate::test_support::TempDir::new();
         let path = dir.path().join("main.rs");
@@ -323,6 +435,153 @@ mod tests {
             actual.lines,
             fresh.highlight_rope(Language::Rust, app.tabs[0].buffer.rope(), None)
         );
+    }
+
+    #[test]
+    fn multiple_cursor_edits_keep_incremental_highlighting_consistent() {
+        let temp = crate::test_support::TempDir::new();
+        let path = temp.path().join("multi.rs");
+        fs::write(&path, "let café = 1;\nlet café = 2;\n").unwrap();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.refresh_highlights();
+        app.tabs[0].buffer.set_cursor_line_col(0, 6);
+        let previous_state = app.editor_state();
+        app.tabs[0].buffer.select_occurrences(true);
+        assert_ne!(previous_state, app.editor_state());
+        app.tabs[0].buffer.insert("🌎");
+        app.refresh_highlights();
+        let tab = &app.tabs[0];
+        assert_eq!(tab.buffer.text(), "let 🌎 = 1;\nlet 🌎 = 2;\n");
+        let mut fresh = IncrementalHighlighter::new();
+        assert_eq!(
+            tab.highlights.as_ref().unwrap().lines,
+            fresh.highlight_rope(Language::Rust, tab.buffer.rope(), None)
+        );
+        app.tabs[0].buffer.undo();
+        assert_eq!(app.tabs[0].buffer.text(), "let café = 1;\nlet café = 2;\n");
+    }
+
+    #[test]
+    fn multi_cursor_edit_rehighlights_and_invalidates_editor_state() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("main.rs");
+        fs::write(&path, "let café = 1;\nlet café = 2;\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.refresh_highlights();
+        app.tabs[0].buffer.set_cursor_line_col(0, 6);
+        let before = app.editor_state();
+        app.tabs[0].buffer.select_occurrences(true);
+        assert_ne!(app.editor_state(), before);
+        app.tabs[0].buffer.insert("🌎");
+        app.refresh_highlights();
+        let tab = &app.tabs[0];
+        assert_eq!(tab.buffer.text(), "let 🌎 = 1;\nlet 🌎 = 2;\n");
+        let mut fresh = IncrementalHighlighter::new();
+        assert_eq!(
+            tab.highlights.as_ref().unwrap().lines,
+            fresh.highlight_rope(Language::Rust, tab.buffer.rope(), None)
+        );
+        app.tabs[0].buffer.undo();
+        assert_eq!(app.tabs[0].buffer.text(), "let café = 1;\nlet café = 2;\n");
+    }
+
+    #[test]
+    fn local_search_selects_matches_and_replacement_is_undoable() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("Olá olá");
+        app.tabs[0].buffer.set_cursor_line_col(0, 0);
+        app.open_local_search(true);
+        let mut search = app.local_search.take().unwrap();
+        search.query = "olá".into();
+        search.replacement = "adeus".into();
+        app.local_search_next(&mut search, false);
+        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("Olá"));
+        app.local_replace_all(&mut search);
+        assert_eq!(app.tabs[0].buffer.text(), "adeus adeus");
+        app.tabs[0].buffer.undo();
+        assert_eq!(app.tabs[0].buffer.text(), "Olá olá");
+    }
+
+    #[test]
+    fn syntax_selection_expands_and_restores_cursor() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("main.rs");
+        fs::write(&path, "fn main() { let value = 1; }\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.tabs[0].buffer.set_cursor_line_col(0, 18);
+        let original = app.tabs[0].buffer.cursor().char_idx;
+        app.smart_select(true);
+        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        app.smart_select(true);
+        assert!(app.tabs[0].buffer.selected_text().unwrap().len() > 5);
+        app.smart_select(false);
+        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        app.smart_select(false);
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, original);
+        assert_eq!(app.tabs[0].buffer.selection(), None);
+    }
+
+    #[test]
+    fn project_search_ignores_results_from_an_outdated_request() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.search_query = Some("new".into());
+        app.search_generation = 2;
+        let hit = SearchResult {
+            path: dir.path().join("x.rs"),
+            line: 0,
+            start: 0,
+            end: 3,
+            text: "new".into(),
+        };
+        assert!(!app.accept_project_search("old", 1, vec![hit.clone()]));
+        assert!(app.search_results.is_empty());
+        assert!(app.accept_project_search("new", 2, vec![hit]));
+        assert_eq!(app.search_results.len(), 1);
+        app.search_query = None;
+        assert!(!app.accept_project_search("new", 2, Vec::new()));
+        assert_eq!(app.search_results.len(), 1);
+    }
+
+    #[test]
+    fn quick_open_discards_stale_results_and_respects_current_query() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.start_quick_open();
+        app.quick_open.as_mut().unwrap().query = "main".into();
+        app.search_generation = 4;
+        let path = dir.path().join("main.rs");
+        assert!(!app.accept_quick_open("old", 3, vec![path.clone()]));
+        assert!(app.quick_open.as_ref().unwrap().paths.is_empty());
+        assert!(app.accept_quick_open("main", 4, vec![path]));
+        assert_eq!(app.quick_open.as_ref().unwrap().paths.len(), 1);
+        app.quick_open = None;
+        assert!(!app.accept_quick_open("main", 4, Vec::new()));
+    }
+
+    #[test]
+    fn ime_preedit_and_commit_target_the_focused_input() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.ime_preedit("に".into());
+        assert!(app.ime_composing);
+        assert!(app.tabs[0].buffer.text().is_empty());
+        app.ime_commit("日本");
+        assert!(!app.ime_composing);
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        app.open_local_search(false);
+        app.ime_preedit("世".into());
+        app.ime_commit("世界");
+        assert_eq!(app.local_search.as_ref().unwrap().query, "世界");
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        app.local_search = None;
+        app.tabs[0].buffer.set_read_only(true);
+        app.ime_commit("変更");
+        assert_eq!(app.tabs[0].buffer.text(), "日本");
     }
 
     #[test]

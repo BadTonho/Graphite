@@ -25,9 +25,15 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 | Place cursor | Click in the editor |
 | Save | `Ctrl+S` |
 | Select all / extend selection | `Ctrl+A` / `Shift` + navigation keys |
+| Multiple cursors / occurrences | `Alt+Click` / `Ctrl+D` / `Ctrl+Shift+L` |
 | Copy / cut / paste | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
-| Search project | `Ctrl+F`, type, `Up` / `Down`, `Enter` |
+| Find / replace in document | `Ctrl+F` / `Ctrl+H`; Enter finds, Ctrl+Enter replaces all |
+| Search project | `Ctrl+Shift+F`, type, `Up` / `Down`, `Enter` |
+| Quick open | `Ctrl+P`, type a fuzzy file name, `Up` / `Down`, `Enter` |
+| Move / duplicate / delete line | `Alt+Up/Down` / `Shift+Alt+Up/Down` / `Ctrl+Shift+K` |
+| Expand / shrink syntax selection | `Shift+Alt+Right/Left` |
+| Convert indentation | `Ctrl+Shift+Alt+I` |
 | Switch / close tab | `Ctrl+Tab` / `Ctrl+W` |
 | Toggle light/dark theme | `Ctrl+Alt+T` |
 | Import VS Code user settings, snippets and themes | `Ctrl+Shift+I` |
