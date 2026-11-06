@@ -1,5 +1,6 @@
 /target
 **/*.rs.bk
+.graphite-*.tmp
 .env
 .env.*
 *.pem

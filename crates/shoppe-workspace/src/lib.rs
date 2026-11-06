@@ -1,7 +1,8 @@
 //! Workspace folder model: a lazily-loaded file tree that respects `.gitignore`.
 
+mod search;
+
 use ignore::WalkBuilder;
-use regex::Regex;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -43,47 +44,6 @@ impl Workspace {
 
     pub fn root(&self) -> &Path {
         &self.root
-    }
-
-    /// Searches text files using the same ignore rules as the file tree.
-    pub fn search(&self, query: &str) -> Vec<SearchResult> {
-        if query.is_empty() {
-            return Vec::new();
-        }
-        let Ok(pattern) = Regex::new(&regex::escape(query)) else {
-            return Vec::new();
-        };
-        let mut results = Vec::new();
-        for entry in WalkBuilder::new(&self.root)
-            .standard_filters(true)
-            .hidden(false)
-            .require_git(false)
-            .filter_entry(|e| e.file_name() != ".git")
-            .build()
-            .filter_map(Result::ok)
-        {
-            if !entry.file_type().is_some_and(|t| t.is_file()) {
-                continue;
-            }
-            let path = entry.into_path();
-            let Ok(contents) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            for (line_idx, line) in contents.lines().enumerate() {
-                for found in pattern.find_iter(line) {
-                    let start = found.start();
-                    let end = found.end();
-                    results.push(SearchResult {
-                        path: path.clone(),
-                        line: line_idx,
-                        start,
-                        end,
-                        text: line.to_owned(),
-                    });
-                }
-            }
-        }
-        results
     }
 
     /// Lists the direct children of `dir`, directories first, then alphabetical.
@@ -152,5 +112,21 @@ mod tests {
         assert_eq!(results[2].line, 1);
         assert_eq!(&results[2].text[results[2].start..results[2].end], "needle");
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn nested_listing_honors_workspace_ignore_rules() {
+        let dir = std::env::temp_dir().join(format!("graphite_ws_nested_{}", std::process::id()));
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(dir.join(".gitignore"), "src/ignored.txt\n").unwrap();
+        fs::write(dir.join("src/ignored.txt"), "ignored").unwrap();
+        fs::write(dir.join("src/visible.txt"), "visible").unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        let entries = ws.list_dir(&ws.root().join("src"));
+        assert_eq!(
+            entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["visible.txt"]
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -2701,6 +2701,7 @@ dependencies = [
 name = "graphite-syntax"
 version = "0.1.0"
 dependencies = [
+ "ropey",
  "tree-sitter",
  "tree-sitter-highlight",
  "tree-sitter-javascript",
