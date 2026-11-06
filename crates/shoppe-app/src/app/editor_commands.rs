@@ -11,20 +11,29 @@ impl App {
     }
 
     pub(crate) fn save_all_before_close(&mut self) {
+        self.snapshot_editor_view();
         let previous = self.active_tab;
         for index in 0..self.tabs.len() {
             if !self.tabs[index].buffer.is_dirty() {
                 continue;
             }
             self.active_tab = index;
+            let revision = self.tabs[index].buffer.revision();
             self.save();
+            if self.tabs[index].buffer.revision() == revision + 1 {
+                self.editor_groups
+                    .remap_other_views(index, self.tabs[index].buffer.last_position_edits());
+            }
             if self.tabs[index].buffer.is_dirty() {
                 self.status = format!("Cannot close: {}", self.status);
                 self.close_window_confirm = false;
+                self.active_tab = previous;
+                self.snapshot_editor_view();
                 return;
             }
         }
         self.active_tab = previous;
+        self.snapshot_editor_view();
         self.close_window_confirm = false;
         self.exit_requested = true;
     }
@@ -35,14 +44,12 @@ impl App {
         };
         let text = item.insert_text.unwrap_or_else(|| item.label.clone());
         let buffer = &mut self.tabs[self.active_tab].buffer;
-        let chars: Vec<char> = buffer.text().chars().collect();
-        let cursor = buffer.cursor().char_idx.min(chars.len());
-        let mut start = cursor;
-        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
-            start -= 1;
+        if buffer.is_read_only() {
+            self.completion_items.clear();
+            self.status = "Read-only document".into();
+            return;
         }
-        buffer.set_selection(start, cursor);
-        buffer.insert(&text);
+        buffer.complete_word(&text);
         self.completion_items.clear();
         self.hover_text = None;
     }

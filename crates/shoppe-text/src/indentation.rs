@@ -104,6 +104,13 @@ impl Buffer {
         if self.is_read_only() {
             return Err(TransactionError::ReadOnly);
         }
+        let edits = self.trailing_whitespace_edits();
+        let count = edits.len();
+        self.apply_preserving_selections(&edits)?;
+        Ok(count)
+    }
+
+    pub(super) fn trailing_whitespace_edits(&self) -> Vec<TextReplacement> {
         let mut edits = Vec::new();
         for (index, line) in self.rope.lines().enumerate() {
             let mut end = line.len_chars();
@@ -125,8 +132,6 @@ impl Buffer {
                 });
             }
         }
-        let count = edits.len();
-        self.apply_preserving_selections(&edits)?;
-        Ok(count)
+        edits
     }
 }

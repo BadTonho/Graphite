@@ -455,6 +455,66 @@ mod tests {
     }
 
     #[test]
+    fn failed_save_all_restores_focused_document_and_keeps_unsaved_contents() {
+        let temp = crate::test_support::TempDir::new();
+        let a = temp.path().join("a.txt");
+        let b = temp.path().join("b.txt");
+        fs::write(&a, "one  \n").unwrap();
+        fs::write(&b, "two  \n").unwrap();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.open_file(a.clone());
+        app.tabs[0].buffer.insert("é");
+        app.open_file(b.clone());
+        app.tabs[1].buffer.insert("🙂");
+        app.trim_trailing_whitespace = true;
+        fs::remove_file(&a).unwrap();
+        fs::create_dir(&a).unwrap();
+        app.save_all_before_close();
+        assert!(!app.exit_requested);
+        assert_eq!(app.active_tab, 1);
+        assert_eq!(app.tabs[0].buffer.text(), "éone  \n");
+        assert_eq!(app.tabs[1].buffer.text(), "🙂two  \n");
+        assert!(app.tabs.iter().all(|tab| tab.buffer.is_dirty()));
+        assert!(app.status.contains("Cannot close"));
+    }
+
+    #[test]
+    fn completion_on_readonly_document_keeps_existing_selection() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("let value = 1;");
+        app.tabs[0].buffer.set_selection(4, 9);
+        app.tabs[0].buffer.set_read_only(true);
+        app.completion_items.push(lsp_types::CompletionItem {
+            label: "other".into(),
+            ..Default::default()
+        });
+        app.accept_completion();
+        assert_eq!(app.tabs[0].buffer.text(), "let value = 1;");
+        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        assert_eq!(app.status, "Read-only document");
+    }
+
+    #[test]
+    fn completion_updates_every_cursor_and_remains_one_undo_step() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("café café");
+        app.tabs[0].buffer.set_selections(vec![
+            graphite_text::Selection { anchor: 4, head: 4 },
+            graphite_text::Selection { anchor: 9, head: 9 },
+        ]);
+        app.completion_items.push(lsp_types::CompletionItem {
+            label: "crème".into(),
+            ..Default::default()
+        });
+        app.accept_completion();
+        assert_eq!(app.tabs[0].buffer.text(), "crème crème");
+        app.tabs[0].buffer.undo();
+        assert_eq!(app.tabs[0].buffer.text(), "café café");
+    }
+
+    #[test]
     fn highlighting_tracks_edits_undo_and_skipped_revisions() {
         let dir = crate::test_support::TempDir::new();
         let path = dir.path().join("main.rs");

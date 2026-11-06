@@ -184,7 +184,7 @@ impl App {
             | "find.toggleSelection" => self.execute_find_command(command),
             "deleteLeft" => self.tabs[self.active_tab].buffer.backspace(),
             "deleteRight" => self.tabs[self.active_tab].buffer.delete(),
-            "typeNewline" => self.tabs[self.active_tab].buffer.insert("\n"),
+            "typeNewline" => self.tabs[self.active_tab].buffer.insert_newline(),
             "tab" => {
                 let tab = &mut self.tabs[self.active_tab];
                 let indentation = if tab.indentation.insert_spaces {
