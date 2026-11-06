@@ -1,0 +1,20 @@
+[package]
+name = "shoppe-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+winit = "0.30"
+shoppe-text = { path = "../shoppe-text" }
+shoppe-workspace = { path = "../shoppe-workspace" }
+shoppe-render = { path = "../shoppe-render" }
+shoppe-syntax = { path = "../shoppe-syntax" }
+arboard = "3.6.1"
+serde_json = "1.0"
+accesskit = "0.24.1"
+accesskit_winit = "0.32.2"
+lsp-server = "0.7.8"
+lsp-types = "0.97.0"
+portable-pty = "0.8.1"
+alacritty_terminal = "0.25.1"
