@@ -1,6 +1,7 @@
 use super::*;
 pub(super) mod accessibility;
 mod accessibility_actions;
+mod clipboard;
 mod commands;
 mod document;
 mod drawing;

@@ -285,23 +285,16 @@ impl App {
                 buffer.set_selection(0, buffer.len_chars());
             }
             "editor.action.clipboardCopyAction" | "editor.action.clipboardCutAction" => {
-                let selected = self.tabs[self.active_tab].buffer.selected_texts();
-                if !selected.is_empty() {
-                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                        if clipboard.set_text(selected.join("\n")).is_ok()
-                            && command == "editor.action.clipboardCutAction"
-                        {
-                            self.tabs[self.active_tab].buffer.insert("");
-                        }
-                    }
-                }
+                let mut clipboard = super::clipboard::SystemClipboard;
+                super::clipboard::copy_or_cut(
+                    &mut self.tabs[self.active_tab].buffer,
+                    &mut clipboard,
+                    command == "editor.action.clipboardCutAction",
+                );
             }
             "editor.action.clipboardPasteAction" => {
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    if let Ok(text) = clipboard.get_text() {
-                        self.tabs[self.active_tab].buffer.paste(&text);
-                    }
-                }
+                let mut clipboard = super::clipboard::SystemClipboard;
+                super::clipboard::paste(&mut self.tabs[self.active_tab].buffer, &mut clipboard);
             }
             "editor.action.triggerSuggest" => {
                 self.completion_items.clear();
