@@ -83,7 +83,16 @@ impl TerminalSession {
     ) -> Result<Self, String> {
         let shell = shell_override
             .map(str::to_owned)
-            .or_else(|| std::env::var("GRAPHITE_SHELL").ok())
+            .or_else(|| {
+                std::env::var("GRAPHITE_SHELL")
+                    .ok()
+                    .filter(|shell| !shell.trim().is_empty())
+            })
+            .or_else(|| {
+                std::env::var("GRAPHITE_SHELL")
+                    .ok()
+                    .filter(|shell| !shell.trim().is_empty())
+            })
             .unwrap_or_else(default_shell);
         Self::start_profile(
             root,

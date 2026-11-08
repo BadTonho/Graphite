@@ -45,6 +45,8 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
 LSP servers are user-installed executables configured in `lsp.json` in the app configuration directory. The terminal uses the system shell by default and can be changed in `terminal.json` or with `GRAPHITE_SHELL`.
 
+For existing installations, Graphite keeps using the previous `Graphite` configuration directory if no `Graphite` directory exists. The previous `GRAPHITE_SHELL` variable remains a fallback when `GRAPHITE_SHELL` is unset or empty.
+
 ## Workspace layout
 
 | Crate | Responsibility |
