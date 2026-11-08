@@ -87,6 +87,7 @@ struct App {
     modifiers: ModifiersState,
     keymap: keybindings::Keymap,
     context_keys: app::context_keys::ContextKeyService,
+    command_runtime: app::command_execution::CommandRuntime,
     selecting: bool,
     reveal_cursor: bool,
     status: String,
@@ -324,6 +325,7 @@ impl App {
             modifiers: ModifiersState::empty(),
             keymap,
             context_keys: app::context_keys::ContextKeyService::default(),
+            command_runtime: Default::default(),
             selecting: false,
             reveal_cursor: true,
             status: settings_error
@@ -1048,7 +1050,9 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.test_editor_mut(0).insert("unsaved");
-        app.checkout_selected_branch();
+        app.scm_snapshot.branches.push("other".into());
+        app.open_branch_picker();
+        app.run_ui_command("shoppe.scm.checkout");
         assert!(app.status.contains("unsaved changes"));
     }
 

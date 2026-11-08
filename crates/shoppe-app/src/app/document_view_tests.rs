@@ -67,7 +67,7 @@ fn search_completion_clipboard_and_line_commands_remap_peer_views() {
     app.focus_editor_group(0);
     assert_eq!(app.editor().cursor().char_idx, 13);
     app.focus_editor_group(second);
-    app.execute_custom_command("undo");
+    app.run_ui_command("undo");
     app.editor_mut().set_selection(1, 1);
     app.completion_items = vec![lsp_types::CompletionItem {
         label: "alpha".into(),
@@ -77,7 +77,7 @@ fn search_completion_clipboard_and_line_commands_remap_peer_views() {
     app.focus_editor_group(0);
     assert_eq!(app.editor().cursor().char_idx, 13);
     app.focus_editor_group(second);
-    app.execute_custom_command("undo");
+    app.run_ui_command("undo");
     app.editor_mut().set_selection(0, 1);
     let mut clipboard = Clipboard(String::new());
     assert!(super::clipboard::copy_or_cut(
@@ -92,8 +92,8 @@ fn search_completion_clipboard_and_line_commands_remap_peer_views() {
         &mut app.editor_mut(),
         &mut clipboard
     ));
-    app.execute_custom_command("editor.action.copyLinesDownAction");
-    app.execute_custom_command("editor.action.deleteLines");
+    app.run_ui_command("editor.action.copyLinesDownAction");
+    app.run_ui_command("editor.action.deleteLines");
     app.focus_editor_group(0);
     assert_eq!(app.editor().text(), "a bc a def");
     assert_eq!(app.editor().cursor().char_idx, 9);
@@ -113,7 +113,7 @@ fn undo_restores_origin_selections_without_changing_focus_or_scroll() {
     let after = app.editor().selections();
     app.focus_editor_group(0);
     let before_undo = app.editor().selections();
-    app.execute_custom_command("undo");
+    app.run_ui_command("undo");
     assert_eq!(app.editor_groups.focused(), 0);
     assert_eq!(app.editor_groups.active_view().scroll_line, 2);
     assert_ne!(app.editor().selections(), before_undo);
@@ -124,7 +124,7 @@ fn undo_restores_origin_selections_without_changing_focus_or_scroll() {
     );
     assert_eq!(app.editor_groups.active_view().scroll_line, 1);
     app.focus_editor_group(0);
-    app.execute_custom_command("redo");
+    app.run_ui_command("redo");
     assert_eq!(app.editor_groups.focused(), 0);
     app.focus_editor_group(second);
     assert_eq!(app.editor().selections(), after);
@@ -142,7 +142,7 @@ fn closed_origin_is_not_resurrected_by_undo_and_reopened_view_has_new_identity()
     let origin = app.editor_groups.active_view().id;
     app.editor_mut().insert("🌎");
     app.close_active_tab();
-    app.execute_custom_command("undo");
+    app.run_ui_command("undo");
     assert_eq!(app.editor_groups.group_count(), 1);
     assert_eq!(app.editor().cursor().char_idx, 5);
     assert!(!app.editor_groups.view_ids().contains(&origin));
@@ -151,7 +151,7 @@ fn closed_origin_is_not_resurrected_by_undo_and_reopened_view_has_new_identity()
     assert_eq!(app.active_document(), document);
     assert_ne!(app.editor_groups.active_view().id, origin);
     assert_eq!(app.editor().cursor().char_idx, 5);
-    app.execute_custom_command("redo");
+    app.run_ui_command("redo");
     assert_eq!(app.editor().text(), "a🌎bcdef");
     assert_eq!(app.editor().cursor().char_idx, 6);
 }
@@ -217,7 +217,7 @@ fn session_maps_each_transaction_and_indentation_for_peer_views() {
         insert_spaces: true,
         tab_size: 4,
     };
-    app.execute_custom_command("editor.action.toggleIndentation");
+    app.run_ui_command("editor.action.toggleIndentation");
     app.focus_editor_group(0);
     assert!(app.editor().cursor().char_idx <= app.editor().len_chars());
     assert_eq!(app.editor().cursor_line_col(), (1, 3));
@@ -251,7 +251,7 @@ fn save_metadata_controls_dirty_and_reload_preserves_monotonic_version() {
     )]);
     assert_eq!(app.editor().revision(), revision + 1);
     assert!(!app.documents[id].is_dirty());
-    app.execute_custom_command("undo");
+    app.run_ui_command("undo");
     assert_eq!(app.editor().text(), "xyz");
 }
 

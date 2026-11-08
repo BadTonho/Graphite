@@ -1,6 +1,7 @@
 //! Parsing and resolving user keybindings independently of the event loop.
 mod defaults;
 mod when;
+pub(crate) use when::Expr as Condition;
 
 use std::collections::HashMap;
 
@@ -9,16 +10,21 @@ struct Binding {
     keys: Vec<String>,
     command: String,
     condition: Option<when::Expr>,
+    arguments: serde_json::Value,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Resolution {
     Unmatched,
     Pending,
-    Command(String),
+    Command {
+        id: String,
+        arguments: serde_json::Value,
+    },
     Unbound,
 }
 
+#[derive(Debug)]
 pub(crate) struct Keymap {
     defaults: Vec<Binding>,
     bindings: Vec<Binding>,
@@ -35,6 +41,7 @@ impl Default for Keymap {
                     .map(|stroke| normalize_stroke(stroke).expect("valid default key"))
                     .collect(),
                 command: (*command).into(),
+                arguments: serde_json::Value::Null,
                 condition: Some(when::parse(condition).expect("valid default context")),
             })
             .collect();
@@ -82,6 +89,7 @@ impl Keymap {
                 Ok(Binding {
                     keys,
                     command: command.to_owned(),
+                    arguments: object.get("args").cloned().unwrap_or_default(),
                     condition,
                 })
             };
@@ -131,7 +139,10 @@ impl Keymap {
                 }
                 let command = binding.command.clone();
                 self.pending.clear();
-                return Resolution::Command(command);
+                return Resolution::Command {
+                    id: command,
+                    arguments: binding.arguments.clone(),
+                };
             }
             if all.iter().any(|binding| {
                 binding.command.starts_with('-') && binding.keys == self.pending && active(binding)
@@ -207,7 +218,10 @@ mod tests {
         assert_eq!(map.resolve("Ctrl+K", &context), Resolution::Pending);
         assert_eq!(
             map.resolve("ctrl+x", &context),
-            Resolution::Command("second".into())
+            Resolution::Command {
+                id: "second".into(),
+                arguments: serde_json::Value::Null
+            }
         );
         assert_eq!(map.resolve("alt+arrowup", &context), Resolution::Unbound);
         assert_eq!(map.resolve("ctrl+k", &context), Resolution::Pending);
@@ -224,7 +238,10 @@ mod tests {
             .is_err());
         assert_eq!(
             map.resolve("ctrl+p", &HashMap::new()),
-            Resolution::Command("open".into())
+            Resolution::Command {
+                id: "open".into(),
+                arguments: serde_json::Value::Null
+            }
         );
     }
 
@@ -234,12 +251,18 @@ mod tests {
         let editor = HashMap::from([("editorTextFocus".into(), "true".into())]);
         assert_eq!(
             map.resolve("ctrl+s", &editor),
-            Resolution::Command("workbench.action.files.save".into())
+            Resolution::Command {
+                id: "workbench.action.files.save".into(),
+                arguments: serde_json::Value::Null
+            }
         );
         assert_eq!(map.resolve("ctrl+k", &editor), Resolution::Pending);
         assert_eq!(
             map.resolve("ctrl+\\", &editor),
-            Resolution::Command("workbench.action.splitEditorDown".into())
+            Resolution::Command {
+                id: "workbench.action.splitEditorDown".into(),
+                arguments: serde_json::Value::Null
+            }
         );
         map.reload(
             r#"[
@@ -252,7 +275,10 @@ mod tests {
         assert_eq!(map.resolve("ctrl+s", &editor), Resolution::Unbound);
         assert_eq!(
             map.resolve("ctrl+q", &editor),
-            Resolution::Command("workbench.action.files.save".into())
+            Resolution::Command {
+                id: "workbench.action.files.save".into(),
+                arguments: serde_json::Value::Null
+            }
         );
         let readonly = HashMap::from([
             ("editorTextFocus".into(), "true".into()),
@@ -260,7 +286,10 @@ mod tests {
         ]);
         assert_eq!(
             map.resolve("ctrl+s", &readonly),
-            Resolution::Command("other".into())
+            Resolution::Command {
+                id: "other".into(),
+                arguments: serde_json::Value::Null
+            }
         );
     }
 
@@ -272,7 +301,15 @@ mod tests {
         let editor = HashMap::from([("editorTextFocus".into(), "true".into())]);
         assert_eq!(
             map.resolve("ctrl+s", &editor),
-            Resolution::Command("workbench.action.files.save".into())
+            Resolution::Command {
+                id: "workbench.action.files.save".into(),
+                arguments: serde_json::Value::Null
+            }
         );
     }
+}
+
+#[cfg(test)]
+pub(crate) fn default_command_ids() -> Vec<&'static str> {
+    defaults::BINDINGS.iter().map(|(_, id, _)| *id).collect()
 }

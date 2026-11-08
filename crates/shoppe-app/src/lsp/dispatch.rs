@@ -29,12 +29,40 @@ pub(super) fn dispatch_server_message(
             };
             let response_error = response.error.map(|error| error.message);
             let result = response.result.unwrap_or(Value::Null);
+            if response_error.is_none() && !valid_response(kind, &result) {
+                let _ = event_tx.send(LspUiEvent::RequestFailed {
+                    request_id,
+                    message: format!("Invalid {kind} response"),
+                });
+                return;
+            }
+            if let Some(message) = response_error
+                .as_ref()
+                .filter(|_| kind != "codeActions" && kind != "executeCommand")
+            {
+                let _ = event_tx.send(LspUiEvent::RequestFailed {
+                    request_id,
+                    message: message.clone(),
+                });
+                return;
+            }
             match kind {
                 "executeCommand" => {
+                    if request_id != 0 {
+                        let outcome = response_error
+                            .clone()
+                            .map_or_else(|| Ok(result.clone()), Err);
+                        let _ = event_tx.send(LspUiEvent::ServerCommandCompleted {
+                            request_id,
+                            result: outcome,
+                        });
+                    }
                     let message = response_error
                         .map(|error| format!("Server command failed: {error}"))
                         .unwrap_or_else(|| "Server command completed".into());
-                    let _ = event_tx.send(LspUiEvent::Status(message));
+                    if request_id == 0 {
+                        let _ = event_tx.send(LspUiEvent::Status(message));
+                    }
                 }
                 "completion" => {
                     let items = result
@@ -109,5 +137,37 @@ pub(super) fn dispatch_server_message(
             }
         }
         _ => {}
+    }
+}
+
+fn valid_response(kind: &str, value: &Value) -> bool {
+    if value.is_null() {
+        return true;
+    }
+    match kind {
+        "completion" => value
+            .as_array()
+            .or_else(|| value.get("items").and_then(Value::as_array))
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .all(|item| serde_json::from_value::<CompletionItem>(item.clone()).is_ok())
+            }),
+        "definition" => {
+            let valid = |value: &Value| {
+                serde_json::from_value::<Location>(value.clone()).is_ok()
+                    || serde_json::from_value::<lsp_types::LocationLink>(value.clone()).is_ok()
+            };
+            value
+                .as_array()
+                .map_or_else(|| valid(value), |items| items.iter().all(valid))
+        }
+        "hover" => serde_json::from_value::<Hover>(value.clone()).is_ok(),
+        "codeActions" => value.as_array().is_some_and(|items| {
+            items.iter().all(|item| {
+                serde_json::from_value::<lsp_types::CodeActionOrCommand>(item.clone()).is_ok()
+            })
+        }),
+        _ => true,
     }
 }

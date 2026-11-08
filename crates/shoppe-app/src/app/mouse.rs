@@ -8,51 +8,29 @@ impl App {
         let (window_width, window_height) = gpu.renderer.size();
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
 
-        if let Some(diff) = self.diff_view.as_mut() {
+        if self.diff_view.is_some() {
             if my < lh * 1.5 {
-                diff.inline = !diff.inline;
+                self.run_ui_command("shoppe.diff.toggleLayout");
             }
             return;
         }
         if my >= window_height - lh {
             match self.status_segment_at(mx, cw) {
                 Some(super::phase4_tools::StatusSegment::Screencast) => {
-                    self.toggle_screencast_mode()
+                    self.run_ui_command("workbench.action.toggleScreencastMode")
                 }
                 Some(super::phase4_tools::StatusSegment::Indentation) => {
-                    let document = self.active_document();
-                    let mut target = self.documents[document].indentation;
-                    target.insert_spaces = !target.insert_spaces;
-                    let result = self.editor_mut().convert_indentation(target);
-                    if result.is_ok() {
-                        self.documents[document].indentation = target;
-                        self.status = if target.insert_spaces {
-                            "Indentation converted to spaces"
-                        } else {
-                            "Indentation converted to tabs"
-                        }
-                        .into();
-                    }
+                    self.run_ui_command("editor.action.toggleIndentation");
                 }
                 Some(super::phase4_tools::StatusSegment::LineEnding) => {
-                    let document = self.active_document();
-                    self.documents[document].line_ending =
-                        self.documents[self.active_document()].line_ending.toggle();
-                    self.status = format!(
-                        "Line endings: {}",
-                        self.documents[self.active_document()].line_ending.label()
-                    );
+                    self.run_ui_command("shoppe.editor.toggleLineEnding")
                 }
                 Some(super::phase4_tools::StatusSegment::Encoding) => {
-                    let document = self.active_document();
-                    self.documents[document].encoding =
-                        self.documents[self.active_document()].encoding.next();
-                    self.status = format!(
-                        "Encoding for next save: {}",
-                        self.documents[self.active_document()].encoding.label()
-                    );
+                    self.run_ui_command("shoppe.editor.nextEncoding")
                 }
-                Some(super::phase4_tools::StatusSegment::Branch) => self.open_branch_picker(),
+                Some(super::phase4_tools::StatusSegment::Branch) => {
+                    self.run_ui_command("shoppe.scm.openBranchPicker")
+                }
                 None => {}
             }
             return;
@@ -63,7 +41,10 @@ impl App {
                 let text = self.documents[self.active_document()].buffer.text();
                 let row = ((my / lh) as isize - 1).max(0) as usize;
                 if let Some(header) = graphite_syntax::declaration_headers(language, &text).get(row) {
-                    self.editor_mut().set_cursor_line_col(header.line, 0);
+                    self.run_ui_command_args(
+                        "shoppe.editor.setCursor",
+                        serde_json::json!({"line":header.line,"column":0}),
+                    );
                     self.reveal_cursor = true;
                 }
             }
@@ -81,17 +62,17 @@ impl App {
                     if !self.terminal_problems && mx >= SIDEBAR_WIDTH + cw * 19.0 {
                         let offset = mx - SIDEBAR_WIDTH;
                         if offset < cw * 34.0 {
-                            self.cycle_terminal_profile();
+                            self.run_ui_command("shoppe.terminal.nextProfile");
                         } else if offset < cw * 38.0 {
-                            self.create_terminal_tab();
+                            self.run_ui_command("shoppe.terminal.new");
                         } else if offset < cw * 45.0 {
-                            self.toggle_terminal_split();
+                            self.run_ui_command("shoppe.terminal.split");
                         } else if offset < cw * 52.0 {
-                            self.close_focused_terminal();
+                            self.run_ui_command("shoppe.terminal.close");
                         } else if offset < cw * 54.0 {
-                            self.scroll_terminal_tabs(-1);
+                            self.run_ui_command("shoppe.terminal.scrollLeft");
                         } else if offset < cw * 57.0 {
-                            self.scroll_terminal_tabs(1);
+                            self.run_ui_command("shoppe.terminal.scrollRight");
                         } else {
                             let mut x = SIDEBAR_WIDTH + cw * 57.0;
                             let mut selected = None;
@@ -112,33 +93,19 @@ impl App {
                                 x += tab_width;
                             }
                             if let Some(index) = selected {
-                                self.select_terminal(index);
+                                self.run_ui_command_args(
+                                    "shoppe.terminal.select",
+                                    serde_json::json!({"index":index}),
+                                );
                             }
                         }
                     }
                 } else if self.terminal_problems {
                     let row = ((my - panel_top - lh * 1.5) / lh).max(0.0) as usize;
-                    if let Some((document, diagnostic)) =
-                        self.diagnostic_entries().get(row).cloned()
-                    {
-                        self.remember_diagnostic(document, &diagnostic);
-                        self.push_navigation_location();
-                        self.activate_editor_document(document);
-                        let line = (diagnostic.range.start.line as usize).min(
-                            self.documents[document]
-                                .buffer
-                                .len_lines()
-                                .saturating_sub(1),
-                        );
-                        let col = super::drawing_helpers::utf16_column_to_chars(
-                            &self.documents[document].buffer.line(line),
-                            diagnostic.range.start.character,
-                        );
-                        self.editor_mut().set_cursor_line_col(line, col);
-                        self.reveal_cursor = true;
-                        self.push_navigation_location();
-                        self.request_quick_fixes_for(diagnostic);
-                    }
+                    self.run_ui_command_args(
+                        "shoppe.problems.open",
+                        serde_json::json!({"index":row}),
+                    );
                 } else {
                     self.terminal_focused = true;
                     self.focused_terminal = if let Some(second) = self.split_terminal {
@@ -160,7 +127,7 @@ impl App {
             if self.scm_visible {
                 let row = ((my - lh * 3.25) / lh).max(0.0) as usize;
                 if my >= lh * 3.25 && row < self.scm_snapshot.files.len() {
-                    self.scm_selected = row;
+                    self.run_ui_command_args("shoppe.scm.select", serde_json::json!({"index":row}));
                 }
                 return;
             }
@@ -226,10 +193,16 @@ impl App {
                     self.wrapping_indent,
                 );
                 if self.modifiers.alt_key() {
-                    self.editor_mut().add_cursor(offset);
+                    self.run_ui_command_args(
+                        "shoppe.editor.addCursor",
+                        serde_json::json!({"index":offset}),
+                    );
                     self.selecting = false;
                 } else {
-                    self.editor_mut().set_selection(offset, offset);
+                    self.run_ui_command_args(
+                        "shoppe.editor.setSelection",
+                        serde_json::json!({"anchor":offset,"head":offset}),
+                    );
                     self.selecting = true;
                 }
                 return;
@@ -238,16 +211,22 @@ impl App {
                 + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.modifiers.alt_key() {
-                let mut b = self.editor_mut();
+                let b = self.editor();
                 let line = line.min(b.len_lines() - 1);
                 let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
                 let offset = b.line_start_char(line) + col.min(width);
-                b.add_cursor(offset);
                 drop(b);
+                self.run_ui_command_args(
+                    "shoppe.editor.addCursor",
+                    serde_json::json!({"index":offset}),
+                );
                 self.selecting = false;
                 return;
             }
-            self.editor_mut().set_cursor_line_col(line, col);
+            self.run_ui_command_args(
+                "shoppe.editor.setCursor",
+                serde_json::json!({"line":line,"column":col}),
+            );
             self.selecting = true;
         }
     }
@@ -282,7 +261,10 @@ impl App {
                 .selection()
                 .map(|s| s.anchor)
                 .unwrap_or(self.editor().cursor().char_idx);
-            self.editor_mut().set_selection(anchor, head);
+            self.run_ui_command_args(
+                "shoppe.editor.setSelection",
+                serde_json::json!({"anchor":anchor,"head":head}),
+            );
             return;
         }
         let line = (self.editor_groups.active_view_mut().scroll_line
@@ -305,6 +287,9 @@ impl App {
             .selection()
             .map(|s| s.anchor)
             .unwrap_or(self.editor().cursor().char_idx);
-        self.editor_mut().set_selection(anchor, head);
+        self.run_ui_command_args(
+            "shoppe.editor.setSelection",
+            serde_json::json!({"anchor":anchor,"head":head}),
+        );
     }
 }

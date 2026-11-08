@@ -44,6 +44,17 @@ struct ServerConfigFile {
 #[derive(Debug, Clone)]
 pub enum LspUiEvent {
     Status(String),
+    ServerStopped {
+        extension: String,
+    },
+    RequestFailed {
+        request_id: u64,
+        message: String,
+    },
+    ServerCommandCompleted {
+        request_id: u64,
+        result: Result<Value, String>,
+    },
     ApplyEdit {
         id: RequestId,
         edit: lsp_types::WorkspaceEdit,
@@ -134,7 +145,11 @@ enum LspCommand {
         range: Range,
         diagnostics: Vec<Diagnostic>,
     },
+    Cancel {
+        request_id: u64,
+    },
     ExecuteCommand {
+        request_id: u64,
         command: String,
         arguments: Vec<Value>,
     },
@@ -193,6 +208,9 @@ impl LspManager {
         }
     }
 
+    pub fn server_extension_for(&self, path: &Path) -> Option<String> {
+        self.config_for(path).map(|config| config.extension.clone())
+    }
     pub fn supports_path(&self, path: &Path) -> bool {
         self.config_for(path).is_some()
     }
@@ -284,7 +302,7 @@ impl LspManager {
         );
     }
 
-    pub fn request_completion(&self, path: &Path, position: Position, request_id: u64) {
+    pub fn request_completion(&self, path: &Path, position: Position, request_id: u64) -> bool {
         self.send(
             path,
             LspCommand::Complete {
@@ -292,10 +310,10 @@ impl LspManager {
                 uri: String::new(),
                 position,
             },
-        );
+        )
     }
 
-    pub fn request_definition(&self, path: &Path, position: Position, request_id: u64) {
+    pub fn request_definition(&self, path: &Path, position: Position, request_id: u64) -> bool {
         self.send(
             path,
             LspCommand::Definition {
@@ -303,10 +321,10 @@ impl LspManager {
                 uri: String::new(),
                 position,
             },
-        );
+        )
     }
 
-    pub fn request_hover(&self, path: &Path, position: Position, request_id: u64) {
+    pub fn request_hover(&self, path: &Path, position: Position, request_id: u64) -> bool {
         self.send(
             path,
             LspCommand::Hover {
@@ -314,7 +332,7 @@ impl LspManager {
                 uri: String::new(),
                 position,
             },
-        );
+        )
     }
 
     pub fn request_inlay_hints(
@@ -341,7 +359,7 @@ impl LspManager {
         range: Range,
         diagnostics: Vec<Diagnostic>,
         request_id: u64,
-    ) {
+    ) -> bool {
         self.send(
             path,
             LspCommand::CodeActions {
@@ -350,14 +368,24 @@ impl LspManager {
                 range,
                 diagnostics,
             },
-        );
+        )
     }
 
+    #[cfg(test)]
     pub fn execute_server_command(
         &self,
         path: &Path,
         command: String,
         arguments: Vec<Value>,
+    ) -> bool {
+        self.execute_server_command_tracked(path, command, arguments, 0)
+    }
+    pub fn execute_server_command_tracked(
+        &self,
+        path: &Path,
+        command: String,
+        arguments: Vec<Value>,
+        request_id: u64,
     ) -> bool {
         if !self.documents.contains_key(path) {
             return false;
@@ -372,21 +400,33 @@ impl LspManager {
         server
             .sender
             .send(WorkerMessage::Command(LspCommand::ExecuteCommand {
+                request_id,
                 command,
                 arguments,
             }))
             .is_ok()
     }
 
-    fn send(&self, path: &Path, mut command: LspCommand) {
+    pub fn cancel_request(&self, path: &Path, request_id: u64) {
+        if let Some(server) = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(|e| self.servers.get(&e.to_ascii_lowercase()))
+        {
+            let _ = server
+                .sender
+                .send(WorkerMessage::Command(LspCommand::Cancel { request_id }));
+        }
+    }
+    fn send(&self, path: &Path, mut command: LspCommand) -> bool {
         let Some(uri) = self.documents.get(path) else {
-            return;
+            return false;
         };
         let Some(extension) = path.extension().and_then(|e| e.to_str()) else {
-            return;
+            return false;
         };
         let Some(server) = self.servers.get(&extension.to_ascii_lowercase()) else {
-            return;
+            return false;
         };
         match &mut command {
             LspCommand::Change { uri: target, .. }
@@ -397,9 +437,9 @@ impl LspManager {
             | LspCommand::Hover { uri: target, .. }
             | LspCommand::InlayHints { uri: target, .. }
             | LspCommand::CodeActions { uri: target, .. } => *target = uri.clone(),
-            _ => return,
+            _ => return false,
         }
-        let _ = server.sender.send(WorkerMessage::Command(command));
+        server.sender.send(WorkerMessage::Command(command)).is_ok()
     }
 
     pub fn shutdown(&mut self) {
@@ -531,7 +571,9 @@ mod tests {
             .insert(path.clone(), "file:///test.rs".into());
         assert!(manager.execute_server_command(&path, "fix".into(), vec![json!(42)]));
         match receiver.recv().unwrap() {
-            WorkerMessage::Command(LspCommand::ExecuteCommand { command, arguments }) => {
+            WorkerMessage::Command(LspCommand::ExecuteCommand {
+                command, arguments, ..
+            }) => {
                 assert_eq!(command, "fix");
                 assert_eq!(arguments, vec![json!(42)]);
             }
@@ -789,3 +831,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod command_tests;

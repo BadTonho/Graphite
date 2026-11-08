@@ -6,6 +6,10 @@ pub(super) fn run_server(
     receiver: Receiver<WorkerMessage>,
     event_tx: Sender<LspUiEvent>,
 ) {
+    let _lifetime = ServerLifetime {
+        events: event_tx.clone(),
+        extension: config.extension.clone(),
+    };
     let mut child = match Command::new(&config.command)
         .args(&config.args)
         .current_dir(&root)
@@ -158,7 +162,10 @@ pub(super) fn run_server(
         let _ = signal_tx.send(message);
     }
     let mut text_cache = HashMap::<String, String>::new();
-    let mut pending = HashMap::<i32, (u64, &'static str)>::new();
+    let mut pending = PendingClientRequests {
+        entries: HashMap::new(),
+        events: event_tx.clone(),
+    };
     let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
     let mut child_exited = false;
@@ -175,10 +182,32 @@ pub(super) fn run_server(
         match signal_rx.recv_timeout(Duration::from_millis(40)) {
             Ok(WorkerMessage::Command(command)) => {
                 let messages = match command {
-                    LspCommand::ExecuteCommand { command, arguments } => {
+                    LspCommand::Cancel { request_id } => {
+                        let ids: Vec<_> = pending
+                            .iter()
+                            .filter(|(_, (ui, _))| *ui == request_id)
+                            .map(|(id, _)| *id)
+                            .collect();
+                        for id in &ids {
+                            pending.remove(id);
+                        }
+                        ids.into_iter()
+                            .map(|id| {
+                                Message::Notification(Notification {
+                                    method: "$/cancelRequest".into(),
+                                    params: json!({"id": id}),
+                                })
+                            })
+                            .collect()
+                    }
+                    LspCommand::ExecuteCommand {
+                        request_id,
+                        command,
+                        arguments,
+                    } => {
                         let id = next_id;
                         next_id += 1;
-                        pending.insert(id, (0, "executeCommand"));
+                        pending.insert(id, (request_id, "executeCommand"));
                         vec![Message::Request(Request {
                             id: RequestId::from(id),
                             method: "workspace/executeCommand".into(),
@@ -412,6 +441,47 @@ pub(super) fn run_server(
         "{} language server stopped",
         config.language_id
     )));
+}
+
+struct ServerLifetime {
+    events: Sender<LspUiEvent>,
+    extension: String,
+}
+impl Drop for ServerLifetime {
+    fn drop(&mut self) {
+        let _ = self.events.send(LspUiEvent::ServerStopped {
+            extension: self.extension.clone(),
+        });
+    }
+}
+
+/// Resolves outstanding UI requests on every worker exit, including shutdown.
+struct PendingClientRequests {
+    entries: HashMap<i32, (u64, &'static str)>,
+    events: Sender<LspUiEvent>,
+}
+impl std::ops::Deref for PendingClientRequests {
+    type Target = HashMap<i32, (u64, &'static str)>;
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+impl std::ops::DerefMut for PendingClientRequests {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entries
+    }
+}
+impl Drop for PendingClientRequests {
+    fn drop(&mut self) {
+        for (_, (request_id, _)) in self.entries.drain() {
+            if request_id != 0 {
+                let _ = self.events.send(LspUiEvent::RequestFailed {
+                    request_id,
+                    message: "Language server stopped".into(),
+                });
+            }
+        }
+    }
 }
 
 struct PendingServerRequest {

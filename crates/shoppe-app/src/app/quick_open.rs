@@ -27,17 +27,42 @@ impl App {
         };
         let root = self.tree.root().to_path_buf();
         let cancel = self.search_cancel.clone();
+        let tracked = self
+            .command_runtime
+            .current
+            .and_then(|id| self.command_runtime.pending.get(&id))
+            .is_some_and(|pending| pending.command.ends_with("deleteLeft"));
+        let job = if tracked {
+            self.command_job(false)
+        } else {
+            None
+        };
         std::thread::spawn(move || {
             let paths = Workspace::open(root)
                 .map(|ws| {
-                    ws.fuzzy_files(&query, 100, || cancel.load(Ordering::Relaxed) != generation)
+                    ws.fuzzy_files(&query, 100, || {
+                        cancel.load(Ordering::Relaxed) != generation
+                            || job
+                                .as_ref()
+                                .is_some_and(|job| job.cancellation.is_cancelled())
+                    })
                 })
                 .unwrap_or_default();
-            let _ = proxy.send_event(UserEvent::QuickOpen {
-                query,
-                generation,
-                paths,
-            });
+            let outcome = if cancel.load(Ordering::Relaxed) != generation {
+                Err(super::command_execution::CommandError::Cancelled)
+            } else {
+                Ok(serde_json::Value::Null)
+            };
+            super::command_execution::deliver_command_event(
+                &proxy,
+                job.as_ref(),
+                UserEvent::QuickOpen {
+                    query,
+                    generation,
+                    paths,
+                },
+                outcome,
+            );
         });
     }
 

@@ -30,6 +30,10 @@ graphite-app ──► graphite-render     (wgpu + cosmic-text + Window do winit
 - O mapeamento de linhas visuais calcula quebras e converte posições de caracteres Unicode e colunas do ponteiro sem alterar o documento. A renderização, o ponteiro e o movimento vertical do cursor usam esse mapeamento quando a quebra está ativa; a verificação interativa permanece pendente.
 - `graphite-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
 
+## Comandos
+
+`CommandRegistry` centraliza metadados, alvos explícitos, enablement e resultados tipados. Handlers por domínio compartilham a entrada para teclado, widgets e acessibilidade. Contextos globais, de views e de widgets são resolvidos por seus ancestrais. Workers devolvem resultados ao event loop com verificações de cancelamento e versão; edições em views sem foco preservam o foco. Consulte [Comandos e contexto](commands-context.md).
+
 ## Plataformas
 
 Windows e Linux; as diferenças de plataforma ficam a cargo de `winit`, `wgpu` e `cosmic-text`.

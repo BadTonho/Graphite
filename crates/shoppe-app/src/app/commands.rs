@@ -6,7 +6,7 @@ impl App {
         let Some(scopes) = &snippet.scope else {
             return true;
         };
-        let language = match self.documents[self.active_document()].language {
+        let language = match self.documents[self.command_document()].language {
             Some(Language::Rust) => "rust",
             Some(Language::Python) => "python",
             Some(Language::JavaScript) => "javascript",
@@ -53,61 +53,10 @@ impl App {
     }
 
     pub(super) fn handle_keybinding_stroke(&mut self, stroke: &str) -> bool {
-        let buffer = self.editor();
-        let editor_focus = !self.terminal_focused
-            && self.quick_open.is_none()
-            && self.local_search.is_none()
-            && self.search_query.is_none()
-            && self.snippet_query.is_none();
-        let mut context = HashMap::from([
-            ("editorTextFocus".into(), editor_focus.to_string()),
-            ("editorReadonly".into(), buffer.is_read_only().to_string()),
-            (
-                "editorHasSelection".into(),
-                buffer.selection().is_some().to_string(),
-            ),
-            (
-                "multipleSelections".into(),
-                (buffer.selections().len() > 1).to_string(),
-            ),
-            ("terminalFocus".into(), self.terminal_focused.to_string()),
-            (
-                "suggestWidgetVisible".into(),
-                (!self.completion_items.is_empty()).to_string(),
-            ),
-            (
-                "findReplace".into(),
-                self.local_search
-                    .as_ref()
-                    .is_some_and(|search| search.replace)
-                    .to_string(),
-            ),
-            (
-                "findWidgetVisible".into(),
-                self.local_search.is_some().to_string(),
-            ),
-            (
-                "quickOpenVisible".into(),
-                self.quick_open.is_some().to_string(),
-            ),
-            (
-                "projectSearchVisible".into(),
-                self.search_query.is_some().to_string(),
-            ),
-            (
-                "snippetVisible".into(),
-                self.snippet_query.is_some().to_string(),
-            ),
-            ("quickFixVisible".into(), self.quick_fix_visible.to_string()),
-        ]);
-        let view = self.editor_groups.active_view().id;
-        self.context_keys
-            .retain_views(&self.editor_groups.view_ids());
-        let terminal_focus = context.remove("terminalFocus").unwrap_or_default();
-        self.context_keys
-            .replace_global(HashMap::from([("terminalFocus".into(), terminal_focus)]));
-        self.context_keys.replace_view(view, context);
-        let context = self.context_keys.resolve(Some(view));
+        self.refresh_command_context();
+        let target =
+            super::command_registry::CommandTarget::View(self.editor_groups.active_view().id.0);
+        let context = self.context_keys.resolve_target(target);
         match self.keymap.resolve(stroke, &context) {
             Resolution::Unmatched => false,
             Resolution::Pending => {
@@ -115,289 +64,19 @@ impl App {
                 true
             }
             Resolution::Unbound => true,
-            Resolution::Command(command) => {
-                self.execute_custom_command(&command);
+            Resolution::Command { id, arguments } => {
+                let target = self.ui_target_for_command(&id);
+                let ticket = self.execute_command(super::command_execution::CommandRequest {
+                    id,
+                    arguments,
+                    target,
+                });
+                if let Some(Err(error)) = ticket.try_result() {
+                    self.status = error.to_string();
+                }
                 true
             }
         }
-    }
-
-    pub(crate) fn execute_custom_command(&mut self, command: &str) {
-        if !command.starts_with("suggest.") && command != "editor.action.triggerSuggest" {
-            self.completion_items.clear();
-        }
-        use graphite_text::CursorMotion;
-        let motion = match command {
-            "cursorLeft" | "cursorLeftSelect" => Some(CursorMotion::Left),
-            "cursorRight" | "cursorRightSelect" => Some(CursorMotion::Right),
-            "cursorUp" | "cursorUpSelect" => Some(CursorMotion::Up),
-            "cursorDown" | "cursorDownSelect" => Some(CursorMotion::Down),
-            "cursorHome" | "cursorHomeSelect" => Some(CursorMotion::Home),
-            "cursorEnd" | "cursorEndSelect" => Some(CursorMotion::End),
-            _ => None,
-        };
-        if let Some(motion) = motion {
-            self.editor_groups
-                .active_view_mut()
-                .smart_selection_history
-                .clear();
-            self.editor_groups.active_view_mut().smart_selection_guard = None;
-            let extend = command.ends_with("Select");
-            if self.word_wrap
-                && matches!(motion, CursorMotion::Up | CursorMotion::Down)
-                && self.move_visual_selections(matches!(motion, CursorMotion::Down), extend)
-            {
-                return;
-            }
-            self.editor_mut().move_selections(motion, extend);
-            return;
-        }
-        match command {
-            "suggest.close" => self.completion_items.clear(),
-            "suggest.accept" => self.accept_completion(),
-            "suggest.previous" => {
-                if !self.completion_items.is_empty() {
-                    self.completion_index = self
-                        .completion_index
-                        .checked_sub(1)
-                        .unwrap_or(self.completion_items.len() - 1);
-                }
-            }
-            "suggest.next" => {
-                if !self.completion_items.is_empty() {
-                    self.completion_index =
-                        (self.completion_index + 1) % self.completion_items.len();
-                }
-            }
-            "quickFix.close" => self.quick_fix_visible = false,
-            "quickFix.previous" => {
-                if !self.quick_fix_actions.is_empty() {
-                    self.quick_fix_index = self
-                        .quick_fix_index
-                        .checked_sub(1)
-                        .unwrap_or(self.quick_fix_actions.len() - 1);
-                }
-            }
-            "quickFix.next" => {
-                if !self.quick_fix_actions.is_empty() {
-                    self.quick_fix_index =
-                        (self.quick_fix_index + 1) % self.quick_fix_actions.len();
-                }
-            }
-            "quickFix.apply" => self.apply_quick_fix(),
-            "snippet.close" => self.snippet_query = None,
-            "snippet.deleteLeft" => {
-                if let Some(query) = &mut self.snippet_query {
-                    query.pop();
-                }
-            }
-            "snippet.accept" => {
-                if let Some(query) = self.snippet_query.take() {
-                    if let Some(snippet) = self
-                        .snippets
-                        .iter()
-                        .find(|s| s.prefix.starts_with(&query) && self.snippet_scope_matches(s))
-                    {
-                        let body = snippet.body.clone();
-                        self.editor_mut().insert(&body);
-                    }
-                }
-            }
-            "quickOpen.close"
-            | "quickOpen.accept"
-            | "quickOpen.previous"
-            | "quickOpen.next"
-            | "quickOpen.deleteLeft" => self.execute_quick_open_command(command),
-            "projectSearch.close"
-            | "projectSearch.accept"
-            | "projectSearch.previous"
-            | "projectSearch.next"
-            | "projectSearch.deleteLeft" => self.execute_project_search_command(command),
-            "closeFindWidget"
-            | "find.toggleField"
-            | "editor.action.nextMatchFindAction"
-            | "editor.action.previousMatchFindAction"
-            | "editor.action.replaceAll"
-            | "editor.action.replaceOne"
-            | "find.deleteLeft"
-            | "find.toggleRegex"
-            | "find.toggleCase"
-            | "find.toggleWholeWord"
-            | "find.togglePreserveCase"
-            | "find.toggleSelection" => self.execute_find_command(command),
-            "deleteLeft" => self.editor_mut().backspace(),
-            "deleteRight" => self.editor_mut().delete(),
-            "typeNewline" => self.editor_mut().insert_newline(),
-            "tab" => {
-                let document = self.active_document();
-                let tab = &mut self.documents[document];
-                let indentation = if tab.indentation.insert_spaces {
-                    " ".repeat(tab.indentation.tab_size)
-                } else {
-                    "\t".into()
-                };
-                self.editor_mut().insert(&indentation);
-            }
-            "workbench.action.quickOpen" => self.start_quick_open(),
-            "workbench.view.scm" => self.toggle_scm(),
-            "shoppe.scm.stage" => self.perform_scm_action(super::scm_ui::ScmAction::Stage),
-            "shoppe.scm.unstage" => self.perform_scm_action(super::scm_ui::ScmAction::Unstage),
-            "shoppe.scm.stageLine" => {
-                self.perform_scm_action(super::scm_ui::ScmAction::StageCursorLine)
-            }
-            "shoppe.scm.revertLine" => {
-                self.perform_scm_action(super::scm_ui::ScmAction::RevertCursorLine)
-            }
-            "shoppe.scm.revertHunk" => {
-                self.perform_scm_action(super::scm_ui::ScmAction::RevertFirstHunk)
-            }
-            "shoppe.scm.commitPrompt" => {
-                self.scm_commit_prompt = true;
-                self.scm_commit_message.clear();
-                self.status = "Type a commit message and press Enter".into();
-            }
-            "workbench.action.toggleZenMode" => self.toggle_zen_mode(),
-            "workbench.action.toggleCenteredEditor" => self.toggle_centered_editor(),
-            "workbench.action.toggleOutline" => self.toggle_outline(),
-            "workbench.action.showProcessExplorer" => self.toggle_process_explorer(),
-            "workbench.action.toggleScreencastMode" => self.toggle_screencast_mode(),
-            "shoppe.action.diffActiveFile" => {
-                self.open_active_file_diff();
-            }
-            "shoppe.action.closeDiffEditor" => self.diff_view = None,
-            "workbench.action.splitEditorRight" => {
-                self.split_editor_group(super::editor_groups::SplitDirection::Vertical);
-            }
-            "workbench.action.splitEditorDown" => {
-                self.split_editor_group(super::editor_groups::SplitDirection::Horizontal);
-            }
-            "workbench.action.focusNextGroup" => self.focus_next_editor_group(),
-            "workbench.action.findInFiles" => {
-                self.search_query = Some(String::new());
-                self.search_generation = self.search_generation.wrapping_add(1);
-                self.search_cancel
-                    .store(self.search_generation, Ordering::Relaxed);
-                self.search_results.clear();
-                self.search_index = 0;
-                self.status = "Search: type query; Up/Down select, Enter opens result".into();
-            }
-            "shoppe.action.insertSnippet" => {
-                let (snippets, warnings) = config::load_snippets_for_workspace(self.tree.root());
-                self.snippets = snippets;
-                self.snippet_load_warnings = warnings;
-                self.snippet_query = Some(String::new());
-                self.status = self
-                    .snippet_load_warnings
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "Snippet: type prefix, Enter inserts, Esc closes".into());
-            }
-            "shoppe.action.importVSCode" => self.import_vscode_settings(),
-            "shoppe.action.toggleTheme" => {
-                let dark = !DARK_THEME.load(Ordering::Relaxed);
-                DARK_THEME.store(dark, Ordering::Relaxed);
-                config::save_dark_theme(dark);
-            }
-            "workbench.actions.view.problems" => {
-                self.terminal_visible = true;
-                self.terminal_problems = true;
-                self.terminal_focused = false;
-                self.resize_terminal();
-            }
-            "editor.action.toggleIndentation" => {
-                let document = self.active_document();
-                let mut target = self.documents[document].indentation;
-                target.insert_spaces = !target.insert_spaces;
-                let result = self.editor_mut().convert_indentation(target);
-                match result {
-                    Ok(_) => {
-                        self.documents[document].indentation = target;
-                        self.status = if target.insert_spaces {
-                            "Indentation converted to spaces"
-                        } else {
-                            "Indentation converted to tabs"
-                        }
-                        .into();
-                    }
-                    Err(error) => self.status = error.to_string(),
-                }
-            }
-            "workbench.action.nextEditor" => {
-                self.switch_recent_document(false);
-            }
-            "workbench.action.previousEditor" => self.switch_recent_document(true),
-            "workbench.action.reopenClosedEditor" => self.reopen_closed_tab(),
-            "workbench.action.navigateBack" => self.navigate_history(-1),
-            "workbench.action.navigateForward" => self.navigate_history(1),
-            "actions.find" => self.open_local_search(false),
-            "editor.action.startFindReplaceAction" => self.open_local_search(true),
-            "workbench.action.files.save" => self.save(),
-            "workbench.action.terminal.toggleTerminal" => self.toggle_terminal(),
-            "editor.action.smartSelect.expand" => self.smart_select(true),
-            "editor.action.smartSelect.shrink" => self.smart_select(false),
-            "editor.action.addSelectionToNextFindMatch" => {
-                self.editor_mut().select_occurrences(false)
-            }
-            "editor.action.selectHighlights" => self.editor_mut().select_occurrences(true),
-            "editor.action.moveLinesUpAction" => self.editor_mut().move_line(-1),
-            "editor.action.moveLinesDownAction" => self.editor_mut().move_line(1),
-            "editor.action.copyLinesUpAction" => self.editor_mut().duplicate_line(false),
-            "editor.action.copyLinesDownAction" => self.editor_mut().duplicate_line(true),
-            "editor.action.deleteLines" => self.editor_mut().delete_line(),
-            "editor.action.sortLinesAscending" => self.editor_mut().sort_lines(),
-            "editor.action.removeDuplicateLines" => self.editor_mut().deduplicate_lines(),
-            "undo" => {
-                self.editor_mut().undo();
-            }
-            "redo" => {
-                self.editor_mut().redo();
-            }
-            "editor.action.selectAll" => {
-                let mut buffer = self.editor_mut();
-                let len = buffer.len_chars();
-                buffer.set_selection(0, len);
-            }
-            "editor.action.clipboardCopyAction" | "editor.action.clipboardCutAction" => {
-                let mut clipboard = super::clipboard::SystemClipboard;
-                super::clipboard::copy_or_cut(
-                    &mut self.editor_mut(),
-                    &mut clipboard,
-                    command == "editor.action.clipboardCutAction",
-                );
-            }
-            "editor.action.clipboardPasteAction" => {
-                let mut clipboard = super::clipboard::SystemClipboard;
-                super::clipboard::paste(&mut self.editor_mut(), &mut clipboard);
-            }
-            "editor.action.triggerSuggest" => {
-                self.completion_items.clear();
-                self.request_lsp("completion");
-            }
-            "editor.action.revealDefinition" => self.request_lsp("definition"),
-            "editor.action.showHover" => self.request_lsp("hover"),
-            "editor.action.quickFix" => self.request_quick_fixes(),
-            "editor.action.marker.next" => self.navigate_diagnostic(1),
-            "editor.action.marker.prev" => self.navigate_diagnostic(-1),
-            "workbench.action.closeActiveEditor" => {
-                if self.active_view_needs_confirmation() {
-                    self.close_confirm = true;
-                    self.status = "Unsaved tab: S save, D discard, Esc cancel".into();
-                } else {
-                    self.close_active_tab();
-                }
-            }
-            _ => self.status = format!("Unknown keybinding command: {command}"),
-        }
-    }
-
-    pub(super) fn reload_keybindings(&mut self) -> Result<(), String> {
-        let path = config::app_config_dir().join("keybindings.json");
-        let source = match std::fs::read_to_string(&path) {
-            Ok(source) => source,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => "[]".into(),
-            Err(error) => return Err(format!("Cannot read {}: {error}", path.display())),
-        };
-        self.keymap.reload(&source)
     }
 }
 
@@ -427,13 +106,13 @@ mod tests {
             .unwrap()
             .buffer
             .set_read_only(true);
-        app.execute_custom_command("editor.action.deleteLines");
-        app.execute_custom_command("undo");
+        app.run_ui_command("editor.action.deleteLines");
+        app.run_ui_command("undo");
         assert_eq!(
             app.documents[app.document_at(0)].buffer.text(),
             "original\n"
         );
-        app.execute_custom_command("workbench.action.closeActiveEditor");
+        app.run_ui_command("workbench.action.closeActiveEditor");
         assert!(app.close_confirm);
         assert_eq!(
             app.documents[app.document_at(0)].buffer.text(),
@@ -446,18 +125,18 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.test_editor_mut(0).insert("shared");
-        app.execute_custom_command("workbench.action.splitEditorRight");
+        app.run_ui_command("workbench.action.splitEditorRight");
         let second = app.editor_groups.focused();
         assert_eq!(app.editor_groups.group_count(), 2);
-        app.execute_custom_command("workbench.action.splitEditorDown");
+        app.run_ui_command("workbench.action.splitEditorDown");
         assert_eq!(app.editor_groups.group_count(), 3);
         let rects = app.group_rectangles(1260.0, 820.0, 20.0);
         assert_eq!(rects.len(), 3);
         assert_eq!(rects[0].width, 500.0);
         assert_eq!(rects[1].height, 400.0);
-        app.execute_custom_command("workbench.action.focusNextGroup");
+        app.run_ui_command("workbench.action.focusNextGroup");
         assert_eq!(app.editor_groups.focused(), rects[0].id);
-        app.execute_custom_command("workbench.action.focusNextGroup");
+        app.run_ui_command("workbench.action.focusNextGroup");
         assert_eq!(app.editor_groups.focused(), second);
         assert_eq!(app.documents[app.active_document()].buffer.text(), "shared");
     }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Expr {
+pub(crate) enum Expr {
     Key(String),
     Compare(String, String, bool),
     Not(Box<Expr>),
@@ -10,7 +10,11 @@ pub(super) enum Expr {
 }
 
 impl Expr {
-    pub(super) fn evaluate(&self, context: &HashMap<String, String>) -> bool {
+    pub(crate) fn parse(source: &str) -> Result<Self, String> {
+        parse(source)
+    }
+
+    pub(crate) fn evaluate(&self, context: &HashMap<String, String>) -> bool {
         match self {
             Self::Key(key) => match key.as_str() {
                 "true" => true,

@@ -400,9 +400,9 @@ impl App {
                 }
             }
         }
-        let origin_document = self.active_document();
-        let origin = self.editor_groups.active_view().id;
-        let origin_before = self.editor_groups.active_view().selection_state.clone();
+        let origin_document = self.command_document();
+        let origin = self.command_view_ref().id;
+        let origin_before = self.command_view_ref().selection_state.clone();
 
         let mut staged = Vec::new();
         let mut replacements = Vec::new();
@@ -472,7 +472,7 @@ impl App {
             }
             self.remap_document_views(index, revision);
             if index == origin_document && self.documents[index].buffer.revision() != revision {
-                let after = self.editor_groups.active_view().selection_state.clone();
+                let after = self.command_view_ref().selection_state.clone();
                 self.documents[index].buffer.record_selection_history(
                     origin,
                     origin_before.clone(),

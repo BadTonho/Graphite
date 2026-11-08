@@ -58,6 +58,17 @@ impl ActivationHandler for AccessibilityActivation {
 }
 #[derive(Debug)]
 pub(crate) enum UserEvent {
+    CommandCompleted {
+        execution: u64,
+        event: Option<Box<UserEvent>>,
+        result: super::command_execution::CommandResult,
+    },
+    SettingsImported(Box<super::command_handlers::configuration::ImportedSettings>),
+    SnippetsLoaded {
+        snippets: Vec<config::Snippet>,
+        warnings: Vec<String>,
+    },
+    LspCommandEvent(Box<crate::lsp::LspUiEvent>),
     AccessibilityWake,
     LspWake,
     TerminalWake,
