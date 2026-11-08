@@ -130,6 +130,18 @@ impl Buffer {
         Self::default()
     }
 
+    /// Create a clean, file-backed buffer from already decoded text.
+    pub fn from_text(path: impl Into<PathBuf>, text: &str) -> Self {
+        let rope = Rope::from_str(text);
+        Self {
+            rope: rope.clone(),
+            path: Some(path.into()),
+            dirty: false,
+            saved_text: rope,
+            ..Self::default()
+        }
+    }
+
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
@@ -206,6 +218,17 @@ impl Buffer {
 
     pub fn text(&self) -> String {
         self.rope.to_string()
+    }
+
+    /// Return the text that would be saved after trimming line-ending spaces,
+    /// without changing this buffer.
+    pub fn text_with_trimmed_trailing_whitespace(&self) -> String {
+        let edits = self.trailing_whitespace_edits();
+        let mut trimmed = self.rope.clone();
+        for edit in edits.iter().rev() {
+            trimmed.remove(edit.range.clone());
+        }
+        trimmed.to_string()
     }
 
     pub fn rope(&self) -> &Rope {

@@ -7,10 +7,14 @@ use app::local_search::LocalSearch;
 use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
 
+mod cli;
 mod config;
+mod file_format;
 mod json_schema;
 mod keybindings;
 mod lsp;
+mod process_explorer;
+mod scm;
 mod terminal;
 #[cfg(test)]
 mod test_support;
@@ -77,6 +81,8 @@ struct Tab {
     schema_revision: Option<u64>,
     lsp_revision: Option<u64>,
     indentation: shoppe_text::Indentation,
+    encoding: file_format::Encoding,
+    line_ending: file_format::LineEnding,
 }
 
 fn next_document_id() -> u64 {
@@ -154,6 +160,30 @@ struct App {
     terminal_status: Option<String>,
     terminal_size: (u16, u16),
     terminal_sizes: Vec<(u16, u16)>,
+    _scm_watcher: Option<notify::RecommendedWatcher>,
+    scm_snapshot: scm::Snapshot,
+    scm_visible: bool,
+    scm_selected: usize,
+    branch_picker: bool,
+    branch_selected: usize,
+    scm_commit_message: String,
+    scm_commit_prompt: bool,
+    diff_view: Option<app::scm_ui::DiffView>,
+    diff_loading: bool,
+    conflict_view: Option<app::scm_ui::ConflictView>,
+    zen_mode: bool,
+    centered_editor: bool,
+    outline_visible: bool,
+    process_panel_visible: bool,
+    process_metrics: Vec<process_explorer::ProcessMetric>,
+    process_scroll: usize,
+    process_cancel: Arc<AtomicBool>,
+    screencast_mode: bool,
+    screencast_cancel: Arc<AtomicBool>,
+    screencast_shortcut: Option<(String, std::time::Instant)>,
+    startup_metrics: Vec<String>,
+    cli_waiters: Vec<app::cli_ui::CliWaiter>,
+    initial_cli_request: Option<cli::CliRequest>,
 }
 
 impl App {
@@ -169,6 +199,7 @@ impl App {
         event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
         isolated: bool,
     ) -> Self {
+        let initialization_started = std::time::Instant::now();
         let workspace = Workspace::open(&root).expect("failed to open folder");
         let (lsp_sender, lsp_receiver) = std::sync::mpsc::channel();
         let lsp_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -263,6 +294,19 @@ impl App {
                 Err(_) => {}
             }
         }
+        let scm_watcher = event_proxy.clone().and_then(|proxy| {
+            use notify::Watcher;
+            let mut watcher =
+                notify::recommended_watcher(move |_result: notify::Result<notify::Event>| {
+                    let _ = proxy.send_event(UserEvent::ScmRefresh);
+                })
+                .ok()?;
+            watcher
+                .watch(&root, notify::RecursiveMode::Recursive)
+                .ok()?;
+            Some(watcher)
+        });
+        let initialization_ms = initialization_started.elapsed().as_secs_f64() * 1000.0;
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
@@ -284,6 +328,8 @@ impl App {
                     insert_spaces: prefs.insert_spaces,
                     tab_size: prefs.tab_size,
                 },
+                encoding: file_format::Encoding::Utf8,
+                line_ending: file_format::LineEnding::Lf,
             }],
             active_tab: 0,
             editor_groups: app::editor_groups::EditorGroups::new(0),
@@ -359,6 +405,32 @@ impl App {
             terminal_status: terminal_config_error,
             terminal_size: (0, 0),
             terminal_sizes: Vec::new(),
+            _scm_watcher: scm_watcher,
+            scm_snapshot: scm::Snapshot::default(),
+            scm_visible: false,
+            scm_selected: 0,
+            branch_picker: false,
+            branch_selected: 0,
+            scm_commit_message: String::new(),
+            scm_commit_prompt: false,
+            diff_view: None,
+            diff_loading: false,
+            conflict_view: None,
+            zen_mode: false,
+            centered_editor: false,
+            outline_visible: false,
+            process_panel_visible: false,
+            process_metrics: Vec::new(),
+            process_scroll: 0,
+            process_cancel: Arc::new(AtomicBool::new(true)),
+            screencast_mode: false,
+            screencast_cancel: Arc::new(AtomicBool::new(true)),
+            screencast_shortcut: None,
+            startup_metrics: vec![format!(
+                "App and service initialization: {initialization_ms:.1} ms"
+            )],
+            cli_waiters: Vec::new(),
+            initial_cli_request: None,
         }
     }
 }
@@ -384,18 +456,73 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 }
 
 fn main() {
-    let root = std::env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().expect("no current directory"));
+    let cwd = std::env::current_dir().expect("no current directory");
+    let args = std::env::args_os()
+        .skip(1)
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let request = match cli::parse_args(args, cwd.clone()) {
+        Ok(request) => request,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
+    let ipc_server_child = std::env::var_os("VSCODESHOPPE_IPC_SERVER_CHILD").is_some();
+    if !ipc_server_child {
+        match cli::send_to_existing(&request) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => eprintln!("Could not forward CLI request: {error}"),
+        }
+        if request.wait {
+            let executable = std::env::current_exe().expect("could not locate current executable");
+            let mut child = std::process::Command::new(executable)
+                .env("VSCODESHOPPE_IPC_SERVER_CHILD", "1")
+                .current_dir(&cwd)
+                .spawn()
+                .expect("could not start the editor window for --wait");
+            let mut forwarded = false;
+            for _ in 0..100 {
+                match cli::send_to_existing(&request) {
+                    Ok(true) => {
+                        forwarded = true;
+                        break;
+                    }
+                    _ => std::thread::sleep(std::time::Duration::from_millis(50)),
+                }
+            }
+            if !forwarded {
+                let _ = child.kill();
+                eprintln!("The editor window did not become available for --wait");
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
+    let root = match &request.action {
+        cli::CliAction::Open { paths, location } => {
+            let candidate = location
+                .as_ref()
+                .map(|(path, _, _)| path)
+                .or_else(|| paths.first());
+            candidate
+                .filter(|path| path.is_dir())
+                .cloned()
+                .or_else(|| candidate.and_then(|path| path.parent()).map(PathBuf::from))
+                .unwrap_or(cwd)
+        }
+        cli::CliAction::Diff { .. } => cwd,
+    };
     let event_loop = EventLoop::<UserEvent>::with_user_event()
         .build()
         .expect("failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    event_loop
-        .run_app(&mut App::new(root, Some(proxy)))
-        .expect("event loop failed");
+    let _ = cli::start_ipc_server(proxy.clone());
+    let mut app = App::new(root, Some(proxy));
+    app.initial_cli_request = Some(request);
+    event_loop.run_app(&mut app).expect("event loop failed");
 }
 
 #[cfg(test)]
@@ -798,5 +925,141 @@ mod tests {
         let mut b = Buffer::new();
         b.insert("one\ntwo");
         assert_eq!(accessibility_position_to_char(&b, 1, 2), 6);
+    }
+
+    #[test]
+    fn app_open_save_preserves_utf16_encoding_and_crlf_while_editing_unicode() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("utf16.txt");
+        fs::write(
+            &file,
+            file_format::encode(
+                "primeira\nsegunda\n",
+                file_format::Encoding::Utf16Le,
+                file_format::LineEnding::Crlf,
+            ),
+        )
+        .unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(file.clone());
+        assert_eq!(app.tabs[0].encoding, file_format::Encoding::Utf16Le);
+        assert_eq!(app.tabs[0].line_ending, file_format::LineEnding::Crlf);
+        assert_eq!(app.tabs[0].buffer.text(), "primeira\nsegunda\n");
+        app.tabs[0].buffer.set_cursor_line_col(0, 8);
+        app.tabs[0].buffer.insert(" 🌎");
+        app.save();
+        let decoded = file_format::decode(&fs::read(file).unwrap()).unwrap();
+        assert_eq!(decoded.text, "primeira 🌎\nsegunda\n");
+        assert_eq!(decoded.encoding, file_format::Encoding::Utf16Le);
+        assert_eq!(decoded.line_ending, file_format::LineEnding::Crlf);
+    }
+
+    #[test]
+    fn cli_folder_switch_is_blocked_when_documents_are_dirty() {
+        let first = crate::test_support::TempDir::new();
+        let second = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(first.path().to_path_buf(), None, true);
+        app.apply_cli_request(
+            cli::CliRequest {
+                action: cli::CliAction::Open {
+                    paths: vec![second.path().to_path_buf()],
+                    location: None,
+                },
+                wait: false,
+            },
+            None,
+        );
+        assert_eq!(app.tree.root(), second.path().canonicalize().unwrap());
+        app.tabs[0].buffer.insert("unsaved");
+        let third = crate::test_support::TempDir::new();
+        app.apply_cli_request(
+            cli::CliRequest {
+                action: cli::CliAction::Open {
+                    paths: vec![third.path().to_path_buf()],
+                    location: None,
+                },
+                wait: false,
+            },
+            None,
+        );
+        assert_eq!(app.tree.root(), second.path().canonicalize().unwrap());
+        assert!(app.status.contains("unsaved changes"));
+    }
+
+    #[test]
+    fn cli_wait_is_acknowledged_only_after_requested_document_closes() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("wait.rs");
+        fs::write(&file, "fn main() {}\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let (acknowledge, acknowledged) = std::sync::mpsc::channel();
+        app.apply_cli_request(
+            cli::CliRequest {
+                action: cli::CliAction::Open {
+                    paths: vec![file],
+                    location: None,
+                },
+                wait: true,
+            },
+            Some(acknowledge),
+        );
+        assert!(acknowledged.try_recv().is_err());
+        app.close_active_tab();
+        assert!(acknowledged.try_recv().is_ok());
+    }
+
+    #[test]
+    fn branch_checkout_refuses_unsaved_editor_buffers() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("unsaved");
+        app.checkout_selected_branch();
+        assert!(app.status.contains("unsaved changes"));
+    }
+
+    #[test]
+    fn branch_checkout_reload_replaces_clean_buffer_and_file_format() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("branch.rs");
+        fs::write(&file, "old\nsecond\n").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(file.clone());
+        app.tabs[0].buffer.set_cursor_line_col(1, 2);
+        let decoded = file_format::DecodedFile {
+            text: "new\n".into(),
+            encoding: file_format::Encoding::Utf16Be,
+            line_ending: file_format::LineEnding::Crlf,
+        };
+        app.reload_after_branch_checkout(vec![(file, Ok(decoded))]);
+        assert_eq!(app.tabs[0].buffer.text(), "new\n");
+        assert!(!app.tabs[0].buffer.is_dirty());
+        assert_eq!(app.tabs[0].encoding, file_format::Encoding::Utf16Be);
+        assert_eq!(app.tabs[0].line_ending, file_format::LineEnding::Crlf);
+        assert_eq!(app.tabs[0].buffer.cursor_line_col(), (1, 0));
+    }
+
+    #[test]
+    fn zen_and_centered_layout_reserve_a_right_outline_and_center_eighty_columns() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.centered_editor = true;
+        app.outline_visible = true;
+        let rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
+        assert!(rect.x > 300.0);
+        assert!(rect.width <= 680.0);
+        app.zen_mode = true;
+        let zen_rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
+        assert!(zen_rect.x > 300.0);
+        assert!(zen_rect.y == 0.0);
+    }
+
+    #[test]
+    fn startup_performance_panel_has_app_initialization_measurement() {
+        let dir = crate::test_support::TempDir::new();
+        let app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        assert!(app
+            .startup_metrics
+            .iter()
+            .any(|metric| metric.starts_with("App and service initialization:")));
     }
 }

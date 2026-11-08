@@ -22,7 +22,7 @@ impl App {
             .max(1)
     }
 
-    pub(super) fn group_rectangles(
+    pub(crate) fn group_rectangles(
         &self,
         width: f32,
         height: f32,
@@ -33,12 +33,37 @@ impl App {
         } else {
             0.0
         };
+        let (sidebar, right_sidebar) = if self.zen_mode {
+            (0.0, 0.0)
+        } else {
+            (
+                SIDEBAR_WIDTH,
+                if self.outline_visible { 240.0 } else { 0.0 },
+            )
+        };
+        let width = (width - right_sidebar).max(0.0);
+        let centered = self.centered_editor || self.zen_mode;
+        let editor_width = if centered {
+            let cw = self
+                .gpu
+                .as_ref()
+                .map(|gpu| gpu.renderer.char_width())
+                .unwrap_or(8.0);
+            (cw * 80.0 + self.gutter_width(cw)).min(width)
+        } else {
+            width - sidebar
+        };
+        let x = if centered {
+            sidebar + (width - editor_width) / 2.0
+        } else {
+            sidebar
+        };
         self.editor_groups.rectangles(GroupRect {
             id: 0,
-            x: SIDEBAR_WIDTH,
+            x,
             y: 0.0,
-            width: (width - SIDEBAR_WIDTH).max(0.0),
-            height: (height - panel - line_height).max(0.0),
+            width: editor_width.max(0.0),
+            height: (height - panel - if self.zen_mode { 0.0 } else { line_height }).max(0.0),
         })
     }
 

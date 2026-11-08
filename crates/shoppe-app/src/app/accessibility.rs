@@ -61,6 +61,25 @@ pub(crate) enum UserEvent {
     AccessibilityWake,
     LspWake,
     TerminalWake,
+    ScmRefresh,
+    ScmSnapshot(crate::scm::Snapshot),
+    ScmOperationCompleted {
+        message: String,
+        snapshot: Option<crate::scm::Snapshot>,
+    },
+    BranchCheckoutCompleted {
+        message: String,
+        snapshot: crate::scm::Snapshot,
+        documents: Vec<(PathBuf, Result<crate::file_format::DecodedFile, String>)>,
+    },
+    DiffReady(crate::app::scm_ui::DiffView),
+    ConflictReady(crate::app::scm_ui::ConflictView),
+    CliRequest {
+        request: crate::cli::CliRequest,
+        acknowledge: std::sync::mpsc::Sender<()>,
+    },
+    ProcessSnapshot(Vec<crate::process_explorer::ProcessMetric>),
+    ScreencastTick,
     ProjectSearch {
         query: String,
         generation: u64,

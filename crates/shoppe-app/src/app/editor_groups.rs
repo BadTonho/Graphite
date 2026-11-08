@@ -33,7 +33,7 @@ enum Layout {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct GroupRect {
+pub(crate) struct GroupRect {
     pub id: u64,
     pub x: f32,
     pub y: f32,

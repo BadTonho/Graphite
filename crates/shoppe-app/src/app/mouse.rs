@@ -8,6 +8,67 @@ impl App {
         let (window_width, window_height) = gpu.renderer.size();
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
 
+        if let Some(diff) = self.diff_view.as_mut() {
+            if my < lh * 1.5 {
+                diff.inline = !diff.inline;
+            }
+            return;
+        }
+        if my >= window_height - lh {
+            match self.status_segment_at(mx, cw) {
+                Some(super::phase4_tools::StatusSegment::Screencast) => {
+                    self.toggle_screencast_mode()
+                }
+                Some(super::phase4_tools::StatusSegment::Indentation) => {
+                    let tab = &mut self.tabs[self.active_tab];
+                    let mut target = tab.indentation;
+                    target.insert_spaces = !target.insert_spaces;
+                    if tab.buffer.convert_indentation(target).is_ok() {
+                        tab.indentation = target;
+                        self.status = if target.insert_spaces {
+                            "Indentation converted to spaces"
+                        } else {
+                            "Indentation converted to tabs"
+                        }
+                        .into();
+                    }
+                }
+                Some(super::phase4_tools::StatusSegment::LineEnding) => {
+                    self.tabs[self.active_tab].line_ending =
+                        self.tabs[self.active_tab].line_ending.toggle();
+                    self.status = format!(
+                        "Line endings: {}",
+                        self.tabs[self.active_tab].line_ending.label()
+                    );
+                }
+                Some(super::phase4_tools::StatusSegment::Encoding) => {
+                    self.tabs[self.active_tab].encoding =
+                        self.tabs[self.active_tab].encoding.next();
+                    self.status = format!(
+                        "Encoding for next save: {}",
+                        self.tabs[self.active_tab].encoding.label()
+                    );
+                }
+                Some(super::phase4_tools::StatusSegment::Branch) => self.open_branch_picker(),
+                None => {}
+            }
+            return;
+        }
+
+        if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {
+            if let Some(language) = self.tabs[self.active_tab].language {
+                let text = self.tabs[self.active_tab].buffer.text();
+                let row = ((my / lh) as isize - 1).max(0) as usize;
+                if let Some(header) = shoppe_syntax::declaration_headers(language, &text).get(row) {
+                    self.tabs[self.active_tab]
+                        .buffer
+                        .set_cursor_line_col(header.line, 0);
+                    self.reveal_cursor = true;
+                }
+            }
+            return;
+        }
+
         if self.terminal_visible {
             let panel_top = gpu.renderer.size().1
                 - gpu.renderer.line_height()
@@ -91,6 +152,13 @@ impl App {
         }
 
         if mx < SIDEBAR_WIDTH {
+            if self.scm_visible {
+                let row = ((my - lh * 3.25) / lh).max(0.0) as usize;
+                if my >= lh * 3.25 && row < self.scm_snapshot.files.len() {
+                    self.scm_selected = row;
+                }
+                return;
+            }
             let first_row_y = lh * 1.5;
             if my >= first_row_y {
                 let row = ((my - first_row_y) / lh) as usize;

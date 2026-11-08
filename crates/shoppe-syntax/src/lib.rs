@@ -120,6 +120,31 @@ pub struct ScopeHeader {
     pub text: String,
 }
 
+/// Return all supported declarations in source order for an Outline view.
+pub fn declaration_headers(language: Language, source: &str) -> Vec<ScopeHeader> {
+    let mut parser = tree_sitter::Parser::new();
+    if parser.set_language(&language.ts_language()).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+    let mut nodes = Vec::new();
+    collect_all_scope_nodes(tree.root_node(), &mut nodes);
+    nodes.sort_by_key(|node| (node.start_position().row, node.start_position().column));
+    let lines: Vec<_> = source.lines().collect();
+    nodes
+        .into_iter()
+        .filter_map(|node| {
+            let row = node.start_position().row;
+            lines.get(row).map(|text| ScopeHeader {
+                line: row,
+                text: text.trim().to_owned(),
+            })
+        })
+        .collect()
+}
+
 /// Return enclosing declaration headers from outermost to innermost.
 pub fn enclosing_scope_headers(language: Language, source: &str, line: usize) -> Vec<ScopeHeader> {
     let mut parser = tree_sitter::Parser::new();
@@ -175,6 +200,32 @@ fn collect_scope_nodes<'tree>(
     }
 }
 
+fn collect_all_scope_nodes<'tree>(
+    node: tree_sitter::Node<'tree>,
+    output: &mut Vec<tree_sitter::Node<'tree>>,
+) {
+    if matches!(
+        node.kind(),
+        "function_item"
+            | "function_definition"
+            | "function_declaration"
+            | "method_definition"
+            | "class_definition"
+            | "class_declaration"
+            | "struct_item"
+            | "enum_item"
+            | "impl_item"
+            | "trait_item"
+            | "mod_item"
+    ) {
+        output.push(node);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_all_scope_nodes(child, output);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,6 +257,18 @@ mod tests {
     #[test]
     fn sticky_scroll_is_empty_outside_supported_declarations() {
         assert!(enclosing_scope_headers(Language::Json, "{\n  \"x\": 1\n}\n", 1).is_empty());
+    }
+
+    #[test]
+    fn outline_lists_all_declarations_in_source_order() {
+        let source = "struct Store;\nimpl Store {\n    fn load(&self) {}\n}\nfn main() {}\n";
+        let headers = declaration_headers(Language::Rust, source);
+        assert_eq!(
+            headers.iter().map(|header| header.line).collect::<Vec<_>>(),
+            [0, 1, 2, 4]
+        );
+        assert!(headers[2].text.contains("fn load"));
+        assert!(headers[3].text.contains("fn main"));
     }
 
     #[test]

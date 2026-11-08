@@ -65,32 +65,19 @@ impl App {
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
         }
+        if self.zen_mode {
+            r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));
+        } else if self.scm_visible {
+            self.draw_scm_sidebar(r, h, lh, cw);
+        }
 
         let rects = self.group_rectangles(w, h, lh);
         self.draw_editor_groups(r, &rects, lh, cw);
         let focused_rect = self.focused_group_rect(w, h, lh);
         let text_x = focused_rect.x + self.gutter_width(cw);
         let (cur_line, cur_col) = self.tabs[self.active_tab].buffer.cursor_line_col();
-
         // Status bar
         r.set_clip(None);
-        let dirty = if self.tabs[self.active_tab].buffer.is_dirty() {
-            " ●"
-        } else {
-            ""
-        };
-        let status = format!(
-            " {}{}{}   Ln {}, Col {}",
-            self.status,
-            dirty,
-            if self.tabs[self.active_tab].buffer.is_read_only() {
-                " 🔒 Read-only"
-            } else {
-                ""
-            },
-            cur_line + 1,
-            cur_col + 1
-        );
         r.draw_rect(
             0.0,
             h - lh,
@@ -98,7 +85,14 @@ impl App {
             lh,
             rgb(Theme::color(Theme::STATUS, 0x005a9e)),
         );
-        r.draw_text(&status, 0.0, h - lh, rgb(0xffffff));
+        let prefix = self.status_bar_prefix();
+        r.draw_text(&prefix, 0.0, h - lh, rgb(0xffffff));
+        let mut status_x = prefix.chars().count() as f32 * cw;
+        for (_, label) in self.status_bar_segments() {
+            status_x += cw * 3.0;
+            r.draw_text(&label, status_x, h - lh, rgb(0xffffff));
+            status_x += label.chars().count() as f32 * cw;
+        }
         if let Some(quick) = &self.quick_open {
             let count = quick.paths.len().min(8);
             let height = lh * (count as f32 + 1.5);
@@ -411,6 +405,10 @@ impl App {
         if self.terminal_visible {
             self.draw_terminal_panel(r, w, h, lh, cw);
         }
+        if self.zen_mode {
+            r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));
+        }
+        self.draw_phase4_overlays(r, w, h, lh);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();
