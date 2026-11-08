@@ -12,6 +12,8 @@ This document proposes three contracts: **document/view**, **commands and contex
 
 `graphite-text` also provides pre-validation and an in-memory multi-buffer transaction with optional expected revisions. It does not yet integrate with the editor's workspace edits or provide disk atomicity; the migration below remains necessary.
 
+The quick-fix path pre-validates text edits, rejects unsupported resource operations and invalid UTF-16 positions, and checks supplied LSP document versions. It still writes closed files separately, so its workspace edits are not yet atomic across disk writes and open documents.
+
 ### Target contract
 
 - A document has a stable identity, text, URI or untitled identity, language, monotonically increasing version, saved state and undo history. One document can have multiple views; a view owns its selections, scroll, focus and other presentation state. Closing a view keeps the document alive while another view refers to it.
