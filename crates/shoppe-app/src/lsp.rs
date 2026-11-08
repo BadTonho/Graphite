@@ -10,9 +10,10 @@ use worker::run_server;
 
 use lsp_server::{Message, Notification, Request, RequestId};
 use lsp_types::{
-    CompletionItem, Diagnostic, DidChangeTextDocumentParams, Hover, Location, Position,
-    PublishDiagnosticsParams, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, VersionedTextDocumentIdentifier,
+    CodeActionOrCommand, CompletionItem, Diagnostic, DidChangeTextDocumentParams, Hover, InlayHint,
+    Location, Position, PublishDiagnosticsParams, Range, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    VersionedTextDocumentIdentifier,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -60,6 +61,24 @@ pub enum LspUiEvent {
         request_id: u64,
         text: Option<String>,
     },
+    InlayHints {
+        request_id: u64,
+        hints: Vec<InlayHint>,
+    },
+    CodeActions {
+        request_id: u64,
+        actions: Vec<CodeActionOrCommand>,
+        error: Option<String>,
+    },
+    JsonDiagnostics {
+        uri: String,
+        revision: u64,
+        diagnostics: Vec<Diagnostic>,
+    },
+    JsonCompletion {
+        request_id: u64,
+        items: Vec<CompletionItem>,
+    },
 }
 
 #[derive(Debug)]
@@ -96,6 +115,18 @@ enum LspCommand {
         request_id: u64,
         uri: String,
         position: Position,
+    },
+    InlayHints {
+        request_id: u64,
+        uri: String,
+        start: Position,
+        end: Position,
+    },
+    CodeActions {
+        request_id: u64,
+        uri: String,
+        range: Range,
+        diagnostics: Vec<Diagnostic>,
     },
     Shutdown,
 }
@@ -276,6 +307,42 @@ impl LspManager {
         );
     }
 
+    pub fn request_inlay_hints(
+        &self,
+        path: &Path,
+        start: Position,
+        end: Position,
+        request_id: u64,
+    ) {
+        self.send(
+            path,
+            LspCommand::InlayHints {
+                request_id,
+                uri: String::new(),
+                start,
+                end,
+            },
+        );
+    }
+
+    pub fn request_code_actions(
+        &self,
+        path: &Path,
+        range: Range,
+        diagnostics: Vec<Diagnostic>,
+        request_id: u64,
+    ) {
+        self.send(
+            path,
+            LspCommand::CodeActions {
+                request_id,
+                uri: String::new(),
+                range,
+                diagnostics,
+            },
+        );
+    }
+
     fn send(&self, path: &Path, mut command: LspCommand) {
         let Some(uri) = self.documents.get(path) else {
             return;
@@ -292,7 +359,9 @@ impl LspManager {
             | LspCommand::Save { uri: target, .. }
             | LspCommand::Complete { uri: target, .. }
             | LspCommand::Definition { uri: target, .. }
-            | LspCommand::Hover { uri: target, .. } => *target = uri.clone(),
+            | LspCommand::Hover { uri: target, .. }
+            | LspCommand::InlayHints { uri: target, .. }
+            | LspCommand::CodeActions { uri: target, .. } => *target = uri.clone(),
             _ => return,
         }
         let _ = server.sender.send(WorkerMessage::Command(command));
@@ -467,6 +536,76 @@ mod tests {
             LspUiEvent::Completion { request_id, items } => {
                 assert_eq!(request_id, 88);
                 assert_eq!(items[0].label, "println!");
+            }
+            event => panic!("unexpected LSP event: {event:?}"),
+        }
+    }
+
+    #[test]
+    fn code_action_response_parses_workspace_edits_for_the_requested_diagnostic() {
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut pending = HashMap::from([(7, (91, "codeActions"))]);
+        dispatch_server_message(
+            Message::Response(lsp_server::Response {
+                id: RequestId::from(7),
+                result: Some(json!([{
+                    "title": "Replace token",
+                    "kind": "quickfix",
+                    "edit": {"changes": {"file:///workspace/main.rs": [{
+                        "range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 2}},
+                        "newText": "x"
+                    }]}}
+                }])),
+                error: None,
+            }),
+            &mut pending,
+            &event_tx,
+        );
+        match event_rx.recv().unwrap() {
+            LspUiEvent::CodeActions {
+                request_id,
+                actions,
+                error,
+            } => {
+                assert_eq!(request_id, 91);
+                assert_eq!(actions.len(), 1);
+                assert!(error.is_none());
+                let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+                    panic!("expected a code action")
+                };
+                assert_eq!(action.title, "Replace token");
+                assert!(action.edit.is_some());
+            }
+            event => panic!("unexpected LSP event: {event:?}"),
+        }
+    }
+
+    #[test]
+    fn code_action_server_errors_reach_the_ui_instead_of_looking_like_no_fixes() {
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut pending = HashMap::from([(8, (92, "codeActions"))]);
+        dispatch_server_message(
+            Message::Response(lsp_server::Response {
+                id: RequestId::from(8),
+                result: None,
+                error: Some(lsp_server::ResponseError {
+                    code: -32603,
+                    message: "server failed".into(),
+                    data: None,
+                }),
+            }),
+            &mut pending,
+            &event_tx,
+        );
+        match event_rx.recv().unwrap() {
+            LspUiEvent::CodeActions {
+                request_id,
+                actions,
+                error,
+            } => {
+                assert_eq!(request_id, 92);
+                assert!(actions.is_empty());
+                assert_eq!(error.as_deref(), Some("server failed"));
             }
             event => panic!("unexpected LSP event: {event:?}"),
         }

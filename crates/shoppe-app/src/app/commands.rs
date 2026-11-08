@@ -2,6 +2,20 @@ use super::*;
 use crate::keybindings::Resolution;
 
 impl App {
+    pub(super) fn snippet_scope_matches(&self, snippet: &config::Snippet) -> bool {
+        let Some(scopes) = &snippet.scope else {
+            return true;
+        };
+        let language = match self.tabs[self.active_tab].language {
+            Some(Language::Rust) => "rust",
+            Some(Language::Python) => "python",
+            Some(Language::JavaScript) => "javascript",
+            Some(Language::Json) => "json",
+            None => return false,
+        };
+        scopes.iter().any(|scope| scope == language)
+    }
+
     pub(crate) fn handle_custom_keybinding(&mut self, event: &winit::event::KeyEvent) -> bool {
         let key = match &event.logical_key {
             Key::Character(value) if value == " " => "space".to_owned(),
@@ -84,6 +98,7 @@ impl App {
                 "snippetVisible".into(),
                 self.snippet_query.is_some().to_string(),
             ),
+            ("quickFixVisible".into(), self.quick_fix_visible.to_string()),
         ]);
         match self.keymap.resolve(stroke, &context) {
             Resolution::Unmatched => false,
@@ -145,6 +160,22 @@ impl App {
                         (self.completion_index + 1) % self.completion_items.len();
                 }
             }
+            "quickFix.close" => self.quick_fix_visible = false,
+            "quickFix.previous" => {
+                if !self.quick_fix_actions.is_empty() {
+                    self.quick_fix_index = self
+                        .quick_fix_index
+                        .checked_sub(1)
+                        .unwrap_or(self.quick_fix_actions.len() - 1);
+                }
+            }
+            "quickFix.next" => {
+                if !self.quick_fix_actions.is_empty() {
+                    self.quick_fix_index =
+                        (self.quick_fix_index + 1) % self.quick_fix_actions.len();
+                }
+            }
+            "quickFix.apply" => self.apply_quick_fix(),
             "snippet.close" => self.snippet_query = None,
             "snippet.deleteLeft" => {
                 if let Some(query) = &mut self.snippet_query {
@@ -153,8 +184,10 @@ impl App {
             }
             "snippet.accept" => {
                 if let Some(query) = self.snippet_query.take() {
-                    if let Some(snippet) =
-                        self.snippets.iter().find(|s| s.prefix.starts_with(&query))
+                    if let Some(snippet) = self
+                        .snippets
+                        .iter()
+                        .find(|s| s.prefix.starts_with(&query) && self.snippet_scope_matches(s))
                     {
                         self.tabs[self.active_tab].buffer.insert(&snippet.body);
                     }
@@ -212,9 +245,15 @@ impl App {
                 self.status = "Search: type query; Up/Down select, Enter opens result".into();
             }
             "shoppe.action.insertSnippet" => {
-                self.snippets = config::load_snippets();
+                let (snippets, warnings) = config::load_snippets_for_workspace(self.tree.root());
+                self.snippets = snippets;
+                self.snippet_load_warnings = warnings;
                 self.snippet_query = Some(String::new());
-                self.status = "Snippet: type prefix, Enter inserts, Esc closes".into();
+                self.status = self
+                    .snippet_load_warnings
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "Snippet: type prefix, Enter inserts, Esc closes".into());
             }
             "shoppe.action.importVSCode" => self.import_vscode_settings(),
             "shoppe.action.toggleTheme" => {
@@ -246,13 +285,12 @@ impl App {
                 }
             }
             "workbench.action.nextEditor" => {
-                let (views, active) = self
-                    .editor_groups
-                    .views(self.editor_groups.focused())
-                    .unwrap();
-                let next = views[(active + 1) % views.len()].document;
-                self.activate_editor_document(next);
+                self.switch_recent_document(false);
             }
+            "workbench.action.previousEditor" => self.switch_recent_document(true),
+            "workbench.action.reopenClosedEditor" => self.reopen_closed_tab(),
+            "workbench.action.navigateBack" => self.navigate_history(-1),
+            "workbench.action.navigateForward" => self.navigate_history(1),
             "actions.find" => self.open_local_search(false),
             "editor.action.startFindReplaceAction" => self.open_local_search(true),
             "workbench.action.files.save" => self.save(),
@@ -302,6 +340,7 @@ impl App {
             }
             "editor.action.revealDefinition" => self.request_lsp("definition"),
             "editor.action.showHover" => self.request_lsp("hover"),
+            "editor.action.quickFix" => self.request_quick_fixes(),
             "editor.action.marker.next" => self.navigate_diagnostic(1),
             "editor.action.marker.prev" => self.navigate_diagnostic(-1),
             "workbench.action.closeActiveEditor" => {
@@ -330,6 +369,18 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn diagnostic(start: u32, end: u32, message: &str) -> lsp_types::Diagnostic {
+        serde_json::from_value(serde_json::json!({
+            "range": {
+                "start": {"line": 0, "character": start},
+                "end": {"line": 0, "character": end}
+            },
+            "severity": 1,
+            "message": message
+        }))
+        .unwrap()
+    }
 
     #[test]
     fn commands_preserve_readonly_and_unsaved_close_protection() {
@@ -441,6 +492,7 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.snippet_query = Some("hel".into());
         app.snippets.push(config::Snippet {
+            scope: None,
             prefix: "hello".into(),
             body: "hello 🙂".into(),
         });
@@ -533,5 +585,193 @@ mod tests {
         assert_eq!(app.search_query.as_deref(), Some("ab"));
         assert!(app.handle_keybinding_stroke("escape"));
         assert!(app.search_query.is_none());
+    }
+
+    #[test]
+    fn f8_visits_each_same_line_diagnostic_and_problems_include_schema_errors() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("one two");
+        app.tabs[0].buffer.set_selection(0, 0);
+        app.tabs[0].diagnostics = vec![diagnostic(0, 3, "first"), diagnostic(4, 7, "second")];
+        app.tabs[0].schema_diagnostics = vec![diagnostic(0, 1, "schema")];
+        assert_eq!(app.diagnostic_entries().len(), 3);
+
+        assert!(app.handle_keybinding_stroke("f8"));
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 4);
+    }
+
+    #[test]
+    fn f8_cycles_diagnostics_that_share_the_same_range() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.tabs[0].buffer.insert("problem");
+        app.tabs[0].buffer.set_selection(0, 0);
+        app.tabs[0].diagnostics = vec![diagnostic(0, 7, "first"), diagnostic(0, 7, "second")];
+
+        app.navigate_diagnostic(1);
+        assert_eq!(
+            app.diagnostic_navigation
+                .as_ref()
+                .map(|(_, _, message)| message.as_str()),
+            Some("first")
+        );
+        app.navigate_diagnostic(1);
+        assert_eq!(
+            app.diagnostic_navigation
+                .as_ref()
+                .map(|(_, _, message)| message.as_str()),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn navigation_history_and_recent_tab_bindings_restore_editor_locations() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.rs");
+        let second = dir.path().join("second.rs");
+        std::fs::write(&first, "a\u{1f642}b").unwrap();
+        std::fs::write(&second, "second").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first.clone());
+        app.tabs[0].buffer.set_selection(1, 1);
+        app.push_navigation_location();
+        app.tabs[0].buffer.set_selection(3, 3);
+        app.push_navigation_location();
+        app.handle_keybinding_stroke("alt+left");
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 1);
+        app.handle_keybinding_stroke("alt+right");
+        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 3);
+
+        app.open_file(second.clone());
+        app.handle_keybinding_stroke("ctrl+tab");
+        assert_eq!(
+            app.tabs[app.active_tab].buffer.path(),
+            Some(first.as_path())
+        );
+        app.handle_keybinding_stroke("ctrl+shift+tab");
+        assert_eq!(
+            app.tabs[app.active_tab].buffer.path(),
+            Some(second.as_path())
+        );
+    }
+
+    #[test]
+    fn closed_tab_stack_reopens_the_file_and_keeps_its_contents() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("restore.rs");
+        std::fs::write(&path, "restore me").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path.clone());
+        app.close_active_tab();
+        assert!(app.tabs[app.active_tab].buffer.path().is_none());
+        assert!(app.handle_keybinding_stroke("ctrl+shift+t"));
+        assert_eq!(app.tabs[app.active_tab].buffer.path(), Some(path.as_path()));
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "restore me");
+    }
+
+    #[test]
+    fn snippet_language_scope_is_applied_to_suggestions() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let snippet = config::Snippet {
+            prefix: "function".into(),
+            body: "fn name() {}".into(),
+            scope: Some(vec!["rust".into()]),
+        };
+        app.tabs[0].language = Some(Language::Rust);
+        assert!(app.snippet_scope_matches(&snippet));
+        app.tabs[0].language = Some(Language::Python);
+        assert!(!app.snippet_scope_matches(&snippet));
+    }
+
+    #[test]
+    fn terminal_tab_scrolling_reaches_sessions_beyond_the_visible_range() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.terminal_names = (0..8).map(|index| format!("Shell {index}")).collect();
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        assert_eq!(app.terminal_tab_offset, 2);
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        app.scroll_terminal_tabs(1);
+        assert_eq!(app.terminal_tab_offset, 7);
+        app.scroll_terminal_tabs(-1);
+        assert_eq!(app.terminal_tab_offset, 6);
+    }
+
+    #[test]
+    fn quick_fix_applies_utf16_workspace_edits_and_supports_undo_redo() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("unicode.rs");
+        std::fs::write(&path, "a\u{1f642}b").unwrap();
+        let uri = crate::lsp::path_to_uri(&path).unwrap();
+        let mut changes = serde_json::Map::new();
+        changes.insert(
+            uri,
+            serde_json::json!([{
+                "range": {
+                    "start": {"line": 0, "character": 1},
+                    "end": {"line": 0, "character": 3}
+                },
+                "newText": "X"
+            }]),
+        );
+        let action = serde_json::from_value(serde_json::json!({
+            "title": "Replace emoji",
+            "kind": "quickfix",
+            "edit": {"changes": changes}
+        }))
+        .unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.quick_fix_actions = vec![action];
+        app.apply_quick_fix();
+        assert_eq!(
+            app.tabs[app.active_tab].buffer.text(),
+            "aXb",
+            "quick fix status: {}",
+            app.status
+        );
+        app.tabs[app.active_tab].buffer.undo();
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "a\u{1f642}b");
+        app.tabs[app.active_tab].buffer.redo();
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "aXb");
+    }
+
+    #[test]
+    fn quick_fix_does_not_edit_a_read_only_document() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("readonly.rs");
+        std::fs::write(&path, "original").unwrap();
+        let uri = crate::lsp::path_to_uri(&path).unwrap();
+        let mut changes = serde_json::Map::new();
+        changes.insert(
+            uri,
+            serde_json::json!([{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 8}
+                },
+                "newText": "changed"
+            }]),
+        );
+        let action = serde_json::from_value(serde_json::json!({
+            "title": "Change",
+            "kind": "quickfix",
+            "edit": {"changes": changes}
+        }))
+        .unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.tabs[app.active_tab].buffer.set_read_only(true);
+        app.quick_fix_actions = vec![action];
+        app.apply_quick_fix();
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "original");
+        assert!(app.status.contains("read-only"), "status: {}", app.status);
     }
 }

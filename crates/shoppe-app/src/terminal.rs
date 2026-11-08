@@ -75,9 +75,30 @@ pub struct TerminalSession {
 }
 
 impl TerminalSession {
+    #[cfg(test)]
     pub fn start(
         root: &Path,
         shell_override: Option<&str>,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Result<Self, String> {
+        let shell = shell_override
+            .map(str::to_owned)
+            .or_else(|| std::env::var("VSCODESHOPPE_SHELL").ok())
+            .unwrap_or_else(default_shell);
+        Self::start_profile(
+            root,
+            &crate::config::TerminalProfile {
+                name: "Default".into(),
+                path: shell,
+                args: Vec::new(),
+            },
+            wake,
+        )
+    }
+
+    pub fn start_profile(
+        root: &Path,
+        profile: &crate::config::TerminalProfile,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
@@ -89,24 +110,27 @@ impl TerminalSession {
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())?;
-        let shell = shell_override
-            .map(str::to_owned)
-            .or_else(|| std::env::var("VSCODESHOPPE_SHELL").ok())
-            .unwrap_or_else(default_shell);
-        let mut command = CommandBuilder::new(&shell);
+        let mut command = CommandBuilder::new(&profile.path);
+        command.args(&profile.args);
         command.cwd(root);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         #[cfg(windows)]
-        if shell.to_ascii_lowercase().contains("powershell")
-            || shell.to_ascii_lowercase().contains("pwsh")
+        if (profile.path.to_ascii_lowercase().contains("powershell")
+            || profile.path.to_ascii_lowercase().contains("pwsh"))
+            && !profile
+                .args
+                .iter()
+                .any(|arg| arg.eq_ignore_ascii_case("-NoLogo"))
         {
             command.arg("-NoLogo");
         }
-        let mut child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(|e| format!("Could not start shell '{shell}': {e}"))?;
+        let mut child = pair.slave.spawn_command(command).map_err(|e| {
+            format!(
+                "Could not start shell '{}' ({}): {e}",
+                profile.name, profile.path
+            )
+        })?;
         let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let master = pair.master;
@@ -372,6 +396,7 @@ fn xterm_color(index: u8) -> [u8; 3] {
     }
 }
 
+#[cfg(test)]
 fn default_shell() -> String {
     #[cfg(windows)]
     {
@@ -436,6 +461,60 @@ mod tests {
         assert_eq!(state.rows[0][1].character, 'X');
         assert_ne!(state.rows[0][1].foreground, state.rows[0][0].foreground);
         assert_eq!(state.rows[0][2].character, 'c');
+    }
+
+    #[test]
+    fn named_profile_arguments_are_passed_to_the_shell_process() {
+        let temp = crate::test_support::TempDir::new();
+        #[cfg(windows)]
+        let profile = crate::config::TerminalProfile {
+            name: "Command Prompt test".into(),
+            path: "cmd.exe".into(),
+            args: vec!["/C".into(), "echo".into(), "SHOPPE_PROFILE_ARGS".into()],
+        };
+        #[cfg(not(windows))]
+        let profile = crate::config::TerminalProfile {
+            name: "Shell args test".into(),
+            path: "/bin/sh".into(),
+            args: vec!["-c".into(), "printf SHOPPE_PROFILE_ARGS".into()],
+        };
+        let session =
+            TerminalSession::start_profile(temp.path(), &profile, Arc::new(|| {})).unwrap();
+        let mut output_seen = false;
+        for _ in 0..100 {
+            let text = session
+                .snapshot()
+                .rows
+                .iter()
+                .flat_map(|row| row.iter().map(|cell| cell.character))
+                .collect::<String>();
+            if text.contains("SHOPPE_PROFILE_ARGS") {
+                output_seen = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            output_seen,
+            "profile arguments were not passed to the shell"
+        );
+    }
+
+    #[test]
+    fn missing_terminal_executable_returns_a_profile_specific_error() {
+        let temp = crate::test_support::TempDir::new();
+        let profile = crate::config::TerminalProfile {
+            name: "Missing test shell".into(),
+            path: "shoppe-no-such-shell-84729".into(),
+            args: Vec::new(),
+        };
+        let result = TerminalSession::start_profile(temp.path(), &profile, Arc::new(|| {}));
+        let error = match result {
+            Ok(_) => panic!("missing terminal unexpectedly started"),
+            Err(error) => error,
+        };
+        assert!(error.contains("Missing test shell"));
+        assert!(error.contains("shoppe-no-such-shell-84729"));
     }
 
     #[test]

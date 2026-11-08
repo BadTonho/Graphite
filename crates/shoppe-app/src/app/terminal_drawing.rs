@@ -45,8 +45,61 @@ impl App {
                 0x858585
             }),
         );
+        let profile_label = self
+            .terminal_profiles
+            .get(self.selected_terminal_profile)
+            .map(|profile| profile.name.as_str())
+            .unwrap_or("No profile");
+        renderer.draw_text(
+            &format!(
+                "Shell: {}",
+                profile_label.chars().take(9).collect::<String>()
+            ),
+            SIDEBAR_WIDTH + cell_width * 19.0,
+            top,
+            rgb(0xd4d4d4),
+        );
+        renderer.draw_text("+", SIDEBAR_WIDTH + cell_width * 34.0, top, rgb(0xd4d4d4));
+        renderer.draw_text(
+            "Split",
+            SIDEBAR_WIDTH + cell_width * 38.0,
+            top,
+            rgb(0xd4d4d4),
+        );
+        renderer.draw_text(
+            "Close",
+            SIDEBAR_WIDTH + cell_width * 45.0,
+            top,
+            rgb(0xd4d4d4),
+        );
+        renderer.draw_text("<", SIDEBAR_WIDTH + cell_width * 52.0, top, rgb(0xd4d4d4));
+        renderer.draw_text(" >", SIDEBAR_WIDTH + cell_width * 54.0, top, rgb(0xd4d4d4));
+        let mut tab_x = SIDEBAR_WIDTH + cell_width * 57.0;
+        for (index, name) in self
+            .terminal_names
+            .iter()
+            .enumerate()
+            .skip(self.terminal_tab_offset)
+        {
+            let label = format!(" {} ", name);
+            let tab_width = label.chars().count() as f32 * cell_width * 1.25;
+            if tab_x + tab_width > width - PAD {
+                break;
+            }
+            renderer.draw_text(
+                &label,
+                tab_x,
+                top,
+                rgb(if index == self.active_terminal {
+                    0xffffff
+                } else {
+                    0x858585
+                }),
+            );
+            tab_x += tab_width;
+        }
         if self.terminal_problems {
-            let diagnostics = &self.tabs[self.active_tab].diagnostics;
+            let diagnostics = self.diagnostic_entries();
             if diagnostics.is_empty() {
                 renderer.draw_text(
                     "No diagnostics",
@@ -55,7 +108,7 @@ impl App {
                     rgb(0x858585),
                 );
             }
-            for (index, diagnostic) in diagnostics
+            for (index, (document, diagnostic)) in diagnostics
                 .iter()
                 .take(((panel_height / line_height) as usize).saturating_sub(1))
                 .enumerate()
@@ -67,7 +120,13 @@ impl App {
                     _ => "hint",
                 };
                 let text = format!(
-                    "{}:{}  [{}] {}",
+                    "{}:{}:{}  [{}] {}",
+                    self.tabs[*document]
+                        .buffer
+                        .path()
+                        .and_then(Path::file_name)
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "Untitled".into()),
                     diagnostic.range.start.line + 1,
                     diagnostic.range.start.character + 1,
                     severity,
@@ -87,42 +146,97 @@ impl App {
                 top + line_height * 1.5,
                 rgb(0xf14c4c),
             );
-        } else if let Some(terminal) = &self.terminal {
-            let snapshot = terminal.snapshot();
-            for (row_index, row) in snapshot.rows.iter().enumerate() {
-                let y = top + line_height * (row_index as f32 + 1.5);
-                if y + line_height > height - line_height {
-                    break;
+        } else if !self.terminals.is_empty() {
+            let body_top = top + line_height * 1.5;
+            let body_height = panel_height - line_height * 1.5;
+            if let Some(second) = self
+                .split_terminal
+                .filter(|index| *index < self.terminals.len())
+            {
+                let split_x = SIDEBAR_WIDTH + (width - SIDEBAR_WIDTH) / 2.0;
+                if let Some(first) = self.terminals.get(self.active_terminal) {
+                    draw_terminal_snapshot(
+                        renderer,
+                        &first.snapshot(),
+                        SIDEBAR_WIDTH + PAD,
+                        split_x - SIDEBAR_WIDTH - PAD,
+                        body_top,
+                        body_height,
+                        line_height,
+                        cell_width,
+                    );
                 }
-                for (column, cell) in row.iter().enumerate() {
-                    let x = SIDEBAR_WIDTH + PAD + column as f32 * cell_width;
-                    if cell.background != [30, 30, 30] {
-                        let hex = ((cell.background[0] as u32) << 16)
-                            | ((cell.background[1] as u32) << 8)
-                            | cell.background[2] as u32;
-                        renderer.draw_rect(x, y, cell_width, line_height, rgb(hex));
-                    }
-                    if cell.character != ' ' && !cell.hidden && !cell.wide_spacer {
-                        let hex = ((cell.foreground[0] as u32) << 16)
-                            | ((cell.foreground[1] as u32) << 8)
-                            | cell.foreground[2] as u32;
-                        renderer.draw_text(&cell.character.to_string(), x, y, rgb(hex));
-                    }
+                if let Some(second) = self.terminals.get(second) {
+                    draw_terminal_snapshot(
+                        renderer,
+                        &second.snapshot(),
+                        split_x + PAD,
+                        width - split_x - PAD,
+                        body_top,
+                        body_height,
+                        line_height,
+                        cell_width,
+                    );
                 }
-            }
-            if let Some((row, column)) = snapshot.cursor {
-                let x = SIDEBAR_WIDTH + PAD + column as f32 * cell_width;
-                let y = top + line_height * (row as f32 + 1.5);
-                renderer.draw_rect(x, y, 2.0, line_height, rgb(0xd4d4d4));
-            }
-            if let Some(exited) = snapshot.exited {
-                renderer.draw_text(
-                    &exited,
+                renderer.draw_rect(split_x, body_top, 1.0, body_height, rgb(0x454545));
+            } else if let Some(terminal) = self.terminals.get(self.active_terminal) {
+                draw_terminal_snapshot(
+                    renderer,
+                    &terminal.snapshot(),
                     SIDEBAR_WIDTH + PAD,
-                    top + line_height * 1.5,
-                    rgb(0x858585),
+                    width - SIDEBAR_WIDTH - PAD,
+                    body_top,
+                    body_height,
+                    line_height,
+                    cell_width,
                 );
             }
         }
+    }
+}
+
+fn draw_terminal_snapshot(
+    renderer: &mut Renderer,
+    snapshot: &terminal::TerminalSnapshot,
+    left: f32,
+    width: f32,
+    top: f32,
+    height: f32,
+    line_height: f32,
+    cell_width: f32,
+) {
+    for (row_index, row) in snapshot.rows.iter().enumerate() {
+        let y = top + line_height * row_index as f32;
+        if y + line_height > top + height {
+            break;
+        }
+        for (column, cell) in row.iter().enumerate() {
+            let x = left + column as f32 * cell_width;
+            if x + cell_width > left + width {
+                break;
+            }
+            if cell.background != [30, 30, 30] {
+                let hex = ((cell.background[0] as u32) << 16)
+                    | ((cell.background[1] as u32) << 8)
+                    | cell.background[2] as u32;
+                renderer.draw_rect(x, y, cell_width, line_height, rgb(hex));
+            }
+            if cell.character != ' ' && !cell.hidden && !cell.wide_spacer {
+                let hex = ((cell.foreground[0] as u32) << 16)
+                    | ((cell.foreground[1] as u32) << 8)
+                    | cell.foreground[2] as u32;
+                renderer.draw_text(&cell.character.to_string(), x, y, rgb(hex));
+            }
+        }
+    }
+    if let Some((row, column)) = snapshot.cursor {
+        let x = left + column as f32 * cell_width;
+        let y = top + row as f32 * line_height;
+        if x < left + width && y < top + height {
+            renderer.draw_rect(x, y, 2.0, line_height, rgb(0xd4d4d4));
+        }
+    }
+    if let Some(exited) = snapshot.exited.as_deref() {
+        renderer.draw_text(exited, left, top, rgb(0x858585));
     }
 }

@@ -266,7 +266,7 @@ impl App {
             let matches: Vec<_> = self
                 .snippets
                 .iter()
-                .filter(|s| s.prefix.starts_with(query))
+                .filter(|s| s.prefix.starts_with(query) && self.snippet_scope_matches(s))
                 .take(6)
                 .collect();
             let y = h - lh * (matches.len() as f32 + 1.0);
@@ -349,6 +349,61 @@ impl App {
                     line,
                     text_x + PAD,
                     y + i as f32 * lh + PAD * 0.5,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
+        if self.quick_fix_visible {
+            let items = self
+                .quick_fix_actions
+                .iter()
+                .take(6)
+                .enumerate()
+                .collect::<Vec<_>>();
+            let lines = items.len().max(1);
+            let box_h = lh * (lines as f32 + 1.0);
+            let y = (focused_rect.y + lh * 1.6).min(focused_rect.y + focused_rect.height - box_h);
+            let x = (text_x + PAD).min(focused_rect.x + focused_rect.width - 360.0);
+            r.draw_rect(
+                x,
+                y,
+                360.0,
+                box_h,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            r.draw_text(
+                "Quick Fix  (Up/Down, Enter, Esc)",
+                x + PAD,
+                y,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            if items.is_empty() {
+                r.draw_text(
+                    "No quick fixes available",
+                    x + PAD,
+                    y + lh,
+                    rgb(Theme::color(Theme::DIM, 0x858585)),
+                );
+            }
+            for (index, action) in items {
+                let title = match action {
+                    lsp_types::CodeActionOrCommand::CodeAction(action) => action.title.as_str(),
+                    lsp_types::CodeActionOrCommand::Command(command) => command.title.as_str(),
+                };
+                let row_y = y + lh * (index as f32 + 1.0);
+                if index == self.quick_fix_index {
+                    r.draw_rect(
+                        x,
+                        row_y,
+                        360.0,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                r.draw_text(
+                    title,
+                    x + PAD,
+                    row_y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }

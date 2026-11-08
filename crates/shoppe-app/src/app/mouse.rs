@@ -16,8 +16,75 @@ impl App {
                 if my < panel_top + lh * 1.4 {
                     self.terminal_problems = mx < SIDEBAR_WIDTH + cw * 9.0;
                     self.terminal_focused = !self.terminal_problems;
-                } else if !self.terminal_problems {
+                    if !self.terminal_problems && mx >= SIDEBAR_WIDTH + cw * 19.0 {
+                        let offset = mx - SIDEBAR_WIDTH;
+                        if offset < cw * 34.0 {
+                            self.cycle_terminal_profile();
+                        } else if offset < cw * 38.0 {
+                            self.create_terminal_tab();
+                        } else if offset < cw * 45.0 {
+                            self.toggle_terminal_split();
+                        } else if offset < cw * 52.0 {
+                            self.close_focused_terminal();
+                        } else if offset < cw * 54.0 {
+                            self.scroll_terminal_tabs(-1);
+                        } else if offset < cw * 57.0 {
+                            self.scroll_terminal_tabs(1);
+                        } else {
+                            let mut x = SIDEBAR_WIDTH + cw * 57.0;
+                            let mut selected = None;
+                            for (index, name) in self
+                                .terminal_names
+                                .iter()
+                                .enumerate()
+                                .skip(self.terminal_tab_offset)
+                            {
+                                let tab_width = (name.chars().count() as f32 + 2.0) * cw * 1.25;
+                                if x + tab_width > window_width - PAD {
+                                    break;
+                                }
+                                if mx >= x && mx < x + tab_width {
+                                    selected = Some(index);
+                                    break;
+                                }
+                                x += tab_width;
+                            }
+                            if let Some(index) = selected {
+                                self.select_terminal(index);
+                            }
+                        }
+                    }
+                } else if self.terminal_problems {
+                    let row = ((my - panel_top - lh * 1.5) / lh).max(0.0) as usize;
+                    if let Some((document, diagnostic)) =
+                        self.diagnostic_entries().get(row).cloned()
+                    {
+                        self.remember_diagnostic(document, &diagnostic);
+                        self.push_navigation_location();
+                        self.activate_editor_document(document);
+                        let line = (diagnostic.range.start.line as usize)
+                            .min(self.tabs[document].buffer.len_lines().saturating_sub(1));
+                        let col = super::drawing_helpers::utf16_column_to_chars(
+                            &self.tabs[document].buffer.line(line),
+                            diagnostic.range.start.character,
+                        );
+                        self.tabs[document].buffer.set_cursor_line_col(line, col);
+                        self.reveal_cursor = true;
+                        self.push_navigation_location();
+                        self.request_quick_fixes_for(diagnostic);
+                    }
+                } else {
                     self.terminal_focused = true;
+                    self.focused_terminal = if let Some(second) = self.split_terminal {
+                        let split_x = SIDEBAR_WIDTH + (window_width - SIDEBAR_WIDTH) / 2.0;
+                        if mx >= split_x {
+                            second
+                        } else {
+                            self.active_terminal
+                        }
+                    } else {
+                        self.active_terminal
+                    };
                 }
                 return;
             }

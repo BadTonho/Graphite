@@ -25,12 +25,19 @@ impl App {
             gpu.renderer
                 .set_font_size(self.font_size * gpu.window.scale_factor() as f32);
         }
-        self.snippets = config::load_snippets();
+        let (snippets, warnings) = config::load_snippets_for_workspace(self.tree.root());
+        self.snippets = snippets;
+        self.snippet_load_warnings = warnings;
         let keybindings_error = self.reload_keybindings().err();
         self.status = if let Some(error) = settings_error {
             format!("Settings unchanged: {error}")
         } else if let Some(error) = keybindings_error {
             format!("Keybindings unchanged: {error}")
+        } else if let Some(warning) = self.snippet_load_warnings.first() {
+            format!(
+                "Imported {} items; snippet warning: {warning}",
+                report.imported
+            )
         } else if report.warnings.is_empty() {
             format!("Imported {} VS Code items", report.imported)
         } else {

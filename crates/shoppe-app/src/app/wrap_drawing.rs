@@ -91,6 +91,7 @@ impl App {
                 if tab
                     .diagnostics
                     .iter()
+                    .chain(&tab.schema_diagnostics)
                     .any(|d| d.range.start.line as usize == row.line)
                 {
                     r.draw_rect(rect.x + 2.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
@@ -108,6 +109,20 @@ impl App {
             }
             let spans = clipped_spans(spans_for(&tab.highlights, row.line), byte_start, byte_end);
             draw_code_line(r, slice, &spans, row_x, y, cw, tab_size);
+            super::drawing_helpers::draw_line_diagnostic_squiggles(
+                r,
+                &tab.diagnostics,
+                &tab.schema_diagnostics,
+                &text,
+                row.line,
+                segment.start,
+                segment.end,
+                row_x,
+                y,
+                cw,
+                lh,
+                tab_size,
+            );
         }
         for selection in &view.selections {
             let (row, column) = visual_lines::document_position(

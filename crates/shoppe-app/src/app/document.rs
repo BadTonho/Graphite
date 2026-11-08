@@ -50,12 +50,17 @@ impl App {
                 .path()
                 .is_some_and(|open_path| same_file_path(open_path, &path))
         }) {
+            if index != self.active_tab {
+                self.push_navigation_location();
+            }
             self.activate_editor_document(index);
+            self.push_navigation_location();
             self.status = path.display().to_string();
             return;
         }
         match Buffer::open(&path) {
             Ok(mut buffer) => {
+                self.push_navigation_location();
                 let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
                 let relative = canonical
                     .strip_prefix(self.tree.root())
@@ -84,8 +89,13 @@ impl App {
                     scroll_line: 0,
                     language: Language::from_path(&path),
                     highlights: None,
+                    sticky_headers_cache: None,
                     highlighter: IncrementalHighlighter::new(),
                     diagnostics: Vec::new(),
+                    inlay_hints: Vec::new(),
+                    inlay_revision: None,
+                    schema_diagnostics: Vec::new(),
+                    schema_revision: None,
                     lsp_revision: None,
                     indentation,
                 };
@@ -104,6 +114,7 @@ impl App {
                     self.activate_editor_document(self.tabs.len() - 1);
                 }
                 self.register_lsp_active();
+                self.push_navigation_location();
                 self.status = path.display().to_string();
             }
             Err(e) => self.status = format!("Cannot open {}: {e}", path.display()),

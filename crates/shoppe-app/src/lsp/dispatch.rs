@@ -27,6 +27,7 @@ pub(super) fn dispatch_server_message(
             else {
                 return;
             };
+            let response_error = response.error.map(|error| error.message);
             let result = response.result.unwrap_or(Value::Null);
             match kind {
                 "completion" => {
@@ -69,6 +70,34 @@ pub(super) fn dispatch_server_message(
                         .ok()
                         .map(hover_to_string);
                     let _ = event_tx.send(LspUiEvent::Hover { request_id, text });
+                }
+                "inlayHints" => {
+                    let hints = result
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|value| {
+                            serde_json::from_value::<lsp_types::InlayHint>(value).ok()
+                        })
+                        .collect();
+                    let _ = event_tx.send(LspUiEvent::InlayHints { request_id, hints });
+                }
+                "codeActions" => {
+                    let actions = result
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|value| {
+                            serde_json::from_value::<lsp_types::CodeActionOrCommand>(value).ok()
+                        })
+                        .collect();
+                    let _ = event_tx.send(LspUiEvent::CodeActions {
+                        request_id,
+                        actions,
+                        error: response_error,
+                    });
                 }
                 _ => {}
             }

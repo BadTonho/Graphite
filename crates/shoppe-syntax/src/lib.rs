@@ -69,7 +69,7 @@ impl Language {
             "rs" => Some(Self::Rust),
             "py" => Some(Self::Python),
             "js" | "mjs" | "cjs" | "jsx" => Some(Self::JavaScript),
-            "json" => Some(Self::Json),
+            "json" | "jsonc" => Some(Self::Json),
             _ => None,
         }
     }
@@ -113,6 +113,68 @@ pub struct TextEdit {
     pub new_end_position: (usize, usize),
 }
 
+/// A declaration that encloses a source line and can be shown in Sticky Scroll.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeHeader {
+    pub line: usize,
+    pub text: String,
+}
+
+/// Return enclosing declaration headers from outermost to innermost.
+pub fn enclosing_scope_headers(language: Language, source: &str, line: usize) -> Vec<ScopeHeader> {
+    let mut parser = tree_sitter::Parser::new();
+    if parser.set_language(&language.ts_language()).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+    let mut nodes = Vec::new();
+    collect_scope_nodes(tree.root_node(), line, &mut nodes);
+    nodes.sort_by_key(|node| node.start_position().row);
+    let lines: Vec<_> = source.lines().collect();
+    nodes
+        .into_iter()
+        .filter_map(|node| {
+            let row = node.start_position().row;
+            lines.get(row).map(|text| ScopeHeader {
+                line: row,
+                text: text.trim().to_owned(),
+            })
+        })
+        .collect()
+}
+
+fn collect_scope_nodes<'tree>(
+    node: tree_sitter::Node<'tree>,
+    line: usize,
+    output: &mut Vec<tree_sitter::Node<'tree>>,
+) {
+    if node.start_position().row > line || node.end_position().row < line {
+        return;
+    }
+    if matches!(
+        node.kind(),
+        "function_item"
+            | "function_definition"
+            | "function_declaration"
+            | "method_definition"
+            | "class_definition"
+            | "class_declaration"
+            | "struct_item"
+            | "enum_item"
+            | "impl_item"
+            | "trait_item"
+            | "mod_item"
+    ) {
+        output.push(node);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_scope_nodes(child, line, output);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +191,21 @@ mod tests {
             Some(Language::Python)
         );
         assert_eq!(Language::from_path(Path::new("README")), None);
+    }
+
+    #[test]
+    fn sticky_scroll_returns_nested_declarations_containing_the_line() {
+        let source =
+            "struct Store;\nimpl Store {\n    fn load(&self) {\n        let x = 1;\n    }\n}\n";
+        let headers = enclosing_scope_headers(Language::Rust, source, 3);
+        assert_eq!(headers.iter().map(|h| h.line).collect::<Vec<_>>(), [1, 2]);
+        assert!(headers[0].text.contains("impl Store"));
+        assert!(headers[1].text.contains("fn load"));
+    }
+
+    #[test]
+    fn sticky_scroll_is_empty_outside_supported_declarations() {
+        assert!(enclosing_scope_headers(Language::Json, "{\n  \"x\": 1\n}\n", 1).is_empty());
     }
 
     #[test]

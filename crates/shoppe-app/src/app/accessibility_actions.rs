@@ -109,16 +109,28 @@ impl App {
             return None;
         }
         if self.terminal_problems {
-            let diagnostics = &self.tabs[self.active_tab].diagnostics;
+            let diagnostics = self.diagnostic_entries();
             return Some(
                 diagnostics
                     .iter()
-                    .map(|d| format!("Line {}: {}", d.range.start.line + 1, d.message))
+                    .map(|(document, diagnostic)| {
+                        let name = self.tabs[*document]
+                            .buffer
+                            .path()
+                            .and_then(Path::file_name)
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "Untitled".into());
+                        format!(
+                            "{name}, line {}: {}",
+                            diagnostic.range.start.line + 1,
+                            diagnostic.message
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n"),
             );
         }
-        self.terminal.as_ref().map(|terminal| {
+        self.terminals.get(self.focused_terminal).map(|terminal| {
             terminal
                 .snapshot()
                 .rows

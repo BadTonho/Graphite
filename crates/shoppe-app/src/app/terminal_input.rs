@@ -33,7 +33,7 @@ impl App {
             }
         }
         if !bytes.is_empty() {
-            if let Some(terminal) = &self.terminal {
+            if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                 terminal.input(bytes);
             }
         }

@@ -35,13 +35,48 @@ impl App {
                 .expect("layout group exists");
             let views = views.to_vec();
             let view = &views[active];
-            self.refresh_document_highlights(view.document);
-            let tab = &self.tabs[view.document];
+            let document = view.document;
+            self.refresh_document_highlights(document);
+            let revision = self.tabs[document].buffer.revision();
+            let sticky_headers = self.tabs[document]
+                .sticky_headers_cache
+                .as_ref()
+                .filter(|(cached_revision, cached_line, _)| {
+                    *cached_revision == revision && *cached_line == view.scroll_line
+                })
+                .map(|(_, _, headers)| headers.clone())
+                .unwrap_or_else(|| {
+                    let tab = &self.tabs[document];
+                    let headers = tab
+                        .language
+                        .map(|language| {
+                            shoppe_syntax::enclosing_scope_headers(
+                                language,
+                                &tab.buffer.text(),
+                                view.scroll_line,
+                            )
+                        })
+                        .unwrap_or_default();
+                    self.tabs[document].sticky_headers_cache =
+                        Some((revision, view.scroll_line, headers.clone()));
+                    headers
+                });
+            let mut sticky_headers = sticky_headers
+                .into_iter()
+                .filter(|header| header.line < view.scroll_line)
+                .collect::<Vec<_>>();
+            if sticky_headers.len() > 5 {
+                sticky_headers.drain(..sticky_headers.len() - 5);
+            }
+            let tab = &self.tabs[document];
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
             let text_x = rect.x + gutter;
             let right = rect.x + rect.width;
             let bottom = rect.y + rect.height;
+            let sticky_height = sticky_headers.len() as f32 * lh;
+            let body_y = rect.y + lh * 1.5 + sticky_height;
+            let body_height = (rect.height - lh * 1.5 - sticky_height).max(0.0);
             r.set_clip(Some([rect.x, rect.y, right, bottom]));
             r.draw_rect(
                 rect.x,
@@ -78,23 +113,27 @@ impl App {
             let primary = view.selections.first().copied().unwrap_or_default();
             let cursor = primary.head.min(buffer.len_chars());
             let cur_line = buffer.rope().char_to_line(cursor);
-            let visible = (((rect.height - lh * 1.5).max(0.0) / lh) as usize).max(1);
+            let visible = ((body_height / lh) as usize).max(1);
             let last = (view.scroll_line + visible).min(buffer.len_lines());
             for x in super::layout::ruler_positions(&self.rulers, text_x, cw, right) {
                 r.draw_rect(
                     x,
-                    rect.y + lh * 1.5,
+                    body_y,
                     1.0,
-                    (rect.height - lh * 1.5).max(0.0),
+                    body_height,
                     rgb(Theme::color(0x404040, 0xdddddd)),
                 );
             }
             if self.word_wrap {
-                self.draw_wrapped_view(r, *rect, view, text_x, gutter, visible, lh, cw);
+                let mut body_rect = *rect;
+                body_rect.y = body_y;
+                body_rect.height = body_height;
+                self.draw_wrapped_view(r, body_rect, view, text_x, gutter, visible, lh, cw);
+                draw_sticky_headers(r, *rect, &sticky_headers, text_x, lh, cw);
                 continue;
             }
             for line in view.scroll_line..last {
-                let y = rect.y + lh * 1.5 + (line - view.scroll_line) as f32 * lh;
+                let y = body_y + (line - view.scroll_line) as f32 * lh;
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
@@ -125,6 +164,7 @@ impl App {
                 if tab
                     .diagnostics
                     .iter()
+                    .chain(&tab.schema_diagnostics)
                     .any(|d| d.range.start.line as usize == line)
                 {
                     r.draw_rect(rect.x + 2.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
@@ -148,6 +188,61 @@ impl App {
                     cw,
                     tab.indentation.tab_size,
                 );
+                super::drawing_helpers::draw_line_diagnostic_squiggles(
+                    r,
+                    &tab.diagnostics,
+                    &tab.schema_diagnostics,
+                    &text,
+                    line,
+                    0,
+                    text.trim_end_matches(['\r', '\n']).chars().count(),
+                    text_x,
+                    y,
+                    cw,
+                    lh,
+                    tab.indentation.tab_size,
+                );
+                if tab.inlay_revision == Some(buffer.revision()) {
+                    for hint in tab
+                        .inlay_hints
+                        .iter()
+                        .filter(|hint| hint.position.line as usize == line)
+                    {
+                        let column = super::drawing_helpers::utf16_column_to_chars(
+                            &text,
+                            hint.position.character,
+                        );
+                        let prefix = text.chars().take(column).collect::<String>();
+                        let x = text_x
+                            + display_line(&prefix, tab.indentation.tab_size)
+                                .chars()
+                                .count() as f32
+                                * cw;
+                        let label = match &hint.label {
+                            lsp_types::InlayHintLabel::String(value) => value.clone(),
+                            lsp_types::InlayHintLabel::LabelParts(parts) => parts
+                                .iter()
+                                .map(|part| part.value.as_str())
+                                .collect::<String>(),
+                        };
+                        let padding = if hint.padding_left.unwrap_or(false) {
+                            " "
+                        } else {
+                            ""
+                        };
+                        let right_padding = if hint.padding_right.unwrap_or(false) {
+                            " "
+                        } else {
+                            ""
+                        };
+                        r.draw_text(
+                            &format!("{padding}{label}{right_padding}"),
+                            x,
+                            y,
+                            rgb(Theme::color(Theme::DIM, 0x858585)),
+                        );
+                    }
+                }
             }
             for selection in &view.selections {
                 let head = selection.head.min(buffer.len_chars());
@@ -164,7 +259,7 @@ impl App {
                     .chars()
                     .count();
                 let x = text_x + column as f32 * cw;
-                let y = rect.y + lh * 1.5 + (line - view.scroll_line) as f32 * lh;
+                let y = body_y + (line - view.scroll_line) as f32 * lh;
                 r.draw_rect(x, y, 2.0, lh, rgb(Theme::color(Theme::CURSOR, 0x202020)));
                 if rect.id == self.editor_groups.focused()
                     && *selection == primary
@@ -190,7 +285,43 @@ impl App {
                     );
                 }
             }
+            draw_sticky_headers(r, *rect, &sticky_headers, text_x, lh, cw);
         }
         r.set_clip(None);
+    }
+}
+
+fn draw_sticky_headers(
+    renderer: &mut Renderer,
+    rect: GroupRect,
+    headers: &[shoppe_syntax::ScopeHeader],
+    text_x: f32,
+    line_height: f32,
+    _cell_width: f32,
+) {
+    if headers.is_empty() {
+        return;
+    }
+    renderer.draw_rect(
+        rect.x,
+        rect.y + line_height * 1.5,
+        rect.width,
+        headers.len() as f32 * line_height,
+        rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+    );
+    for (index, header) in headers.iter().enumerate() {
+        let y = rect.y + line_height * (1.5 + index as f32);
+        renderer.draw_text(
+            &format!("{:>3}", header.line + 1),
+            rect.x + PAD,
+            y,
+            rgb(Theme::color(Theme::DIM, 0x858585)),
+        );
+        renderer.draw_text(
+            &header.text,
+            text_x,
+            y,
+            rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+        );
     }
 }
