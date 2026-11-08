@@ -88,6 +88,7 @@ struct App {
     context_keys: app::context_keys::ContextKeyService,
     command_runtime: app::command_execution::CommandRuntime,
     extension_host: app::extension_host::ExtensionRuntime,
+    saving: app::saving::SaveRuntime,
     document_events: app::services::DocumentEventHub,
     selecting: bool,
     reveal_cursor: bool,
@@ -328,6 +329,7 @@ impl App {
             context_keys: app::context_keys::ContextKeyService::default(),
             command_runtime: Default::default(),
             extension_host: Default::default(),
+            saving: Default::default(),
             document_events: Default::default(),
             selecting: false,
             reveal_cursor: true,
@@ -636,12 +638,14 @@ mod tests {
         assert!(app.close_window_confirm);
         assert!(!app.exit_requested);
         app.save_all_before_close();
+        app.wait_for_saves();
         assert!(app.exit_requested);
         assert_eq!(fs::read_to_string(file).unwrap(), "ba");
         let mut untitled = App::new_with_options(temp.path().to_path_buf(), None, true);
         untitled.test_editor_mut(0).insert("unsaved");
         untitled.request_window_close();
         untitled.save_all_before_close();
+        untitled.wait_for_saves();
         assert!(!untitled.exit_requested);
         assert!(untitled.documents[untitled.document_at(0)].is_dirty());
         assert!(untitled.status.contains("Cannot close"));
@@ -663,11 +667,13 @@ mod tests {
         fs::remove_file(&a).unwrap();
         fs::create_dir(&a).unwrap();
         app.save_all_before_close();
+        app.wait_for_saves();
         assert!(!app.exit_requested);
         assert_eq!(app.active_document(), app.document_at(1));
         assert_eq!(app.documents[app.document_at(0)].buffer.text(), "éone  \n");
-        assert_eq!(app.documents[app.document_at(1)].buffer.text(), "🙂two  \n");
-        assert!(app.documents.iter().all(|tab| tab.is_dirty()));
+        assert_eq!(app.documents[app.document_at(1)].buffer.text(), "🙂two\n");
+        assert!(app.documents[app.document_at(0)].is_dirty());
+        assert!(!app.documents[app.document_at(1)].is_dirty());
         assert!(app.status.contains("Cannot close"));
     }
 
@@ -1003,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_folder_switch_is_blocked_when_documents_are_dirty() {
+    fn cli_folder_switch_waits_for_unsaved_decision() {
         let first = crate::test_support::TempDir::new();
         let second = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(first.path().to_path_buf(), None, true);
@@ -1031,7 +1037,8 @@ mod tests {
             None,
         );
         assert_eq!(app.tree.root(), second.path().canonicalize().unwrap());
-        assert!(app.status.contains("unsaved changes"));
+        assert!(app.close_window_confirm);
+        assert!(app.workspace_decision_pending());
     }
 
     #[test]

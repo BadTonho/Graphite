@@ -12,6 +12,24 @@ impl App {
         request: crate::cli::CliRequest,
         acknowledge: Option<std::sync::mpsc::Sender<()>>,
     ) {
+        if let crate::cli::CliAction::Open { paths, .. } = &request.action {
+            let different = paths.iter().any(|path| {
+                path.is_dir() && path.canonicalize().ok() != self.tree.root().canonicalize().ok()
+            });
+            if different && (self.documents.iter().any(|d| d.is_dirty()) || self.saving.pending()) {
+                self.defer_workspace_request(request, acknowledge);
+                return;
+            }
+        }
+        self.apply_prepared_cli_request(request, acknowledge, HashMap::new());
+    }
+
+    pub(in crate::app) fn apply_prepared_cli_request(
+        &mut self,
+        request: crate::cli::CliRequest,
+        acknowledge: Option<std::sync::mpsc::Sender<()>>,
+        mut prepared: HashMap<PathBuf, Workspace>,
+    ) {
         let mut paths = Vec::new();
         let mut waiting_for_diff_close = false;
         match request.action {
@@ -20,7 +38,7 @@ impl App {
                 location,
             } => {
                 for path in requested {
-                    if path.is_dir() {
+                    if path.is_dir() || prepared.contains_key(&path) {
                         if path.canonicalize().ok() != self.tree.root().canonicalize().ok() {
                             if self.documents.iter().any(|tab| tab.is_dirty()) {
                                 self.status = format!(
@@ -28,14 +46,25 @@ impl App {
                                     path.display()
                                 );
                             } else {
-                                match Workspace::open(&path) {
+                                match prepared
+                                    .remove(&path)
+                                    .map(Ok)
+                                    .unwrap_or_else(|| Workspace::open(&path))
+                                {
                                     Ok(workspace) => {
-                                        for tab in self.documents.iter() {
-                                            if let Some(open) = tab.buffer.path() {
-                                                self.lsp_manager.close(open);
-                                            }
+                                        self.lsp_manager.change_workspace();
+                                        let documents: Vec<_> = self.documents.ids().collect();
+                                        for document in &documents {
+                                            let doc = &mut self.documents[*document];
+                                            doc.lsp_revision = None;
+                                            doc.diagnostics.clear();
+                                            doc.inlay_hints.clear();
+                                            doc.inlay_revision = None;
                                         }
                                         self.tree.replace_workspace(workspace);
+                                        for document in documents {
+                                            self.sync_lsp_document(document);
+                                        }
                                         self.status = format!("Opened folder {}", path.display());
                                     }
                                     Err(error) => {

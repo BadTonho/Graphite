@@ -1,5 +1,97 @@
 use super::*;
 
+#[derive(Default)]
+pub(super) struct SaveCapabilities {
+    pub will_save: bool,
+    pub wait_until: bool,
+    pub save: bool,
+    pub include_text: bool,
+}
+impl SaveCapabilities {
+    pub fn from_sync(sync: Option<&Value>) -> Self {
+        Self {
+            will_save: sync
+                .and_then(|v| v.get("willSave"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            wait_until: sync
+                .and_then(|v| v.get("willSaveWaitUntil"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            save: sync
+                .and_then(|v| v.get("save"))
+                .is_some_and(|v| v == &Value::Bool(true) || v.is_object()),
+            include_text: sync
+                .and_then(|v| v.pointer("/save/includeText"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        }
+    }
+    pub fn did_save(&self, uri: &str, text: String) -> Option<Message> {
+        if !self.save {
+            return None;
+        }
+        let mut params = json!({"textDocument":{"uri":uri}});
+        if self.include_text {
+            params["text"] = json!(text);
+        }
+        Some(Message::Notification(Notification {
+            method: "textDocument/didSave".into(),
+            params,
+        }))
+    }
+}
+pub(super) fn save_edits(
+    value: Value,
+) -> shoppe_core_api::ServiceResult<Vec<shoppe_core_api::TextEdit>> {
+    if value.is_null() {
+        return Ok(Vec::new());
+    }
+    let edits: Vec<lsp_types::TextEdit> = serde_json::from_value(value)
+        .map_err(|e| shoppe_core_api::ServiceError::Protocol(e.to_string()))?;
+    Ok(edits
+        .into_iter()
+        .map(|e| shoppe_core_api::TextEdit {
+            start: shoppe_core_api::Position {
+                line: e.range.start.line,
+                character: e.range.start.character,
+            },
+            end: shoppe_core_api::Position {
+                line: e.range.end.line,
+                character: e.range.end.character,
+            },
+            text: e.new_text,
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod save_tests {
+    use super::*;
+    #[test]
+    fn save_notifications_respect_negotiated_capabilities_and_text_inclusion() {
+        assert!(SaveCapabilities::from_sync(Some(&json!(2)))
+            .did_save("file:///a", "x".into())
+            .is_none());
+        let caps = SaveCapabilities::from_sync(Some(
+            &json!({"willSave":true,"willSaveWaitUntil":true,"save":true}),
+        ));
+        assert!(caps.will_save && caps.wait_until);
+        let Message::Notification(message) = caps.did_save("file:///a", "x".into()).unwrap() else {
+            panic!()
+        };
+        assert!(message.params.get("text").is_none());
+        let caps = SaveCapabilities::from_sync(Some(&json!({"save":{"includeText":true}})));
+        let Message::Notification(message) = caps.did_save("file:///a", "written".into()).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(message.params["text"], "written");
+        assert!(save_edits(json!([{"newText":"invalid"}])).is_err());
+        assert!(save_edits(Value::Null).unwrap().is_empty());
+    }
+}
+
 pub(super) fn full_text_change(text: String) -> TextDocumentContentChangeEvent {
     TextDocumentContentChangeEvent {
         range: None,

@@ -200,10 +200,11 @@ pub(super) fn workbench_action_files_save(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    app.save_document(app.command_document());
-    if app.status != "Saved" {
-        return Err(CommandError::Failed(app.status.clone()));
-    }
+    let job = app.command_job(false).expect("save command ticket");
+    app.save_batch(
+        vec![app.command_document()],
+        super::super::saving::AfterSave::Command(job),
+    );
     Ok(())
 }
 
@@ -219,6 +220,12 @@ pub(super) fn workbench_action_close_active_editor(
     app: &mut App,
     invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
+    if app.saving.transition_pending()
+        || app.command_runtime.pending_close.is_some()
+        || app.command_runtime.pending_window_close.is_some()
+    {
+        return Err(CommandError::Busy);
+    }
     {
         if app.active_view_needs_confirmation() {
             app.close_confirm = true;
@@ -228,6 +235,15 @@ pub(super) fn workbench_action_close_active_editor(
                 pending.deferred = true;
             }
             app.status = "Unsaved tab: S save, D discard, Esc cancel".into();
+        } else if app.saving.document_pending(app.command_document()) {
+            app.command_job(false);
+            app.save_batch(
+                vec![app.command_document()],
+                super::super::saving::AfterSave::Close {
+                    execution: invocation.execution,
+                    view: app.command_view_ref().id,
+                },
+            );
         } else {
             app.close_active_tab();
         }
@@ -236,6 +252,27 @@ pub(super) fn workbench_action_close_active_editor(
 }
 
 pub(super) fn register(registry: &mut CommandRegistry) {
+    add(
+        registry,
+        "workbench.action.files.saveAll",
+        "Save all",
+        "File",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            let job = app.command_job(false).expect("save all ticket");
+            let documents = app
+                .documents
+                .iter()
+                .filter(|d| d.is_dirty() || app.saving.document_pending(d.id))
+                .map(|d| d.id)
+                .collect();
+            app.save_batch(documents, super::super::saving::AfterSave::Command(job));
+            Ok(())
+        },
+    );
+
     add(
         registry,
         "workbench.action.quickOpen",

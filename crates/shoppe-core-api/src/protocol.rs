@@ -3,7 +3,7 @@ use crate::{CommandMetadata, DocumentEvent, ServiceError, ServiceRequest, Servic
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Read, Write};
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const MAX_FRAME: usize = 16 * 1024 * 1024;
 pub const MAX_PENDING: usize = 128;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -14,6 +14,11 @@ pub enum RpcRequest {
         parent: Option<u64>,
     },
     RegisterCommand(CommandMetadata),
+    RegisterSaveParticipant(crate::SaveParticipantMetadata),
+    ParticipateInSave {
+        resource: u64,
+        request: crate::SaveParticipantRequest,
+    },
     SubscribeDocuments,
     Dispose {
         resource: u64,
@@ -51,6 +56,10 @@ pub enum Message {
         session: u64,
         id: u64,
     },
+    Resumed {
+        session: u64,
+        id: u64,
+    },
     Event {
         session: u64,
         resource: u64,
@@ -69,6 +78,7 @@ impl Message {
             | Self::Response { session, .. }
             | Self::Cancel { session, .. }
             | Self::WaitingForUser { session, .. }
+            | Self::Resumed { session, .. }
             | Self::Event { session, .. }
             | Self::Shutdown { session } => *session,
         }

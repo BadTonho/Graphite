@@ -7,6 +7,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Document and view](architecture/document-view.md)
   - [Commands and context](architecture/commands-context.md)
   - [Internal services and simulated host](architecture/services-host.md)
+  - [Asynchronous saving](architecture/async-saving.md)
   - [VS Code extension compatibility](architecture/extension-compat.md)
 - **Features**
   - [v0.1 — Core editor](features/v0.1-editor.md)

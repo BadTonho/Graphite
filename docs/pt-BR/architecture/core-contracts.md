@@ -1,6 +1,6 @@
 # Contratos do Núcleo do Editor
 
-Este documento descreve os contratos **documento/view**, **comandos e contexto**, **serviços internos** e **fronteira de extensões simulada** implementados. O host Code OSS real e participantes assíncronos de salvamento permanecem como trabalhos futuros.
+Este documento descreve os contratos **documento/view**, **comandos e contexto**, **serviços internos**, **fronteira de extensões simulada** e **salvamento assíncrono** implementados. O host Code OSS real permanece como trabalho futuro.
 
 ## 1. Documento e view
 
@@ -54,7 +54,7 @@ A migração de documento/view está concluída. Os chamadores de edição usam 
 
 ### Migração incremental
 
-A migração de comandos está concluída, incluindo todos os IDs do dispatcher anterior, atalhos padrão e argumentos JSON. Workers devolvem resultados próprios ao event loop, que revalida cancelamento, existência do alvo, workspace e versões antes de aplicá-los. O salvamento permanece síncrono. Interfaces compartilhadas e comandos pertencentes a sessões são descritos abaixo; uma paleta permanece como trabalho futuro.
+A migração de comandos está concluída, incluindo todos os IDs do dispatcher anterior, atalhos padrão e argumentos JSON. Workers devolvem resultados próprios ao event loop, que revalida cancelamento, existência do alvo, workspace e versões antes de aplicá-los. Salvar e salvar tudo agora concluem assincronamente após a gravação. Interfaces compartilhadas e comandos pertencentes a sessões são descritos abaixo; uma paleta permanece como trabalho futuro.
 
 ## 3. Fronteira de extensões e protocolos
 
@@ -62,7 +62,7 @@ A migração de comandos está concluída, incluindo todos os IDs do dispatcher 
 
 `shoppe-core-api` define contratos independentes de serviços e dados serializáveis; a aplicação os implementa no event loop. `shoppe-extension-host` oferece um processo Rust simulado e supervisor reutilizável com framing versionado, sessões, registros com proprietário, cancelamento, prazos e reinício manual. Uma falha do host libera seus recursos enquanto edição e LSP continuam. Consulte [Serviços internos e host de extensões simulado](services-host.md).
 
-Publicação e edições LSP usam os serviços de documentos; consultas de workspace e mensagens usam serviços de workspace/janela. Instâncias de servidor identificam seus eventos, e requisições pendentes têm limites, cancelamento, prazos e limpeza no encerramento. Edições canceladas antes de a interface assumir a requisição não são aplicadas; edições já assumidas terminam atomicamente. Isso implementa a fronteira simulada; o host Code OSS real e participantes assíncronos de salvamento permanecem em etapas separadas.
+Publicação e edições LSP usam os serviços de documentos; consultas de workspace e mensagens usam serviços de workspace/janela. Instâncias de servidor identificam seus eventos, e requisições pendentes têm limites, cancelamento, prazos e limpeza no encerramento. Edições canceladas antes de a interface assumir a requisição não são aplicadas; edições já assumidas terminam atomicamente. A fronteira simulada e os participantes de salvamento estão implementados; o host Code OSS real permanece como etapa separada.
 
 ### Contrato alvo
 
@@ -70,7 +70,7 @@ Publicação e edições LSP usam os serviços de documentos; consultas de works
 - Manter adaptadores de protocolo distintos: LSP e host simulado têm transportes e ciclos de vida separados, chamando serviços compartilhados. O protocolo simulado não declara compatibilidade com o futuro protocolo Code OSS.
 - Extensões e workers nunca alteram o estado da interface diretamente. Entregar resultados ao event loop responsável; não bloquear a interface esperando RPC. Acompanhar requisições, cancelamento, prazos, controle de fluxo, encerramento e reinício do host, liberando registros e requisições pendentes associados a ele quando terminar.
 - Definir abstrações de URI e sistema de arquivos, começando por arquivos locais. Alterações de documento versionadas e edições de texto passam pelo contrato de documento; converter posições e garantias específicas de cada protocolo em sua fronteira. Operações sobre recursos e persistência em disco ficam fora da garantia inicial de atomicidade de texto multidocumento.
-- O item 4 adicionará participantes assíncronos de salvamento em sequência limitada, rejeição de edições obsoletas e gravações de snapshots que preservem texto novo como dirty. O salvamento permanece síncrono na implementação atual.
+- O [salvamento assíncrono](async-saving.md) executa participantes sequenciais com prazo de um segundo, rejeita edições obsoletas e grava snapshots fora do event loop. Falhas preservam a referência salva e a preparação é aplicada somente após sucesso contra uma origem inalterada. Texto e formato mais recentes permanecem dirty.
 
 ### Critérios de aceitação
 
@@ -81,13 +81,13 @@ Publicação e edições LSP usam os serviços de documentos; consultas de works
 
 ### Migração incremental
 
-Interfaces de serviços, adaptador LSP e supervisor do host simulado estão implementados. Testes nativos exercitam falhas de protocolo, queda/reinício de processo real, limpeza de recursos e operação independente do LSP. As próximas etapas são salvamento assíncrono e integração do host Code OSS real.
+Interfaces de serviços, adaptador LSP, supervisor do host simulado e coordenador de salvamento assíncrono estão implementados. Testes nativos exercitam falhas de protocolo, queda/reinício de processo real, limpeza de recursos, operação independente do LSP e corridas de salvamento/fechamento/workspace. A integração do host Code OSS real permanece pendente.
 
 O host Code OSS real continua sendo uma etapa posterior obrigatória: fixar um release ou commit, integrar o host Node real e validá-lo com uma extensão real antes de declarar compatibilidade.
 
 ## Como os contratos interagem
 
-A digitação envia uma transação para a view em foco, avança a versão do documento e envia a alteração LSP correspondente. Salvar é resolvido pelo registro e atualmente grava de forma síncrona, atualizando o estado salvo de referência somente em caso de sucesso. Cada view afetada é remapeada. Um futuro coordenador executará participantes com prazo e rejeitará edições obsoletas antes de gravar snapshots assincronamente. Futuros comandos de extensão usarão o registro e o contexto com escopo; comandos de servidores de linguagem já usam o transporte exigido pelo LSP.
+A digitação envia uma transação para a view em foco, avança a versão do documento e envia a alteração LSP correspondente. Salvar é resolvido pelo registro, executa participantes com prazo e grava um snapshot assincronamente, atualizando a referência salva somente em caso de sucesso. Edições preparadas remapeiam as views afetadas em uma transação quando a origem continua atual. Comandos de extensão pertencentes à sessão usam o registro e o contexto com escopo; comandos de servidores de linguagem usam o transporte exigido pelo LSP.
 
 ## Ordem recomendada
 

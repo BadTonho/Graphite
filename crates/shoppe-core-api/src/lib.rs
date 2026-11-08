@@ -1,6 +1,8 @@
 //! UI-independent contracts shared by protocol adapters and the editor.
 mod commands;
 mod documents;
+mod saving;
+pub use saving::*;
 pub mod protocol;
 mod uri;
 pub use commands::*;
@@ -68,6 +70,7 @@ pub enum ServiceRequest {
     ApplyEdits { edits: Vec<DocumentEdit> },
     Commands,
     Execute(CommandRequest),
+    Save(SaveRequest),
     Workspace,
     Configuration,
     Open { uri: DocumentUri },

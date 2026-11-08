@@ -33,7 +33,30 @@ impl App {
         } else {
             None
         };
-        let parent_view = if let Some(parent) = parent {
+        let save_parent =
+            parent.is_some_and(|id| self.extension_host.save_replies.contains_key(&id));
+        if save_parent
+            && !matches!(
+                &request,
+                RpcRequest::Service {
+                    request: ServiceRequest::Documents
+                        | ServiceRequest::Snapshot { .. }
+                        | ServiceRequest::Commands
+                        | ServiceRequest::Workspace
+                        | ServiceRequest::Configuration,
+                    ..
+                }
+            )
+        {
+            self.reply_host(
+                id,
+                Err(ServiceError::InvalidArguments(
+                    "Save participants may only query services".into(),
+                )),
+            );
+            return;
+        }
+        let parent_view = if let Some(parent) = parent.filter(|_| !save_parent) {
             let pending = self
                 .extension_host
                 .outbound
@@ -59,11 +82,39 @@ impl App {
         };
         let previous_view = std::mem::replace(&mut self.command_runtime.view, parent_view);
         let result = match request {
+            RpcRequest::RegisterSaveParticipant(metadata) => {
+                if metadata.id.is_empty()
+                    || self
+                        .extension_host
+                        .participants
+                        .values()
+                        .any(|(_, p)| p.id == metadata.id)
+                {
+                    Err(ServiceError::InvalidArguments(
+                        "Duplicate or empty save participant".into(),
+                    ))
+                } else if self.extension_host.commands.len()
+                    + self.extension_host.subscriptions.len()
+                    + self.extension_host.participants.len()
+                    >= 1024
+                {
+                    Err(ServiceError::Busy)
+                } else {
+                    self.extension_host.next_resource += 1;
+                    let resource = self.extension_host.next_resource;
+                    self.extension_host
+                        .participants
+                        .insert(resource, (session, metadata));
+                    Ok(json!({"resource": resource}))
+                }
+            }
             RpcRequest::RegisterCommand(metadata) => self
                 .register_host_command(session, metadata)
                 .map(|resource| json!({"resource":resource})),
             RpcRequest::SubscribeDocuments => {
-                if self.extension_host.commands.len() + self.extension_host.subscriptions.len()
+                if self.extension_host.commands.len()
+                    + self.extension_host.subscriptions.len()
+                    + self.extension_host.participants.len()
                     >= 1024
                 {
                     self.command_runtime.view = previous_view;
@@ -83,7 +134,8 @@ impl App {
                 }
             }
             RpcRequest::Dispose { resource } => {
-                let mut found = self
+                let mut found = self.extension_host.participants.remove(&resource).is_some();
+                found |= self
                     .extension_host
                     .subscriptions
                     .remove(&resource)
@@ -98,6 +150,25 @@ impl App {
                     Ok(Value::Null)
                 } else {
                     Err(ServiceError::NotFound)
+                }
+            }
+            RpcRequest::Service {
+                request: ServiceRequest::Save(request),
+                ..
+            } => {
+                let ticket = SaveService::save(self, request, CancellationToken::default());
+                if let Some(result) = ticket.try_result() {
+                    result.map_err(ServiceError::Command)
+                } else {
+                    self.extension_host.incoming.insert(
+                        id,
+                        Incoming {
+                            ticket,
+                            deadline: Some(now + Duration::from_secs(30)),
+                        },
+                    );
+                    self.command_runtime.view = previous_view;
+                    return;
                 }
             }
             RpcRequest::Service {
@@ -150,7 +221,11 @@ impl App {
         }
         crate::keybindings::Condition::parse(&metadata.enablement)
             .map_err(ServiceError::InvalidArguments)?;
-        if self.extension_host.commands.len() + self.extension_host.subscriptions.len() >= 1024 {
+        if self.extension_host.commands.len()
+            + self.extension_host.subscriptions.len()
+            + self.extension_host.participants.len()
+            >= 1024
+        {
             return Err(ServiceError::Busy);
         }
         self.extension_host.next_resource += 1;
@@ -191,7 +266,7 @@ impl App {
                 WindowService::show_message(self, text)?;
                 Ok(Value::Null)
             }
-            ServiceRequest::Execute(_) => Err(ServiceError::Protocol(
+            ServiceRequest::Execute(_) | ServiceRequest::Save(_) => Err(ServiceError::Protocol(
                 "Commands require an execution ticket".into(),
             )),
         }

@@ -2,19 +2,26 @@ use super::*;
 
 impl ApplicationHandler<UserEvent> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let saving = self.saving.pending();
+        self.poll_saves(std::time::Instant::now());
+        if saving {
+            if let Some(gpu) = &self.gpu {
+                gpu.window.request_redraw();
+            }
+        }
         self.collect_closed_documents();
         self.poll_extension_host(std::time::Instant::now());
-        if self.extension_host.enabled {
-            let pending = self.extension_host.supervisor.as_ref().is_some_and(|host| {
+        let host_pending = self.extension_host.enabled
+            && (self.extension_host.supervisor.as_ref().is_some_and(|host| {
                 host.state == shoppe_extension_host::HostState::Starting || !host.pending.is_empty()
-            }) || !self.extension_host.incoming.is_empty();
-            event_loop.set_control_flow(if pending {
-                ControlFlow::WaitUntil(
-                    std::time::Instant::now() + std::time::Duration::from_millis(25),
-                )
-            } else {
-                ControlFlow::Wait
-            });
+            }) || !self.extension_host.incoming.is_empty());
+        event_loop.set_control_flow(if self.saving.pending() || host_pending {
+            ControlFlow::WaitUntil(std::time::Instant::now() + std::time::Duration::from_millis(10))
+        } else {
+            ControlFlow::Wait
+        });
+        if self.exit_requested {
+            event_loop.exit();
         }
         self.refresh_command_context();
         self.reap_commands();

@@ -188,21 +188,19 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn save_all_before_close(&mut self) {
-        let documents: Vec<_> = self.documents.ids().collect();
-        for document in documents {
-            if !self.documents[document].is_dirty() {
-                continue;
-            }
-            self.save_document(document);
-            if self.documents[document].is_dirty() {
-                self.status = format!("Cannot close: {}", self.status);
-                self.close_window_confirm = false;
-                return;
-            }
-        }
+        let documents = self
+            .documents
+            .iter()
+            .filter(|d| d.is_dirty() || self.saving.document_pending(d.id))
+            .map(|d| d.id)
+            .collect();
         self.close_window_confirm = false;
-        self.exit_requested = true;
+        self.save_batch(
+            documents,
+            super::saving::AfterSave::Window { execution: None },
+        );
     }
 
     pub(crate) fn accept_completion(&mut self) {

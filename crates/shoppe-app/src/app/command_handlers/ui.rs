@@ -1,5 +1,4 @@
 use super::*;
-use serde_json::Value;
 
 pub(super) fn register(registry: &mut CommandRegistry) {
     for (id, title, widget, enablement, handler) in [
@@ -236,14 +235,21 @@ fn resolve_close(app: &mut App, save: bool, cancel: bool) -> Result<(), CommandE
         Err(CommandError::TargetClosed)
     } else {
         if save {
-            app.save_document(app.command_document());
+            let document = app.command_document();
+            app.save_batch(
+                vec![document],
+                super::super::saving::AfterSave::Close { execution, view },
+            );
+            app.command_runtime.view = previous;
+            return Ok(());
         }
-        if save && app.documents[app.command_document()].is_dirty() {
-            Err(CommandError::Failed(app.status.clone()))
-        } else {
-            app.close_active_tab();
-            Ok(Value::Null)
-        }
+        let document = app.command_document();
+        app.defer_discard(
+            vec![document],
+            super::super::saving::DiscardAction::Close { execution, view },
+        );
+        app.command_runtime.view = previous;
+        return Ok(());
     };
     app.command_runtime.view = previous;
     app.finish_command(execution, result);
@@ -259,7 +265,29 @@ fn close_cancel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError
     resolve_close(app, false, true)
 }
 fn quit(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.saving.transition_pending()
+        || app.command_runtime.pending_window_close.is_some()
+        || app.command_runtime.pending_close.is_some()
+    {
+        return Err(CommandError::Busy);
+    }
     app.request_window_close();
+    if !app.close_window_confirm && app.saving.pending() {
+        app.exit_requested = false;
+        app.command_job(false);
+        let documents = app
+            .documents
+            .iter()
+            .filter(|d| app.saving.document_pending(d.id))
+            .map(|d| d.id)
+            .collect();
+        app.save_batch(
+            documents,
+            super::super::saving::AfterSave::Window {
+                execution: Some(invocation.execution),
+            },
+        );
+    }
     if app.close_window_confirm {
         app.command_runtime.pending_window_close = Some(invocation.execution);
         app.command_runtime
@@ -271,6 +299,10 @@ fn quit(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandErro
     Ok(())
 }
 fn resolve_window(app: &mut App, save: bool, cancel: bool) -> Result<(), CommandError> {
+    if app.workspace_decision_pending() {
+        app.resolve_workspace_save(save, cancel);
+        return Ok(());
+    }
     let execution = app
         .command_runtime
         .pending_window_close
@@ -280,16 +312,28 @@ fn resolve_window(app: &mut App, save: bool, cancel: bool) -> Result<(), Command
         app.close_window_confirm = false;
         Err(CommandError::Cancelled)
     } else if save {
-        app.save_all_before_close();
-        if app.exit_requested {
-            Ok(Value::Null)
-        } else {
-            Err(CommandError::Failed(app.status.clone()))
-        }
+        app.close_window_confirm = false;
+        let documents = app
+            .documents
+            .iter()
+            .filter(|d| d.is_dirty() || app.saving.document_pending(d.id))
+            .map(|d| d.id)
+            .collect();
+        app.save_batch(
+            documents,
+            super::super::saving::AfterSave::Window {
+                execution: Some(execution),
+            },
+        );
+        return Ok(());
     } else {
         app.close_window_confirm = false;
-        app.exit_requested = true;
-        Ok(Value::Null)
+        let documents = app.documents.ids().collect();
+        app.defer_discard(
+            documents,
+            super::super::saving::DiscardAction::Window { execution },
+        );
+        return Ok(());
     };
     app.finish_command(execution, result);
     Ok(())
