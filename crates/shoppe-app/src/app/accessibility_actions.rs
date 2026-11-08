@@ -272,4 +272,38 @@ mod tests {
         assert_eq!(app.documents[app.document_at(0)].buffer.text(), "aébcd");
         assert_eq!(app.test_editor(0).cursor().char_idx, 4);
     }
+
+    #[test]
+    fn accessible_multicursor_edit_preserves_focus_scroll_and_peer_ime() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().into(), None, true);
+        app.editor_mut().insert("abc\ndef\n");
+        app.editor_mut().set_selection(6, 6);
+        app.ime_preedit("日".into());
+        app.editor_groups.active_view_mut().scroll_line = 1;
+        let right = app.split_editor_group(SplitDirection::Vertical);
+        app.editor_mut().set_selections(vec![
+            shoppe_text::Selection { anchor: 0, head: 0 },
+            shoppe_text::Selection { anchor: 4, head: 4 },
+        ]);
+        app.focus_editor_group(0);
+        let focus = app.editor_groups.active_view().id;
+        let revision = app.editor().revision();
+        app.process_accessibility_action(request(
+            Action::ReplaceSelectedText,
+            editor_node(right),
+            Some(ActionData::Value("🌎".into())),
+        ));
+        assert_eq!(app.editor_groups.active_view().id, focus);
+        assert_eq!(app.editor_groups.active_view().scroll_line, 1);
+        assert_eq!(app.editor_groups.active_view().ime_preedit, "日");
+        assert_eq!(app.editor().cursor().char_idx, 8);
+        assert_eq!(app.editor().revision(), revision + 1);
+        assert_eq!(app.editor().text(), "🌎abc\n🌎def\n");
+        app.run_ui_command("undo");
+        assert_eq!(app.editor_groups.active_view().id, focus);
+        assert_eq!(app.editor().cursor().char_idx, 6);
+        app.run_ui_command("redo");
+        assert_eq!(app.editor().cursor().char_idx, 8);
+    }
 }

@@ -39,3 +39,10 @@ path = "src/main.rs"
 [[bin]]
 name = "code"
 path = "src/bin/code.rs"
+
+# Local protocol fixture; never launched by the editor's default configuration.
+[[bin]]
+name = "shoppe-test-lsp"
+path = "tests/fixtures/lsp_server.rs"
+test = false
+doc = false

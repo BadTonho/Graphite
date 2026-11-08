@@ -3,6 +3,66 @@ use super::*;
 use shoppe_text::Selection;
 
 #[test]
+fn multicursor_transactions_noop_and_history_keep_peer_state_independent() {
+    let dir = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(dir.path().into(), None, true);
+    app.editor_mut().insert("abc\ndef\nghi\n");
+    app.editor_mut().set_selection(10, 9);
+    let peer = app.editor_groups.active_view().id;
+    app.editor_groups.active_view_mut().scroll_line = 2;
+    app.ime_preedit("日".into());
+    app.split_editor_group(SplitDirection::Vertical);
+    let origin = app.editor_groups.active_view().id;
+    app.editor_mut().set_selections(vec![
+        Selection { anchor: 0, head: 0 },
+        Selection { anchor: 4, head: 4 },
+    ]);
+    let before = app.editor().selections();
+    let version = app.editor().revision();
+    app.ime_commit("🌎");
+    assert_eq!(app.editor().revision(), version + 1);
+    assert_eq!(app.editor().text(), "🌎abc\n🌎def\nghi\n");
+    let after = app.editor().selections();
+    assert_eq!(after.len(), 2);
+    let view = app.editor_groups.view(peer).unwrap();
+    assert_eq!(view.scroll_line, 2);
+    assert_eq!(view.ime_preedit, "日");
+    assert_eq!(
+        view.selection_state.selections()[0],
+        Selection {
+            anchor: 12,
+            head: 11
+        }
+    );
+    app.focus_editor_group(0);
+    app.run_ui_command("undo");
+    assert_eq!(app.editor_groups.active_view().id, peer);
+    assert_eq!(
+        app.editor_groups
+            .view(origin)
+            .unwrap()
+            .selection_state
+            .selections(),
+        before
+    );
+    let revision = app.editor().revision();
+    app.editor_mut().apply_transaction(&[]).unwrap();
+    assert_eq!(app.editor().revision(), revision);
+    assert!(app.editor().can_redo());
+    app.run_ui_command("redo");
+    assert_eq!(app.editor_groups.active_view().id, peer);
+    assert_eq!(
+        app.editor_groups
+            .view(origin)
+            .unwrap()
+            .selection_state
+            .selections(),
+        after
+    );
+    assert_eq!(app.editor_groups.active_view().scroll_line, 2);
+}
+
+#[test]
 fn reopening_a_file_already_open_activates_its_existing_document() {
     let dir = crate::test_support::TempDir::new();
     let path = dir.path().join("doc.txt");

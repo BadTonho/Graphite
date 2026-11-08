@@ -1,6 +1,8 @@
 mod dispatch;
 mod protocol;
 mod requests;
+#[cfg(test)]
+mod stdio_tests;
 mod worker;
 use dispatch::dispatch_server_message;
 #[cfg(test)]

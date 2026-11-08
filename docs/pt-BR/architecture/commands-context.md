@@ -32,6 +32,8 @@ Trabalhos LSP correlacionam IDs de execução com IDs de requisição do protoco
 
 ## Validação e limites
 
+A [matriz de cobertura de regressão](../contributing/testing.md) inclui equivalência de completion por teclado/widget/API e rejeição read-only sem perder sugestões, seleções ou histórico de redo.
+
 Testes nativos fixam o inventário anterior de comandos e verificam atalhos padrão, metadados, duplicidades, argumentos/resultados JSON, erros, precedência e limpeza de escopos, predicados independentes, alvos sem foco, rejeição somente leitura sem efeitos, regressões de transações, confirmações, workers simulados e respostas/cancelamento/encerramento de LSP simulado. Os testes usam dados isolados sem servidores externos.
 
 [Serviços compartilhados e host de extensões simulado](services-host.md) fornecem comandos pertencentes à sessão nesta API. Salvar e salvar tudo usam [coordenação e participantes assíncronos](async-saving.md); seus tickets concluem após as gravações. Testes e build nativos no Windows são exigidos nesta implementação; execução no Linux e verificações interativas de UI/GPU não foram realizadas neste ambiente Windows.

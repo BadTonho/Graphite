@@ -32,6 +32,8 @@ LSP jobs correlate UI execution IDs with protocol request IDs. Cancellation send
 
 ## Validation and boundaries
 
+The [regression coverage matrix](../contributing/testing.md) includes keyboard/widget/API completion parity and read-only rejection without losing suggestions, selections or redo history.
+
 Native tests freeze the former command inventory and check default bindings, metadata, duplicates, JSON arguments/results, errors, scope precedence and cleanup, distinct predicates, inactive targets, read-only rejection without effects, transaction regressions, confirmations, simulated workers and simulated LSP responses/cancellation/shutdown. Tests use isolated data without external language servers.
 
 [Shared services and a simulated extension host](services-host.md) provide session-owned commands in this execution API. Save and Save All use [asynchronous coordination and participants](async-saving.md); their tickets complete after the writes. Windows native tests/build are required for this implementation; Linux execution and interactive UI/GPU checks remain unperformed in this Windows environment.

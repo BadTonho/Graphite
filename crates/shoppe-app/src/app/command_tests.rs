@@ -7,6 +7,8 @@ use super::command_registry::{
 use super::context_keys::{ContextKeyService, WidgetKind};
 use super::*;
 use serde_json::{json, Value};
+#[path = "command_tests/parity.rs"]
+mod parity;
 
 pub(super) fn register_test_commands(registry: &mut CommandRegistry) {
     fn defer(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {

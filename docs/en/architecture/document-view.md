@@ -32,6 +32,8 @@ Atomicity covers text and undo history in memory. Disk persistence and file reso
 
 ## Validation and subsequent work
 
+The [regression coverage matrix](../contributing/testing.md) maps these invariants to tests, including combined multicursor/IME/history scenarios and rejection checks for views, subscriptions, leases and disk state.
+
 Native tests use isolated temporary data and simulated clipboard/LSP facilities. They cover independent views, IME, multicursor, clipboard, search, completion, line commands, accessibility, history origins, no-ops, monotonic reload versions, save metadata, close/reopen, lease release and multi-document failures.
 
 Run `cargo test --workspace` and `cargo build --workspace` on the available platform. Interactive native UI/GPU verification remains pending on Windows and Linux; running Linux tests in the same Windows development session is not required.
