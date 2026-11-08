@@ -770,6 +770,64 @@ mod tests {
     }
 
     #[test]
+    fn quick_fix_rejects_version_older_than_local_buffer() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("version.rs");
+        std::fs::write(&path, "abc").unwrap();
+        let uri = crate::lsp::path_to_uri(&path).unwrap();
+        let action = serde_json::from_value(serde_json::json!({
+            "title": "Stale",
+            "edit": {"documentChanges": [{
+                "textDocument": {"uri": uri, "version": 0},
+                "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}, "newText": "X"}]
+            }]}
+        })).unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.tabs[app.active_tab].lsp_revision = Some(0);
+        app.tabs[app.active_tab].buffer.insert("!");
+        app.quick_fix_actions = vec![action];
+        app.apply_quick_fix();
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "!abc");
+        assert!(app.status.contains("stale"), "{}", app.status);
+    }
+
+    #[test]
+    fn quick_fix_rejects_all_documents_when_one_has_overlapping_edits() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.rs");
+        let second = dir.path().join("second.rs");
+        std::fs::write(&first, "abc").unwrap();
+        std::fs::write(&second, "xyz").unwrap();
+        let mut changes = serde_json::Map::new();
+        let edit = |start, end, value| {
+            serde_json::json!({
+                "range": {"start": {"line": 0, "character": start}, "end": {"line": 0, "character": end}},
+                "newText": value
+            })
+        };
+        changes.insert(
+            crate::lsp::path_to_uri(&first).unwrap(),
+            serde_json::json!([edit(0, 1, "A")]),
+        );
+        changes.insert(
+            crate::lsp::path_to_uri(&second).unwrap(),
+            serde_json::json!([edit(0, 2, "X"), edit(1, 3, "Y")]),
+        );
+        let action = serde_json::from_value(
+            serde_json::json!({"title": "Invalid", "edit": {"changes": changes}}),
+        )
+        .unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first.clone());
+        app.quick_fix_actions = vec![action];
+        app.apply_quick_fix();
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "abc");
+        assert_eq!(std::fs::read_to_string(second).unwrap(), "xyz");
+        assert!(app.status.contains("overlap"), "{}", app.status);
+    }
+
+    #[test]
     fn quick_fix_does_not_edit_a_read_only_document() {
         let dir = crate::test_support::TempDir::new();
         let path = dir.path().join("readonly.rs");

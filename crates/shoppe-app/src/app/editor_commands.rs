@@ -309,17 +309,24 @@ impl App {
         let mut edits_by_path: HashMap<PathBuf, Vec<TextReplacement>> = HashMap::new();
         if let Some(changes) = edit.changes {
             for (uri, edits) in changes {
-                if let Some(path) = lsp::uri_to_path(uri.as_str()) {
-                    for edit in edits {
-                        let range = self.lsp_range_to_char_range(&path, edit.range);
-                        edits_by_path
-                            .entry(path.clone())
-                            .or_default()
-                            .push(TextReplacement {
-                                range,
-                                text: edit.new_text,
-                            });
-                    }
+                let Some(path) = lsp::uri_to_path(uri.as_str()) else {
+                    self.quick_fix_visible = false;
+                    self.status = "Quick fix contains an unsupported URI".into();
+                    return;
+                };
+                for edit in edits {
+                    let Some(range) = self.lsp_range_to_char_range(&path, edit.range) else {
+                        self.quick_fix_visible = false;
+                        self.status = "Quick fix contains an invalid text range".into();
+                        return;
+                    };
+                    edits_by_path
+                        .entry(path.clone())
+                        .or_default()
+                        .push(TextReplacement {
+                            range,
+                            text: edit.new_text,
+                        });
                 }
             }
         }
@@ -327,14 +334,41 @@ impl App {
             if let lsp_types::DocumentChanges::Edits(documents) = document_changes {
                 for document in documents {
                     let Some(path) = lsp::uri_to_path(document.text_document.uri.as_str()) else {
-                        continue;
+                        self.quick_fix_visible = false;
+                        self.status = "Quick fix contains an unsupported URI".into();
+                        return;
                     };
+                    if let Some(version) = document.text_document.version {
+                        let current = self
+                            .tabs
+                            .iter()
+                            .find(|tab| {
+                                tab.buffer
+                                    .path()
+                                    .is_some_and(|open| same_file_path(open, &path))
+                            })
+                            .and_then(|tab| {
+                                tab.lsp_revision
+                                    .filter(|revision| *revision == tab.buffer.revision())
+                            });
+                        if version < 0 || current != Some(version as u64) {
+                            self.quick_fix_visible = false;
+                            self.status =
+                                "Quick fix has a stale or unavailable document version".into();
+                            return;
+                        }
+                    }
                     for edit in document.edits {
                         let text_edit = match edit {
                             lsp_types::OneOf::Left(edit) => edit,
                             lsp_types::OneOf::Right(edit) => edit.text_edit,
                         };
-                        let range = self.lsp_range_to_char_range(&path, text_edit.range);
+                        let Some(range) = self.lsp_range_to_char_range(&path, text_edit.range)
+                        else {
+                            self.quick_fix_visible = false;
+                            self.status = "Quick fix contains an invalid text range".into();
+                            return;
+                        };
                         edits_by_path
                             .entry(path.clone())
                             .or_default()
@@ -344,6 +378,10 @@ impl App {
                             });
                     }
                 }
+            } else {
+                self.quick_fix_visible = false;
+                self.status = "Quick fix contains unsupported resource operations".into();
+                return;
             }
         }
         if edits_by_path.is_empty() {
@@ -395,6 +433,19 @@ impl App {
                 prepared.push((path, replacements, None, Some(buffer)));
             }
         }
+        // Validate every text transaction before changing any document. Disk
+        // writes for closed files are still separate and are not atomic here.
+        for (_, replacements, index, buffer) in &prepared {
+            let target = match index {
+                Some(index) => &self.tabs[*index].buffer,
+                None => buffer.as_ref().expect("closed target has a buffer"),
+            };
+            if let Err(error) = target.validate_transaction(replacements) {
+                self.quick_fix_visible = false;
+                self.status = format!("Cannot apply quick fix: {error}");
+                return;
+            }
+        }
         for (path, replacements, index, buffer) in prepared {
             if let Some(index) = index {
                 let revision = self.tabs[index].buffer.revision();
@@ -430,7 +481,7 @@ impl App {
         &self,
         path: &Path,
         range: lsp_types::Range,
-    ) -> std::ops::Range<usize> {
+    ) -> Option<std::ops::Range<usize>> {
         let text = self
             .tabs
             .iter()
@@ -440,11 +491,14 @@ impl App {
                     .is_some_and(|open| same_file_path(open, path))
             })
             .map(|tab| tab.buffer.text())
-            .or_else(|| std::fs::read_to_string(path).ok())
-            .unwrap_or_default();
-        let start = lsp_position_to_char(&text, range.start);
-        let end = lsp_position_to_char(&text, range.end);
-        start.min(end)..start.max(end)
+            .or_else(|| {
+                crate::file_format::read(path)
+                    .ok()
+                    .map(|decoded| decoded.text)
+            })?;
+        let start = strict_lsp_position_to_char(&text, range.start)?;
+        let end = strict_lsp_position_to_char(&text, range.end)?;
+        (start <= end).then_some(start..end)
     }
 
     pub(crate) fn close_active_tab(&mut self) {
@@ -507,6 +561,29 @@ impl App {
     }
 }
 
+fn strict_lsp_position_to_char(text: &str, position: lsp_types::Position) -> Option<usize> {
+    let mut offset = 0;
+    let mut lines = text.split('\n');
+    for _ in 0..position.line {
+        offset += lines.next()?.chars().count() + 1;
+    }
+    let line = lines.next()?;
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    let mut utf16 = 0;
+    for ch in line.chars() {
+        if utf16 == position.character {
+            return Some(offset);
+        }
+        utf16 += ch.len_utf16() as u32;
+        if utf16 > position.character {
+            return None;
+        }
+        offset += 1;
+    }
+    (utf16 == position.character).then_some(offset)
+}
+
+#[cfg(test)]
 fn lsp_position_to_char(text: &str, position: lsp_types::Position) -> usize {
     let lines = text.split_inclusive('\n').collect::<Vec<_>>();
     let line = (position.line as usize).min(lines.len().saturating_sub(1));
@@ -558,6 +635,31 @@ fn workspace_relative_path(root: &Path, path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strict_lsp_positions_reject_surrogates_and_out_of_range_positions() {
+        let text = "a🙂b\r\n";
+        assert_eq!(
+            strict_lsp_position_to_char(text, lsp_types::Position::new(0, 3)),
+            Some(2)
+        );
+        assert_eq!(
+            strict_lsp_position_to_char(text, lsp_types::Position::new(0, 2)),
+            None
+        );
+        assert_eq!(
+            strict_lsp_position_to_char(text, lsp_types::Position::new(0, 5)),
+            None
+        );
+        assert_eq!(
+            strict_lsp_position_to_char(text, lsp_types::Position::new(1, 0)),
+            Some(5)
+        );
+        assert_eq!(
+            strict_lsp_position_to_char(text, lsp_types::Position::new(2, 0)),
+            None
+        );
+    }
 
     #[test]
     fn lsp_positions_convert_utf16_columns_to_unicode_character_offsets() {

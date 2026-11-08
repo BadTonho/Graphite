@@ -12,6 +12,8 @@ Este documento propõe três contratos: **documento/view**, **comandos e context
 
 `shoppe-text` também oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Ela ainda não está integrada às edições de workspace do editor nem garante atomicidade em disco; a migração abaixo continua necessária.
 
+O caminho de quick fix pré-valida edições de texto, rejeita operações de recursos não suportadas e posições UTF-16 inválidas e verifica as versões de documento fornecidas pelo LSP. Ele ainda grava arquivos fechados separadamente, portanto suas edições de workspace não são atômicas entre gravações em disco e documentos abertos.
+
 ### Contrato alvo
 
 - Um documento tem identidade estável, texto, URI ou identidade sem título, linguagem, versão crescente, estado salvo e histórico de undo. Um documento pode ter várias views; cada view é dona de suas seleções, scroll, foco e demais estados de apresentação. Fechar uma view mantém o documento vivo enquanto outra o referenciar.
