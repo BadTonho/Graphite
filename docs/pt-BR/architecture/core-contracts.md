@@ -6,7 +6,7 @@ Este documento propõe três contratos: **documento/view**, **comandos e context
 
 ### Estado atual
 
-`Tab` em `crates/graphite-app/src/main.rs` combina estado de documento e apresentação e tem um ID de documento tipado usado pelas views, navegação e diagnósticos. `Buffer` em `crates/graphite-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/graphite-app/src/app/editor_groups.rs` tem identidade tipada estável e guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. Os IDs de documentos são resolvidos na coleção de abas, ainda sem um armazenamento dedicado. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
+`Tab` em `crates/graphite-app/src/main.rs` combina estado de documento e apresentação e tem um ID de documento tipado usado pelas views, navegação e diagnósticos. `DocumentStore` indexa documentos por ID, preserva a ordem atual das abas e resolve caminhos de arquivo pelas regras de equivalência existentes. `Buffer` em `crates/graphite-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/graphite-app/src/app/editor_groups.rs` tem identidade tipada estável e guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
 
 `Buffer::apply_transaction` já valida substituições não sobrepostas, e substituições efetivas, undo e redo atualizam sua revisão em `crates/graphite-text/src/edit.rs`. Isso oferece uma base útil, mas não demonstra que toda operação futura de documento satisfaça o contrato proposto.
 
@@ -37,7 +37,7 @@ Introduzir identidades estáveis de documento e view, depois mover a propriedade
 
 ### Estado atual
 
-`execute_custom_command` em `crates/graphite-app/src/app/commands.rs` despacha por um `match` extenso e altera a aplicação diretamente. O handler de keybindings monta valores de contexto localmente; `crates/graphite-app/src/keybindings/when.rs` fornece o parser de expressões para resolução de keybindings. O código de quick fix trata `CodeActionOrCommand` em `crates/graphite-app/src/app/editor_commands.rs`, mas esses caminhos não estabelecem um registro unificado nem um contrato geral assíncrono de comandos.
+`execute_custom_command` em `crates/graphite-app/src/app/commands.rs` despacha por um `match` extenso e altera a aplicação diretamente. O handler de keybindings atualiza um `ContextKeyService` com valores globais e por view; `crates/graphite-app/src/keybindings/when.rs` fornece o parser de expressões para resolução de keybindings. Escopos de widgets, enablement centralizado e outros produtores de contexto ainda precisam ser implementados. O código de quick fix trata `CodeActionOrCommand` em `crates/graphite-app/src/app/editor_commands.rs`, mas esses caminhos não estabelecem um registro unificado nem um contrato geral assíncrono de comandos.
 
 ### Contrato alvo
 
@@ -63,6 +63,8 @@ Adicionar o registro e o serviço de contexto com escopos, extrair um pequeno co
 ### Estado atual
 
 `docs/en/architecture/extension-compat.md` descreve um extension host Code OSS planejado em processo Node separado e compatibilidade em camadas. O cliente LSP em `crates/graphite-app/src/lsp.rs` e sua integração com a interface já usam mensagens de worker e notificações ao event loop. É um exemplo útil de concorrência, mas não estabelece um protocolo de extensão versionado compartilhado nem um dispatcher reutilizável para o extension host.
+
+Requisições de edição recebidas do LSP são acompanhadas pelo worker com fila limitada, cancelamento e prazos; cancelamento ou expiração antes do início do processamento pela interface impede a edição. Depois que a interface assume uma requisição, ela termina antes da resposta. Isso ainda não implementa a fronteira do extension host nem participantes assíncronos de salvamento.
 
 ### Contrato alvo
 

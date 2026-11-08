@@ -130,7 +130,6 @@ pub(super) fn run_server(
                 break kind;
             }
             Ok(WorkerMessage::Incoming(_)) => {}
-            Ok(WorkerMessage::Reply(_)) => {}
             Ok(WorkerMessage::IoError(error)) => {
                 let _ = event_tx.send(LspUiEvent::Status(format!(
                     "{} LSP: {error}",
@@ -160,9 +159,13 @@ pub(super) fn run_server(
     }
     let mut text_cache = HashMap::<String, String>::new();
     let mut pending = HashMap::<i32, (u64, &'static str)>::new();
+    let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
     let mut child_exited = false;
     loop {
+        for response in server_requests.poll(std::time::Instant::now()) {
+            let _ = write_message(&mut writer, Message::Response(response));
+        }
         if child.try_wait().ok().flatten().is_some() {
             child_exited = true;
         }
@@ -373,12 +376,22 @@ pub(super) fn run_server(
                 }
             }
             Ok(WorkerMessage::Incoming(Message::Request(request))) => {
-                if let Some(response) = handle_server_request(request, &event_tx, &signal_tx) {
+                if let Some(response) = server_requests.handle(request, &event_tx) {
                     let _ = write_message(&mut writer, Message::Response(response));
                 }
             }
-            Ok(WorkerMessage::Reply(response)) => {
-                let _ = write_message(&mut writer, Message::Response(response));
+            Ok(WorkerMessage::Incoming(Message::Notification(notification)))
+                if notification.method == "$/cancelRequest" =>
+            {
+                if let Some(id) = notification
+                    .params
+                    .get("id")
+                    .and_then(|id| serde_json::from_value::<RequestId>(id.clone()).ok())
+                {
+                    if let Some(response) = server_requests.cancel(&id) {
+                        let _ = write_message(&mut writer, Message::Response(response));
+                    }
+                }
             }
             Ok(WorkerMessage::Incoming(message)) => {
                 dispatch_server_message(message, &mut pending, &event_tx);
@@ -401,51 +414,132 @@ pub(super) fn run_server(
     )));
 }
 
-pub(super) fn handle_server_request(
-    request: Request,
-    event_tx: &Sender<LspUiEvent>,
-    worker_tx: &Sender<WorkerMessage>,
-) -> Option<lsp_server::Response> {
-    if request.method != "workspace/applyEdit" {
-        return Some(lsp_server::Response::new_err(
-            request.id,
-            -32601,
-            "Unsupported method".into(),
-        ));
+struct PendingServerRequest {
+    receiver: Receiver<lsp_server::Response>,
+    deadline: std::time::Instant,
+    active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[derive(Default)]
+pub(super) struct ServerRequests {
+    pending: HashMap<RequestId, PendingServerRequest>,
+}
+
+impl Drop for PendingServerRequest {
+    fn drop(&mut self) {
+        self.active
+            .store(false, std::sync::atomic::Ordering::Release);
     }
-    let params: lsp_types::ApplyWorkspaceEditParams = match serde_json::from_value(request.params) {
-        Ok(params) => params,
-        Err(error) => {
+}
+
+impl ServerRequests {
+    pub(super) fn handle(
+        &mut self,
+        request: Request,
+        event_tx: &Sender<LspUiEvent>,
+    ) -> Option<lsp_server::Response> {
+        if request.method != "workspace/applyEdit" {
             return Some(lsp_server::Response::new_err(
                 request.id,
-                -32602,
-                error.to_string(),
-            ))
+                -32601,
+                "Unsupported method".into(),
+            ));
         }
-    };
-    let (reply, receiver) = mpsc::channel();
-    let id = request.id;
-    if event_tx
-        .send(LspUiEvent::ApplyEdit {
-            id: id.clone(),
-            edit: params.edit,
-            reply,
-        })
-        .is_err()
-    {
-        return Some(lsp_server::Response::new_err(
+        if self.pending.len() >= 64 || self.pending.contains_key(&request.id) {
+            return Some(lsp_server::Response::new_err(
+                request.id,
+                -32600,
+                "Too many or duplicate requests".into(),
+            ));
+        }
+        let params: lsp_types::ApplyWorkspaceEditParams =
+            match serde_json::from_value(request.params) {
+                Ok(params) => params,
+                Err(error) => {
+                    return Some(lsp_server::Response::new_err(
+                        request.id,
+                        -32602,
+                        error.to_string(),
+                    ))
+                }
+            };
+        let (reply, receiver) = mpsc::channel();
+        let id = request.id;
+        let active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        if event_tx
+            .send(LspUiEvent::ApplyEdit {
+                id: id.clone(),
+                edit: params.edit,
+                reply,
+                active: active.clone(),
+            })
+            .is_err()
+        {
+            return Some(lsp_server::Response::new_err(
+                id,
+                -32603,
+                "Editor unavailable".into(),
+            ));
+        }
+        self.pending.insert(
             id,
-            -32603,
-            "Editor unavailable".into(),
-        ));
+            PendingServerRequest {
+                receiver,
+                deadline: std::time::Instant::now() + Duration::from_secs(30),
+                active,
+            },
+        );
+        None
     }
-    let worker_tx = worker_tx.clone();
-    thread::spawn(move || {
-        if let Ok(response) = receiver.recv() {
-            let _ = worker_tx.send(WorkerMessage::Reply(response));
+
+    pub(super) fn cancel(&mut self, id: &RequestId) -> Option<lsp_server::Response> {
+        if !self
+            .pending
+            .get(id)?
+            .active
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
+        {
+            return None;
         }
-    });
-    None
+        self.pending
+            .remove(id)
+            .map(|_| lsp_server::Response::new_err(id.clone(), -32800, "Request cancelled".into()))
+    }
+
+    pub(super) fn poll(&mut self, now: std::time::Instant) -> Vec<lsp_server::Response> {
+        let mut responses = Vec::new();
+        self.pending
+            .retain(|id, pending| match pending.receiver.try_recv() {
+                Ok(mut response) => {
+                    response.id = id.clone();
+                    responses.push(response);
+                    false
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    responses.push(lsp_server::Response::new_err(
+                        id.clone(),
+                        -32603,
+                        "Editor unavailable".into(),
+                    ));
+                    false
+                }
+                Err(mpsc::TryRecvError::Empty)
+                    if now >= pending.deadline
+                        && pending
+                            .active
+                            .swap(false, std::sync::atomic::Ordering::AcqRel) =>
+                {
+                    responses.push(lsp_server::Response::new_err(
+                        id.clone(),
+                        -32800,
+                        "Request timed out".into(),
+                    ));
+                    false
+                }
+                Err(mpsc::TryRecvError::Empty) => true,
+            });
+        responses
+    }
 }
 
 pub(super) fn stop_child(child: &mut std::process::Child) {

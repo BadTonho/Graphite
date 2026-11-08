@@ -6,7 +6,7 @@ This document proposes three contracts: **document/view**, **commands and contex
 
 ### Current state
 
-`Tab` in `crates/graphite-app/src/main.rs` combines document and presentation state and has a typed document ID used by views, navigation and diagnostics. `Buffer` in `crates/graphite-text/src/lib.rs` owns the active selections and text history. `View` in `crates/graphite-app/src/app/editor_groups.rs` has a stable typed identity and stores per-group selections and scroll; snapshots and restores synchronize the active view with the buffer, and position edits remap other views. Document IDs are currently resolved against the tab collection rather than a dedicated document store. The existing `app_views_share_text_and_history_with_independent_selections` test exercises independent selections, shared text and undo. The risk is that mutation paths must invoke this synchronization consistently, rather than ownership enforcing it.
+`Tab` in `crates/graphite-app/src/main.rs` combines document and presentation state and has a typed document ID used by views, navigation and diagnostics. `DocumentStore` indexes documents by ID while retaining the existing tab order and resolves file paths using the existing path-equivalence rules. `Buffer` in `crates/graphite-text/src/lib.rs` owns the active selections and text history. `View` in `crates/graphite-app/src/app/editor_groups.rs` has a stable typed identity and stores per-group selections and scroll; snapshots and restores synchronize the active view with the buffer, and position edits remap other views. The existing `app_views_share_text_and_history_with_independent_selections` test exercises independent selections, shared text and undo. The risk is that mutation paths must invoke this synchronization consistently, rather than ownership enforcing it.
 
 `Buffer::apply_transaction` already validates disjoint replacements, and effective replacements, undo and redo update its revision in `crates/graphite-text/src/edit.rs`. These are useful foundations, not proof that every future document operation satisfies the proposed contract.
 
@@ -37,7 +37,7 @@ Introduce stable document and view identities, then move selection ownership fro
 
 ### Current state
 
-`execute_custom_command` in `crates/graphite-app/src/app/commands.rs` dispatches through a large match and mutates the app directly. The keybinding handler constructs context values locally; `crates/graphite-app/src/keybindings/when.rs` provides expression parsing for keybinding resolution. The quick-fix code handles `CodeActionOrCommand` in `crates/graphite-app/src/app/editor_commands.rs`, but a unified command registry and general asynchronous command contract are not established by these paths.
+`execute_custom_command` in `crates/graphite-app/src/app/commands.rs` dispatches through a large match and mutates the app directly. The keybinding handler refreshes a `ContextKeyService` with global and per-view values; `crates/graphite-app/src/keybindings/when.rs` provides expression parsing for keybinding resolution. Widget scopes, centralized enablement and other context producers remain to be implemented. The quick-fix code handles `CodeActionOrCommand` in `crates/graphite-app/src/app/editor_commands.rs`, but a unified command registry and general asynchronous command contract are not established by these paths.
 
 ### Target contract
 
@@ -63,6 +63,8 @@ Add the registry and scoped context service, extract a small set of existing com
 ### Current state
 
 `docs/en/architecture/extension-compat.md` describes a planned Code OSS extension host in a separate Node process and staged compatibility. The LSP client in `crates/graphite-app/src/lsp.rs` and its UI integration already use worker messages and event-loop wakeups. This is a useful concurrency example, but does not establish a shared versioned extension protocol or a reusable extension-host dispatcher.
+
+Incoming LSP edit requests are tracked by the worker with a bounded queue, cancellation and deadlines; cancellation or expiry before the UI starts processing prevents the edit. Once the UI has claimed a request, it completes before the response is sent. This does not yet implement the extension-host boundary or asynchronous save participants.
 
 ### Target contract
 

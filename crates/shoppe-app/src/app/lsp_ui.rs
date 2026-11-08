@@ -82,7 +82,15 @@ impl App {
         for event in events {
             match event {
                 LspUiEvent::Status(status) => self.status = status,
-                LspUiEvent::ApplyEdit { id, edit, reply } => {
+                LspUiEvent::ApplyEdit {
+                    id,
+                    edit,
+                    reply,
+                    active,
+                } => {
+                    if !active.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                        continue;
+                    }
                     let result = self.apply_workspace_edit(edit);
                     let payload = match result {
                         Ok(()) => serde_json::json!({ "applied": true }),

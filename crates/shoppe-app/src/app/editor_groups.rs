@@ -98,6 +98,12 @@ impl EditorGroups {
     pub fn group_count(&self) -> usize {
         self.groups.len()
     }
+    pub(super) fn view_ids(&self) -> std::collections::HashSet<ViewId> {
+        self.groups
+            .iter()
+            .flat_map(|group| group.tabs.iter().map(|view| view.id))
+            .collect()
+    }
     pub(super) fn for_each_view_mut(&mut self, mut callback: impl FnMut(u64, &mut View)) {
         for group in &mut self.groups {
             for view in &mut group.tabs {
@@ -307,7 +313,7 @@ impl Layout {
 
 impl App {
     pub(super) fn document_index(&self, id: DocumentId) -> Option<usize> {
-        self.tabs.iter().position(|tab| tab.id == id)
+        self.tabs.index_for(id)
     }
 
     /// Save the active buffer's cursor state before changing groups or documents.
@@ -455,11 +461,15 @@ mod tests {
         app.open_file(second);
         let second_id = app.tabs[app.active_tab].id;
         assert_ne!(first_id, second_id);
+        assert_eq!(app.tabs.index_for(first_id), Some(0));
+        assert_eq!(app.tabs.index_for(second_id), Some(1));
         app.close_active_tab();
         assert!(app.tabs.iter().any(|tab| tab.id == first_id));
         assert!(!app.tabs.iter().any(|tab| tab.id == second_id));
+        assert_eq!(app.tabs.index_for(second_id), None);
         app.reopen_closed_tab();
         assert_eq!(app.tabs[app.active_tab].id, second_id);
+        assert_eq!(app.tabs.index_for(second_id), Some(app.active_tab));
         assert!(app.tabs.iter().any(|tab| tab.id == first_id));
     }
 
@@ -480,6 +490,7 @@ mod tests {
         app.close_active_tab();
         assert!(app.focus_editor_group(other));
         assert_eq!(app.tabs[app.active_tab].id, second_id);
+        assert_eq!(app.tabs.index_for(second_id), Some(0));
         assert_eq!(app.tabs[app.active_tab].buffer.text(), "second");
     }
 
