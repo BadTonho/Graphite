@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Graphite
+Comment=Native code editor
+Exec=graphite %F
+Icon=graphite
+Terminal=false
+Categories=Development;TextEditor;
+StartupWMClass=graphite

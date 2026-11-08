@@ -16,6 +16,14 @@ cargo test --workspace
 cargo run -p graphite-app -- <folder>
 ```
 
+## Application icon
+
+The temporary artwork lives in `assets/branding/graphite.png`. Replace this source PNG and rebuild to update every generated icon. The build fits the artwork into square canvases without cropping, preserves alpha, embeds 256×256 RGBA pixels in the window, and generates a multi-size ICO for Windows executables. Generated files stay in Cargo's `OUT_DIR`; no image file is required alongside the executable. Windows builds require the resource compiler from the Windows SDK (or `windres` when targeting GNU Windows).
+
+Linux windows use the `graphite` application identity. For desktop integration, install `packaging/linux/graphite.desktop` under `$XDG_DATA_HOME/applications` and the source PNG as `$XDG_DATA_HOME/icons/graphite.png`, with `$XDG_DATA_HOME` defaulting to `~/.local/share`. Keep the `graphite` executable on `PATH`. Wayland launchers obtain their icon from this desktop entry rather than the window icon. Building the workspace does not install these files into the user's desktop.
+
+`cargo test -p graphite-app --test branding` verifies generated sizes/pixels, malformed input, the Linux desktop identity and (on Windows) the icon resource inside the actual built editor executable. UI/taskbar rendering and Linux execution require separate platform checks.
+
 ## Simulated extension host
 
 Build the workspace first, then use `cargo run -p graphite-app -- --simulate-extension-host <folder>`. The Rust helper must be beside Graphite. It is disabled by default; Node and Code OSS are not required. The registered `graphite.extensions.restartHost` command restarts it manually. See [Services and simulated host](../architecture/services-host.md) for protocol limits, sample bindings and process tests. For targeted application tests that use the helper, run `cargo build -p graphite-extension-host` first; `cargo test --workspace` builds the process integration target automatically.

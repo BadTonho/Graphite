@@ -41,8 +41,7 @@ impl ApplicationHandler<UserEvent> for App {
         let window = Arc::new(
             event_loop
                 .create_window(
-                    Window::default_attributes()
-                        .with_title("Graphite")
+                    crate::branding::window_attributes()
                         .with_visible(false)
                         .with_inner_size(LogicalSize::new(1200.0, 760.0)),
                 )

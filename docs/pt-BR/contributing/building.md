@@ -17,6 +17,14 @@ cargo test --workspace
 cargo run -p graphite-app -- <pasta>
 ```
 
+## Ícone do aplicativo
+
+A arte temporária fica em `assets/branding/graphite.png`. Substitua esse PNG e recompile para atualizar todos os ícones gerados. O build ajusta a arte em telas quadradas sem recortar, preserva o canal alfa, incorpora pixels RGBA de 256×256 na janela e gera ICO com vários tamanhos para executáveis Windows. Os arquivos gerados ficam no `OUT_DIR` do Cargo; não é preciso distribuir uma imagem ao lado do executável. Builds Windows exigem o compilador de recursos do Windows SDK (ou `windres` para GNU Windows).
+
+As janelas Linux usam a identidade `graphite`. Para integração ao desktop, instale `packaging/linux/graphite.desktop` em `$XDG_DATA_HOME/applications` e o PNG de origem como `$XDG_DATA_HOME/icons/graphite.png`; o padrão de `$XDG_DATA_HOME` é `~/.local/share`. Mantenha o executável `graphite` no `PATH`. Launchers Wayland obtêm o ícone dessa entrada de desktop, em vez do ícone da janela. Compilar o workspace não instala esses arquivos no desktop do usuário.
+
+`cargo test -p graphite-app --test branding` verifica tamanhos/pixels gerados, entrada inválida, identidade do desktop Linux e (no Windows) o recurso de ícone no executável real compilado. A renderização de janela/barra de tarefas e a execução Linux exigem verificações de plataforma separadas.
+
 ## Host de extensões simulado
 
 Compile o workspace antes de executar `cargo run -p graphite-app -- --simulate-extension-host <pasta>`. O auxiliar Rust deve ficar ao lado do Graphite. É desativado por padrão; Node e Code OSS não são necessários. O comando registrado `graphite.extensions.restartHost` o reinicia manualmente. Consulte [Serviços e host simulado](../architecture/services-host.md) para limites do protocolo, exemplos de atalhos e testes de processo. Para testes específicos da aplicação que usam o auxiliar, execute antes `cargo build -p graphite-extension-host`; `cargo test --workspace` compila automaticamente o alvo de integração de processos.

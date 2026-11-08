@@ -33,6 +33,13 @@ notify = "8.2"
 similar = "2.7"
 sysinfo = "0.40"
 
+[build-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+winresource = "0.1"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
 [[bin]]
 name = "graphite"
 path = "src/main.rs"
