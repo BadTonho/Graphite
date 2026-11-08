@@ -2,6 +2,8 @@
 
 ## Registry and entry point
 
+Application-specific command IDs use the `graphite.` namespace. Update saved custom keybindings and integrations that use an earlier project-specific prefix. Crates, Rust imports and helper executables also use the `graphite` prefix.
+
 `app/command_registry.rs` owns command descriptions: stable ID, English title, category, accepted target kinds, argument schema, enablement, optional menu visibility and handler. Duplicate IDs and malformed conditions are rejected. Domain handlers live under `app/command_handlers/`; `app/commands.rs` only adapts shortcuts and contains shortcut regressions. All 106 former dispatcher IDs and every default binding are registered. There is no legacy fallback.
 
 `App::execute_command` accepts a serializable `CommandRequest` and returns a ticket with an execution ID, cancellation token and nonblocking result receiver. An omitted target means global context. UI adapters specify a view or widget instance explicitly. For example:

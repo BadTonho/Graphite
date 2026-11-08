@@ -3,18 +3,18 @@
 ## Crates
 
 ```
-shoppe-app ──► shoppe-render     (wgpu + cosmic-text + winit Window)
-           ├─► shoppe-text       (ropey buffer)
-           ├─► shoppe-workspace  (ignore crate)
-           └─► shoppe-syntax     (tree-sitter)
+graphite-app ──► graphite-render     (wgpu + cosmic-text + winit Window)
+           ├─► graphite-text       (ropey buffer)
+           ├─► graphite-workspace  (ignore crate)
+           └─► graphite-syntax     (tree-sitter)
 ```
 
 ## Module responsibilities
 
-- `shoppe-core-api` supplies UI-independent service contracts and serializable data. `shoppe-extension-host` supplies a reusable process supervisor and an opt-in Rust simulation peer. LSP uses the same services with its own transport and instance lifecycle. See [Services and simulated host](services-host.md).
-- `shoppe-app` separates window events, editor input, document operations, drawing, accessibility, theme and LSP/terminal integration under `app/`. Configuration modules separate settings, themes, snippets, paths and VS Code import; LSP modules separate the manager, worker, message dispatch and protocol conversion.
-- `shoppe-text` separates filesystem I/O, edits and history, and cursor navigation. `shoppe-workspace` separates project search from folder listing.
-- `shoppe-render` separates text shaping and glyph rasterization from the GPU surface pipeline. `shoppe-syntax` keeps its incremental and full-document highlighters in separate modules.
+- `graphite-core-api` supplies UI-independent service contracts and serializable data. `graphite-extension-host` supplies a reusable process supervisor and an opt-in Rust simulation peer. LSP uses the same services with its own transport and instance lifecycle. See [Services and simulated host](services-host.md).
+- `graphite-app` separates window events, editor input, document operations, drawing, accessibility, theme and LSP/terminal integration under `app/`. Configuration modules separate settings, themes, snippets, paths and VS Code import; LSP modules separate the manager, worker, message dispatch and protocol conversion.
+- `graphite-text` separates filesystem I/O, edits and history, and cursor navigation. `graphite-workspace` separates project search from folder listing.
+- `graphite-render` separates text shaping and glyph rasterization from the GPU surface pipeline. `graphite-syntax` keeps its incremental and full-document highlighters in separate modules.
 
 ## Rendering
 
@@ -29,7 +29,7 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + winit Window)
 - Text lives in a `ropey::Rope`; the cursor is a character offset. Every edit bumps a `revision` counter.
 - Documents use stable keys and share text/history across views. Each view exclusively owns selections, scroll, IME composition and selection navigation. Borrowed edit sessions remap peers and synchronize LSP; undo/redo preserve focus. See [Document and view](document-view.md). Native UI/GPU verification is pending on Windows and Linux.
 - Visual-line mapping computes wrapped rows and maps Unicode character positions and pointer columns without modifying the document. Rendering, pointer input and vertical cursor movement use this mapping when wrapping is enabled; interactive verification is pending.
-- `shoppe-syntax` provides incremental tree-sitter parsing over Rope chunks and a full-document highlighter; both return per-line byte-range spans with a semantic `Class`. The app maps classes to colors and re-highlights only when the revision changes.
+- `graphite-syntax` provides incremental tree-sitter parsing over Rope chunks and a full-document highlighter; both return per-line byte-range spans with a semantic `Class`. The app maps classes to colors and re-highlights only when the revision changes.
 
 ## Commands
 

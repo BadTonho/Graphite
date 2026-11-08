@@ -12,15 +12,15 @@ cargo build --workspace
 cargo fmt --all -- --check
 ```
 
-Workspace tests build the `shoppe-test-lsp` stdio fixture through its integration target. Before running only the application unit tests, build both process helpers:
+Workspace tests build the `graphite-test-lsp` stdio fixture through its integration target. Before running only the application unit tests, build both process helpers:
 
 ```sh
-cargo build -p shoppe-extension-host
-cargo build -p shoppe-app --bin shoppe-test-lsp
-cargo test -p shoppe-app --bin graphite
+cargo build -p graphite-extension-host
+cargo build -p graphite-app --bin graphite-test-lsp
+cargo test -p graphite-app --bin graphite
 ```
 
-Useful filters for the last command are `document_view_tests`, `accessibility_actions::tests`, `services::tests`, `workspace_edit::tests`, `command_tests`, `lsp::stdio_tests` and `saving::`. Run `cargo test -p shoppe-extension-host` for framing, supervisor and real-host process tests, and `cargo test -p shoppe-text` for transaction and file-write contracts.
+Useful filters for the last command are `document_view_tests`, `accessibility_actions::tests`, `services::tests`, `workspace_edit::tests`, `command_tests`, `lsp::stdio_tests` and `saving::`. Run `cargo test -p graphite-extension-host` for framing, supervisor and real-host process tests, and `cargo test -p graphite-text` for transaction and file-write contracts.
 
 The fixture binary lives under application test infrastructure and is never started by the editor's default configuration. It implements only scripted test commands and standard LSP framing. It is not a language server for end users.
 
@@ -33,7 +33,7 @@ Names below identify native test modules or individual regression tests; existin
 | Independent selections, scroll, IME and multicursor | `document_view_tests`, especially `multicursor_transactions_noop_and_history_keep_peer_state_independent`; `accessibility_actions::tests::accessible_multicursor_edit_preserves_focus_scroll_and_peer_ime` |
 | Clipboard, search/replace, completion and line edits | `search_completion_clipboard_and_line_commands_remap_peer_views`; command parity tests in `command_tests::parity` |
 | History origin, closed origin, close/reopen and retention | `undo_restores_origin_selections_without_changing_focus_or_scroll`, `closed_origin_is_not_resurrected_by_undo_and_reopened_view_has_new_identity`; `workspace_edit::tests` |
-| Versions, no-op, redo and saved text/format | `shoppe-text` transaction tests; `unchanged_save_keeps_revision_and_redo_history`; `saved_text_and_format_baselines_survive_undo_redo_and_format_roundtrip` |
+| Versions, no-op, redo and saved text/format | `graphite-text` transaction tests; `unchanged_save_keeps_revision_and_redo_history`; `saved_text_and_format_baselines_survive_undo_redo_and_format_roundtrip` |
 | Open/closed/untitled atomic UTF-16 edits | `services::tests::mixed_open_closed_untitled_batch_publishes_only_after_success`; `stdio_apply_edit_uses_event_loop_transactions_and_rejects_partial_batches` |
 | Rejection preserves text, history, views, events, leases and disk | `rejected_batches_preserve_views_redo_events_leases_and_disk` covers missing reads, overlap, surrogate splitting, stale versions and read-only documents |
 | Changes between prepare and commit | `workspace_edit::tests` covers live version changes, changed closed-file contents, permission changes, newly opened targets and cancelled preparation |
@@ -45,10 +45,10 @@ Names below identify native test modules or individual regression tests; existin
 | LSP applyEdit, malformed responses, cancel, late replies and EOF | `lsp::stdio_tests`; simulated-channel `lsp::command_tests` also covers stale/replaced server instances and service transactions |
 | Participant ordering, timeout, invalid results and typing during preparation | `saving::tests`; `typing_and_format_change_during_host_participant_save_latest_snapshot`; LSP save-participant tests |
 | Typing during writing, per-document queues and concurrent documents | `saving::tests`; `saving::view_tests::separate_documents_write_concurrently_without_waiting_for_other_document` |
-| Write failures, permissions, encoding/EOL and temporary cleanup | `saving::tests`, `saving::view_tests`, file-format tests and `shoppe-text` file I/O tests |
+| Write failures, permissions, encoding/EOL and temporary cleanup | `saving::tests`, `saving::view_tests`, file-format tests and `graphite-text` file I/O tests |
 | Save All partial failure | `save_all_keeps_successful_file_and_dirty_untitled_after_partial_failure` verifies successful writes stay confirmed and untitled views remain dirty/open |
 | Pending close, workspace decisions, discard and CLI --wait | `saving::lifecycle_tests`; command decision tests |
-| Real host crash, cleanup, restart and surviving editor/LSP | `shoppe-extension-host/tests/process.rs`; `lsp::command_tests::real_host_crash_cleans_resources_but_editor_and_lsp_continue_then_restart`; save-host crash tests |
+| Real host crash, cleanup, restart and surviving editor/LSP | `graphite-extension-host/tests/process.rs`; `lsp::command_tests::real_host_crash_cleans_resources_but_editor_and_lsp_continue_then_restart`; save-host crash tests |
 
 ## Determinism and failure assertions
 

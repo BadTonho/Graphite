@@ -12,15 +12,15 @@ cargo build --workspace
 cargo fmt --all -- --check
 ```
 
-Os testes do workspace compilam a fixture stdio `shoppe-test-lsp` por seu alvo de integração. Antes de executar apenas os testes unitários da aplicação, compile os dois auxiliares de processo:
+Os testes do workspace compilam a fixture stdio `graphite-test-lsp` por seu alvo de integração. Antes de executar apenas os testes unitários da aplicação, compile os dois auxiliares de processo:
 
 ```sh
-cargo build -p shoppe-extension-host
-cargo build -p shoppe-app --bin shoppe-test-lsp
-cargo test -p shoppe-app --bin graphite
+cargo build -p graphite-extension-host
+cargo build -p graphite-app --bin graphite-test-lsp
+cargo test -p graphite-app --bin graphite
 ```
 
-Filtros úteis para o último comando são `document_view_tests`, `accessibility_actions::tests`, `services::tests`, `workspace_edit::tests`, `command_tests`, `lsp::stdio_tests` e `saving::`. Execute `cargo test -p shoppe-extension-host` para enquadramento, supervisor e testes do processo real do host, e `cargo test -p shoppe-text` para contratos de transações e gravação de arquivos.
+Filtros úteis para o último comando são `document_view_tests`, `accessibility_actions::tests`, `services::tests`, `workspace_edit::tests`, `command_tests`, `lsp::stdio_tests` e `saving::`. Execute `cargo test -p graphite-extension-host` para enquadramento, supervisor e testes do processo real do host, e `cargo test -p graphite-text` para contratos de transações e gravação de arquivos.
 
 O binário da fixture pertence à infraestrutura de testes da aplicação e nunca é iniciado pela configuração padrão do editor. Implementa apenas comandos de teste programados e o enquadramento LSP padrão. Não é um servidor de linguagem para usuários finais.
 
@@ -33,7 +33,7 @@ Os nomes abaixo identificam módulos de testes nativos ou testes individuais de 
 | Seleções, scroll, IME e multicursor independentes | `document_view_tests`, especialmente `multicursor_transactions_noop_and_history_keep_peer_state_independent`; `accessibility_actions::tests::accessible_multicursor_edit_preserves_focus_scroll_and_peer_ime` |
 | Clipboard, busca/substituição, completion e edições de linha | `search_completion_clipboard_and_line_commands_remap_peer_views`; testes de equivalência em `command_tests::parity` |
 | Origem do histórico, origem fechada, fechamento/reabertura e retenção | `undo_restores_origin_selections_without_changing_focus_or_scroll`, `closed_origin_is_not_resurrected_by_undo_and_reopened_view_has_new_identity`; `workspace_edit::tests` |
-| Versões, no-op, redo e texto/formato salvos | Testes de transação de `shoppe-text`; `unchanged_save_keeps_revision_and_redo_history`; `saved_text_and_format_baselines_survive_undo_redo_and_format_roundtrip` |
+| Versões, no-op, redo e texto/formato salvos | Testes de transação de `graphite-text`; `unchanged_save_keeps_revision_and_redo_history`; `saved_text_and_format_baselines_survive_undo_redo_and_format_roundtrip` |
 | Edições UTF-16 atômicas em abertos/fechados/untitled | `services::tests::mixed_open_closed_untitled_batch_publishes_only_after_success`; `stdio_apply_edit_uses_event_loop_transactions_and_rejects_partial_batches` |
 | Rejeição preserva texto, histórico, views, eventos, retenção e disco | `rejected_batches_preserve_views_redo_events_leases_and_disk` cobre falhas de leitura, sobreposição, divisão de surrogate, versões obsoletas e documentos read-only |
 | Mudanças entre preparação e commit | `workspace_edit::tests` cobre mudanças de versão em memória, conteúdo de arquivo fechado, permissões, alvos recém-abertos e preparação cancelada |
@@ -45,10 +45,10 @@ Os nomes abaixo identificam módulos de testes nativos ou testes individuais de 
 | LSP applyEdit, respostas inválidas, cancelamento, respostas tardias e EOF | `lsp::stdio_tests`; `lsp::command_tests` com canais simulados também cobre instâncias obsoletas/substituídas e transações pelos serviços |
 | Ordem de participantes, timeout, resultados inválidos e digitação durante preparação | `saving::tests`; `typing_and_format_change_during_host_participant_save_latest_snapshot`; testes de participantes LSP |
 | Digitação durante escrita, filas por documento e documentos concorrentes | `saving::tests`; `saving::view_tests::separate_documents_write_concurrently_without_waiting_for_other_document` |
-| Falhas de escrita, permissões, encoding/EOL e limpeza de temporários | `saving::tests`, `saving::view_tests`, testes de formato e testes de arquivos de `shoppe-text` |
+| Falhas de escrita, permissões, encoding/EOL e limpeza de temporários | `saving::tests`, `saving::view_tests`, testes de formato e testes de arquivos de `graphite-text` |
 | Falha parcial em Salvar tudo | `save_all_keeps_successful_file_and_dirty_untitled_after_partial_failure` verifica que gravações bem-sucedidas permanecem confirmadas e views untitled continuam alteradas/abertas |
 | Fechamento pendente, decisões de workspace, descarte e CLI --wait | `saving::lifecycle_tests`; testes de decisões de comandos |
-| Queda real do host, limpeza, reinício e continuidade do editor/LSP | `shoppe-extension-host/tests/process.rs`; `lsp::command_tests::real_host_crash_cleans_resources_but_editor_and_lsp_continue_then_restart`; testes de queda do host no salvamento |
+| Queda real do host, limpeza, reinício e continuidade do editor/LSP | `graphite-extension-host/tests/process.rs`; `lsp::command_tests::real_host_crash_cleans_resources_but_editor_and_lsp_continue_then_restart`; testes de queda do host no salvamento |
 
 ## Determinismo e asserções de falha
 

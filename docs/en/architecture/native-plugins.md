@@ -1,6 +1,6 @@
 # Native plugins and VSIX inspection
 
-Graphite API v1 plugins run as JavaScript in one system Node.js 24+ process per plugin. TypeScript is compiled before packaging. `shoppe-plugins` owns manifests, ZIP validation, installation, scaffolding and GitHub discovery without depending on GPU/application types. The application owns panel state and session routing; its existing document and command services apply changes on the event loop.
+Graphite API v1 plugins run as JavaScript in one system Node.js 24+ process per plugin. TypeScript is compiled before packaging. `graphite-plugins` owns manifests, ZIP validation, installation, scaffolding and GitHub discovery without depending on GPU/application types. The application owns panel state and session routing; its existing document and command services apply changes on the event loop.
 
 ## Runtime boundary
 

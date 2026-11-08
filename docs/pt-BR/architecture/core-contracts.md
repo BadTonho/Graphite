@@ -60,7 +60,7 @@ A migração de comandos está concluída, incluindo todos os IDs do dispatcher 
 
 ### Estado atual
 
-`shoppe-core-api` define contratos independentes de serviços e dados serializáveis; a aplicação os implementa no event loop. `shoppe-extension-host` oferece um processo Rust simulado e supervisor reutilizável com framing versionado, sessões, registros com proprietário, cancelamento, prazos e reinício manual. Uma falha do host libera seus recursos enquanto edição e LSP continuam. Consulte [Serviços internos e host de extensões simulado](services-host.md).
+`graphite-core-api` define contratos independentes de serviços e dados serializáveis; a aplicação os implementa no event loop. `graphite-extension-host` oferece um processo Rust simulado e supervisor reutilizável com framing versionado, sessões, registros com proprietário, cancelamento, prazos e reinício manual. Uma falha do host libera seus recursos enquanto edição e LSP continuam. Consulte [Serviços internos e host de extensões simulado](services-host.md).
 
 Publicação e edições LSP usam os serviços de documentos; consultas de workspace e mensagens usam serviços de workspace/janela. Instâncias de servidor identificam seus eventos, e requisições pendentes têm limites, cancelamento, prazos e limpeza no encerramento. Edições canceladas antes de a interface assumir a requisição não são aplicadas; edições já assumidas terminam atomicamente. A fronteira simulada e os participantes de salvamento estão implementados; o host Code OSS real permanece como etapa separada.
 

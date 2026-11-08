@@ -3,18 +3,18 @@
 ## Crates
 
 ```
-shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
-           ├─► shoppe-text       (buffer com ropey)
-           ├─► shoppe-workspace  (crate ignore)
-           └─► shoppe-syntax     (tree-sitter)
+graphite-app ──► graphite-render     (wgpu + cosmic-text + Window do winit)
+           ├─► graphite-text       (buffer com ropey)
+           ├─► graphite-workspace  (crate ignore)
+           └─► graphite-syntax     (tree-sitter)
 ```
 
 ## Responsabilidades dos módulos
 
-- `shoppe-core-api` fornece contratos de serviços independentes da interface e dados serializáveis. `shoppe-extension-host` fornece um supervisor reutilizável de processos e simulador Rust ativado explicitamente. O LSP usa os mesmos serviços com transporte e ciclo de vida próprios por instância. Consulte [Serviços e host simulado](services-host.md).
-- `shoppe-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo.
-- `shoppe-text` separa entrada e saída de arquivos, edições e histórico, e navegação do cursor. `shoppe-workspace` separa a busca no projeto da listagem de pastas.
-- `shoppe-render` separa a modelagem do texto e rasterização de glifos do pipeline da superfície GPU. `shoppe-syntax` mantém os mecanismos de realce incremental e de documento completo em módulos distintos.
+- `graphite-core-api` fornece contratos de serviços independentes da interface e dados serializáveis. `graphite-extension-host` fornece um supervisor reutilizável de processos e simulador Rust ativado explicitamente. O LSP usa os mesmos serviços com transporte e ciclo de vida próprios por instância. Consulte [Serviços e host simulado](services-host.md).
+- `graphite-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo.
+- `graphite-text` separa entrada e saída de arquivos, edições e histórico, e navegação do cursor. `graphite-workspace` separa a busca no projeto da listagem de pastas.
+- `graphite-render` separa a modelagem do texto e rasterização de glifos do pipeline da superfície GPU. `graphite-syntax` mantém os mecanismos de realce incremental e de documento completo em módulos distintos.
 
 ## Renderização
 
@@ -29,7 +29,7 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
 - O texto fica em um `ropey::Rope`; o cursor é um deslocamento em caracteres. Toda edição incrementa um contador `revision`.
 - Documentos usam chaves estáveis e compartilham texto/histórico entre views. Cada view mantém exclusivamente seleções, scroll, composição IME e navegação da seleção. Sessões de edição por empréstimo remapeiam as demais views e sincronizam o LSP; undo/redo preservam o foco. Consulte [Documento e view](document-view.md). A verificação nativa de UI/GPU está pendente no Windows e no Linux.
 - O mapeamento de linhas visuais calcula quebras e converte posições de caracteres Unicode e colunas do ponteiro sem alterar o documento. A renderização, o ponteiro e o movimento vertical do cursor usam esse mapeamento quando a quebra está ativa; a verificação interativa permanece pendente.
-- `shoppe-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
+- `graphite-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
 
 ## Comandos
 

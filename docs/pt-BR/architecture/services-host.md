@@ -4,7 +4,7 @@ O peer Rust simulado continua disponível. Plugins JS/TS nativos reais reutiliza
 
 ## Fronteiras
 
-`shoppe-core-api` define identidade de documento, URIs validadas, snapshots, edições UTF-16, requisições/resultados de comandos, cancelamento, erros e interfaces de serviços de documentos/comandos/workspace/janela. Depende de serialização e tratamento de URIs, sem tipos de GPU, aplicação ou LSP. As implementações do event loop ficam em `shoppe-app/app/services/`. Adaptadores convertem seus tipos de protocolo na fronteira.
+`graphite-core-api` define identidade de documento, URIs validadas, snapshots, edições UTF-16, requisições/resultados de comandos, cancelamento, erros e interfaces de serviços de documentos/comandos/workspace/janela. Depende de serialização e tratamento de URIs, sem tipos de GPU, aplicação ou LSP. As implementações do event loop ficam em `graphite-app/app/services/`. Adaptadores convertem seus tipos de protocolo na fronteira.
 
 Snapshots consultam documentos abertos em memória, incluindo texto alterado; arquivos fechados usam o provedor local e a decodificação UTF-8/UTF-16 existente. URIs `file:` convertem caminhos do sistema sem conversões de string com perda; `untitled:` identifica documentos sem título. Esquemas não suportados e caminhos não representáveis produzem erros. Snapshots de arquivos fechados não criam documentos ou views.
 
@@ -16,7 +16,7 @@ A configuração de workspace combina as camadas existentes com as preferências
 
 ## Processo e protocolo
 
-`shoppe-extension-host` contém um supervisor reutilizável e um executável simulado. É desativado por padrão e executado como processo Rust separado, oculto no Windows. Não carrega extensões, Node ou Code OSS.
+`graphite-extension-host` contém um supervisor reutilizável e um executável simulado. É desativado por padrão e executado como processo Rust separado, oculto no Windows. Não carrega extensões, Node ou Code OSS.
 
 O protocolo simulado está na versão 2: mensagens JSON com comprimento de quatro bytes em big-endian, por stdin/stdout. Stderr é reservado para logs. O handshake estabelece uma nova sessão; requisições correlacionam sessão e ID, separadamente em cada direção. Respostas de sessões antigas ou duplicadas são ignoradas; framing inválido ou mensagens incompatíveis encerram a sessão.
 
@@ -36,20 +36,20 @@ Requisições enviadas têm prazo de 30 segundos, limite de 128 entradas, valida
 
 ## Desenvolvimento e validação
 
-A fixture local `shoppe-test-lsp` exercita o worker LSP de produção por stdin/stdout, incluindo inicialização, resultados JSON, transações de serviços por applyEdit, respostas inválidas, cancelamento, respostas tardias e EOF com requisições pendentes. Consulte [Testes de regressão](../contributing/testing.md) para comandos e a matriz completa de cobertura. Testes por canais também verificam rejeição de instâncias anteriores e prazos controlados.
+A fixture local `graphite-test-lsp` exercita o worker LSP de produção por stdin/stdout, incluindo inicialização, resultados JSON, transações de serviços por applyEdit, respostas inválidas, cancelamento, respostas tardias e EOF com requisições pendentes. Consulte [Testes de regressão](../contributing/testing.md) para comandos e a matriz completa de cobertura. Testes por canais também verificam rejeição de instâncias anteriores e prazos controlados.
 
 Depois de `cargo build --workspace`, execute:
 
 ```bash
-cargo run -p shoppe-app -- --simulate-extension-host <pasta>
+cargo run -p graphite-app -- --simulate-extension-host <pasta>
 ```
 
-O executável auxiliar fica ao lado do Graphite. Para testes específicos da aplicação que usam o processo real, compile-o antes com `cargo build -p shoppe-extension-host`; os testes do workspace o compilam pelo alvo de integração de processos. Não é necessário servidor de linguagem externo nem serviço de rede.
+O executável auxiliar fica ao lado do Graphite. Para testes específicos da aplicação que usam o processo real, compile-o antes com `cargo build -p graphite-extension-host`; os testes do workspace o compilam pelo alvo de integração de processos. Não é necessário servidor de linguagem externo nem serviço de rede.
 
-O simulador registra `shoppe.simulated.echo`, `shoppe.simulated.wait`, `shoppe.simulated.crash` e `shoppe.simulated.service`. Echo retorna JSON, wait exercita cancelamento/prazos, crash exercita isolamento e service chama o contrato de serviços do editor. Reinicie com `shoppe.extensions.restartHost`, por exemplo por um atalho personalizado:
+O simulador registra `graphite.simulated.echo`, `graphite.simulated.wait`, `graphite.simulated.crash` e `graphite.simulated.service`. Echo retorna JSON, wait exercita cancelamento/prazos, crash exercita isolamento e service chama o contrato de serviços do editor. Reinicie com `graphite.extensions.restartHost`, por exemplo por um atalho personalizado:
 
 ```json
-{"key":"ctrl+alt+r","command":"shoppe.extensions.restartHost","when":"extensionHostEnabled"}
+{"key":"ctrl+alt+r","command":"graphite.extensions.restartHost","when":"extensionHostEnabled"}
 ```
 
 Testes cobrem snapshots, assinaturas e saturação, edições atômicas com documentos abertos/fechados/sem título, permissões, UTF-16, erros de metadados/registros, handshake e queda/reinício de processo real, cancelamento e prazos com tempo controlado, mensagens antigas, histórico de views sem foco, decisões pendentes, continuidade do LSP e instâncias antigas de servidor. A validação automatizada nativa é realizada no Windows; execução no Linux e verificações interativas de UI/GPU não foram realizadas neste ambiente.

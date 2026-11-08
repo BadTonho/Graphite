@@ -2,7 +2,7 @@
 
 ## Ownership and identity
 
-`Document` owns a `shoppe-text::Buffer`, language, encoding, line ending, indentation and document-derived caches. The buffer owns the Rope, revision, saved-text baseline and shared undo/redo history. It has no active cursor or selection.
+`Document` owns a `graphite-text::Buffer`, language, encoding, line ending, indentation and document-derived caches. The buffer owns the Rope, revision, saved-text baseline and shared undo/redo history. It has no active cursor or selection.
 
 `DocumentStore` owns documents under `DocumentId` keys. Keys are separate from mutable document data, so replacing data cannot invalidate identity lookup. Access and removal use IDs; collection positions are not document identities. Groups own tab order. The active document always comes from the focused view.
 

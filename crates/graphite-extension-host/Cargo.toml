@@ -1,0 +1,13 @@
+[package]
+name = "graphite-extension-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphite-core-api = { path = "../graphite-core-api" }
+serde_json = "1.0"
+
+[[bin]]
+name = "graphite-extension-host"
+path = "src/main.rs"

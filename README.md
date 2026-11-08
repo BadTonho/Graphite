@@ -13,7 +13,7 @@ VS Code runs on Electron (a full Chromium + Node.js per window). Graphite render
 Native JavaScript/TypeScript plugins and metadata-only VSIX import are available through the **Plugins** panel (`Ctrl+Shift+X`). Native execution requires Node.js 24+. See [Creating and installing plugins](docs/en/contributing/plugins.md).
 
 ```bash
-cargo run -p shoppe-app -- <folder>   # omit <folder> to open the current directory
+cargo run -p graphite-app -- <folder>   # omit <folder> to open the current directory
 cargo test --workspace
 ```
 
@@ -47,17 +47,17 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
 LSP servers are user-installed executables configured in `lsp.json` in the app configuration directory. The terminal uses the system shell by default and can be changed in `terminal.json` or with `GRAPHITE_SHELL`.
 
-For existing installations, Graphite keeps using the previous `VsCodeShoppe` configuration directory if no `Graphite` directory exists. The previous `VSCODESHOPPE_SHELL` variable remains a fallback when `GRAPHITE_SHELL` is unset or empty.
+Graphite stores configuration in `%APPDATA%\Graphite` on Windows and `$XDG_CONFIG_HOME/Graphite` (or `~/.config/Graphite`) on Linux. `GRAPHITE_SHELL` selects the terminal shell. Existing settings kept elsewhere must be copied to the Graphite configuration directory to be used.
 
 ## Workspace layout
 
 | Crate | Responsibility |
 |---|---|
-| `shoppe-text` | Rope-based text buffer, cursor, file I/O |
-| `shoppe-workspace` | Folder model, `.gitignore`-aware directory listing |
-| `shoppe-syntax` | tree-sitter syntax highlighting |
-| `shoppe-render` | `wgpu` renderer + `cosmic-text` glyph atlas |
-| `shoppe-app` | `winit` window, file tree, editor UI |
+| `graphite-text` | Rope-based text buffer, cursor, file I/O |
+| `graphite-workspace` | Folder model, `.gitignore`-aware directory listing |
+| `graphite-syntax` | tree-sitter syntax highlighting |
+| `graphite-render` | `wgpu` renderer + `cosmic-text` glyph atlas |
+| `graphite-app` | `winit` window, file tree, editor UI |
 
 The app also includes a generic Language Server Protocol client and an ANSI terminal backed by a cross-platform PTY.
 

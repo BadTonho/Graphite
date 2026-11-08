@@ -2,7 +2,7 @@
 
 ## Propriedade e identidade
 
-`Document` mantém um `shoppe-text::Buffer`, linguagem, codificação, fim de linha, indentação e caches derivados do documento. O buffer mantém o Rope, revisão, referência do texto salvo e histórico compartilhado de undo/redo. Ele não tem cursor ou seleção ativa.
+`Document` mantém um `graphite-text::Buffer`, linguagem, codificação, fim de linha, indentação e caches derivados do documento. O buffer mantém o Rope, revisão, referência do texto salvo e histórico compartilhado de undo/redo. Ele não tem cursor ou seleção ativa.
 
 `DocumentStore` mantém documentos sob chaves `DocumentId`. As chaves são separadas dos dados mutáveis do documento; substituir os dados não invalida a busca por identidade. Acesso e remoção usam IDs; posições na coleção não são identidades de documentos. Os grupos mantêm a ordem das abas. O documento ativo sempre vem da view em foco.
 

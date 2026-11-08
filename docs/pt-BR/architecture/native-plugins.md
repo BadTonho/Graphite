@@ -1,6 +1,6 @@
 # Plugins nativos e inspeção de VSIX
 
-Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `shoppe-plugins` cuida de manifestos, validação ZIP, instalação, geração de projetos e descoberta no GitHub sem depender da aplicação/GPU. A aplicação mantém o painel e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
+Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação, geração de projetos e descoberta no GitHub sem depender da aplicação/GPU. A aplicação mantém o painel e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
 
 ## Limite do runtime
 

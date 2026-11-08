@@ -1,6 +1,6 @@
 /target
 **/*.rs.bk
-.shoppe-*.tmp
+.graphite-*.tmp
 .env
 .env.*
 *.pem
