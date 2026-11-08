@@ -1,6 +1,7 @@
 use super::*;
 pub(super) mod accessibility;
 mod accessibility_actions;
+pub(crate) mod cli_ui;
 mod clipboard;
 mod commands;
 mod document;
@@ -17,8 +18,10 @@ mod layout;
 pub(super) mod local_search;
 mod lsp_ui;
 mod mouse;
+mod phase4_tools;
 mod project_search;
 pub(super) mod quick_open;
+pub(crate) mod scm_ui;
 mod smart_selection;
 mod terminal_drawing;
 mod terminal_input;

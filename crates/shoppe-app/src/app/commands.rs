@@ -228,6 +228,32 @@ impl App {
                 tab.buffer.insert(&indentation);
             }
             "workbench.action.quickOpen" => self.start_quick_open(),
+            "workbench.view.scm" => self.toggle_scm(),
+            "shoppe.scm.stage" => self.perform_scm_action(super::scm_ui::ScmAction::Stage),
+            "shoppe.scm.unstage" => self.perform_scm_action(super::scm_ui::ScmAction::Unstage),
+            "shoppe.scm.stageLine" => {
+                self.perform_scm_action(super::scm_ui::ScmAction::StageCursorLine)
+            }
+            "shoppe.scm.revertLine" => {
+                self.perform_scm_action(super::scm_ui::ScmAction::RevertCursorLine)
+            }
+            "shoppe.scm.revertHunk" => {
+                self.perform_scm_action(super::scm_ui::ScmAction::RevertFirstHunk)
+            }
+            "shoppe.scm.commitPrompt" => {
+                self.scm_commit_prompt = true;
+                self.scm_commit_message.clear();
+                self.status = "Type a commit message and press Enter".into();
+            }
+            "workbench.action.toggleZenMode" => self.toggle_zen_mode(),
+            "workbench.action.toggleCenteredEditor" => self.toggle_centered_editor(),
+            "workbench.action.toggleOutline" => self.toggle_outline(),
+            "workbench.action.showProcessExplorer" => self.toggle_process_explorer(),
+            "workbench.action.toggleScreencastMode" => self.toggle_screencast_mode(),
+            "shoppe.action.diffActiveFile" => {
+                self.open_active_file_diff();
+            }
+            "shoppe.action.closeDiffEditor" => self.diff_view = None,
             "workbench.action.splitEditorRight" => {
                 self.split_editor_group(super::editor_groups::SplitDirection::Vertical);
             }

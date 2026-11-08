@@ -73,6 +73,12 @@ impl FileTree {
         self.workspace.root()
     }
 
+    pub fn replace_workspace(&mut self, workspace: Workspace) {
+        self.workspace = workspace;
+        self.expanded.clear();
+        self.rebuild();
+    }
+
     /// Toggles a directory row; returns the file path if the row is a file.
     pub fn activate(&mut self, row: usize) -> Option<PathBuf> {
         let entry = self.rows.get(row)?.entry.clone();

@@ -492,6 +492,8 @@ impl App {
                         insert_spaces: self.insert_spaces,
                         tab_size: self.tab_size,
                     },
+                    encoding: crate::file_format::Encoding::Utf8,
+                    line_ending: crate::file_format::LineEnding::Lf,
                 },
             );
             self.closed_tabs.push(closed);
@@ -501,6 +503,7 @@ impl App {
             self.snapshot_editor_view();
         }
         self.status = "Tab closed".into();
+        self.check_cli_waiters();
     }
 }
 

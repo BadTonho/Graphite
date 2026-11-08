@@ -22,3 +22,12 @@ lsp-server = "0.7.8"
 lsp-types = "0.97.0"
 portable-pty = "0.8.1"
 alacritty_terminal = "0.25.1"
+gix = "0.90"
+interprocess = "2.4"
+notify = "8.2"
+similar = "2.7"
+sysinfo = "0.40"
+
+[[bin]]
+name = "code"
+path = "src/bin/code.rs"

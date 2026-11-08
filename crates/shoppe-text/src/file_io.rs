@@ -43,6 +43,46 @@ impl Buffer {
         self.write_to_path(&path)
     }
 
+    /// Atomically write encoded bytes to the buffer path and mark this revision as saved.
+    pub fn save_encoded_bytes(&mut self, bytes: &[u8]) -> Result<(), BufferError> {
+        if self.read_only {
+            return Err(
+                io::Error::new(io::ErrorKind::PermissionDenied, "document is read-only").into(),
+            );
+        }
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file path"))?
+            .clone();
+        Self::write_bytes_to_path(&path, bytes)?;
+        self.saved_text = self.rope.clone();
+        self.dirty = false;
+        Ok(())
+    }
+
+    /// Save pre-encoded trimmed contents, changing the buffer and its undo
+    /// history only after the atomic disk write succeeds.
+    pub fn save_encoded_bytes_with_trim(&mut self, bytes: &[u8]) -> Result<(), BufferError> {
+        if self.read_only {
+            return Err(
+                io::Error::new(io::ErrorKind::PermissionDenied, "document is read-only").into(),
+            );
+        }
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file path"))?
+            .clone();
+        let edits = self.trailing_whitespace_edits();
+        Self::write_bytes_to_path(&path, bytes)?;
+        self.apply_preserving_selections(&edits)
+            .expect("validated trimming edits");
+        self.saved_text = self.rope.clone();
+        self.dirty = false;
+        Ok(())
+    }
+
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), BufferError> {
         if self.read_only {
             return Err(
@@ -87,6 +127,12 @@ impl Buffer {
     }
 
     fn write_rope_to_path(path: &Path, rope: &Rope) -> Result<(), BufferError> {
+        let mut bytes = Vec::with_capacity(rope.len_bytes());
+        rope.write_to(&mut bytes)?;
+        Self::write_bytes_to_path(path, &bytes)
+    }
+
+    fn write_bytes_to_path(path: &Path, bytes: &[u8]) -> Result<(), BufferError> {
         // Replace the target only after the complete new contents have been written.
         // Resolve existing symlinks so saving does not replace the link itself.
         let target = match fs::symlink_metadata(path) {
@@ -141,7 +187,8 @@ impl Buffer {
             if let Some(permissions) = permissions {
                 file.set_permissions(permissions)?;
             }
-            rope.write_to(&mut file)?;
+            use std::io::Write;
+            file.write_all(bytes)?;
             file.sync_all()?;
             drop(file);
             fs::rename(&temp_path, &target)?;

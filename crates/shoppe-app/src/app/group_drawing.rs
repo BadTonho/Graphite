@@ -167,7 +167,30 @@ impl App {
                     .chain(&tab.schema_diagnostics)
                     .any(|d| d.range.start.line as usize == line)
                 {
-                    r.draw_rect(rect.x + 2.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
+                    r.draw_rect(rect.x + 10.0, y + lh * 0.3, 5.0, 5.0, rgb(0xf14c4c));
+                }
+                if let Some(path) = buffer.path() {
+                    let relative = path
+                        .strip_prefix(self.tree.root())
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    if let Some(change) = self
+                        .scm_snapshot
+                        .line_changes
+                        .get(Path::new(&relative))
+                        .and_then(|lines| {
+                            lines.iter().find(|(changed_line, _)| *changed_line == line)
+                        })
+                        .map(|(_, change)| *change)
+                    {
+                        let color = match change {
+                            crate::scm::LineChange::Added => 0x2da44e,
+                            crate::scm::LineChange::Modified => 0x0969da,
+                            crate::scm::LineChange::Deleted => 0xcf222e,
+                        };
+                        r.draw_rect(rect.x + 2.0, y, 4.0, lh, rgb(color));
+                    }
                 }
                 r.draw_text(
                     &format!(
