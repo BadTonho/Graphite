@@ -2,6 +2,10 @@ use super::*;
 
 impl App {
     pub(crate) fn click(&mut self) {
+        if self.plugins.visible {
+            self.plugin_click();
+            return;
+        }
         let Some(gpu) = &self.gpu else { return };
         let lh = gpu.renderer.line_height();
         let cw = gpu.renderer.char_width();

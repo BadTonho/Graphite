@@ -188,6 +188,9 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> TreeUpdate {
+        if self.plugins.visible {
+            return self.plugin_accessibility();
+        }
         let rects = self.group_rectangles(width, height, line_height);
         let panel = self.accessible_panel_text();
         let panel_focus = panel.is_some() && self.terminal_focused;

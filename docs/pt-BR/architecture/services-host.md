@@ -1,5 +1,7 @@
 # Serviços internos e host de extensões simulado
 
+O peer Rust simulado continua disponível. Plugins JS/TS nativos reais reutilizam seu supervisor e contratos de serviços em sessões separadas por plugin; consulte [Plugins nativos e inspeção de VSIX](native-plugins.md). A flag de habilitação e o executável do simulador descritos abaixo não controlam plugins nativos.
+
 ## Fronteiras
 
 `graphite-core-api` define identidade de documento, URIs validadas, snapshots, edições UTF-16, requisições/resultados de comandos, cancelamento, erros e interfaces de serviços de documentos/comandos/workspace/janela. Depende de serialização e tratamento de URIs, sem tipos de GPU, aplicação ou LSP. As implementações do event loop ficam em `graphite-app/app/services/`. Adaptadores convertem seus tipos de protocolo na fronteira.

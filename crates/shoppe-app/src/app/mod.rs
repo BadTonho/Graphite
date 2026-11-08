@@ -23,6 +23,7 @@ pub(super) mod local_search;
 mod lsp_ui;
 mod mouse;
 mod phase4_tools;
+pub(crate) mod plugins;
 mod project_search;
 pub(super) mod quick_open;
 pub(crate) mod scm_ui;

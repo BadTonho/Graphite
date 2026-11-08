@@ -18,6 +18,10 @@ impl CommandService for App {
                 .map(|c| c.metadata.clone()),
         );
         commands.sort_by(|a, b| a.id.cmp(&b.id));
+        for host in self.plugins.hosts.values() {
+            commands.extend(host.commands.values().map(|c| c.metadata.clone()));
+        }
+        commands.sort_by(|a, b| a.id.cmp(&b.id));
         commands
     }
     fn execute(&mut self, request: CommandRequest) -> CommandTicket {

@@ -240,6 +240,29 @@ impl Supervisor {
             error,
         });
     }
+    /// Give a real plugin a bounded opportunity to deactivate, without blocking the UI.
+    pub fn shutdown(&mut self) {
+        if self.state == HostState::Stopped {
+            return;
+        }
+        let _ = self.send(Message::Shutdown {
+            session: self.session,
+        });
+        if let Some(mut child) = self.child.take() {
+            std::thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_millis(1100);
+                while Instant::now() < deadline {
+                    if child.try_wait().ok().flatten().is_some() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+            });
+        }
+        self.stop(ServiceError::HostStopped);
+    }
 }
 impl Drop for Supervisor {
     fn drop(&mut self) {

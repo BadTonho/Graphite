@@ -2,6 +2,9 @@ use super::*;
 
 impl App {
     pub(crate) fn ime_preedit(&mut self, text: String) {
+        if self.plugins.visible {
+            return;
+        }
         self.editor_groups.active_view_mut().ime_composing = !text.is_empty();
         self.editor_groups.active_view_mut().ime_preedit = text;
     }
@@ -9,6 +12,9 @@ impl App {
     pub(crate) fn ime_commit(&mut self, text: &str) {
         self.editor_groups.active_view_mut().ime_composing = false;
         self.editor_groups.active_view_mut().ime_preedit.clear();
+        if self.plugin_commit_text(text) {
+            return;
+        }
         if self.terminal_focused {
             if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                 terminal.input(text.as_bytes().to_vec());

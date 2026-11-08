@@ -3,6 +3,7 @@
 Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
 
 - **Architecture**
+  - [Native plugins and VSIX inspection](architecture/native-plugins.md)
   - [Overview](architecture/overview.md)
   - [Document and view](architecture/document-view.md)
   - [Commands and context](architecture/commands-context.md)
@@ -16,6 +17,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
 - **Contributing**
+  - [Creating and installing plugins](contributing/plugins.md)
   - [Building and testing](contributing/building.md)
   - [Regression testing and coverage](contributing/testing.md)
 - **Security**

@@ -44,7 +44,9 @@ impl App {
         self.status = "Simulated extension host starting".into();
         Ok(())
     }
-    fn clear_host_session(&mut self) {
+    pub(crate) fn clear_host_session(&mut self) {
+        self.extension_host.native_active = false;
+        self.extension_host.activation_deadline = None;
         self.extension_host.commands.clear();
         self.extension_host.participants.clear();
         self.extension_host.save_replies.clear();

@@ -1,0 +1,212 @@
+use graphite_plugins::{
+    manifest::{Manifest, Metadata},
+    package, sdk,
+    store::Store,
+};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
+struct Temp(PathBuf);
+impl Temp {
+    fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let path = std::env::temp_dir().join(format!(
+            "graphite-plugin-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+fn project(root: &Path, name: &str) -> PathBuf {
+    let path = root.join(name);
+    sdk::create(&path).unwrap();
+    fs::create_dir(path.join("dist")).unwrap();
+    fs::write(
+        path.join("dist/index.js"),
+        "export function activate() { throw new Error('must not run during install'); }",
+    )
+    .unwrap();
+    path
+}
+fn zip(path: &Path, entries: &[(&str, &[u8])]) {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+    for (name, body) in entries {
+        writer
+            .start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(body).unwrap();
+    }
+    writer.finish().unwrap();
+}
+#[test]
+fn scaffold_pack_install_trust_update_and_remove_preserve_other_plugins() {
+    let temp = Temp::new();
+    let source = project(&temp.0, "example");
+    assert!(sdk::create(&source).is_err());
+    let store = Store::new(temp.0.join("store"));
+    let package = package::pack(&source).unwrap();
+    let first = store.install(&package).unwrap();
+    assert!(!first.enabled);
+    assert!(first.trusted_version.is_none());
+    assert!(store.enable("local.example", false).is_err());
+    store.enable("local.example", true).unwrap();
+    assert!(
+        Store::new(store.root.clone())
+            .get("local.example")
+            .unwrap()
+            .enabled
+    );
+    store.disable("local.example").unwrap();
+    assert!(!store.get("local.example").unwrap().enabled);
+    let mut manifest: Manifest =
+        serde_json::from_slice(&fs::read(source.join("graphite-plugin.json")).unwrap()).unwrap();
+    manifest.version = "0.2.0".into();
+    fs::write(
+        source.join("graphite-plugin.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    let update = package::pack(&source).unwrap();
+    store.install(&update).unwrap();
+    let updated = store.get("local.example").unwrap();
+    assert_eq!(updated.metadata.version(), "0.2.0");
+    assert!(!updated.enabled);
+    assert!(updated.trusted_version.is_none());
+    assert!(store.root.join(&first.directory).exists());
+    let peer = project(&temp.0, "example-other");
+    let peer = package::pack(&peer).unwrap();
+    let peer = store.install(&peer).unwrap();
+    store.remove("local.example").unwrap();
+    assert!(store.get("local.example").is_err());
+    assert!(store.root.join(peer.directory).is_dir());
+    assert!(store.get("local.example-other").is_ok());
+}
+#[test]
+fn failed_update_keeps_previous_registry_and_contents() {
+    let temp = Temp::new();
+    let source = project(&temp.0, "example");
+    let store = Store::new(temp.0.join("store"));
+    let package = package::pack(&source).unwrap();
+    let first = store.install(&package).unwrap();
+    store.enable("local.example", true).unwrap();
+    // A stale transaction lock deterministically simulates a publication failure.
+    fs::write(store.root.join(".local.example.tmp"), "locked").unwrap();
+    assert!(store.install(&package).is_err());
+    assert!(store.get("local.example").unwrap().enabled);
+    assert_eq!(
+        store.get("local.example").unwrap().directory,
+        first.directory
+    );
+    assert!(store.root.join(first.directory).is_dir());
+    assert!(fs::read_dir(&store.root).unwrap().all(|e| !e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .starts_with(".staging")));
+}
+#[test]
+fn invalid_manifests_and_archive_paths_are_rejected_without_writes() {
+    let temp = Temp::new();
+    for name in [
+        "../escape",
+        "C:/escape",
+        "dir\\escape",
+        "/escape",
+        "a/../b",
+        "NUL",
+        "a./file",
+        "a ",
+    ] {
+        assert!(!package::safe_path(name), "{name}");
+        let path = temp.0.join("bad.vsix");
+        zip(&path, &[(name, b"bad")]);
+        assert!(package::inspect(&path).is_err());
+        assert!(!temp.0.join("escape").exists());
+    }
+    let path = temp.0.join("bad.vsix");
+    zip(&path, &[("a", b"x"), ("A", b"y")]);
+    assert!(package::inspect(&path).is_err());
+    zip(&path, &[("a", b"x"), ("a/b", b"y")]);
+    assert!(package::inspect(&path).is_err());
+    let source = project(&temp.0, "example");
+    let mut m: Manifest =
+        serde_json::from_slice(&fs::read(source.join("graphite-plugin.json")).unwrap()).unwrap();
+    m.api_version = 2;
+    assert!(m.validate().is_err());
+    m.api_version = 1;
+    m.commands[0].id = "undo".into();
+    assert!(m.validate().is_err());
+    m.commands.clear();
+    m.version = "bad".into();
+    assert!(m.validate().is_err());
+    m.version = "1.0.0".into();
+    m.main = "../evil.js".into();
+    assert!(m.validate().is_err());
+}
+#[test]
+fn vsix_is_metadata_only_and_cannot_be_enabled() {
+    let temp = Temp::new();
+    let path = temp.0.join("sample.vsix");
+    let sentinel = temp.0.join("should-not-exist");
+    let entry = format!(
+        "require('node:fs').writeFileSync({}, 'bad')",
+        serde_json::to_string(&sentinel).unwrap()
+    );
+    zip(&path, &[("extension/package.json", br#"{"publisher":"Example","name":"vsix","version":"1.0.0","engines":{"vscode":"^1.90.0"},"main":"main.js","contributes":{"commands":[]}}"#), ("extension/main.js", entry.as_bytes())]);
+    let store = Store::new(temp.0.join("store"));
+    let record = store.install(&path).unwrap();
+    let Metadata::Vsix(m) = record.metadata else {
+        panic!("not VSIX")
+    };
+    assert_eq!(m.contributions, vec!["commands"]);
+    assert_eq!(m.main.as_deref(), Some("main.js"));
+    assert!(store.enable("example.vsix", true).is_err());
+    assert!(!temp.0.join("should-not-exist").exists());
+    zip(&path, &[("extension/package.json", b"{}")]);
+    assert!(package::inspect(&path).is_err());
+}
+#[test]
+fn package_limits_reject_expansion_entries_and_special_files() {
+    let temp = Temp::new();
+    let path = temp.0.join("large.vsix");
+    // Declared expanded size is checked before any decompression.
+    zip(&path, &[("x", b"a")]);
+    let mut bytes = fs::read(&path).unwrap();
+    let central = bytes.windows(4).position(|w| w == b"PK\x01\x02").unwrap();
+    bytes[central + 24..central + 28].copy_from_slice(&(501u32 * 1024 * 1024).to_le_bytes());
+    fs::write(&path, bytes).unwrap();
+    assert!(package::inspect(&path).unwrap_err().contains("500 MiB"));
+    let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+    writer
+        .add_symlink(
+            "link",
+            "../outside",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+    writer.finish().unwrap();
+    assert!(package::inspect(&path).is_err());
+    let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+    for i in 0..10_001 {
+        writer
+            .start_file(format!("{i}"), zip::write::SimpleFileOptions::default())
+            .unwrap();
+    }
+    writer.finish().unwrap();
+    assert!(package::inspect(&path).unwrap_err().contains("too many"));
+}
+#[test]
+fn missing_node_has_an_actionable_error() {
+    assert!(sdk::check_node(Path::new("graphite-test-nonexistent-node"))
+        .unwrap_err()
+        .contains("Node.js"));
+}

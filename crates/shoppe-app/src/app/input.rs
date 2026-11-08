@@ -2,6 +2,9 @@ use super::*;
 
 impl App {
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
+        if self.plugin_key(event) {
+            return;
+        }
         let ctrl = self.modifiers.control_key();
         if self.scm_commit_prompt {
             match &event.logical_key {

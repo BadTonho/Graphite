@@ -2,6 +2,8 @@
 
 ## Boundaries
 
+The simulated Rust peer remains available unchanged. Real native JS/TS plugins now reuse its supervisor and service contracts in separate per-plugin sessions; see [Native plugins and VSIX inspection](native-plugins.md). The simulator-specific enable flag and helper executable below do not control native plugins.
+
 `graphite-core-api` defines document identity, validated URIs, snapshots, UTF-16 edits, command requests/results, cancellation, errors and document/command/workspace/window service interfaces. It depends on serialization and URI handling, without GPU, application or LSP types. Event-loop implementations live under `graphite-app/app/services/`. Adapters convert their own protocol types at the boundary.
 
 Document snapshots read open documents from memory, including dirty text; closed files use the local filesystem provider and existing UTF-8/UTF-16 decoding. `file:` URIs round-trip OS paths without lossy string conversion; `untitled:` identifies unsaved documents. Unsupported schemes and paths that cannot be represented produce errors. Snapshots of closed files do not create documents or views.

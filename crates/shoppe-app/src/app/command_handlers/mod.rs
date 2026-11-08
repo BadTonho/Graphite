@@ -42,6 +42,19 @@ fn add(
 pub(super) fn register(registry: &mut CommandRegistry) {
     add(
         registry,
+        "graphite.plugins.open",
+        "Open Plugins",
+        "Plugins",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_plugins();
+            Ok(())
+        },
+    );
+    add(
+        registry,
         "shoppe.extensions.restartHost",
         "Restart simulated extension host",
         "Developer",

@@ -3,6 +3,7 @@
 ## Requirements
 
 - Recent stable Rust toolchain (`rustup`).
+- Node.js 24+ for native plugin execution and the real-plugin integration tests. The editor and metadata-only VSIX inspection can run without Node; see [Plugin development](plugins.md).
 - A GPU/driver supported by `wgpu` (DirectX 12 or Vulkan on Windows; Vulkan or OpenGL on Linux).
 - Linux: development packages for X11/Wayland and fontconfig.
 - A C compiler (tree-sitter grammars compile C code): MSVC Build Tools on Windows, `gcc`/`clang` on Linux.

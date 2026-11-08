@@ -3,6 +3,7 @@
 Original em inglês: [../en/README.md](../en/README.md)
 
 - **Arquitetura**
+  - [Plugins nativos e inspeção de VSIX](architecture/native-plugins.md)
   - [Visão geral](architecture/overview.md)
   - [Documento e view](architecture/document-view.md)
   - [Comandos e contexto](architecture/commands-context.md)
@@ -16,6 +17,7 @@ Original em inglês: [../en/README.md](../en/README.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
 - **Contribuição**
+  - [Criando e instalando plugins](contributing/plugins.md)
   - [Compilação e testes](contributing/building.md)
   - [Testes de regressão e cobertura](contributing/testing.md)
 - **Segurança**

@@ -10,6 +10,8 @@ VS Code runs on Electron (a full Chromium + Node.js per window). Graphite render
 
 ## Quick start
 
+Native JavaScript/TypeScript plugins and metadata-only VSIX import are available through the **Plugins** panel (`Ctrl+Shift+X`). Native execution requires Node.js 24+. See [Creating and installing plugins](docs/en/contributing/plugins.md).
+
 ```bash
 cargo run -p graphite-app -- <folder>   # omit <folder> to open the current directory
 cargo test --workspace

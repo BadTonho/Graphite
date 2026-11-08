@@ -8,6 +8,8 @@ pub const MAX_FRAME: usize = 16 * 1024 * 1024;
 pub const MAX_PENDING: usize = 128;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RpcRequest {
+    /// Native Graphite host only: activation completed successfully.
+    Activated,
     Service {
         request: ServiceRequest,
         #[serde(default)]
