@@ -170,6 +170,16 @@ pub(super) fn run_server(
         match signal_rx.recv_timeout(Duration::from_millis(40)) {
             Ok(WorkerMessage::Command(command)) => {
                 let messages = match command {
+                    LspCommand::ExecuteCommand { command, arguments } => {
+                        let id = next_id;
+                        next_id += 1;
+                        pending.insert(id, (0, "executeCommand"));
+                        vec![Message::Request(Request {
+                            id: RequestId::from(id),
+                            method: "workspace/executeCommand".into(),
+                            params: json!({"command": command, "arguments": arguments}),
+                        })]
+                    }
                     LspCommand::Open {
                         uri,
                         language_id,

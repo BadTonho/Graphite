@@ -30,6 +30,12 @@ pub(super) fn dispatch_server_message(
             let response_error = response.error.map(|error| error.message);
             let result = response.result.unwrap_or(Value::Null);
             match kind {
+                "executeCommand" => {
+                    let message = response_error
+                        .map(|error| format!("Server command failed: {error}"))
+                        .unwrap_or_else(|| "Server command completed".into());
+                    let _ = event_tx.send(LspUiEvent::Status(message));
+                }
                 "completion" => {
                     let items = result
                         .as_array()

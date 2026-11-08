@@ -128,6 +128,10 @@ enum LspCommand {
         range: Range,
         diagnostics: Vec<Diagnostic>,
     },
+    ExecuteCommand {
+        command: String,
+        arguments: Vec<Value>,
+    },
     Shutdown,
 }
 
@@ -343,6 +347,31 @@ impl LspManager {
         );
     }
 
+    pub fn execute_server_command(
+        &self,
+        path: &Path,
+        command: String,
+        arguments: Vec<Value>,
+    ) -> bool {
+        if !self.documents.contains_key(path) {
+            return false;
+        }
+        let Some(server) = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(|extension| self.servers.get(&extension.to_ascii_lowercase()))
+        else {
+            return false;
+        };
+        server
+            .sender
+            .send(WorkerMessage::Command(LspCommand::ExecuteCommand {
+                command,
+                arguments,
+            }))
+            .is_ok()
+    }
+
     fn send(&self, path: &Path, mut command: LspCommand) {
         let Some(uri) = self.documents.get(path) else {
             return;
@@ -397,6 +426,50 @@ impl LspManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_command_routes_to_document_server_and_reports_response() {
+        let path = PathBuf::from("test.rs");
+        let (sender, receiver) = mpsc::channel();
+        let mut manager = LspManager::default();
+        manager.servers.insert(
+            "rs".into(),
+            ServerHandle {
+                sender,
+                worker: None,
+            },
+        );
+        assert!(!manager.execute_server_command(&path, "fix".into(), vec![]));
+        manager
+            .documents
+            .insert(path.clone(), "file:///test.rs".into());
+        assert!(manager.execute_server_command(&path, "fix".into(), vec![json!(42)]));
+        match receiver.recv().unwrap() {
+            WorkerMessage::Command(LspCommand::ExecuteCommand { command, arguments }) => {
+                assert_eq!(command, "fix");
+                assert_eq!(arguments, vec![json!(42)]);
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut pending = HashMap::from([(2, (0, "executeCommand"))]);
+        dispatch_server_message(
+            Message::Response(lsp_server::Response {
+                id: RequestId::from(2),
+                result: None,
+                error: Some(lsp_server::ResponseError {
+                    code: -32603,
+                    message: "failure".into(),
+                    data: None,
+                }),
+            }),
+            &mut pending,
+            &event_tx,
+        );
+        assert!(
+            matches!(event_rx.recv().unwrap(), LspUiEvent::Status(message) if message.contains("failure"))
+        );
+    }
 
     #[test]
     fn lsp_positions_count_utf16_units() {

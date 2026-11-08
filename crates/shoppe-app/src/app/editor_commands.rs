@@ -1,5 +1,4 @@
 use super::*;
-use shoppe_text::TextReplacement;
 
 impl App {
     pub(crate) fn push_navigation_location(&mut self) {
@@ -293,212 +292,44 @@ impl App {
             self.quick_fix_visible = false;
             return;
         };
-        let edit = match action {
-            lsp_types::CodeActionOrCommand::CodeAction(action) => action.edit,
-            lsp_types::CodeActionOrCommand::Command(command) => {
-                self.quick_fix_visible = false;
-                self.status = format!("Server command is not supported: {}", command.command);
-                return;
-            }
+        let (edit, command) = match action {
+            lsp_types::CodeActionOrCommand::CodeAction(action) => (action.edit, action.command),
+            lsp_types::CodeActionOrCommand::Command(command) => (None, Some(command)),
         };
-        let Some(edit) = edit else {
+        if edit.is_none() && command.is_none() {
             self.quick_fix_visible = false;
             self.status = "Quick fix has no workspace edit".into();
             return;
         };
-        let mut edits_by_path: HashMap<PathBuf, Vec<TextReplacement>> = HashMap::new();
-        if let Some(changes) = edit.changes {
-            for (uri, edits) in changes {
-                let Some(path) = lsp::uri_to_path(uri.as_str()) else {
-                    self.quick_fix_visible = false;
-                    self.status = "Quick fix contains an unsupported URI".into();
-                    return;
-                };
-                for edit in edits {
-                    let Some(range) = self.lsp_range_to_char_range(&path, edit.range) else {
-                        self.quick_fix_visible = false;
-                        self.status = "Quick fix contains an invalid text range".into();
-                        return;
-                    };
-                    edits_by_path
-                        .entry(path.clone())
-                        .or_default()
-                        .push(TextReplacement {
-                            range,
-                            text: edit.new_text,
-                        });
-                }
-            }
-        }
-        if let Some(document_changes) = edit.document_changes {
-            if let lsp_types::DocumentChanges::Edits(documents) = document_changes {
-                for document in documents {
-                    let Some(path) = lsp::uri_to_path(document.text_document.uri.as_str()) else {
-                        self.quick_fix_visible = false;
-                        self.status = "Quick fix contains an unsupported URI".into();
-                        return;
-                    };
-                    if let Some(version) = document.text_document.version {
-                        let current = self
-                            .tabs
-                            .iter()
-                            .find(|tab| {
-                                tab.buffer
-                                    .path()
-                                    .is_some_and(|open| same_file_path(open, &path))
-                            })
-                            .and_then(|tab| {
-                                tab.lsp_revision
-                                    .filter(|revision| *revision == tab.buffer.revision())
-                            });
-                        if version < 0 || current != Some(version as u64) {
-                            self.quick_fix_visible = false;
-                            self.status =
-                                "Quick fix has a stale or unavailable document version".into();
-                            return;
-                        }
-                    }
-                    for edit in document.edits {
-                        let text_edit = match edit {
-                            lsp_types::OneOf::Left(edit) => edit,
-                            lsp_types::OneOf::Right(edit) => edit.text_edit,
-                        };
-                        let Some(range) = self.lsp_range_to_char_range(&path, text_edit.range)
-                        else {
-                            self.quick_fix_visible = false;
-                            self.status = "Quick fix contains an invalid text range".into();
-                            return;
-                        };
-                        edits_by_path
-                            .entry(path.clone())
-                            .or_default()
-                            .push(TextReplacement {
-                                range,
-                                text: text_edit.new_text,
-                            });
-                    }
-                }
-            } else {
-                self.quick_fix_visible = false;
-                self.status = "Quick fix contains unsupported resource operations".into();
-                return;
-            }
-        }
-        if edits_by_path.is_empty() {
-            self.quick_fix_visible = false;
-            self.status = "Quick fix contains no supported text edits".into();
-            return;
-        }
-        let mut prepared = Vec::new();
-        for (path, replacements) in edits_by_path {
-            let Some(relative_path) = workspace_relative_path(self.tree.root(), &path) else {
-                self.quick_fix_visible = false;
-                self.status = format!(
-                    "Quick fix targets a file outside the workspace: {}",
-                    path.display()
-                );
-                return;
-            };
-            if let Some(index) = self.tabs.iter().position(|tab| {
-                tab.buffer
-                    .path()
-                    .is_some_and(|open| same_file_path(open, &path))
-            }) {
-                if self.tabs[index].buffer.is_read_only() {
-                    self.quick_fix_visible = false;
-                    self.status = "Quick fix blocked: document is read-only".into();
-                    return;
-                }
-                prepared.push((path, replacements, Some(index), None));
-            } else {
-                let relative = relative_path.to_string_lossy().replace('\\', "/");
-                let read_only = self.read_only_patterns.iter().any(|pattern| {
-                    globset::Glob::new(pattern)
-                        .is_ok_and(|glob| glob.compile_matcher().is_match(&relative))
-                });
-                if read_only {
-                    self.quick_fix_visible = false;
-                    self.status = "Quick fix blocked: target matches a read-only pattern".into();
-                    return;
-                }
-                let buffer = match Buffer::open(&path) {
-                    Ok(buffer) => buffer,
-                    Err(error) => {
-                        self.quick_fix_visible = false;
-                        self.status =
-                            format!("Cannot read quick-fix target {}: {error}", path.display());
-                        return;
-                    }
-                };
-                prepared.push((path, replacements, None, Some(buffer)));
-            }
-        }
-        // Validate every text transaction before changing any document. Disk
-        // writes for closed files are still separate and are not atomic here.
-        for (_, replacements, index, buffer) in &prepared {
-            let target = match index {
-                Some(index) => &self.tabs[*index].buffer,
-                None => buffer.as_ref().expect("closed target has a buffer"),
-            };
-            if let Err(error) = target.validate_transaction(replacements) {
+        if let Some(edit) = edit {
+            if let Err(error) = self.apply_workspace_edit(edit) {
                 self.quick_fix_visible = false;
                 self.status = format!("Cannot apply quick fix: {error}");
                 return;
             }
         }
-        for (path, replacements, index, buffer) in prepared {
-            if let Some(index) = index {
-                let revision = self.tabs[index].buffer.revision();
-                if let Err(error) = self.tabs[index].buffer.apply_transaction(&replacements) {
-                    self.quick_fix_visible = false;
-                    self.status = format!("Cannot apply quick fix: {error}");
-                    return;
-                }
-                self.update_other_editor_views(index, revision);
-                if index == self.active_tab {
-                    self.sync_lsp_active();
-                }
-            } else if let Some(mut buffer) = buffer {
-                if let Err(error) = buffer.apply_transaction(&replacements) {
-                    self.quick_fix_visible = false;
-                    self.status = format!("Cannot apply quick fix: {error}");
-                    return;
-                }
-                if let Err(error) = buffer.save() {
-                    self.quick_fix_visible = false;
-                    self.status =
-                        format!("Cannot save quick-fix target {}: {error}", path.display());
-                    return;
-                }
-            }
-        }
         self.quick_fix_visible = false;
         self.quick_fix_actions.clear();
-        self.status = "Quick fix applied".into();
-    }
-
-    fn lsp_range_to_char_range(
-        &self,
-        path: &Path,
-        range: lsp_types::Range,
-    ) -> Option<std::ops::Range<usize>> {
-        let text = self
-            .tabs
-            .iter()
-            .find(|tab| {
-                tab.buffer
-                    .path()
-                    .is_some_and(|open| same_file_path(open, path))
-            })
-            .map(|tab| tab.buffer.text())
-            .or_else(|| {
-                crate::file_format::read(path)
-                    .ok()
-                    .map(|decoded| decoded.text)
-            })?;
-        let start = strict_lsp_position_to_char(&text, range.start)?;
-        let end = strict_lsp_position_to_char(&text, range.end)?;
-        (start <= end).then_some(start..end)
+        if let Some(command) = command {
+            let sent = self.tabs[self.active_tab]
+                .buffer
+                .path()
+                .is_some_and(|path| {
+                    self.lsp_manager.execute_server_command(
+                        path,
+                        command.command,
+                        command.arguments.unwrap_or_default(),
+                    )
+                });
+            self.status = if sent {
+                "Server command requested"
+            } else {
+                "Server command unavailable"
+            }
+            .into();
+        } else {
+            self.status = "Quick fix applied".into();
+        }
     }
 
     pub(crate) fn close_active_tab(&mut self) {
@@ -561,7 +392,10 @@ impl App {
     }
 }
 
-fn strict_lsp_position_to_char(text: &str, position: lsp_types::Position) -> Option<usize> {
+pub(super) fn strict_lsp_position_to_char(
+    text: &str,
+    position: lsp_types::Position,
+) -> Option<usize> {
     let mut offset = 0;
     let mut lines = text.split('\n');
     for _ in 0..position.line {
@@ -599,7 +433,7 @@ fn lsp_position_to_char(text: &str, position: lsp_types::Position) -> usize {
         )
 }
 
-fn workspace_relative_path(root: &Path, path: &Path) -> Option<PathBuf> {
+pub(super) fn workspace_relative_path(root: &Path, path: &Path) -> Option<PathBuf> {
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     #[cfg(windows)]

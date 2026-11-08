@@ -1,6 +1,37 @@
 use super::*;
 
 impl App {
+    pub(super) fn sync_lsp_document(&mut self, index: usize) {
+        if index == self.active_tab {
+            self.sync_lsp_active();
+            return;
+        }
+        let tab = &mut self.tabs[index];
+        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
+            return;
+        };
+        if !self.lsp_manager.supports_path(&path) {
+            return;
+        }
+        let revision = tab.buffer.revision();
+        if tab.lsp_revision == Some(revision) {
+            return;
+        }
+        if tab.lsp_revision.is_none() {
+            self.lsp_manager.open(
+                &path,
+                self.tree.root(),
+                tab.buffer.text(),
+                revision as i32,
+                self.lsp_sender.clone(),
+            );
+        } else {
+            self.lsp_manager
+                .change(&path, tab.buffer.text(), revision as i32);
+        }
+        tab.lsp_revision = Some(revision);
+    }
+
     pub(crate) fn register_lsp_active(&mut self) {
         self.sync_schema_active();
         let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) else {

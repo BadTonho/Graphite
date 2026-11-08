@@ -770,6 +770,51 @@ mod tests {
     }
 
     #[test]
+    fn quick_fix_keeps_previously_closed_encoded_documents_dirty_in_memory() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.rs");
+        let second = dir.path().join("second.rs");
+        std::fs::write(&first, "abc").unwrap();
+        let original = [0xff, 0xfe, b'x', 0, b'y', 0, b'z', 0];
+        std::fs::write(&second, original).unwrap();
+        let edit = |value| serde_json::json!({"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}, "newText": value});
+        let mut changes = serde_json::Map::new();
+        changes.insert(
+            crate::lsp::path_to_uri(&first).unwrap(),
+            serde_json::json!([edit("A")]),
+        );
+        changes.insert(
+            crate::lsp::path_to_uri(&second).unwrap(),
+            serde_json::json!([edit("X")]),
+        );
+        let action = serde_json::from_value(
+            serde_json::json!({"title": "Edit", "edit": {"changes": changes}}),
+        )
+        .unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first);
+        app.quick_fix_actions = vec![action];
+        app.apply_quick_fix();
+        assert_eq!(app.status, "Quick fix applied");
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "Abc");
+        let tab = app
+            .tabs
+            .iter_mut()
+            .find(|tab| {
+                tab.buffer
+                    .path()
+                    .is_some_and(|path| super::super::super::same_file_path(path, &second))
+            })
+            .unwrap();
+        assert_eq!(tab.buffer.text(), "Xyz");
+        assert!(tab.buffer.is_dirty());
+        assert_eq!(std::fs::read(&second).unwrap(), original);
+        tab.buffer.undo();
+        assert_eq!(tab.buffer.text(), "xyz");
+        assert!(!tab.buffer.is_dirty());
+    }
+
+    #[test]
     fn quick_fix_rejects_version_older_than_local_buffer() {
         let dir = crate::test_support::TempDir::new();
         let path = dir.path().join("version.rs");
