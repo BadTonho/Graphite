@@ -529,3 +529,174 @@ fn replacing_server_instance_finishes_old_tickets_without_cancelling_the_replace
     assert!(messages.try_recv().is_err());
     assert!(app.lsp_manager.current_instance("rs", 3));
 }
+
+#[test]
+fn save_participant_edits_are_staged_utf16_and_did_save_uses_written_text() {
+    let (_dir, mut app, messages, path) = fixture();
+    app.editor_mut().insert("🌎");
+    while messages.try_recv().is_ok() {}
+    let ticket = app.execute_command(request(&app, "workbench.action.files.save"));
+    app.poll_saves(std::time::Instant::now());
+    let WorkerMessage::Command(LspCommand::BeforeSave { reply, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected save participant")
+    };
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 2,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 3,
+            },
+            text: "x".into(),
+        }]))
+        .unwrap();
+    assert_eq!(app.editor().text(), "🌎abc");
+    app.wait_for_saves();
+    assert_eq!(ticket.try_result(), Some(Ok(Value::Null)));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "🌎xbc");
+    let mut saved = None;
+    while let Ok(message) = messages.try_recv() {
+        if let WorkerMessage::Command(LspCommand::Save { text, .. }) = message {
+            saved = Some(text);
+        }
+    }
+    assert_eq!(saved.as_deref(), Some("🌎xbc"));
+    app.editor_mut().undo();
+    assert_eq!(app.editor().text(), "🌎abc");
+}
+
+#[test]
+fn stale_lsp_participant_preserves_typing_and_timeout_sends_cancel_request() {
+    let (_dir, mut app, messages, path) = fixture();
+    let document = app.active_document();
+    app.save_document(document);
+    let now = std::time::Instant::now();
+    app.poll_saves(now);
+    let WorkerMessage::Command(LspCommand::BeforeSave { reply, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected participant")
+    };
+    app.editor_mut().insert("new");
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 0,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 1,
+            },
+            text: "obsolete".into(),
+        }]))
+        .unwrap();
+    app.wait_for_saves();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "newabc");
+    assert!(app.status.contains("discarded"));
+    while messages.try_recv().is_ok() {}
+    app.save_document(document);
+    app.poll_saves(now);
+    let WorkerMessage::Command(LspCommand::BeforeSave {
+        request_id, reply, ..
+    }) = messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected participant")
+    };
+    app.poll_saves(now + Duration::from_secs(1));
+    assert!(
+        matches!(messages.recv_timeout(Duration::from_secs(1)).unwrap(), WorkerMessage::Command(LspCommand::Cancel { request_id: id }) if id == request_id)
+    );
+    assert!(reply.send(Ok(Vec::new())).is_err());
+    app.wait_for_saves();
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "newabc");
+}
+
+#[test]
+fn stopped_lsp_instance_cannot_apply_its_save_edits_to_replacement() {
+    let (_dir, mut app, messages, path) = fixture();
+    app.save_document(app.active_document());
+    app.poll_saves(std::time::Instant::now());
+    let WorkerMessage::Command(LspCommand::BeforeSave { reply, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected participant")
+    };
+    app.lsp_manager.servers.get_mut("rs").unwrap().instance += 1;
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 0,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 3,
+            },
+            text: "obsolete".into(),
+        }]))
+        .unwrap();
+    app.wait_for_saves();
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "abc");
+    assert_eq!(app.editor().text(), "abc");
+    assert!(!messages
+        .try_iter()
+        .any(|m| matches!(m, WorkerMessage::Command(LspCommand::Cancel { .. }))));
+}
+
+#[test]
+fn lsp_precedes_real_host_participant_and_both_commit_as_one_transaction() {
+    let (_dir, mut app, messages, path) = fixture();
+    let (wake, wakes) = mpsc::channel();
+    app.extension_host.enabled = true;
+    app.extension_host.supervisor = Some(
+        graphite_extension_host::Supervisor::spawn_with_args(
+            &host_executable(),
+            &["--save-check-lsp".into()],
+            300,
+            std::time::Instant::now(),
+            Arc::new(move || {
+                let _ = wake.send(());
+            }),
+        )
+        .unwrap(),
+    );
+    pump_host(&mut app, &wakes, |app| {
+        !app.extension_host.participants.is_empty()
+    });
+    let ticket = app.execute_command(request(&app, "workbench.action.files.save"));
+    app.poll_saves(std::time::Instant::now());
+    assert!(app.extension_host.save_replies.is_empty());
+    let WorkerMessage::Command(LspCommand::BeforeSave { reply, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected LSP first")
+    };
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 0,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 0,
+            },
+            text: "// lsp\n".into(),
+        }]))
+        .unwrap();
+    app.wait_for_saves();
+    assert_eq!(ticket.try_result(), Some(Ok(Value::Null)));
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        "// simulated save\n// lsp\nabc"
+    );
+    assert_eq!(app.editor().revision(), 1);
+    app.editor_mut().undo();
+    assert_eq!(app.editor().text(), "abc");
+}

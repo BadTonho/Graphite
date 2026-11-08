@@ -24,6 +24,8 @@ pub(crate) struct ExtensionRuntime {
     pub next_session: u64,
     pub next_resource: u64,
     pub commands: HashMap<String, OwnedCommand>,
+    pub participants: std::collections::BTreeMap<u64, (u64, SaveParticipantMetadata)>,
+    pub save_replies: HashMap<u64, std::sync::mpsc::Sender<ServiceResult<serde_json::Value>>>,
     pub subscriptions: HashMap<u64, DocumentSubscription>,
     pub outbound: HashMap<u64, u64>,
     pub incoming: HashMap<u64, Incoming>,

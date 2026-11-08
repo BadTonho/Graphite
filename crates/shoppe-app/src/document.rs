@@ -23,7 +23,4 @@ impl Document {
     pub(crate) fn is_dirty(&self) -> bool {
         self.buffer.is_dirty() || self.saved_format != (self.encoding, self.line_ending)
     }
-    pub(crate) fn mark_format_saved(&mut self) {
-        self.saved_format = (self.encoding, self.line_ending);
-    }
 }

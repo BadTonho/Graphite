@@ -180,6 +180,9 @@ impl Supervisor {
                 Message::WaitingForUser { id, .. } if self.state == HostState::Ready => {
                     self.pending.suspend(id)
                 }
+                Message::Resumed { id, .. } if self.state == HostState::Ready => {
+                    self.pending.resume(id, now)
+                }
                 Message::Cancel { id, .. } if self.state == HostState::Ready => {
                     self.events.push_back(HostEvent::Cancel {
                         session: self.session,

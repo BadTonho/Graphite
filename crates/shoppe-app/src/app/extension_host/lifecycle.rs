@@ -46,6 +46,8 @@ impl App {
     }
     fn clear_host_session(&mut self) {
         self.extension_host.commands.clear();
+        self.extension_host.participants.clear();
+        self.extension_host.save_replies.clear();
         self.extension_host.subscriptions.clear();
         self.document_events.reap();
         self.extension_host.last_request = 0;
@@ -117,6 +119,10 @@ impl App {
                     self.status = format!("Simulated extension host stopped: {error}");
                 }
                 HostEvent::Completed { id, result, .. } => {
+                    if let Some(sender) = self.extension_host.save_replies.remove(&id) {
+                        let _ = sender.send(result);
+                        continue;
+                    }
                     if let Some(execution) = self.extension_host.outbound.remove(&id) {
                         match result {
                             Ok(value) => self.accept_command_event(execution, None, Ok(value)),
@@ -161,6 +167,16 @@ impl App {
                 self.extension_host.incoming.get_mut(&id).unwrap().deadline = None;
                 if let Some(host) = self.extension_host.supervisor.as_mut() {
                     let _ = host.send(Message::WaitingForUser {
+                        session: host.session,
+                        id,
+                    });
+                }
+            }
+            if !confirming && self.extension_host.incoming[&id].deadline.is_none() {
+                self.extension_host.incoming.get_mut(&id).unwrap().deadline =
+                    Some(now + Duration::from_secs(30));
+                if let Some(host) = self.extension_host.supervisor.as_mut() {
+                    let _ = host.send(Message::Resumed {
                         session: host.session,
                         id,
                     });

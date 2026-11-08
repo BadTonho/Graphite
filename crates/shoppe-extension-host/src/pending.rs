@@ -46,6 +46,13 @@ impl PendingRequests {
             state.deadline = None;
         }
     }
+    pub fn resume(&mut self, id: u64, now: Instant) {
+        if let Some(state) = self.entries.get_mut(&id) {
+            if state.deadline.is_none() {
+                state.deadline = Some(now + Duration::from_secs(30));
+            }
+        }
+    }
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -86,6 +93,20 @@ impl PendingRequests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn user_decision_suspends_and_then_restarts_the_rpc_deadline() {
+        let now = Instant::now();
+        let mut pending = PendingRequests::default();
+        let id = pending.insert(CancellationToken::default(), now).unwrap();
+        pending.suspend(id);
+        assert!(pending.expire(now + Duration::from_secs(100)).is_empty());
+        pending.resume(id, now + Duration::from_secs(100));
+        assert!(pending.expire(now + Duration::from_secs(129)).is_empty());
+        assert_eq!(
+            pending.expire(now + Duration::from_secs(130)),
+            vec![(id, ServiceError::Timeout)]
+        );
+    }
     #[test]
     fn bounded_cancelled_and_expired_requests_finish_once() {
         let now = Instant::now();

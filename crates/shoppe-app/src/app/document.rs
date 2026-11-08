@@ -138,52 +138,7 @@ impl App {
     #[cfg(test)]
     pub(crate) fn save(&mut self) {
         self.save_document(self.active_document());
-    }
-
-    pub(crate) fn save_document(&mut self, document: DocumentId) {
-        let path = self.documents[document].buffer.path().map(PathBuf::from);
-        let previous = self.documents[document].buffer.revision();
-        self.status = if self.documents[document].buffer.path().is_none() {
-            "No file to save".into()
-        } else {
-            let tab = &self.documents[document];
-            let text = if self.trim_trailing_whitespace {
-                tab.buffer.text_with_trimmed_trailing_whitespace()
-            } else {
-                tab.buffer.text()
-            };
-            let bytes = crate::file_format::encode(&text, tab.encoding, tab.line_ending);
-            let result = if self.trim_trailing_whitespace && document == self.command_document() {
-                self.editor_mut().save_encoded_bytes_with_trim(&bytes)
-            } else {
-                let tab = &mut self.documents[document];
-                let result = if self.trim_trailing_whitespace {
-                    tab.buffer.save_encoded_bytes_with_trim(&bytes)
-                } else {
-                    tab.buffer.save_encoded_bytes(&bytes)
-                };
-                self.remap_document_views(document, previous);
-                result
-            };
-            match result {
-                Ok(()) => {
-                    self.documents[document].mark_format_saved();
-                    "Saved".into()
-                }
-                Err(error) => format!("Save failed: {error}"),
-            }
-        };
-        if self.status == "Saved" {
-            if self.documents[document].buffer.revision() != previous {
-                self.sync_lsp_document(document);
-            }
-            if let Some(path) = path {
-                self.lsp_manager
-                    .save(&path, self.documents[document].buffer.text());
-                self.stage_saved_conflict(&path);
-            }
-            self.refresh_scm_async();
-        }
+        self.wait_for_saves();
     }
 
     pub(crate) fn reload_after_branch_checkout(

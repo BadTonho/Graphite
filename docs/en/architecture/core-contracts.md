@@ -1,6 +1,6 @@
 # Editor Core Contracts
 
-This document describes the implemented **document/view**, **commands and context**, **internal services** and **simulated extension boundary**. The real Code OSS host and asynchronous save participants remain future work.
+This document describes the implemented **document/view**, **commands and context**, **internal services**, **simulated extension boundary** and **asynchronous saving**. The real Code OSS host remains future work.
 
 ## 1. Document and view
 
@@ -54,7 +54,7 @@ The document/view migration is complete. Editing callers use borrowed view state
 
 ### Incremental migration
 
-The command migration is complete, including all former dispatcher IDs, default bindings and JSON arguments. Workers return owned results to the event loop, which revalidates cancellation, target lifetime, workspace and document versions before applying them. Synchronous saving remains unchanged. Shared service interfaces and session-owned commands are described below; a command palette remains future work.
+The command migration is complete, including all former dispatcher IDs, default bindings and JSON arguments. Workers return owned results to the event loop, which revalidates cancellation, target lifetime, workspace and document versions before applying them. Save and Save All now complete asynchronously after writing. Shared service interfaces and session-owned commands are described below; a command palette remains future work.
 
 ## 3. Extension and protocol boundary
 
@@ -62,7 +62,7 @@ The command migration is complete, including all former dispatcher IDs, default 
 
 `graphite-core-api` defines independent service contracts and serializable data; the application implements them on its event loop. `graphite-extension-host` provides a separate Rust simulation process and reusable supervisor with versioned framing, sessions, owned registrations, cancellation, deadlines and manual restart. Host failure releases its resources while editing and LSP continue. See [Internal services and simulated extension host](services-host.md).
 
-LSP publication and edits use the document services; workspace queries and messages use workspace/window services. Server instances identify events, and pending requests have limits, cancellation, deadlines and shutdown cleanup. Incoming edits cancelled before UI claim cannot apply; claimed edits finish atomically. This implements the simulated boundary, while the real Code OSS host and asynchronous save participants remain separate stages.
+LSP publication and edits use the document services; workspace queries and messages use workspace/window services. Server instances identify events, and pending requests have limits, cancellation, deadlines and shutdown cleanup. Incoming edits cancelled before UI claim cannot apply; claimed edits finish atomically. The simulated boundary and save participants are implemented; the real Code OSS host remains a separate stage.
 
 ### Target contract
 
@@ -70,7 +70,7 @@ LSP publication and edits use the document services; workspace queries and messa
 - Keep protocol adapters distinct: LSP and the simulated host have separate transports and lifecycles while calling shared services. The simulation protocol does not claim compatibility with the eventual Code OSS wire protocol.
 - Extensions and workers never mutate UI state directly. Deliver results to the owning event loop; do not block the UI waiting for RPC. Track requests, cancellation, deadlines, backpressure, host shutdown and restart, and release host-owned registrations and pending requests on exit.
 - Define URI and filesystem abstractions with local files first. Versioned document changes and text edits pass through the document contract; translate positions and protocol-specific guarantees at each boundary. Resource operations and disk persistence are outside the initial multi-document text atomicity guarantee.
-- Item 4 will add asynchronous save participants in a bounded sequence, stale-edit rejection and snapshot writes that preserve newer dirty text. Saving remains synchronous in the current implementation.
+- [Asynchronous saving](async-saving.md) runs sequential participants with one-second deadlines, rejects stale edits and writes snapshots off the event loop. Failed writes preserve the saved baseline and preparation is committed only after success against an unchanged source. Newer text and format changes remain dirty.
 
 ### Acceptance criteria
 
@@ -81,13 +81,13 @@ LSP publication and edits use the document services; workspace queries and messa
 
 ### Incremental migration
 
-Service interfaces, the LSP adapter and the simulated host supervisor are implemented. Native tests exercise protocol failures, real process crash/restart, resource cleanup and independent LSP operation. The next stages are asynchronous saving and integration of the actual Code OSS host.
+Service interfaces, the LSP adapter, simulated host supervisor and asynchronous save coordinator are implemented. Native tests exercise protocol failures, real process crash/restart, resource cleanup, independent LSP operation and save/close/workspace races. Integration of the actual Code OSS host remains pending.
 
 The real Code OSS host remains a required later step: pin a release or commit, integrate the actual Node host, and validate it with a real extension before claiming compatibility.
 
 ## How the contracts interact
 
-Typing submits a transaction for the focused view, advances the document version and sends the corresponding LSP change. Save resolves through the registry and currently writes synchronously, updating the saved baseline only on success. Each affected view is remapped. A future save coordinator will run bounded participants and reject stale edits before writing snapshots asynchronously. Future extension commands will use the registry and scoped context; language-server commands already use the server transport required by LSP.
+Typing submits a transaction for the focused view, advances the document version and sends the corresponding LSP change. Save resolves through the registry, runs bounded participants and writes a snapshot asynchronously, updating the saved baseline only on success. Prepared edits remap affected views in one transaction when their source remains current. Session-owned extension commands use the registry and scoped context; language-server commands use the server transport required by LSP.
 
 ## Recommended order
 

@@ -36,4 +36,4 @@ Testes nativos usam dados temporários isolados e recursos simulados de clipboar
 
 Execute `cargo test --workspace` e `cargo build --workspace` na plataforma disponível. A verificação interativa nativa de UI/GPU continua pendente no Windows e no Linux; não é obrigatório executar testes Linux na mesma sessão de desenvolvimento Windows.
 
-O registro de comandos, a fronteira do host de extensões e o coordenador de salvamento assíncrono permanecem etapas posteriores separadas. O host Code OSS real, uma versão fixada, o teste de uma extensão real e a compatibilidade `.vsix` continuam sendo trabalho futuro obrigatório.
+O [registro de comandos](commands-context.md), a [fronteira do host de extensões simulado](services-host.md) e o [coordenador de salvamento assíncrono](async-saving.md) utilizam essas invariantes de documento. O host Code OSS real, uma versão fixada, o teste de uma extensão real e a compatibilidade `.vsix` continuam sendo trabalho futuro obrigatório.

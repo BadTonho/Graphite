@@ -4,6 +4,7 @@ use graphite_core_api::*;
 mod commands;
 mod documents;
 pub(super) mod lsp;
+mod saving;
 mod window;
 mod workspace;
 pub(super) use documents::snapshot_document;

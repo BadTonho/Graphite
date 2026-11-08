@@ -129,7 +129,21 @@ impl Buffer {
         Self::write_bytes_to_path(path, &bytes)
     }
 
-    fn write_bytes_to_path(path: &Path, bytes: &[u8]) -> Result<(), BufferError> {
+    pub fn mark_saved_snapshot(&mut self, text: &str) {
+        self.saved_text = Rope::from_str(text);
+        self.dirty = self.rope != self.saved_text;
+    }
+
+    pub fn write_bytes_to_path(path: &Path, bytes: &[u8]) -> Result<(), BufferError> {
+        Self::write_bytes_with_commit(path, bytes, || true)
+    }
+
+    /// The commit gate runs after syncing the temporary file, immediately before replacement.
+    pub fn write_bytes_with_commit(
+        path: &Path,
+        bytes: &[u8],
+        commit: impl FnOnce() -> bool,
+    ) -> Result<(), BufferError> {
         // Replace the target only after the complete new contents have been written.
         // Resolve existing symlinks so saving does not replace the link itself.
         let target = match fs::symlink_metadata(path) {
@@ -188,6 +202,9 @@ impl Buffer {
             file.write_all(bytes)?;
             file.sync_all()?;
             drop(file);
+            if !commit() {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "save cancelled"));
+            }
             fs::rename(&temp_path, &target)?;
             Ok(())
         })();

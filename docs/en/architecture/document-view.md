@@ -36,4 +36,4 @@ Native tests use isolated temporary data and simulated clipboard/LSP facilities.
 
 Run `cargo test --workspace` and `cargo build --workspace` on the available platform. Interactive native UI/GPU verification remains pending on Windows and Linux; running Linux tests in the same Windows development session is not required.
 
-The command registry, extension-host boundary and asynchronous save coordinator remain separate subsequent stages. The real Code OSS host, a pinned version, a real extension test and `.vsix` compatibility remain required future work.
+The [command registry](commands-context.md), [simulated extension-host boundary](services-host.md) and [asynchronous save coordinator](async-saving.md) build on these document invariants. The real Code OSS host, a pinned version, a real extension test and `.vsix` compatibility remain required future work.

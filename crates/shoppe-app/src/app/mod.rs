@@ -46,3 +46,5 @@ mod command_tests;
 
 pub(crate) mod extension_host;
 pub(crate) mod services;
+
+pub(crate) mod saving;

@@ -494,6 +494,7 @@ fn failed_save_and_window_decisions_finish_the_original_ticket() {
         Value::Null,
     ));
     app.run_ui_command("shoppe.close.save");
+    app.wait_for_saves();
     assert!(matches!(
         close.try_result(),
         Some(Err(CommandError::Failed(_)))

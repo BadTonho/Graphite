@@ -93,6 +93,7 @@ pub(super) fn run_server(
             "capabilities": {
                 "workspace": {"applyEdit": true,"configuration":true,"workspaceFolders":true},
                 "textDocument": {
+                    "synchronization": { "willSave": true, "willSaveWaitUntil": true, "didSave": true },
                     "completion": { "completionItem": { "snippetSupport": false } },
                     "hover": {},
                     "definition": {},
@@ -112,7 +113,7 @@ pub(super) fn run_server(
         return;
     }
     let initialize_deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let sync_kind = loop {
+    let (sync_kind, save_capabilities) = loop {
         if std::time::Instant::now() >= initialize_deadline {
             let _ = event_tx.send(LspUiEvent::Status("LSP initialization timed out".into()));
             stop_child(&mut child);
@@ -148,7 +149,7 @@ pub(super) fn run_server(
                     "{} language server ready",
                     config.language_id
                 )));
-                break kind;
+                break (kind, protocol::SaveCapabilities::from_sync(sync));
             }
             Ok(WorkerMessage::Incoming(_)) => {}
             Ok(WorkerMessage::IoError(error)) => {
@@ -169,6 +170,9 @@ pub(super) fn run_server(
                     deferred.push(command);
                 } else if let WorkerMessage::Command(command) = command {
                     if let Some(request_id) = command.request_id() {
+                        if let LspCommand::BeforeSave { reply, .. } = &command {
+                            let _ = reply.send(Err(graphite_core_api::ServiceError::Busy));
+                        }
                         let _ = event_tx.send(LspUiEvent::RequestRejected {
                             request_id,
                             error: graphite_core_api::ServiceError::Busy,
@@ -196,6 +200,13 @@ pub(super) fn run_server(
     let mut pending = PendingClientRequests::new(event_tx.clone());
     let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
+    let mut save_replies = HashMap::<
+        i32,
+        (
+            Sender<graphite_core_api::ServiceResult<Vec<graphite_core_api::TextEdit>>>,
+            std::time::Instant,
+        ),
+    >::new();
     let mut child_exited = false;
     loop {
         for response in server_requests.poll(std::time::Instant::now()) {
@@ -213,10 +224,31 @@ pub(super) fn run_server(
                 return;
             }
         }
+        let expired: Vec<_> = save_replies
+            .iter()
+            .filter(|(_, (_, deadline))| std::time::Instant::now() >= *deadline)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in expired {
+            if let Some((reply, _)) = save_replies.remove(&id) {
+                let _ = reply.send(Err(graphite_core_api::ServiceError::Timeout));
+            }
+            pending.remove(&id);
+            let _ = write_message(
+                &mut writer,
+                Message::Notification(Notification {
+                    method: "$/cancelRequest".into(),
+                    params: json!({"id":id}),
+                }),
+            );
+        }
         match signal_rx.recv_timeout(Duration::from_millis(40)) {
             Ok(WorkerMessage::Command(command)) => {
                 if let Some(request_id) = command.request_id() {
                     if pending.len() >= graphite_core_api::protocol::MAX_PENDING {
+                        if let LspCommand::BeforeSave { reply, .. } = &command {
+                            let _ = reply.send(Err(graphite_core_api::ServiceError::Busy));
+                        }
                         let _ = event_tx.send(LspUiEvent::RequestRejected {
                             request_id,
                             error: graphite_core_api::ServiceError::Busy,
@@ -233,6 +265,7 @@ pub(super) fn run_server(
                             .collect();
                         for id in &ids {
                             pending.remove(id);
+                            save_replies.remove(id);
                         }
                         ids.into_iter()
                             .map(|id| {
@@ -298,10 +331,42 @@ pub(super) fn run_server(
                             params: json!({"textDocument": {"uri": uri}}),
                         })]
                     }
-                    LspCommand::Save { uri, text } => vec![Message::Notification(Notification {
-                        method: "textDocument/didSave".into(),
-                        params: json!({"textDocument": {"uri": uri}, "text": text}),
-                    })],
+                    LspCommand::BeforeSave {
+                        request_id,
+                        uri,
+                        reason,
+                        deadline,
+                        reply,
+                    } => {
+                        if std::time::Instant::now() >= deadline {
+                            let _ = reply.send(Err(graphite_core_api::ServiceError::Timeout));
+                            continue;
+                        }
+                        let mut messages = Vec::new();
+                        if save_capabilities.will_save {
+                            messages.push(Message::Notification(Notification {
+                                method: "textDocument/willSave".into(),
+                                params: json!({"textDocument":{"uri":uri},"reason":reason}),
+                            }));
+                        }
+                        if save_capabilities.wait_until {
+                            let id = next_id;
+                            next_id += 1;
+                            pending.insert(id, (request_id, "willSaveWaitUntil"));
+                            save_replies.insert(id, (reply, deadline));
+                            messages.push(Message::Request(Request {
+                                id: RequestId::from(id),
+                                method: "textDocument/willSaveWaitUntil".into(),
+                                params: json!({"textDocument":{"uri":uri},"reason":reason}),
+                            }));
+                        } else {
+                            let _ = reply.send(Ok(Vec::new()));
+                        }
+                        messages
+                    }
+                    LspCommand::Save { uri, text } => {
+                        save_capabilities.did_save(&uri, text).into_iter().collect()
+                    }
                     LspCommand::Complete {
                         request_id,
                         uri,
@@ -469,6 +534,24 @@ pub(super) fn run_server(
                 }
             }
             Ok(WorkerMessage::Incoming(message)) => {
+                if let Message::Response(response) = &message {
+                    let wire = serde_json::to_value(&response.id)
+                        .ok()
+                        .and_then(|v| v.as_i64())
+                        .and_then(|id| i32::try_from(id).ok());
+                    if let Some((reply, deadline)) = wire.and_then(|id| save_replies.remove(&id)) {
+                        pending.remove(&wire.unwrap());
+                        let result = if std::time::Instant::now() >= deadline {
+                            Err(graphite_core_api::ServiceError::Timeout)
+                        } else if let Some(error) = &response.error {
+                            Err(graphite_core_api::ServiceError::Failed(error.message.clone()))
+                        } else {
+                            protocol::save_edits(response.result.clone().unwrap_or(Value::Null))
+                        };
+                        let _ = reply.send(result);
+                        continue;
+                    }
+                }
                 dispatch_server_message(message, &mut pending, &event_tx);
             }
             Ok(WorkerMessage::IoError(error)) => {

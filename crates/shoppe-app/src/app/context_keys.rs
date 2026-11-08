@@ -326,6 +326,10 @@ impl super::App {
                 HashMap::from([
                     ("documentAvailable".into(), "true".into()),
                     (
+                        "documentSaving".into(),
+                        self.saving.document_pending(view.document).to_string(),
+                    ),
+                    (
                         "editorTextFocus".into(),
                         (view.id == focused && !self.terminal_focused && !overlays).to_string(),
                     ),

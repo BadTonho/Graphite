@@ -68,6 +68,23 @@ fn run() -> ServiceResult<()> {
             request: RpcRequest::SubscribeDocuments,
         },
     )?;
+    if scenario
+        .as_deref()
+        .is_some_and(|arg| arg.starts_with("--save-"))
+    {
+        next += 1;
+        write_message(
+            &mut output,
+            &Message::Request {
+                session,
+                id: next,
+                request: RpcRequest::RegisterSaveParticipant(SaveParticipantMetadata {
+                    id: "shoppe.simulated.save".into(),
+                    languages: Vec::new(),
+                }),
+            },
+        )?;
+    }
     let mut forwarding = HashMap::<u64, u64>::new();
     let mut waiting = HashMap::<u64, ()>::new();
     loop {
@@ -79,6 +96,80 @@ fn run() -> ServiceResult<()> {
         }
         match message {
             Message::Shutdown { .. } => return Ok(()),
+            Message::Request {
+                id,
+                request: RpcRequest::ParticipateInSave { request, .. },
+                ..
+            } => match scenario.as_deref() {
+                Some("--save-check-lsp") if !request.document.text.starts_with("// lsp\n") => {
+                    write_message(
+                        &mut output,
+                        &Message::Response {
+                            session,
+                            id,
+                            result: Err(ServiceError::Failed(
+                                "LSP participant did not run first".into(),
+                            )),
+                        },
+                    )?;
+                }
+                Some("--save-crash") => std::process::exit(17),
+                Some("--save-wait") => {
+                    waiting.insert(id, ());
+                }
+                Some("--save-invalid") => write_message(
+                    &mut output,
+                    &Message::Response {
+                        session,
+                        id,
+                        result: Ok(serde_json::json!({"invalid":true})),
+                    },
+                )?,
+                Some("--save-mutate") => {
+                    next += 1;
+                    forwarding.insert(next, id);
+                    write_message(
+                        &mut output,
+                        &Message::Request {
+                            session,
+                            id: next,
+                            request: RpcRequest::Service {
+                                parent: Some(id),
+                                request: ServiceRequest::ApplyEdits { edits: Vec::new() },
+                            },
+                        },
+                    )?;
+                }
+                _ => {
+                    let result = SaveParticipantResult {
+                        invocation: request.invocation,
+                        version: if scenario.as_deref() == Some("--save-stale") {
+                            request.document.version.unwrap().wrapping_add(1)
+                        } else {
+                            request.document.version.unwrap()
+                        },
+                        edits: vec![TextEdit {
+                            start: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            text: "// simulated save\n".into(),
+                        }],
+                    };
+                    write_message(
+                        &mut output,
+                        &Message::Response {
+                            session,
+                            id,
+                            result: Ok(serde_json::to_value(result).unwrap()),
+                        },
+                    )?;
+                }
+            },
             Message::Request {
                 id,
                 request: RpcRequest::Invoke { command, arguments },
@@ -230,6 +321,17 @@ fn run() -> ServiceResult<()> {
                     write_message(
                         &mut output,
                         &Message::WaitingForUser {
+                            session,
+                            id: *original,
+                        },
+                    )?;
+                }
+            }
+            Message::Resumed { id, .. } => {
+                if let Some(original) = forwarding.get(&id) {
+                    write_message(
+                        &mut output,
+                        &Message::Resumed {
                             session,
                             id: *original,
                         },

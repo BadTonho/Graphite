@@ -131,6 +131,13 @@ enum LspCommand {
     Close {
         uri: String,
     },
+    BeforeSave {
+        request_id: u64,
+        uri: String,
+        reason: u32,
+        deadline: std::time::Instant,
+        reply: Sender<graphite_core_api::ServiceResult<Vec<graphite_core_api::TextEdit>>>,
+    },
     Save {
         uri: String,
         text: String,
@@ -176,7 +183,8 @@ enum LspCommand {
 impl LspCommand {
     fn request_id(&self) -> Option<u64> {
         match self {
-            Self::Complete { request_id, .. }
+            Self::BeforeSave { request_id, .. }
+            | Self::Complete { request_id, .. }
             | Self::Definition { request_id, .. }
             | Self::Hover { request_id, .. }
             | Self::InlayHints { request_id, .. }
@@ -355,6 +363,26 @@ impl LspManager {
         self.send(path, LspCommand::Close { uri });
     }
 
+    pub fn before_save(
+        &self,
+        path: &Path,
+        request_id: u64,
+        reason: u32,
+        deadline: std::time::Instant,
+        reply: Sender<graphite_core_api::ServiceResult<Vec<graphite_core_api::TextEdit>>>,
+    ) -> bool {
+        self.send(
+            path,
+            LspCommand::BeforeSave {
+                request_id,
+                uri: String::new(),
+                reason,
+                deadline,
+                reply,
+            },
+        )
+    }
+
     pub fn save(&self, path: &Path, text: String) {
         self.send(
             path,
@@ -495,6 +523,7 @@ impl LspManager {
             LspCommand::Change { uri: target, .. }
             | LspCommand::Close { uri: target }
             | LspCommand::Save { uri: target, .. }
+            | LspCommand::BeforeSave { uri: target, .. }
             | LspCommand::Complete { uri: target, .. }
             | LspCommand::Definition { uri: target, .. }
             | LspCommand::Hover { uri: target, .. }
@@ -529,6 +558,24 @@ impl LspManager {
         }
         self.servers.clear();
         self.documents.clear();
+    }
+
+    /// Detach old instances immediately; reap their workers away from the event loop.
+    pub fn change_workspace(&mut self) {
+        let servers = std::mem::take(&mut self.servers);
+        self.documents.clear();
+        for server in servers.values() {
+            let _ = server
+                .sender
+                .send(WorkerMessage::Command(LspCommand::Shutdown));
+        }
+        thread::spawn(move || {
+            for (_, mut server) in servers {
+                if let Some(worker) = server.worker.take() {
+                    let _ = worker.join();
+                }
+            }
+        });
     }
 }
 
