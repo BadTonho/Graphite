@@ -9,6 +9,7 @@ use app::theme::{Theme, DARK_THEME};
 
 mod cli;
 mod config;
+mod document_store;
 mod file_format;
 mod json_schema;
 mod keybindings;
@@ -96,12 +97,13 @@ fn next_document_id() -> DocumentId {
 struct App {
     gpu: Option<Gpu>,
     tree: FileTree,
-    tabs: Vec<Tab>,
+    tabs: document_store::DocumentStore,
     active_tab: usize,
     editor_groups: app::editor_groups::EditorGroups,
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
     keymap: keybindings::Keymap,
+    context_keys: app::context_keys::ContextKeyService,
     selecting: bool,
     reveal_cursor: bool,
     ime_composing: bool,
@@ -314,7 +316,7 @@ impl App {
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
-            tabs: vec![Tab {
+            tabs: document_store::DocumentStore::new(Tab {
                 id: initial_document_id,
                 buffer: Buffer::new(),
                 scroll_line: 0,
@@ -334,12 +336,13 @@ impl App {
                 },
                 encoding: file_format::Encoding::Utf8,
                 line_ending: file_format::LineEnding::Lf,
-            }],
+            }),
             active_tab: 0,
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             keymap,
+            context_keys: app::context_keys::ContextKeyService::default(),
             selecting: false,
             reveal_cursor: true,
             ime_composing: false,

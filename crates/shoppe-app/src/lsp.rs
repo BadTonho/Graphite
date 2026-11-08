@@ -48,6 +48,7 @@ pub enum LspUiEvent {
         id: RequestId,
         edit: lsp_types::WorkspaceEdit,
         reply: Sender<lsp_server::Response>,
+        active: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
     Diagnostics {
         uri: String,
@@ -144,7 +145,6 @@ enum LspCommand {
 enum WorkerMessage {
     Command(LspCommand),
     Incoming(Message),
-    Reply(lsp_server::Response),
     IoError(String),
 }
 
@@ -442,7 +442,7 @@ mod tests {
         let mut app = crate::App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
         let (event_tx, event_rx) = mpsc::channel();
-        let (worker_tx, worker_rx) = mpsc::channel();
+        let mut requests = worker::ServerRequests::default();
         for (index, end, expected) in [(1, 1, true), (2, 100, false)] {
             let request = Request {
                 id: RequestId::from(index),
@@ -452,11 +452,12 @@ mod tests {
                     "newText": "X"
                 }]}}}),
             };
-            assert!(worker::handle_server_request(request, &event_tx, &worker_tx).is_none());
+            assert!(requests.handle(request, &event_tx).is_none());
             app.lsp_queue.lock().unwrap().push(event_rx.recv().unwrap());
             app.process_lsp_events();
-            match worker_rx.recv_timeout(Duration::from_secs(2)).unwrap() {
-                WorkerMessage::Reply(response) => {
+            let mut responses = requests.poll(std::time::Instant::now());
+            match responses.pop() {
+                Some(response) => {
                     assert_eq!(response.id, RequestId::from(index));
                     let result = response.result.unwrap();
                     assert_eq!(result["applied"], expected);
@@ -464,10 +465,52 @@ mod tests {
                         assert!(result["failureReason"].is_string());
                     }
                 }
-                other => panic!("unexpected message: {other:?}"),
+                other => panic!("unexpected response: {other:?}"),
             }
         }
         assert_eq!(app.tabs[app.active_tab].buffer.text(), "Xbc");
+    }
+
+    #[test]
+    fn cancelled_and_expired_server_edits_do_not_mutate_the_document() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("example.rs");
+        std::fs::write(&path, "abc").unwrap();
+        let uri = path_to_uri(&path).unwrap();
+        let mut app = crate::App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut requests = worker::ServerRequests::default();
+        for index in 1..=2 {
+            let request = Request {
+                id: RequestId::from(index),
+                method: "workspace/applyEdit".into(),
+                params: json!({"edit":{"changes":{uri.clone():[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"X"}]}}}),
+            };
+            assert!(requests.handle(request, &event_tx).is_none());
+            let event = event_rx.recv().unwrap();
+            if index == 1 {
+                assert_eq!(
+                    requests
+                        .cancel(&RequestId::from(index))
+                        .unwrap()
+                        .error
+                        .unwrap()
+                        .code,
+                    -32800
+                );
+            } else {
+                assert_eq!(
+                    requests
+                        .poll(std::time::Instant::now() + Duration::from_secs(31))
+                        .len(),
+                    1
+                );
+            }
+            app.lsp_queue.lock().unwrap().push(event);
+            app.process_lsp_events();
+            assert_eq!(app.tabs[app.active_tab].buffer.text(), "abc");
+        }
     }
 
     #[test]

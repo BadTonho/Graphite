@@ -37,7 +37,7 @@ impl App {
             };
             index = next;
             let (document_id, position) = self.navigation_history[index];
-            if let Some(document) = self.tabs.iter().position(|tab| tab.id == document_id) {
+            if let Some(document) = self.tabs.index_for(document_id) {
                 self.navigation_history_index = Some(index);
                 self.activate_editor_document(document);
                 self.tabs[document].buffer.set_selection(position, position);
@@ -54,13 +54,13 @@ impl App {
             self.recent_documents
                 .iter()
                 .rev()
-                .find(|id| **id != current_id && self.tabs.iter().any(|tab| tab.id == **id))
+                .find(|id| **id != current_id && self.tabs.index_for(**id).is_some())
         } else {
             self.recent_documents
                 .iter()
-                .find(|id| **id != current_id && self.tabs.iter().any(|tab| tab.id == **id))
+                .find(|id| **id != current_id && self.tabs.index_for(**id).is_some())
         }
-        .and_then(|id| self.tabs.iter().position(|tab| tab.id == *id));
+        .and_then(|id| self.tabs.index_for(*id));
         if let Some(document) = target {
             self.activate_editor_document(document);
             self.status = "Switched to recent tab".into();
@@ -106,7 +106,7 @@ impl App {
             && !self.tabs[0].buffer.is_dirty()
             && self.editor_groups.group_count() == 1
         {
-            self.tabs[0] = tab;
+            self.tabs.replace(0, tab);
             self.active_tab = 0;
             self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
         } else {
@@ -360,8 +360,8 @@ impl App {
             if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
                 self.lsp_manager.close(&path);
             }
-            let closed = std::mem::replace(
-                &mut self.tabs[document],
+            let closed = self.tabs.replace(
+                document,
                 Tab {
                     id: next_document_id(),
                     buffer: Buffer::new(),

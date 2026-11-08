@@ -59,7 +59,7 @@ impl App {
             && self.local_search.is_none()
             && self.search_query.is_none()
             && self.snippet_query.is_none();
-        let context = HashMap::from([
+        let mut context = HashMap::from([
             ("editorTextFocus".into(), editor_focus.to_string()),
             ("editorReadonly".into(), buffer.is_read_only().to_string()),
             (
@@ -100,6 +100,14 @@ impl App {
             ),
             ("quickFixVisible".into(), self.quick_fix_visible.to_string()),
         ]);
+        let view = self.editor_groups.active_view().id;
+        self.context_keys
+            .retain_views(&self.editor_groups.view_ids());
+        let terminal_focus = context.remove("terminalFocus").unwrap_or_default();
+        self.context_keys
+            .replace_global(HashMap::from([("terminalFocus".into(), terminal_focus)]));
+        self.context_keys.replace_view(view, context);
+        let context = self.context_keys.resolve(Some(view));
         match self.keymap.resolve(stroke, &context) {
             Resolution::Unmatched => false,
             Resolution::Pending => {

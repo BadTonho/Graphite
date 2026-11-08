@@ -4,6 +4,7 @@ mod accessibility_actions;
 pub(crate) mod cli_ui;
 mod clipboard;
 mod commands;
+pub(super) mod context_keys;
 mod document;
 mod drawing;
 pub(super) mod drawing_helpers;

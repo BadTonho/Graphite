@@ -45,11 +45,7 @@ impl App {
     pub(crate) fn open_file(&mut self, path: PathBuf) {
         self.smart_selection_history.clear();
         self.smart_selection_guard = None;
-        if let Some(index) = self.tabs.iter().position(|t| {
-            t.buffer
-                .path()
-                .is_some_and(|open_path| same_file_path(open_path, &path))
-        }) {
+        if let Some(index) = self.tabs.index_for_path(&path) {
             if index != self.active_tab {
                 self.push_navigation_location();
             }
@@ -119,7 +115,7 @@ impl App {
                     && self.tabs[0].buffer.path().is_none()
                     && !self.tabs[0].buffer.is_dirty()
                 {
-                    self.tabs[0] = tab;
+                    self.tabs.replace(0, tab);
                     self.active_tab = 0;
                     self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
                     self.snapshot_editor_view();

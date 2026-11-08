@@ -129,11 +129,7 @@ impl App {
 
         let mut prepared = Vec::new();
         for target in targets {
-            let index = self.tabs.iter().position(|tab| {
-                tab.buffer
-                    .path()
-                    .is_some_and(|path| same_file_path(path, &target.path))
-            });
+            let index = self.tabs.index_for_path(&target.path);
             if let Some(version) = target.version {
                 let current = index.and_then(|index| {
                     let tab = &self.tabs[index];
