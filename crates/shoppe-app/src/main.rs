@@ -8,6 +8,7 @@ use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
 
 mod config;
+mod json_schema;
 mod keybindings;
 mod lsp;
 mod terminal;
@@ -67,8 +68,13 @@ struct Tab {
     scroll_line: usize,
     language: Option<Language>,
     highlights: Option<HighlightCache>,
+    sticky_headers_cache: Option<(u64, usize, Vec<graphite_syntax::ScopeHeader>)>,
     highlighter: IncrementalHighlighter,
     diagnostics: Vec<lsp_types::Diagnostic>,
+    inlay_hints: Vec<lsp_types::InlayHint>,
+    inlay_revision: Option<u64>,
+    schema_diagnostics: Vec<lsp_types::Diagnostic>,
+    schema_revision: Option<u64>,
     lsp_revision: Option<u64>,
     indentation: graphite_text::Indentation,
 }
@@ -106,6 +112,7 @@ struct App {
     smart_selection_guard: Option<(usize, u64, graphite_text::Selection)>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
+    snippet_load_warnings: Vec<String>,
     font_size: f32,
     tab_size: usize,
     insert_spaces: bool,
@@ -117,18 +124,36 @@ struct App {
     read_only_patterns: Vec<String>,
     event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     lsp_manager: LspManager,
+    json_schema_manager: Option<json_schema::JsonSchemaManager>,
     lsp_sender: std::sync::mpsc::Sender<LspUiEvent>,
     lsp_queue: Arc<std::sync::Mutex<Vec<LspUiEvent>>>,
     completion_items: Vec<lsp_types::CompletionItem>,
     completion_index: usize,
     hover_text: Option<String>,
     lsp_request_id: u64,
-    terminal: Option<TerminalSession>,
+    inlay_request_id: u64,
+    quick_fix_actions: Vec<lsp_types::CodeActionOrCommand>,
+    quick_fix_index: usize,
+    quick_fix_visible: bool,
+    navigation_history: Vec<(u64, usize)>,
+    navigation_history_index: Option<usize>,
+    recent_documents: Vec<u64>,
+    diagnostic_navigation: Option<(u64, lsp_types::Range, String)>,
+    closed_tabs: Vec<Tab>,
+    terminals: Vec<TerminalSession>,
+    terminal_names: Vec<String>,
+    terminal_tab_offset: usize,
+    terminal_profiles: Vec<config::TerminalProfile>,
+    selected_terminal_profile: usize,
+    active_terminal: usize,
+    split_terminal: Option<usize>,
+    focused_terminal: usize,
     terminal_visible: bool,
     terminal_focused: bool,
     terminal_problems: bool,
     terminal_status: Option<String>,
     terminal_size: (u16, u16),
+    terminal_sizes: Vec<(u16, u16)>,
 }
 
 impl App {
@@ -210,6 +235,19 @@ impl App {
                 }
             })
         };
+        let (snippets, snippet_load_warnings) = if isolated {
+            (Vec::new(), Vec::new())
+        } else {
+            config::load_snippets_for_workspace(&root)
+        };
+        let (terminal_profiles, selected_terminal_profile, terminal_config_error) = if isolated {
+            (Vec::new(), 0, None)
+        } else {
+            match config::terminal_settings() {
+                Ok(settings) => (settings.profiles, settings.default_profile, None),
+                Err(error) => (Vec::new(), 0, Some(error)),
+            }
+        };
         let mut keymap = keybindings::Keymap::default();
         if !isolated {
             let path = config::app_config_dir().join("keybindings.json");
@@ -234,8 +272,13 @@ impl App {
                 scroll_line: 0,
                 language: None,
                 highlights: None,
+                sticky_headers_cache: None,
                 highlighter: IncrementalHighlighter::new(),
                 diagnostics: Vec::new(),
+                inlay_hints: Vec::new(),
+                inlay_revision: None,
+                schema_diagnostics: Vec::new(),
+                schema_revision: None,
                 lsp_revision: None,
                 indentation: graphite_text::Indentation {
                     insert_spaces: prefs.insert_spaces,
@@ -251,7 +294,10 @@ impl App {
             reveal_cursor: true,
             ime_composing: false,
             ime_preedit: String::new(),
-            status: settings_error.unwrap_or_else(|| String::from("Ctrl+S to save")),
+            status: settings_error
+                .or_else(|| terminal_config_error.clone())
+                .or_else(|| snippet_load_warnings.first().cloned())
+                .unwrap_or_else(|| String::from("Ctrl+S to save")),
             close_confirm: false,
             close_window_confirm: false,
             exit_requested: false,
@@ -265,11 +311,8 @@ impl App {
             smart_selection_history: Vec::new(),
             smart_selection_guard: None,
             snippet_query: None,
-            snippets: if isolated {
-                Vec::new()
-            } else {
-                config::load_snippets()
-            },
+            snippets,
+            snippet_load_warnings,
             font_size: prefs.font_size,
             tab_size: prefs.tab_size,
             insert_spaces: prefs.insert_spaces,
@@ -281,18 +324,41 @@ impl App {
             read_only_patterns: prefs.read_only_patterns,
             event_proxy,
             lsp_manager,
+            json_schema_manager: (!isolated).then(|| {
+                json_schema::JsonSchemaManager::new(
+                    lsp_sender.clone(),
+                    config::app_config_dir().join("schema-cache"),
+                )
+            }),
             lsp_sender,
             lsp_queue,
             completion_items: Vec::new(),
             completion_index: 0,
             hover_text: None,
             lsp_request_id: 0,
-            terminal: None,
+            inlay_request_id: 0,
+            quick_fix_actions: Vec::new(),
+            quick_fix_index: 0,
+            quick_fix_visible: false,
+            navigation_history: Vec::new(),
+            navigation_history_index: None,
+            recent_documents: Vec::new(),
+            diagnostic_navigation: None,
+            closed_tabs: Vec::new(),
+            terminals: Vec::new(),
+            terminal_names: Vec::new(),
+            terminal_tab_offset: 0,
+            terminal_profiles,
+            selected_terminal_profile,
+            active_terminal: 0,
+            split_terminal: None,
+            focused_terminal: 0,
             terminal_visible: false,
             terminal_focused: false,
             terminal_problems: false,
-            terminal_status: None,
+            terminal_status: terminal_config_error,
             terminal_size: (0, 0),
+            terminal_sizes: Vec::new(),
         }
     }
 }

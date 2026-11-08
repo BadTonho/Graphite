@@ -10,7 +10,7 @@ impl App {
         self.ime_composing = false;
         self.ime_preedit.clear();
         if self.terminal_focused {
-            if let Some(terminal) = &self.terminal {
+            if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                 terminal.input(text.as_bytes().to_vec());
             }
         } else if let Some(state) = &mut self.quick_open {

@@ -96,7 +96,7 @@ impl ApplicationHandler<UserEvent> for App {
                                 - terminal_panel_height(gpu.renderer.size().1)
                     });
                 if over_panel && !self.terminal_problems {
-                    if let Some(terminal) = &self.terminal {
+                    if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                         terminal.scroll((lines * 3.0) as i32);
                     }
                 } else {
@@ -153,7 +153,7 @@ impl ApplicationHandler<UserEvent> for App {
         }
         if self.exit_requested {
             self.lsp_manager.shutdown();
-            self.terminal.take();
+            self.terminals.clear();
             event_loop.exit();
             return;
         }

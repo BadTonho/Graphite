@@ -25,6 +25,101 @@ pub(crate) fn utf16_column_to_chars(line: &str, units: u32) -> usize {
     chars
 }
 
+pub(crate) fn draw_diagnostic_squiggle(
+    renderer: &mut Renderer,
+    x: f32,
+    y: f32,
+    width: f32,
+    line_height: f32,
+    color: u32,
+) {
+    if width <= 0.0 {
+        return;
+    }
+    let mut offset = 0.0;
+    while offset < width {
+        let wave = if ((offset / 2.0) as usize) % 2 == 0 {
+            0.0
+        } else {
+            1.0
+        };
+        renderer.draw_rect(
+            x + offset,
+            y + line_height - 2.0 + wave,
+            2.0,
+            1.0,
+            rgb(color),
+        );
+        offset += 3.0;
+    }
+}
+
+pub(crate) fn draw_line_diagnostic_squiggles(
+    renderer: &mut Renderer,
+    diagnostics: &[lsp_types::Diagnostic],
+    schema_diagnostics: &[lsp_types::Diagnostic],
+    text: &str,
+    line: usize,
+    segment_start: usize,
+    segment_end: usize,
+    x: f32,
+    y: f32,
+    char_width: f32,
+    line_height: f32,
+    tab_size: usize,
+) {
+    let line_text = text.trim_end_matches(['\n', '\r']);
+    let line_chars = line_text.chars().count();
+    let segment_start = segment_start.min(line_chars);
+    let segment_end = segment_end.min(line_chars).max(segment_start);
+    if segment_start == segment_end {
+        return;
+    }
+
+    for diagnostic in diagnostics.iter().chain(schema_diagnostics) {
+        if diagnostic.range.start.line as usize != line {
+            continue;
+        }
+        let start = utf16_column_to_chars(line_text, diagnostic.range.start.character);
+        let mut end = utf16_column_to_chars(line_text, diagnostic.range.end.character);
+        if end <= start {
+            end = (start + 1).min(line_chars);
+        }
+        let start = start.max(segment_start).min(segment_end);
+        let end = end.max(segment_start).min(segment_end);
+        if start >= end {
+            continue;
+        }
+
+        let display_column = |prefix: &str| {
+            prefix
+                .chars()
+                .map(|ch| if ch == '\t' { tab_size } else { 1 })
+                .sum::<usize>()
+        };
+        let prefix = line_text
+            .chars()
+            .skip(segment_start)
+            .take(start - segment_start)
+            .collect::<String>();
+        let marked = line_text
+            .chars()
+            .skip(start)
+            .take(end - start)
+            .collect::<String>();
+        let x = x + display_column(&prefix) as f32 * char_width;
+        let width = (display_column(&marked) as f32 * char_width).max(char_width);
+        let color = match diagnostic.severity {
+            Some(lsp_types::DiagnosticSeverity::ERROR) => 0xf14c4c,
+            Some(lsp_types::DiagnosticSeverity::WARNING) => 0xe2c08d,
+            Some(lsp_types::DiagnosticSeverity::INFORMATION) => 0x3794ff,
+            Some(lsp_types::DiagnosticSeverity::HINT) => 0x75beff,
+            _ => 0xf14c4c,
+        };
+        draw_diagnostic_squiggle(renderer, x, y, width, line_height, color);
+    }
+}
+
 pub(crate) fn spans_for(cache: &Option<HighlightCache>, line: usize) -> &[Span] {
     cache
         .as_ref()

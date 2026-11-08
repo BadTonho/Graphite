@@ -84,6 +84,8 @@ pub(super) fn run_server(
                     "completion": { "completionItem": { "snippetSupport": false } },
                     "hover": {},
                     "definition": {},
+                    "inlayHint": { "dynamicRegistration": false },
+                    "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix"] } } },
                     "publishDiagnostics": { "relatedInformation": true }
                 }
             },
@@ -271,6 +273,43 @@ pub(super) fn run_server(
                                 position,
                             })
                             .unwrap_or_default(),
+                        })]
+                    }
+                    LspCommand::InlayHints {
+                        request_id,
+                        uri,
+                        start,
+                        end,
+                    } => {
+                        let id = next_id;
+                        next_id += 1;
+                        pending.insert(id, (request_id, "inlayHints"));
+                        vec![Message::Request(Request {
+                            id: RequestId::from(id),
+                            method: "textDocument/inlayHint".into(),
+                            params: json!({
+                                "textDocument": { "uri": uri },
+                                "range": { "start": start, "end": end }
+                            }),
+                        })]
+                    }
+                    LspCommand::CodeActions {
+                        request_id,
+                        uri,
+                        range,
+                        diagnostics,
+                    } => {
+                        let id = next_id;
+                        next_id += 1;
+                        pending.insert(id, (request_id, "codeActions"));
+                        vec![Message::Request(Request {
+                            id: RequestId::from(id),
+                            method: "textDocument/codeAction".into(),
+                            params: json!({
+                                "textDocument": { "uri": uri },
+                                "range": range,
+                                "context": { "diagnostics": diagnostics, "only": ["quickfix"], "triggerKind": 1 }
+                            }),
                         })]
                     }
                     LspCommand::Shutdown => {

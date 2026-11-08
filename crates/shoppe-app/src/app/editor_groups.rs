@@ -314,11 +314,22 @@ impl App {
         if document >= self.tabs.len() {
             return;
         }
+        let current_id = self.tabs[self.active_tab].id;
+        let target_id = self.tabs[document].id;
+        if current_id != target_id {
+            self.recent_documents
+                .retain(|id| *id != target_id && *id != current_id);
+            self.recent_documents.insert(0, target_id);
+            self.recent_documents.insert(1, current_id);
+            self.recent_documents.truncate(100);
+        }
         self.snapshot_editor_view();
         let tab = &self.tabs[document];
         self.editor_groups
             .activate_document(document, tab.buffer.selections(), tab.scroll_line);
         self.restore_editor_view();
+        self.invalidate_lsp_requests();
+        self.request_inlay_hints();
     }
 
     pub(super) fn active_view_needs_confirmation(&self) -> bool {

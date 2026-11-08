@@ -8,14 +8,15 @@ mod themes;
 #[cfg(test)]
 use import::import_from_with;
 pub use import::import_vscode;
+pub(crate) use paths::terminal_settings;
 use paths::vscode_user_dir;
-pub use paths::{app_config_dir, lsp_config_path, terminal_shell};
+pub use paths::{app_config_dir, lsp_config_path, TerminalProfile};
 pub use settings::editor_prefs_for_workspace;
 pub(crate) use settings::parse_jsonc;
 use settings::project_settings;
 #[cfg(test)]
 use snippets::expand_snippet;
-pub use snippets::{load_snippets, Snippet};
+pub use snippets::{load_snippets_for_workspace, Snippet};
 #[cfg(test)]
 use themes::theme_colors_from;
 pub use themes::{imported_theme_colors, load_dark_theme, save_dark_theme};
@@ -75,6 +76,39 @@ mod tests {
     #[test]
     fn expands_common_vscode_snippet_placeholders() {
         assert_eq!(expand_snippet("fn ${1:name}() { $0 }"), "fn name() {  }");
+    }
+
+    #[test]
+    fn project_snippets_override_user_prefixes_respect_scopes_and_report_invalid_files() {
+        let temp = crate::test_support::TempDir::new();
+        let global = temp.path().join("global");
+        let project = temp.path().join("workspace/.vscode");
+        fs::create_dir_all(&global).unwrap();
+        fs::create_dir_all(&project).unwrap();
+        fs::write(
+            global.join("user.json"),
+            r#"{"global":{"prefix":"dup","body":"user"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            project.join("project.code-snippets"),
+            r#"{"project":{"prefix":"dup","body":["project","body"]},"rustOnly":{"prefix":"rs","body":"fn","scope":["rust"]}}"#,
+        )
+        .unwrap();
+        fs::write(project.join("broken.code-snippets"), "{").unwrap();
+        let (snippets, warnings) = snippets::load_snippets_from_dirs(&global, &project);
+        assert_eq!(snippets.iter().filter(|s| s.prefix == "dup").count(), 1);
+        assert_eq!(
+            snippets.iter().find(|s| s.prefix == "dup").unwrap().body,
+            "project\nbody"
+        );
+        assert!(snippets.iter().any(|s| s.prefix == "rs"
+            && s.scope
+                .as_ref()
+                .is_some_and(|scope| scope.len() == 1 && scope[0] == "rust")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("broken.code-snippets")));
     }
     #[test]
     fn projects_supported_settings_and_reports_unknown_keys() {
