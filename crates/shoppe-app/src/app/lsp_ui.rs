@@ -82,6 +82,20 @@ impl App {
         for event in events {
             match event {
                 LspUiEvent::Status(status) => self.status = status,
+                LspUiEvent::ApplyEdit { id, edit, reply } => {
+                    let result = self.apply_workspace_edit(edit);
+                    let payload = match result {
+                        Ok(()) => serde_json::json!({ "applied": true }),
+                        Err(error) => {
+                            serde_json::json!({ "applied": false, "failureReason": error })
+                        }
+                    };
+                    let _ = reply.send(lsp_server::Response {
+                        id,
+                        result: Some(payload),
+                        error: None,
+                    });
+                }
                 LspUiEvent::Diagnostics {
                     uri,
                     version,

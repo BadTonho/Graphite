@@ -80,6 +80,7 @@ pub(super) fn run_server(
             "processId": std::process::id(),
             "rootUri": path_to_uri(&root),
             "capabilities": {
+                "workspace": {"applyEdit": true},
                 "textDocument": {
                     "completion": { "completionItem": { "snippetSupport": false } },
                     "hover": {},
@@ -129,6 +130,7 @@ pub(super) fn run_server(
                 break kind;
             }
             Ok(WorkerMessage::Incoming(_)) => {}
+            Ok(WorkerMessage::Reply(_)) => {}
             Ok(WorkerMessage::IoError(error)) => {
                 let _ = event_tx.send(LspUiEvent::Status(format!(
                     "{} LSP: {error}",
@@ -370,6 +372,14 @@ pub(super) fn run_server(
                     let _ = write_message(&mut writer, message);
                 }
             }
+            Ok(WorkerMessage::Incoming(Message::Request(request))) => {
+                if let Some(response) = handle_server_request(request, &event_tx, &signal_tx) {
+                    let _ = write_message(&mut writer, Message::Response(response));
+                }
+            }
+            Ok(WorkerMessage::Reply(response)) => {
+                let _ = write_message(&mut writer, Message::Response(response));
+            }
             Ok(WorkerMessage::Incoming(message)) => {
                 dispatch_server_message(message, &mut pending, &event_tx);
             }
@@ -389,6 +399,53 @@ pub(super) fn run_server(
         "{} language server stopped",
         config.language_id
     )));
+}
+
+pub(super) fn handle_server_request(
+    request: Request,
+    event_tx: &Sender<LspUiEvent>,
+    worker_tx: &Sender<WorkerMessage>,
+) -> Option<lsp_server::Response> {
+    if request.method != "workspace/applyEdit" {
+        return Some(lsp_server::Response::new_err(
+            request.id,
+            -32601,
+            "Unsupported method".into(),
+        ));
+    }
+    let params: lsp_types::ApplyWorkspaceEditParams = match serde_json::from_value(request.params) {
+        Ok(params) => params,
+        Err(error) => {
+            return Some(lsp_server::Response::new_err(
+                request.id,
+                -32602,
+                error.to_string(),
+            ))
+        }
+    };
+    let (reply, receiver) = mpsc::channel();
+    let id = request.id;
+    if event_tx
+        .send(LspUiEvent::ApplyEdit {
+            id: id.clone(),
+            edit: params.edit,
+            reply,
+        })
+        .is_err()
+    {
+        return Some(lsp_server::Response::new_err(
+            id,
+            -32603,
+            "Editor unavailable".into(),
+        ));
+    }
+    let worker_tx = worker_tx.clone();
+    thread::spawn(move || {
+        if let Ok(response) = receiver.recv() {
+            let _ = worker_tx.send(WorkerMessage::Reply(response));
+        }
+    });
+    None
 }
 
 pub(super) fn stop_child(child: &mut std::process::Child) {

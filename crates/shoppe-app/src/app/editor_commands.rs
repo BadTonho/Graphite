@@ -108,7 +108,7 @@ impl App {
         {
             self.tabs[0] = tab;
             self.active_tab = 0;
-            self.editor_groups = super::editor_groups::EditorGroups::new(0);
+            self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
         } else {
             self.tabs.push(tab);
             let document = self.tabs.len() - 1;
@@ -140,8 +140,10 @@ impl App {
             let revision = self.tabs[index].buffer.revision();
             self.save();
             if self.tabs[index].buffer.revision() == revision + 1 {
-                self.editor_groups
-                    .remap_other_views(index, self.tabs[index].buffer.last_position_edits());
+                self.editor_groups.remap_other_views(
+                    self.tabs[index].id,
+                    self.tabs[index].buffer.last_position_edits(),
+                );
             }
             if self.tabs[index].buffer.is_dirty() {
                 self.status = format!("Cannot close: {}", self.status);
@@ -339,18 +341,19 @@ impl App {
         let document = self.active_tab;
         let active_selections = self.editor_groups.active_view().selections.clone();
         self.tabs[document].buffer.set_selections(active_selections);
-        let last_view = self.editor_groups.view_count(document) == 1;
+        let last_view = self.editor_groups.view_count(self.tabs[document].id) == 1;
         if self.editor_groups.close_active(false) {
             if last_view {
                 if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
                     self.lsp_manager.close(&path);
                 }
                 let closed = self.tabs.remove(document);
+                let closed_id = closed.id;
                 self.closed_tabs.push(closed);
                 if self.closed_tabs.len() > 20 {
                     self.closed_tabs.remove(0);
                 }
-                self.editor_groups.forget_document(document);
+                self.editor_groups.forget_document(closed_id);
             }
             self.restore_editor_view();
         } else {
@@ -385,6 +388,7 @@ impl App {
             if self.closed_tabs.len() > 20 {
                 self.closed_tabs.remove(0);
             }
+            self.editor_groups.active_view_mut().document = self.tabs[document].id;
             self.snapshot_editor_view();
         }
         self.status = "Tab closed".into();

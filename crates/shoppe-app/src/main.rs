@@ -66,8 +66,11 @@ struct Gpu {
     accessibility_actions: Arc<std::sync::Mutex<Vec<ActionRequest>>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct DocumentId(u64);
+
 struct Tab {
-    id: u64,
+    id: DocumentId,
     buffer: Buffer,
     scroll_line: usize,
     language: Option<Language>,
@@ -85,9 +88,9 @@ struct Tab {
     line_ending: file_format::LineEnding,
 }
 
-fn next_document_id() -> u64 {
+fn next_document_id() -> DocumentId {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    DocumentId(NEXT_ID.fetch_add(1, Ordering::Relaxed))
 }
 
 struct App {
@@ -141,10 +144,10 @@ struct App {
     quick_fix_actions: Vec<lsp_types::CodeActionOrCommand>,
     quick_fix_index: usize,
     quick_fix_visible: bool,
-    navigation_history: Vec<(u64, usize)>,
+    navigation_history: Vec<(DocumentId, usize)>,
     navigation_history_index: Option<usize>,
-    recent_documents: Vec<u64>,
-    diagnostic_navigation: Option<(u64, lsp_types::Range, String)>,
+    recent_documents: Vec<DocumentId>,
+    diagnostic_navigation: Option<(DocumentId, lsp_types::Range, String)>,
     closed_tabs: Vec<Tab>,
     terminals: Vec<TerminalSession>,
     terminal_names: Vec<String>,
@@ -307,11 +310,12 @@ impl App {
             Some(watcher)
         });
         let initialization_ms = initialization_started.elapsed().as_secs_f64() * 1000.0;
+        let initial_document_id = next_document_id();
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
             tabs: vec![Tab {
-                id: next_document_id(),
+                id: initial_document_id,
                 buffer: Buffer::new(),
                 scroll_line: 0,
                 language: None,
@@ -332,7 +336,7 @@ impl App {
                 line_ending: file_format::LineEnding::Lf,
             }],
             active_tab: 0,
-            editor_groups: app::editor_groups::EditorGroups::new(0),
+            editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             keymap,

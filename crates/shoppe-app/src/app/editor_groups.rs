@@ -1,6 +1,15 @@
 //! Per-group view state; document indices refer to the application's shared document store.
-use super::App;
+use super::{App, DocumentId};
 use graphite_text::{map_position, PositionEdit, Selection};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) struct ViewId(u64);
+
+fn next_view_id() -> ViewId {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_VIEW_ID: AtomicU64 = AtomicU64::new(1);
+    ViewId(NEXT_VIEW_ID.fetch_add(1, Ordering::Relaxed))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SplitDirection {
@@ -10,7 +19,8 @@ pub(super) enum SplitDirection {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct View {
-    pub document: usize,
+    pub id: ViewId,
+    pub document: DocumentId,
     pub selections: Vec<Selection>,
     pub scroll_line: usize,
 }
@@ -50,8 +60,9 @@ pub(crate) struct EditorGroups {
 }
 
 impl EditorGroups {
-    pub fn new(document: usize) -> Self {
+    pub fn new(document: DocumentId) -> Self {
         let view = View {
+            id: next_view_id(),
             document,
             selections: vec![Selection::default()],
             scroll_line: 0,
@@ -77,7 +88,7 @@ impl EditorGroups {
     pub fn focused(&self) -> u64 {
         self.focused
     }
-    pub fn view_count(&self, document: usize) -> usize {
+    pub fn view_count(&self, document: DocumentId) -> usize {
         self.groups
             .iter()
             .flat_map(|group| &group.tabs)
@@ -94,13 +105,10 @@ impl EditorGroups {
             }
         }
     }
-    pub fn forget_document(&mut self, document: usize) {
+    pub fn forget_document(&mut self, document: DocumentId) {
         for group in &mut self.groups {
             for view in &mut group.tabs {
                 assert_ne!(view.document, document, "document still has an open view");
-                if view.document > document {
-                    view.document -= 1;
-                }
             }
         }
     }
@@ -114,11 +122,12 @@ impl EditorGroups {
         &mut group.tabs[group.active]
     }
     /// Add a background document to the focused group without changing focus.
-    pub(super) fn add_background_document(&mut self, document: usize) {
+    pub(super) fn add_background_document(&mut self, document: DocumentId) {
         let id = self.focused;
         let group = self.group_mut(id).expect("focused group exists");
         if !group.tabs.iter().any(|view| view.document == document) {
             group.tabs.push(View {
+                id: next_view_id(),
                 document,
                 selections: vec![Selection::default()],
                 scroll_line: 0,
@@ -138,7 +147,7 @@ impl EditorGroups {
     }
     pub fn activate_document(
         &mut self,
-        document: usize,
+        document: DocumentId,
         selections: Vec<Selection>,
         scroll_line: usize,
     ) {
@@ -148,6 +157,7 @@ impl EditorGroups {
             group.active = index;
         } else {
             group.tabs.push(View {
+                id: next_view_id(),
                 document,
                 selections,
                 scroll_line,
@@ -167,7 +177,8 @@ impl EditorGroups {
     pub(super) fn split(&mut self, direction: SplitDirection) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        let view = self.active_view().clone();
+        let mut view = self.active_view().clone();
+        view.id = next_view_id();
         self.groups.push(Group {
             id,
             tabs: vec![view],
@@ -210,7 +221,7 @@ impl EditorGroups {
         }
         true
     }
-    pub fn remap_other_views(&mut self, document: usize, changes: &[PositionEdit]) {
+    pub fn remap_other_views(&mut self, document: DocumentId, changes: &[PositionEdit]) {
         let focused = self.focused;
         for group in &mut self.groups {
             for (index, view) in group.tabs.iter_mut().enumerate() {
@@ -295,15 +306,16 @@ impl Layout {
 }
 
 impl App {
+    pub(super) fn document_index(&self, id: DocumentId) -> Option<usize> {
+        self.tabs.iter().position(|tab| tab.id == id)
+    }
+
     /// Save the active buffer's cursor state before changing groups or documents.
     pub(super) fn snapshot_editor_view(&mut self) {
         let tab = &self.tabs[self.active_tab];
-        if self.editor_groups.active_view().document != self.active_tab {
-            self.editor_groups.activate_document(
-                self.active_tab,
-                tab.buffer.selections(),
-                tab.scroll_line,
-            );
+        if self.editor_groups.active_view().document != tab.id {
+            self.editor_groups
+                .activate_document(tab.id, tab.buffer.selections(), tab.scroll_line);
         } else {
             let view = self.editor_groups.active_view_mut();
             view.selections = tab.buffer.selections();
@@ -313,8 +325,9 @@ impl App {
 
     pub(super) fn restore_editor_view(&mut self) {
         let view = self.editor_groups.active_view().clone();
-        if let Some(tab) = self.tabs.get_mut(view.document) {
-            self.active_tab = view.document;
+        if let Some(index) = self.document_index(view.document) {
+            let tab = &mut self.tabs[index];
+            self.active_tab = index;
             tab.buffer.set_selections(view.selections);
             tab.scroll_line = view.scroll_line;
             self.smart_selection_history.clear();
@@ -338,7 +351,7 @@ impl App {
         self.snapshot_editor_view();
         let tab = &self.tabs[document];
         self.editor_groups
-            .activate_document(document, tab.buffer.selections(), tab.scroll_line);
+            .activate_document(tab.id, tab.buffer.selections(), tab.scroll_line);
         self.restore_editor_view();
         self.invalidate_lsp_requests();
         self.request_inlay_hints();
@@ -346,7 +359,7 @@ impl App {
 
     pub(super) fn active_view_needs_confirmation(&self) -> bool {
         self.tabs[self.active_tab].buffer.is_dirty()
-            && self.editor_groups.view_count(self.active_tab) <= 1
+            && self.editor_groups.view_count(self.tabs[self.active_tab].id) <= 1
     }
 
     pub(super) fn split_editor_group(&mut self, direction: SplitDirection) -> u64 {
@@ -384,13 +397,13 @@ impl App {
         if let Some(tab) = self.tabs.get(document) {
             if tab.buffer.revision() == previous_revision + 1 {
                 self.editor_groups
-                    .remap_other_views(document, tab.buffer.last_position_edits());
+                    .remap_other_views(tab.id, tab.buffer.last_position_edits());
             }
         }
         self.snapshot_editor_view();
     }
 
-    pub(super) fn begin_editor_event(&mut self) -> (u64, usize, u64, u64) {
+    pub(super) fn begin_editor_event(&mut self) -> (u64, usize, u64, super::DocumentId) {
         self.snapshot_editor_view();
         (
             self.editor_groups.focused(),
@@ -400,7 +413,7 @@ impl App {
         )
     }
 
-    pub(super) fn end_editor_event(&mut self, before: (u64, usize, u64, u64)) {
+    pub(super) fn end_editor_event(&mut self, before: (u64, usize, u64, super::DocumentId)) {
         if before.3 == self.tabs[self.active_tab].id {
             self.update_other_editor_views(self.active_tab, before.2);
         } else {
@@ -414,14 +427,71 @@ mod tests {
     use super::*;
 
     #[test]
+    fn view_ids_are_unique_and_stable_when_focus_changes() {
+        let mut groups = EditorGroups::new(DocumentId(0));
+        let original = groups.active_view().id;
+        let other = groups.split(SplitDirection::Vertical);
+        let split = groups.active_view().id;
+        assert_ne!(original, split);
+        assert!(groups.focus(0));
+        assert_eq!(groups.active_view().id, original);
+        assert!(groups.focus(other));
+        assert_eq!(groups.active_view().id, split);
+        let replacement = EditorGroups::new(DocumentId(0)).active_view().id;
+        assert_ne!(replacement, original);
+        assert_ne!(replacement, split);
+    }
+
+    #[test]
+    fn document_ids_survive_closing_and_reopening_another_document() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        std::fs::write(&first, "first").unwrap();
+        std::fs::write(&second, "second").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first);
+        let first_id = app.tabs[app.active_tab].id;
+        app.open_file(second);
+        let second_id = app.tabs[app.active_tab].id;
+        assert_ne!(first_id, second_id);
+        app.close_active_tab();
+        assert!(app.tabs.iter().any(|tab| tab.id == first_id));
+        assert!(!app.tabs.iter().any(|tab| tab.id == second_id));
+        app.reopen_closed_tab();
+        assert_eq!(app.tabs[app.active_tab].id, second_id);
+        assert!(app.tabs.iter().any(|tab| tab.id == first_id));
+    }
+
+    #[test]
+    fn closing_an_earlier_document_keeps_other_groups_on_the_same_document() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        std::fs::write(&first, "first").unwrap();
+        std::fs::write(&second, "second").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first);
+        app.open_file(second);
+        let second_id = app.tabs[app.active_tab].id;
+        let other = app.split_editor_group(SplitDirection::Vertical);
+        assert!(app.focus_editor_group(0));
+        app.activate_editor_document(0);
+        app.close_active_tab();
+        assert!(app.focus_editor_group(other));
+        assert_eq!(app.tabs[app.active_tab].id, second_id);
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "second");
+    }
+
+    #[test]
     fn shared_document_keeps_independent_views_and_maps_edits() {
-        let mut groups = EditorGroups::new(0);
+        let mut groups = EditorGroups::new(DocumentId(0));
         groups.active_view_mut().selections = vec![Selection { anchor: 4, head: 4 }];
         let right = groups.split(SplitDirection::Vertical);
         groups.active_view_mut().selections = vec![Selection { anchor: 1, head: 2 }];
         groups.active_view_mut().scroll_line = 10;
         groups.remap_other_views(
-            0,
+            DocumentId(0),
             &[PositionEdit {
                 start: 1,
                 end: 1,
@@ -438,7 +508,7 @@ mod tests {
 
     #[test]
     fn split_geometry_and_dirty_closing_keep_shared_documents() {
-        let mut groups = EditorGroups::new(0);
+        let mut groups = EditorGroups::new(DocumentId(0));
         let right = groups.split(SplitDirection::Vertical);
         let lower = groups.split(SplitDirection::Horizontal);
         let rects = groups.rectangles(GroupRect {
@@ -483,19 +553,19 @@ mod tests {
 
     #[test]
     fn tabs_belong_to_their_group_and_last_dirty_view_cannot_close() {
-        let mut groups = EditorGroups::new(4);
-        groups.activate_document(9, vec![Selection { anchor: 2, head: 4 }], 5);
+        let mut groups = EditorGroups::new(DocumentId(4));
+        groups.activate_document(DocumentId(9), vec![Selection { anchor: 2, head: 4 }], 5);
         let other = groups.split(SplitDirection::Horizontal);
         assert_eq!(groups.views(other).unwrap().0.len(), 1);
-        assert_eq!(groups.active_view().document, 9);
+        assert_eq!(groups.active_view().document, DocumentId(9));
         assert!(groups.focus(0));
         assert_eq!(groups.views(0).unwrap().0.len(), 2);
         assert!(groups.select_tab(0));
-        assert_eq!(groups.active_view().document, 4);
+        assert_eq!(groups.active_view().document, DocumentId(4));
         assert!(!groups.close_active(true));
         assert!(groups.select_tab(1));
         assert!(groups.close_active(true));
-        assert_eq!(groups.active_view().document, 4);
+        assert_eq!(groups.active_view().document, DocumentId(4));
         assert!(groups.focus(other));
         assert!(!groups.close_active(true));
     }

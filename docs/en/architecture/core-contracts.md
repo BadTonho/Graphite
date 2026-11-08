@@ -6,13 +6,13 @@ This document proposes three contracts: **document/view**, **commands and contex
 
 ### Current state
 
-`Tab` in `crates/graphite-app/src/main.rs` combines document and presentation state. `Buffer` in `crates/graphite-text/src/lib.rs` owns the active selections and text history. `View` in `crates/graphite-app/src/app/editor_groups.rs` stores per-group selections and scroll; snapshots and restores synchronize the active view with the buffer, and position edits remap other views. The existing `app_views_share_text_and_history_with_independent_selections` test exercises independent selections, shared text and undo. The risk is that mutation paths must invoke this synchronization consistently, rather than ownership enforcing it.
+`Tab` in `crates/graphite-app/src/main.rs` combines document and presentation state and has a typed document ID used by views, navigation and diagnostics. `Buffer` in `crates/graphite-text/src/lib.rs` owns the active selections and text history. `View` in `crates/graphite-app/src/app/editor_groups.rs` has a stable typed identity and stores per-group selections and scroll; snapshots and restores synchronize the active view with the buffer, and position edits remap other views. Document IDs are currently resolved against the tab collection rather than a dedicated document store. The existing `app_views_share_text_and_history_with_independent_selections` test exercises independent selections, shared text and undo. The risk is that mutation paths must invoke this synchronization consistently, rather than ownership enforcing it.
 
 `Buffer::apply_transaction` already validates disjoint replacements, and effective replacements, undo and redo update its revision in `crates/graphite-text/src/edit.rs`. These are useful foundations, not proof that every future document operation satisfies the proposed contract.
 
 `graphite-text` provides pre-validation and an in-memory multi-buffer transaction with optional expected revisions. Quick fixes use this transaction; disk persistence remains outside its atomicity guarantee.
 
-The quick-fix path prepares all text edits, rejects unsupported resource operations and invalid UTF-16 positions, and checks supplied LSP document versions. Previously closed targets are opened as dirty documents in memory without writing the files. Other document and view migrations below remain necessary.
+Quick fixes and server `workspace/applyEdit` requests share a prepare-and-commit path: it rejects unsupported resource operations and invalid UTF-16 positions, checks supplied LSP document versions, and returns errors to the caller. Previously closed targets become dirty documents in memory without writing the files. Other document and view migrations below remain necessary.
 
 ### Target contract
 

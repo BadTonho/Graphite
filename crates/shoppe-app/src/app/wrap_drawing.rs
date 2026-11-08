@@ -29,7 +29,10 @@ impl App {
         lh: f32,
         cw: f32,
     ) {
-        let tab = &self.tabs[view.document];
+        let Some(index) = self.document_index(view.document) else {
+            return;
+        };
+        let tab = &self.tabs[index];
         let buffer = &tab.buffer;
         let tab_size = tab.indentation.tab_size;
         let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;

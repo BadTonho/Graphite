@@ -35,7 +35,9 @@ impl App {
                 .expect("layout group exists");
             let views = views.to_vec();
             let view = &views[active];
-            let document = view.document;
+            let Some(document) = self.document_index(view.document) else {
+                continue;
+            };
             self.refresh_document_highlights(document);
             let revision = self.tabs[document].buffer.revision();
             let sticky_headers = self.tabs[document]
@@ -94,7 +96,9 @@ impl App {
             );
             let mut x = rect.x;
             for (index, view) in views.iter().enumerate() {
-                let tab = &self.tabs[view.document];
+                let tab = &self.tabs[self
+                    .document_index(view.document)
+                    .expect("view document exists")];
                 let width = tab_width(tab, cw);
                 let color = if index == active {
                     Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
