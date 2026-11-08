@@ -4,6 +4,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
 
 - **Architecture**
   - [Overview](architecture/overview.md)
+  - [Document and view](architecture/document-view.md)
   - [VS Code extension compatibility](architecture/extension-compat.md)
 - **Features**
   - [v0.1 — Core editor](features/v0.1-editor.md)

@@ -3,42 +3,50 @@ use shoppe_text::Selection;
 
 impl App {
     pub(crate) fn smart_select(&mut self, expand: bool) {
-        let current = self.tabs[self.active_tab]
-            .buffer
-            .selection()
-            .unwrap_or(Selection {
-                anchor: self.tabs[self.active_tab].buffer.cursor().char_idx,
-                head: self.tabs[self.active_tab].buffer.cursor().char_idx,
-            });
+        let current = self.editor().selection().unwrap_or(Selection {
+            anchor: self.editor().cursor().char_idx,
+            head: self.editor().cursor().char_idx,
+        });
         let guard = (
-            self.active_tab,
-            self.tabs[self.active_tab].buffer.revision(),
+            self.active_document(),
+            self.documents[self.active_document()].buffer.revision(),
             current,
         );
         if self
+            .editor_groups
+            .active_view()
             .smart_selection_guard
             .is_some_and(|expected| expected != guard)
         {
-            self.smart_selection_history.clear();
-            self.smart_selection_guard = None;
+            self.editor_groups
+                .active_view_mut()
+                .smart_selection_history
+                .clear();
+            self.editor_groups.active_view_mut().smart_selection_guard = None;
         }
         if !expand {
-            if let Some(selection) = self.smart_selection_history.pop() {
-                self.tabs[self.active_tab]
-                    .buffer
+            if let Some(selection) = self
+                .editor_groups
+                .active_view_mut()
+                .smart_selection_history
+                .pop()
+            {
+                self.editor_mut()
                     .set_selection(selection.anchor, selection.head);
-                self.smart_selection_guard = Some((self.active_tab, guard.1, selection));
+                self.editor_groups.active_view_mut().smart_selection_guard =
+                    Some((self.active_document(), guard.1, selection));
             }
             return;
         }
         self.refresh_highlights();
-        let tab = &mut self.tabs[self.active_tab];
-        let before = tab.buffer.selection().unwrap_or(Selection {
-            anchor: tab.buffer.cursor().char_idx,
-            head: tab.buffer.cursor().char_idx,
+        let before = self.editor().selection().unwrap_or(Selection {
+            anchor: self.editor().cursor().char_idx,
+            head: self.editor().cursor().char_idx,
         });
         let start = before.anchor.min(before.head);
         let end = before.anchor.max(before.head);
+        let document = self.active_document();
+        let tab = &mut self.documents[document];
         let rope = tab.buffer.rope();
         let byte_start = rope.char_to_byte(start);
         let byte_end = rope.char_to_byte(end);
@@ -49,10 +57,13 @@ impl App {
             .map(|range| rope.byte_to_char(range.start)..rope.byte_to_char(range.end))
             .find(|range| range.start < start || range.end > end);
         if let Some(next) = next {
-            self.smart_selection_history.push(before);
-            tab.buffer.set_selection(next.start, next.end);
-            self.smart_selection_guard = Some((
-                self.active_tab,
+            self.editor_groups
+                .active_view_mut()
+                .smart_selection_history
+                .push(before);
+            self.editor_mut().set_selection(next.start, next.end);
+            self.editor_groups.active_view_mut().smart_selection_guard = Some((
+                self.active_document(),
                 guard.1,
                 Selection {
                     anchor: next.start,

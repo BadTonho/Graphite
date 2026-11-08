@@ -121,7 +121,7 @@ impl App {
                 };
                 let text = format!(
                     "{}:{}:{}  [{}] {}",
-                    self.tabs[*document]
+                    self.documents[*document]
                         .buffer
                         .path()
                         .and_then(Path::file_name)

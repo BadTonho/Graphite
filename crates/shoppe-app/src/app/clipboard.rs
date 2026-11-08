@@ -1,4 +1,4 @@
-use shoppe_text::Buffer;
+use shoppe_text::Editor;
 
 pub(super) trait ClipboardAccess {
     fn get_text(&mut self) -> Result<String, ()>;
@@ -22,7 +22,7 @@ impl ClipboardAccess for SystemClipboard {
 }
 
 pub(super) fn copy_or_cut(
-    buffer: &mut Buffer,
+    buffer: &mut Editor<'_>,
     clipboard: &mut impl ClipboardAccess,
     cut: bool,
 ) -> bool {
@@ -36,7 +36,7 @@ pub(super) fn copy_or_cut(
     true
 }
 
-pub(super) fn paste(buffer: &mut Buffer, clipboard: &mut impl ClipboardAccess) -> bool {
+pub(super) fn paste(buffer: &mut Editor<'_>, clipboard: &mut impl ClipboardAccess) -> bool {
     let Ok(text) = clipboard.get_text() else {
         return false;
     };
@@ -47,7 +47,7 @@ pub(super) fn paste(buffer: &mut Buffer, clipboard: &mut impl ClipboardAccess) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shoppe_text::Selection;
+    use shoppe_text::{Buffer, Selection};
 
     #[derive(Default)]
     struct MemoryClipboard {
@@ -72,7 +72,9 @@ mod tests {
 
     #[test]
     fn copy_and_cut_preserve_unicode_multi_selections_and_undo_as_one_edit() {
-        let mut buffer = Buffer::new();
+        let mut buffer_document = Buffer::new();
+        let mut buffer_state = shoppe_text::SelectionState::default();
+        let mut buffer = buffer_document.edit(&mut buffer_state, shoppe_text::ViewId(1));
         buffer.insert("café 🧭");
         buffer.set_selections(vec![
             Selection { anchor: 0, head: 4 },
@@ -92,7 +94,9 @@ mod tests {
 
     #[test]
     fn clipboard_failures_and_readonly_buffers_do_not_change_document_text() {
-        let mut buffer = Buffer::new();
+        let mut buffer_document = Buffer::new();
+        let mut buffer_state = shoppe_text::SelectionState::default();
+        let mut buffer = buffer_document.edit(&mut buffer_state, shoppe_text::ViewId(1));
         buffer.insert("keep this");
         buffer.set_selection(0, 4);
         let mut clipboard = MemoryClipboard {
@@ -114,7 +118,9 @@ mod tests {
 
     #[test]
     fn paste_distributes_unicode_lines_to_multiple_cursors_and_respects_readonly() {
-        let mut buffer = Buffer::new();
+        let mut buffer_document = Buffer::new();
+        let mut buffer_state = shoppe_text::SelectionState::default();
+        let mut buffer = buffer_document.edit(&mut buffer_state, shoppe_text::ViewId(1));
         buffer.insert("a b");
         buffer.set_selections(vec![
             Selection { anchor: 0, head: 1 },

@@ -22,7 +22,7 @@ impl App {
                 for path in requested {
                     if path.is_dir() {
                         if path.canonicalize().ok() != self.tree.root().canonicalize().ok() {
-                            if self.tabs.iter().any(|tab| tab.buffer.is_dirty()) {
+                            if self.documents.iter().any(|tab| tab.is_dirty()) {
                                 self.status = format!(
                                     "Cannot open {} while documents have unsaved changes",
                                     path.display()
@@ -30,7 +30,7 @@ impl App {
                             } else {
                                 match Workspace::open(&path) {
                                     Ok(workspace) => {
-                                        for tab in &self.tabs {
+                                        for tab in self.documents.iter() {
                                             if let Some(open) = tab.buffer.path() {
                                                 self.lsp_manager.close(open);
                                             }
@@ -51,18 +51,15 @@ impl App {
                 }
                 if let Some((path, line, column)) = location {
                     self.open_file(path.clone());
-                    if let Some(document) = self.tabs.iter().position(|tab| {
-                        tab.buffer
-                            .path()
-                            .is_some_and(|open| crate::same_file_path(open, &path))
-                    }) {
-                        let tab = &mut self.tabs[document];
+                    let target = self.documents.id_for_path(&path);
+                    if let Some(document) = target {
+                        let tab = &mut self.documents[document];
                         let line = line
                             .saturating_sub(1)
                             .min(tab.buffer.len_lines().saturating_sub(1));
-                        tab.buffer
-                            .set_cursor_line_col(line, column.saturating_sub(1));
                         self.activate_editor_document(document);
+                        self.editor_mut()
+                            .set_cursor_line_col(line, column.saturating_sub(1));
                         self.reveal_cursor = true;
                     }
                     paths.push(path);
@@ -90,7 +87,7 @@ impl App {
     }
 
     pub(crate) fn check_cli_waiters(&mut self) {
-        let tabs = &self.tabs;
+        let tabs = &self.documents;
         let diff_open = self.diff_view.is_some() || self.diff_loading;
         let mut pending = Vec::new();
         for waiter in self.cli_waiters.drain(..) {

@@ -90,27 +90,27 @@ impl App {
         let line = if self.word_wrap {
             let rect = self.focused_group_rect(width, height, lh);
             let columns = (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
-            let tab = &self.tabs[self.active_tab];
+            let tab = &self.documents[self.active_document()];
             super::visual_lines::document_position(
                 &tab.buffer,
-                tab.buffer.cursor().char_idx,
+                self.editor().cursor().char_idx,
                 columns,
                 tab.indentation.tab_size,
                 self.wrapping_indent,
             )
             .0
         } else {
-            self.tabs[self.active_tab].buffer.cursor_line_col().0
+            self.editor().cursor_line_col().0
         };
-        if line < self.tabs[self.active_tab].scroll_line {
-            self.tabs[self.active_tab].scroll_line = line;
-        } else if line >= self.tabs[self.active_tab].scroll_line + visible {
-            self.tabs[self.active_tab].scroll_line = line + 1 - visible;
+        if line < self.editor_groups.active_view_mut().scroll_line {
+            self.editor_groups.active_view_mut().scroll_line = line;
+        } else if line >= self.editor_groups.active_view_mut().scroll_line + visible {
+            self.editor_groups.active_view_mut().scroll_line = line + 1 - visible;
         }
     }
 
     pub(crate) fn gutter_width(&self, char_w: f32) -> f32 {
-        let digits = self.tabs[self.active_tab]
+        let digits = self.documents[self.active_document()]
             .buffer
             .len_lines()
             .to_string()

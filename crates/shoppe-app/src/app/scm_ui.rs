@@ -64,7 +64,7 @@ impl App {
     }
 
     pub(crate) fn checkout_selected_branch(&mut self) {
-        if self.tabs.iter().any(|tab| tab.buffer.is_dirty()) {
+        if self.documents.iter().any(|tab| tab.is_dirty()) {
             self.status = "Checkout refused because an open document has unsaved changes".into();
             return;
         }
@@ -79,7 +79,7 @@ impl App {
         self.branch_picker = false;
         let root = self.tree.root().to_path_buf();
         let open_paths = self
-            .tabs
+            .documents
             .iter()
             .filter_map(|tab| tab.buffer.path().map(PathBuf::from))
             .collect::<Vec<_>>();
@@ -119,7 +119,10 @@ impl App {
             self.status = "SCM actions require the native event loop".into();
             return;
         };
-        let active_path = self.tabs[self.active_tab].buffer.path().map(PathBuf::from);
+        let active_path = self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(PathBuf::from);
         let selected = match action {
             ScmAction::StageCursorLine
             | ScmAction::RevertCursorLine
@@ -129,7 +132,7 @@ impl App {
             _ => active_path,
         };
         let message = self.scm_commit_message.clone();
-        let line = self.tabs[self.active_tab].buffer.cursor_line_col().0;
+        let line = self.editor().cursor_line_col().0;
         self.status = "Git operation running…".into();
         std::thread::Builder::new()
             .name("shoppe-scm-operation".into())
@@ -223,7 +226,11 @@ impl App {
     }
 
     pub(crate) fn open_active_file_diff(&mut self) {
-        let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) else {
+        let Some(path) = self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(PathBuf::from)
+        else {
             self.status = "Save the current file before comparing it".into();
             return;
         };
@@ -232,7 +239,7 @@ impl App {
             return;
         };
         self.diff_loading = true;
-        let current = self.tabs[self.active_tab].buffer.text();
+        let current = self.documents[self.active_document()].buffer.text();
         std::thread::Builder::new()
             .name("shoppe-head-diff".into())
             .spawn(move || {
@@ -471,8 +478,8 @@ impl App {
                 PAD,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
-            if let Some(language) = self.tabs[self.active_tab].language {
-                let text = self.tabs[self.active_tab].buffer.text();
+            if let Some(language) = self.documents[self.active_document()].language {
+                let text = self.documents[self.active_document()].buffer.text();
                 let headers = shoppe_syntax::declaration_headers(language, &text);
                 for (i, header) in headers.iter().take(16).enumerate() {
                     renderer.draw_text(

@@ -32,3 +32,8 @@ mod visual_lines;
 mod window_events;
 mod workspace_edit;
 mod wrap_drawing;
+
+mod document_edit;
+
+#[cfg(test)]
+mod document_view_tests;

@@ -243,7 +243,7 @@ impl App {
         if self.word_wrap == enabled && self.wrapping_indent == indent {
             return;
         }
-        self.snapshot_editor_view();
+
         let (width, height, lh, cw) = self
             .gpu
             .as_ref()
@@ -260,12 +260,12 @@ impl App {
         let rects = self.group_rectangles(width, height, lh);
         let old_enabled = self.word_wrap;
         let old_indent = self.wrapping_indent;
-        let tabs = &self.tabs;
+        let tabs = &self.documents;
         self.editor_groups.for_each_view_mut(|group, view| {
             let Some(rect) = rects.iter().find(|rect| rect.id == group) else {
                 return;
             };
-            let Some(tab) = tabs.iter().find(|tab| tab.id == view.document) else {
+            let Some(tab) = tabs.get(view.document) else {
                 return;
             };
             let gutter = tab.buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
@@ -291,7 +291,6 @@ impl App {
         });
         self.word_wrap = enabled;
         self.wrapping_indent = indent;
-        self.tabs[self.active_tab].scroll_line = self.editor_groups.active_view().scroll_line;
     }
 
     pub(super) fn move_visual_selections_for_columns(
@@ -300,28 +299,18 @@ impl App {
         down: bool,
         extend: bool,
     ) {
-        let tab = &mut self.tabs[self.active_tab];
+        let document = self.active_document();
+        let tab = &mut self.documents[document];
         let tab_size = tab.indentation.tab_size;
-        let buffer = &mut tab.buffer;
-        let last_row = document_position(
-            buffer,
-            buffer.len_chars(),
-            columns,
-            tab_size,
-            self.wrapping_indent,
-        )
-        .0;
+        let indent = self.wrapping_indent;
+        let mut buffer = self.editor_mut();
+        let last_row = document_position(&buffer, buffer.len_chars(), columns, tab_size, indent).0;
         let selections = buffer
             .selections()
             .into_iter()
             .map(|selection| {
-                let (row, column) = document_position(
-                    buffer,
-                    selection.head,
-                    columns,
-                    tab_size,
-                    self.wrapping_indent,
-                );
+                let (row, column) =
+                    document_position(&buffer, selection.head, columns, tab_size, indent);
                 let next_row = if down {
                     row.saturating_add(1).min(last_row)
                 } else {
@@ -330,14 +319,7 @@ impl App {
                 let head = if row == next_row {
                     selection.head
                 } else {
-                    document_offset(
-                        buffer,
-                        next_row,
-                        column,
-                        columns,
-                        tab_size,
-                        self.wrapping_indent,
-                    )
+                    document_offset(&buffer, next_row, column, columns, tab_size, indent)
                 };
                 shoppe_text::Selection {
                     anchor: if extend { selection.anchor } else { head },
@@ -417,7 +399,9 @@ mod tests {
 
     #[test]
     fn document_viewport_and_hit_testing_preserve_unicode_offsets() {
-        let mut buffer = Buffer::new();
+        let mut buffer_document = Buffer::new();
+        let mut buffer_state = shoppe_text::SelectionState::default();
+        let mut buffer = buffer_document.edit(&mut buffer_state, shoppe_text::ViewId(1));
         buffer.insert("hello world\r\n    é🙂 xyz\n");
         let rows = viewport(&buffer, 1, 3, 6, 4, WrapIndent::Same);
         assert_eq!(
@@ -437,18 +421,18 @@ mod tests {
     fn moving_multiple_selections_uses_visual_rows_without_editing_text() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("abcdefghi\nuvwxyz");
-        app.tabs[0].buffer.set_selections(vec![
+        app.test_editor_mut(0).insert("abcdefghi\nuvwxyz");
+        app.test_editor_mut(0).set_selections(vec![
             shoppe_text::Selection { anchor: 1, head: 1 },
             shoppe_text::Selection {
                 anchor: 11,
                 head: 11,
             },
         ]);
-        let revision = app.tabs[0].buffer.revision();
+        let revision = app.documents[app.document_at(0)].buffer.revision();
         app.move_visual_selections_for_columns(4, true, true);
         assert_eq!(
-            app.tabs[0].buffer.selections(),
+            app.test_editor(0).selections(),
             vec![
                 shoppe_text::Selection { anchor: 1, head: 5 },
                 shoppe_text::Selection {
@@ -457,26 +441,31 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(app.tabs[0].buffer.revision(), revision);
-        assert_eq!(app.tabs[0].buffer.text(), "abcdefghi\nuvwxyz");
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.revision(),
+            revision
+        );
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "abcdefghi\nuvwxyz"
+        );
     }
 
     #[test]
     fn changing_wrap_setting_preserves_the_top_logical_line_in_each_view() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0]
-            .buffer
+        app.test_editor_mut(0)
             .insert(&format!("{}\nsecond\n", "x".repeat(200)));
-        app.tabs[0].scroll_line = 1;
+        app.editor_groups.active_view_mut().scroll_line = 1;
         let other = app.split_editor_group(super::super::editor_groups::SplitDirection::Vertical);
-        app.tabs[0].scroll_line = 0;
+        app.editor_groups.active_view_mut().scroll_line = 0;
         app.reconfigure_wrapping(true, WrapIndent::Same);
         assert!(app.focus_editor_group(0));
-        assert!(app.tabs[0].scroll_line > 1);
+        assert!(app.editor_groups.active_view_mut().scroll_line > 1);
         app.reconfigure_wrapping(false, WrapIndent::Same);
-        assert_eq!(app.tabs[0].scroll_line, 1);
+        assert_eq!(app.editor_groups.active_view_mut().scroll_line, 1);
         assert!(app.focus_editor_group(other));
-        assert_eq!(app.tabs[0].scroll_line, 0);
+        assert_eq!(app.editor_groups.active_view_mut().scroll_line, 0);
     }
 }

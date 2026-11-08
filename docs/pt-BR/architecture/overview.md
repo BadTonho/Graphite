@@ -26,7 +26,7 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
 ## Texto e highlighting
 
 - O texto fica em um `ropey::Rope`; o cursor é um deslocamento em caracteres. Toda edição incrementa um contador `revision`.
-- Transações registram seus intervalos em caracteres para mapear posições durante edições, desfazer e refazer. Um modelo de grupos guarda seleções e rolagem independentes para visualizações do mesmo documento e calcula a geometria de divisões aninhadas. O ciclo de abas, eventos de edição, controles de divisão e renderização usam esse modelo; a verificação interativa está pendente.
+- Documentos usam chaves estáveis e compartilham texto/histórico entre views. Cada view mantém exclusivamente seleções, scroll, composição IME e navegação da seleção. Sessões de edição por empréstimo remapeiam as demais views e sincronizam o LSP; undo/redo preservam o foco. Consulte [Documento e view](document-view.md). A verificação nativa de UI/GPU está pendente no Windows e no Linux.
 - O mapeamento de linhas visuais calcula quebras e converte posições de caracteres Unicode e colunas do ponteiro sem alterar o documento. A renderização, o ponteiro e o movimento vertical do cursor usam esse mapeamento quando a quebra está ativa; a verificação interativa permanece pendente.
 - `shoppe-syntax` oferece parsing incremental do tree-sitter sobre blocos da Rope e um mecanismo para o documento completo; ambos devolvem spans por linha (intervalos de bytes) com uma `Class` semântica. O app mapeia classes para cores e só refaz o realce quando a revisão muda.
 

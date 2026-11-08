@@ -1,84 +1,121 @@
-use super::{same_file_path, DocumentId, Tab};
+//! Stable document ownership. Presentation order belongs to editor groups.
+use super::{next_document_id, same_file_path, Document, DocumentId};
 use std::{
     collections::HashMap,
-    ops::{Deref, DerefMut},
+    ops::{Deref, Index, IndexMut},
     path::Path,
+    sync::Arc,
 };
 
-/// Owns open documents and keeps stable identities separate from presentation order.
-pub(crate) struct DocumentStore {
-    documents: Vec<Tab>,
-    indices: HashMap<DocumentId, usize>,
+pub(crate) struct ClosedDocument {
+    pub id: DocumentId,
+    pub document: Document,
+}
+pub(crate) struct DocumentRef<'a> {
+    pub id: DocumentId,
+    document: &'a Document,
+}
+impl Deref for DocumentRef<'_> {
+    type Target = Document;
+    fn deref(&self) -> &Document {
+        self.document
+    }
 }
 
+pub(crate) struct DocumentLease {
+    _retainer: Arc<()>,
+}
+pub(crate) struct DocumentStore {
+    documents: HashMap<DocumentId, Document>,
+    order: Vec<DocumentId>,
+    retainers: HashMap<DocumentId, Arc<()>>,
+}
 impl DocumentStore {
-    pub fn new(document: Tab) -> Self {
-        Self {
-            indices: HashMap::from([(document.id, 0)]),
-            documents: vec![document],
-        }
+    pub fn new(id: DocumentId, document: Document) -> Self {
+        let mut store = Self {
+            documents: HashMap::new(),
+            order: Vec::new(),
+            retainers: HashMap::new(),
+        };
+        store.reopen(ClosedDocument { id, document });
+        store
     }
-
-    pub fn index_for(&self, id: DocumentId) -> Option<usize> {
-        self.indices.get(&id).copied()
-    }
-
-    pub fn index_for_path(&self, path: &Path) -> Option<usize> {
-        self.documents.iter().position(|document| {
-            document
-                .buffer
-                .path()
-                .is_some_and(|open| same_file_path(open, path))
+    pub fn lease(&self, id: DocumentId) -> Option<DocumentLease> {
+        self.retainers.get(&id).map(|retainer| DocumentLease {
+            _retainer: retainer.clone(),
         })
     }
-
-    pub fn push(&mut self, document: Tab) {
+    pub fn is_retained(&self, id: DocumentId) -> bool {
+        self.retainers
+            .get(&id)
+            .is_some_and(|retainer| Arc::strong_count(retainer) > 1)
+    }
+    pub fn len(&self) -> usize {
+        self.documents.len()
+    }
+    pub fn ids(&self) -> impl Iterator<Item = DocumentId> + '_ {
+        self.order.iter().copied()
+    }
+    pub fn resolve(&self, id: DocumentId) -> Option<DocumentId> {
+        self.documents.contains_key(&id).then_some(id)
+    }
+    pub fn id_for_path(&self, path: &Path) -> Option<DocumentId> {
+        self.iter()
+            .find(|d| d.buffer.path().is_some_and(|p| same_file_path(p, path)))
+            .map(|d| d.id)
+    }
+    pub fn get(&self, id: DocumentId) -> Option<&Document> {
+        self.documents.get(&id)
+    }
+    pub fn get_mut(&mut self, id: DocumentId) -> Option<&mut Document> {
+        self.documents.get_mut(&id)
+    }
+    pub fn iter(&self) -> impl Iterator<Item = DocumentRef<'_>> {
+        self.order.iter().map(|id| DocumentRef {
+            id: *id,
+            document: &self.documents[id],
+        })
+    }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (DocumentId, &mut Document)> {
+        self.documents.iter_mut().map(|(id, d)| (*id, d))
+    }
+    pub fn push(&mut self, document: Document) -> DocumentId {
+        let id = next_document_id();
+        self.reopen(ClosedDocument { id, document });
+        id
+    }
+    pub fn reopen(&mut self, closed: ClosedDocument) -> DocumentId {
         assert!(
-            !self.indices.contains_key(&document.id),
+            !self.documents.contains_key(&closed.id),
             "duplicate document identity"
         );
-        self.indices.insert(document.id, self.documents.len());
-        self.documents.push(document);
+        let id = closed.id;
+        self.retainers.insert(id, Arc::new(()));
+        self.documents.insert(id, closed.document);
+        self.order.push(id);
+        id
     }
-
-    pub fn remove(&mut self, index: usize) -> Tab {
-        let document = self.documents.remove(index);
-        self.indices.remove(&document.id);
-        for (position, document) in self.documents.iter().enumerate().skip(index) {
-            self.indices.insert(document.id, position);
-        }
-        document
+    pub fn replace(&mut self, id: DocumentId, document: Document) -> (DocumentId, ClosedDocument) {
+        let closed = self.remove(id);
+        let id = self.push(document);
+        (id, closed)
     }
-
-    pub fn replace(&mut self, index: usize, document: Tab) -> Tab {
-        assert!(
-            !self.indices.contains_key(&document.id) || self.documents[index].id == document.id,
-            "duplicate document identity"
-        );
-        let previous = std::mem::replace(&mut self.documents[index], document);
-        self.indices.remove(&previous.id);
-        self.indices.insert(self.documents[index].id, index);
-        previous
+    pub fn remove(&mut self, id: DocumentId) -> ClosedDocument {
+        assert!(!self.is_retained(id), "pending operation retains document");
+        self.retainers.remove(&id);
+        let document = self.documents.remove(&id).expect("document exists");
+        self.order.retain(|entry| *entry != id);
+        ClosedDocument { id, document }
     }
 }
-
-impl Deref for DocumentStore {
-    type Target = [Tab];
-    fn deref(&self) -> &Self::Target {
-        &self.documents
+impl Index<DocumentId> for DocumentStore {
+    type Output = Document;
+    fn index(&self, id: DocumentId) -> &Document {
+        &self.documents[&id]
     }
 }
-
-impl DerefMut for DocumentStore {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.documents
-    }
-}
-
-impl<'a> IntoIterator for &'a DocumentStore {
-    type Item = &'a Tab;
-    type IntoIter = std::slice::Iter<'a, Tab>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.documents.iter()
+impl IndexMut<DocumentId> for DocumentStore {
+    fn index_mut(&mut self, id: DocumentId) -> &mut Document {
+        self.documents.get_mut(&id).expect("document exists")
     }
 }

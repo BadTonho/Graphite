@@ -57,7 +57,7 @@ fn recase(source: &str, replacement: &str) -> String {
     replacement.to_owned()
 }
 
-impl Buffer {
+impl Editor<'_> {
     /// Replace the selected match if it still matches the query in its original context.
     pub fn replace_selected_match(
         &mut self,
@@ -69,7 +69,7 @@ impl Buffer {
         if query.is_empty() || self.read_only {
             return Ok(false);
         }
-        let Some(selection) = self.selection else {
+        let Some(selection) = self.state.selection else {
             return Ok(false);
         };
         let selected = selection.anchor.min(selection.head)..selection.anchor.max(selection.head);
@@ -107,7 +107,9 @@ impl Buffer {
         }
         Ok(false)
     }
+}
 
+impl Buffer {
     pub fn find_matches(
         &self,
         query: &str,
@@ -155,15 +157,12 @@ impl Buffer {
         let first = self.rope.char_to_byte(start);
         let last = self.rope.char_to_byte(end);
         let scoped = &text[first..last];
-        let mut result = String::new();
-        let mut previous = 0;
-        let mut count = 0;
+        let mut edits = Vec::new();
         for captures in regex.captures_iter(scoped) {
             let m = captures.get(0).expect("capture zero always exists");
             if options.whole_word && !whole_word(&text, first + m.start(), first + m.end()) {
                 continue;
             }
-            result.push_str(&scoped[previous..m.start()]);
             let mut value = String::new();
             if options.regex {
                 captures.expand(replacement, &mut value);
@@ -173,14 +172,15 @@ impl Buffer {
             if options.preserve_case {
                 value = recase(m.as_str(), &value);
             }
-            result.push_str(&value);
-            previous = m.end();
-            count += 1;
+            edits.push(TextReplacement {
+                range: self.rope.byte_to_char(first + m.start())
+                    ..self.rope.byte_to_char(first + m.end()),
+                text: value,
+            });
         }
-        if count > 0 {
-            result.push_str(&scoped[previous..]);
-            self.replace(start, end, &result);
-        }
+        let count = edits.len();
+        self.apply_transaction(&edits)
+            .expect("regex matches are valid disjoint ranges");
         Ok(count)
     }
 }

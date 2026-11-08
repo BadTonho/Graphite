@@ -8,7 +8,7 @@ struct LinePosition {
     column: usize,
 }
 
-impl Buffer {
+impl Editor<'_> {
     /// Convert all selected ranges to disjoint, contiguous line blocks.
     fn selected_line_blocks(&self) -> Vec<Range<usize>> {
         let mut blocks: Vec<_> = self
@@ -65,14 +65,7 @@ impl Buffer {
 
     fn store_after_selections(&mut self, selections: Vec<Selection>) {
         self.set_selections(selections);
-        let cursor = self.cursor.char_idx;
-        let selection = self.selection;
-        let extra = self.extra_selections.clone();
-        if let Some(edit) = self.undo.last_mut() {
-            edit.after = cursor;
-            edit.after_selection = selection;
-            edit.after_extra = extra;
-        }
+        self.finish_selections();
     }
 
     /// Move each selected line block by one line as one undoable transaction.

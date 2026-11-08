@@ -20,11 +20,12 @@ impl App {
                     self.toggle_screencast_mode()
                 }
                 Some(super::phase4_tools::StatusSegment::Indentation) => {
-                    let tab = &mut self.tabs[self.active_tab];
-                    let mut target = tab.indentation;
+                    let document = self.active_document();
+                    let mut target = self.documents[document].indentation;
                     target.insert_spaces = !target.insert_spaces;
-                    if tab.buffer.convert_indentation(target).is_ok() {
-                        tab.indentation = target;
+                    let result = self.editor_mut().convert_indentation(target);
+                    if result.is_ok() {
+                        self.documents[document].indentation = target;
                         self.status = if target.insert_spaces {
                             "Indentation converted to spaces"
                         } else {
@@ -34,19 +35,21 @@ impl App {
                     }
                 }
                 Some(super::phase4_tools::StatusSegment::LineEnding) => {
-                    self.tabs[self.active_tab].line_ending =
-                        self.tabs[self.active_tab].line_ending.toggle();
+                    let document = self.active_document();
+                    self.documents[document].line_ending =
+                        self.documents[self.active_document()].line_ending.toggle();
                     self.status = format!(
                         "Line endings: {}",
-                        self.tabs[self.active_tab].line_ending.label()
+                        self.documents[self.active_document()].line_ending.label()
                     );
                 }
                 Some(super::phase4_tools::StatusSegment::Encoding) => {
-                    self.tabs[self.active_tab].encoding =
-                        self.tabs[self.active_tab].encoding.next();
+                    let document = self.active_document();
+                    self.documents[document].encoding =
+                        self.documents[self.active_document()].encoding.next();
                     self.status = format!(
                         "Encoding for next save: {}",
-                        self.tabs[self.active_tab].encoding.label()
+                        self.documents[self.active_document()].encoding.label()
                     );
                 }
                 Some(super::phase4_tools::StatusSegment::Branch) => self.open_branch_picker(),
@@ -56,13 +59,11 @@ impl App {
         }
 
         if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {
-            if let Some(language) = self.tabs[self.active_tab].language {
-                let text = self.tabs[self.active_tab].buffer.text();
+            if let Some(language) = self.documents[self.active_document()].language {
+                let text = self.documents[self.active_document()].buffer.text();
                 let row = ((my / lh) as isize - 1).max(0) as usize;
                 if let Some(header) = shoppe_syntax::declaration_headers(language, &text).get(row) {
-                    self.tabs[self.active_tab]
-                        .buffer
-                        .set_cursor_line_col(header.line, 0);
+                    self.editor_mut().set_cursor_line_col(header.line, 0);
                     self.reveal_cursor = true;
                 }
             }
@@ -123,13 +124,17 @@ impl App {
                         self.remember_diagnostic(document, &diagnostic);
                         self.push_navigation_location();
                         self.activate_editor_document(document);
-                        let line = (diagnostic.range.start.line as usize)
-                            .min(self.tabs[document].buffer.len_lines().saturating_sub(1));
+                        let line = (diagnostic.range.start.line as usize).min(
+                            self.documents[document]
+                                .buffer
+                                .len_lines()
+                                .saturating_sub(1),
+                        );
                         let col = super::drawing_helpers::utf16_column_to_chars(
-                            &self.tabs[document].buffer.line(line),
+                            &self.documents[document].buffer.line(line),
                             diagnostic.range.start.character,
                         );
-                        self.tabs[document].buffer.set_cursor_line_col(line, col);
+                        self.editor_mut().set_cursor_line_col(line, col);
                         self.reveal_cursor = true;
                         self.push_navigation_location();
                         self.request_quick_fixes_for(diagnostic);
@@ -192,10 +197,10 @@ impl App {
                     .map(|view| view.document)
                     .collect();
                 for document in documents {
-                    let Some(document) = self.document_index(document) else {
+                    let Some(document) = self.resolve_document(document) else {
                         continue;
                     };
-                    let width = super::group_drawing::tab_width(&self.tabs[document], cw);
+                    let width = super::group_drawing::tab_width(&self.documents[document], cw);
                     if mx >= x && mx < x + width {
                         self.activate_editor_document(document);
                         return;
@@ -206,11 +211,12 @@ impl App {
             }
             let text_x = rect.x + self.gutter_width(cw);
             if self.word_wrap {
-                let row = self.tabs[self.active_tab].scroll_line
+                let row = self.editor_groups.active_view_mut().scroll_line
                     + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
                 let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
                 let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
-                let tab = &mut self.tabs[self.active_tab];
+                let document = self.active_document();
+                let tab = &mut self.documents[document];
                 let offset = super::visual_lines::document_offset(
                     &tab.buffer,
                     row,
@@ -220,28 +226,28 @@ impl App {
                     self.wrapping_indent,
                 );
                 if self.modifiers.alt_key() {
-                    tab.buffer.add_cursor(offset);
+                    self.editor_mut().add_cursor(offset);
                     self.selecting = false;
                 } else {
-                    tab.buffer.set_selection(offset, offset);
+                    self.editor_mut().set_selection(offset, offset);
                     self.selecting = true;
                 }
                 return;
             }
-            let line = self.tabs[self.active_tab].scroll_line
+            let line = self.editor_groups.active_view_mut().scroll_line
                 + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.modifiers.alt_key() {
-                let b = &mut self.tabs[self.active_tab].buffer;
+                let mut b = self.editor_mut();
                 let line = line.min(b.len_lines() - 1);
                 let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
-                b.add_cursor(b.line_start_char(line) + col.min(width));
+                let offset = b.line_start_char(line) + col.min(width);
+                b.add_cursor(offset);
+                drop(b);
                 self.selecting = false;
                 return;
             }
-            self.tabs[self.active_tab]
-                .buffer
-                .set_cursor_line_col(line, col);
+            self.editor_mut().set_cursor_line_col(line, col);
             self.selecting = true;
         }
     }
@@ -257,11 +263,12 @@ impl App {
         let rect = self.focused_group_rect(width, height, lh);
         let text_x = rect.x + self.gutter_width(cw);
         if self.word_wrap {
-            let row = self.tabs[self.active_tab].scroll_line
+            let row = self.editor_groups.active_view_mut().scroll_line
                 + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize;
             let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
             let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
-            let tab = &mut self.tabs[self.active_tab];
+            let document = self.active_document();
+            let tab = &mut self.documents[document];
             let head = super::visual_lines::document_offset(
                 &tab.buffer,
                 row,
@@ -270,34 +277,34 @@ impl App {
                 tab.indentation.tab_size,
                 self.wrapping_indent,
             );
-            let anchor = tab
-                .buffer
+            let anchor = self
+                .editor()
                 .selection()
                 .map(|s| s.anchor)
-                .unwrap_or(tab.buffer.cursor().char_idx);
-            tab.buffer.set_selection(anchor, head);
+                .unwrap_or(self.editor().cursor().char_idx);
+            self.editor_mut().set_selection(anchor, head);
             return;
         }
-        let line = (self.tabs[self.active_tab].scroll_line
+        let line = (self.editor_groups.active_view_mut().scroll_line
             + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize)
-            .min(self.tabs[self.active_tab].buffer.len_lines() - 1);
+            .min(self.documents[self.active_document()].buffer.len_lines() - 1);
         let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
-        let head = self.tabs[self.active_tab].buffer.line_start_char(line)
+        let head = self.documents[self.active_document()]
+            .buffer
+            .line_start_char(line)
             + col.min(
-                self.tabs[self.active_tab]
+                self.documents[self.active_document()]
                     .buffer
                     .line(line)
                     .trim_end_matches(['\n', '\r'])
                     .chars()
                     .count(),
             );
-        let anchor = self.tabs[self.active_tab]
-            .buffer
+        let anchor = self
+            .editor()
             .selection()
             .map(|s| s.anchor)
-            .unwrap_or(self.tabs[self.active_tab].buffer.cursor().char_idx);
-        self.tabs[self.active_tab]
-            .buffer
-            .set_selection(anchor, head);
+            .unwrap_or(self.editor().cursor().char_idx);
+        self.editor_mut().set_selection(anchor, head);
     }
 }

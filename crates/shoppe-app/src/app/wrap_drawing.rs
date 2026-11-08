@@ -29,10 +29,10 @@ impl App {
         lh: f32,
         cw: f32,
     ) {
-        let Some(index) = self.document_index(view.document) else {
+        let Some(index) = self.resolve_document(view.document) else {
             return;
         };
-        let tab = &self.tabs[index];
+        let tab = &self.documents[index];
         let buffer = &tab.buffer;
         let tab_size = tab.indentation.tab_size;
         let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
@@ -59,7 +59,7 @@ impl App {
                 .map_or(text.len(), |(i, _)| i);
             let slice = &text[byte_start..byte_end];
             let row_x = text_x + segment.indent as f32 * cw;
-            for selection in &view.selections {
+            for selection in &view.selection_state.selections() {
                 let start = selection
                     .anchor
                     .min(selection.head)
@@ -127,7 +127,7 @@ impl App {
                 tab_size,
             );
         }
-        for selection in &view.selections {
+        for selection in &view.selection_state.selections() {
             let (row, column) = visual_lines::document_position(
                 buffer,
                 selection.head,
@@ -142,8 +142,8 @@ impl App {
             let y = rect.y + lh * 1.5 + (row - view.scroll_line) as f32 * lh;
             r.draw_rect(x, y, 2.0, lh, rgb(Theme::color(Theme::CURSOR, 0x202020)));
             if rect.id == self.editor_groups.focused()
-                && view.selections.first() == Some(selection)
-                && !self.ime_preedit.is_empty()
+                && view.selection_state.selections().first() == Some(selection)
+                && !view.ime_preedit.is_empty()
                 && self.local_search.is_none()
                 && self.quick_open.is_none()
                 && self.search_query.is_none()
@@ -151,7 +151,7 @@ impl App {
                 && !self.terminal_focused
             {
                 r.draw_text(
-                    &self.ime_preedit,
+                    &view.ime_preedit,
                     x,
                     y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -159,7 +159,7 @@ impl App {
                 r.draw_rect(
                     x,
                     y + lh - 2.0,
-                    self.ime_preedit.chars().count() as f32 * cw,
+                    view.ime_preedit.chars().count() as f32 * cw,
                     1.0,
                     rgb(Theme::color(Theme::CURSOR, 0x202020)),
                 );

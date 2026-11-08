@@ -6,7 +6,7 @@ impl App {
         let Some(scopes) = &snippet.scope else {
             return true;
         };
-        let language = match self.tabs[self.active_tab].language {
+        let language = match self.documents[self.active_document()].language {
             Some(Language::Rust) => "rust",
             Some(Language::Python) => "python",
             Some(Language::JavaScript) => "javascript",
@@ -53,7 +53,7 @@ impl App {
     }
 
     pub(super) fn handle_keybinding_stroke(&mut self, stroke: &str) -> bool {
-        let buffer = &self.tabs[self.active_tab].buffer;
+        let buffer = self.editor();
         let editor_focus = !self.terminal_focused
             && self.quick_open.is_none()
             && self.local_search.is_none()
@@ -137,8 +137,11 @@ impl App {
             _ => None,
         };
         if let Some(motion) = motion {
-            self.smart_selection_history.clear();
-            self.smart_selection_guard = None;
+            self.editor_groups
+                .active_view_mut()
+                .smart_selection_history
+                .clear();
+            self.editor_groups.active_view_mut().smart_selection_guard = None;
             let extend = command.ends_with("Select");
             if self.word_wrap
                 && matches!(motion, CursorMotion::Up | CursorMotion::Down)
@@ -146,9 +149,7 @@ impl App {
             {
                 return;
             }
-            self.tabs[self.active_tab]
-                .buffer
-                .move_selections(motion, extend);
+            self.editor_mut().move_selections(motion, extend);
             return;
         }
         match command {
@@ -197,7 +198,8 @@ impl App {
                         .iter()
                         .find(|s| s.prefix.starts_with(&query) && self.snippet_scope_matches(s))
                     {
-                        self.tabs[self.active_tab].buffer.insert(&snippet.body);
+                        let body = snippet.body.clone();
+                        self.editor_mut().insert(&body);
                     }
                 }
             }
@@ -223,17 +225,18 @@ impl App {
             | "find.toggleWholeWord"
             | "find.togglePreserveCase"
             | "find.toggleSelection" => self.execute_find_command(command),
-            "deleteLeft" => self.tabs[self.active_tab].buffer.backspace(),
-            "deleteRight" => self.tabs[self.active_tab].buffer.delete(),
-            "typeNewline" => self.tabs[self.active_tab].buffer.insert_newline(),
+            "deleteLeft" => self.editor_mut().backspace(),
+            "deleteRight" => self.editor_mut().delete(),
+            "typeNewline" => self.editor_mut().insert_newline(),
             "tab" => {
-                let tab = &mut self.tabs[self.active_tab];
+                let document = self.active_document();
+                let tab = &mut self.documents[document];
                 let indentation = if tab.indentation.insert_spaces {
                     " ".repeat(tab.indentation.tab_size)
                 } else {
                     "\t".into()
                 };
-                tab.buffer.insert(&indentation);
+                self.editor_mut().insert(&indentation);
             }
             "workbench.action.quickOpen" => self.start_quick_open(),
             "workbench.view.scm" => self.toggle_scm(),
@@ -302,12 +305,13 @@ impl App {
                 self.resize_terminal();
             }
             "editor.action.toggleIndentation" => {
-                let tab = &mut self.tabs[self.active_tab];
-                let mut target = tab.indentation;
+                let document = self.active_document();
+                let mut target = self.documents[document].indentation;
                 target.insert_spaces = !target.insert_spaces;
-                match tab.buffer.convert_indentation(target) {
+                let result = self.editor_mut().convert_indentation(target);
+                match result {
                     Ok(_) => {
-                        tab.indentation = target;
+                        self.documents[document].indentation = target;
                         self.status = if target.insert_spaces {
                             "Indentation converted to spaces"
                         } else {
@@ -332,41 +336,38 @@ impl App {
             "editor.action.smartSelect.expand" => self.smart_select(true),
             "editor.action.smartSelect.shrink" => self.smart_select(false),
             "editor.action.addSelectionToNextFindMatch" => {
-                self.tabs[self.active_tab].buffer.select_occurrences(false)
+                self.editor_mut().select_occurrences(false)
             }
-            "editor.action.selectHighlights" => {
-                self.tabs[self.active_tab].buffer.select_occurrences(true)
+            "editor.action.selectHighlights" => self.editor_mut().select_occurrences(true),
+            "editor.action.moveLinesUpAction" => self.editor_mut().move_line(-1),
+            "editor.action.moveLinesDownAction" => self.editor_mut().move_line(1),
+            "editor.action.copyLinesUpAction" => self.editor_mut().duplicate_line(false),
+            "editor.action.copyLinesDownAction" => self.editor_mut().duplicate_line(true),
+            "editor.action.deleteLines" => self.editor_mut().delete_line(),
+            "editor.action.sortLinesAscending" => self.editor_mut().sort_lines(),
+            "editor.action.removeDuplicateLines" => self.editor_mut().deduplicate_lines(),
+            "undo" => {
+                self.editor_mut().undo();
             }
-            "editor.action.moveLinesUpAction" => self.tabs[self.active_tab].buffer.move_line(-1),
-            "editor.action.moveLinesDownAction" => self.tabs[self.active_tab].buffer.move_line(1),
-            "editor.action.copyLinesUpAction" => {
-                self.tabs[self.active_tab].buffer.duplicate_line(false)
+            "redo" => {
+                self.editor_mut().redo();
             }
-            "editor.action.copyLinesDownAction" => {
-                self.tabs[self.active_tab].buffer.duplicate_line(true)
-            }
-            "editor.action.deleteLines" => self.tabs[self.active_tab].buffer.delete_line(),
-            "editor.action.sortLinesAscending" => self.tabs[self.active_tab].buffer.sort_lines(),
-            "editor.action.removeDuplicateLines" => {
-                self.tabs[self.active_tab].buffer.deduplicate_lines()
-            }
-            "undo" => self.tabs[self.active_tab].buffer.undo(),
-            "redo" => self.tabs[self.active_tab].buffer.redo(),
             "editor.action.selectAll" => {
-                let buffer = &mut self.tabs[self.active_tab].buffer;
-                buffer.set_selection(0, buffer.len_chars());
+                let mut buffer = self.editor_mut();
+                let len = buffer.len_chars();
+                buffer.set_selection(0, len);
             }
             "editor.action.clipboardCopyAction" | "editor.action.clipboardCutAction" => {
                 let mut clipboard = super::clipboard::SystemClipboard;
                 super::clipboard::copy_or_cut(
-                    &mut self.tabs[self.active_tab].buffer,
+                    &mut self.editor_mut(),
                     &mut clipboard,
                     command == "editor.action.clipboardCutAction",
                 );
             }
             "editor.action.clipboardPasteAction" => {
                 let mut clipboard = super::clipboard::SystemClipboard;
-                super::clipboard::paste(&mut self.tabs[self.active_tab].buffer, &mut clipboard);
+                super::clipboard::paste(&mut self.editor_mut(), &mut clipboard);
             }
             "editor.action.triggerSuggest" => {
                 self.completion_items.clear();
@@ -420,21 +421,31 @@ mod tests {
     fn commands_preserve_readonly_and_unsaved_close_protection() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("original\n");
-        app.tabs[0].buffer.set_read_only(true);
+        app.test_editor_mut(0).insert("original\n");
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.execute_custom_command("editor.action.deleteLines");
         app.execute_custom_command("undo");
-        assert_eq!(app.tabs[0].buffer.text(), "original\n");
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "original\n"
+        );
         app.execute_custom_command("workbench.action.closeActiveEditor");
         assert!(app.close_confirm);
-        assert_eq!(app.tabs[0].buffer.text(), "original\n");
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "original\n"
+        );
     }
 
     #[test]
     fn split_commands_create_groups_and_focus_cycles_between_them() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("shared");
+        app.test_editor_mut(0).insert("shared");
         app.execute_custom_command("workbench.action.splitEditorRight");
         let second = app.editor_groups.focused();
         assert_eq!(app.editor_groups.group_count(), 2);
@@ -448,17 +459,17 @@ mod tests {
         assert_eq!(app.editor_groups.focused(), rects[0].id);
         app.execute_custom_command("workbench.action.focusNextGroup");
         assert_eq!(app.editor_groups.focused(), second);
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "shared");
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "shared");
     }
 
     #[test]
     fn user_bindings_override_and_remove_default_commands_in_the_editor() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("hello");
+        app.test_editor_mut(0).insert("hello");
         assert!(app.handle_keybinding_stroke("ctrl+a"));
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("hello"));
-        app.tabs[0].buffer.set_selection(0, 0);
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("hello"));
+        app.test_editor_mut(0).set_selection(0, 0);
         app.keymap
             .reload(
                 r#"[
@@ -468,9 +479,9 @@ mod tests {
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("ctrl+a"));
-        assert!(app.tabs[0].buffer.selection().is_none());
+        assert!(app.test_editor(0).selection().is_none());
         assert!(app.handle_keybinding_stroke("ctrl+q"));
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("hello"));
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("hello"));
         assert!(app.handle_keybinding_stroke("ctrl+k"));
         assert!(app.handle_keybinding_stroke("ctrl+\\"));
         assert_eq!(app.editor_groups.group_count(), 2);
@@ -480,25 +491,25 @@ mod tests {
     fn navigation_bindings_extend_and_collapse_unicode_selections() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("aé🙂b");
-        app.tabs[0].buffer.set_selections(vec![
+        app.test_editor_mut(0).insert("aé🙂b");
+        app.test_editor_mut(0).set_selections(vec![
             shoppe_text::Selection { anchor: 1, head: 1 },
             shoppe_text::Selection { anchor: 3, head: 3 },
         ]);
         assert!(app.handle_keybinding_stroke("shift+right"));
-        assert_eq!(app.tabs[0].buffer.selected_texts(), ["é", "b"]);
+        assert_eq!(app.test_editor(0).selected_texts(), ["é", "b"]);
         assert!(app.handle_keybinding_stroke("left"));
         assert_eq!(
-            app.tabs[0].buffer.selections(),
+            app.test_editor(0).selections(),
             vec![
                 shoppe_text::Selection { anchor: 1, head: 1 },
                 shoppe_text::Selection { anchor: 3, head: 3 },
             ]
         );
         assert!(app.handle_keybinding_stroke("backspace"));
-        assert_eq!(app.tabs[0].buffer.text(), "éb");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "éb");
         assert!(app.handle_keybinding_stroke("ctrl+z"));
-        assert_eq!(app.tabs[0].buffer.text(), "aé🙂b");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "aé🙂b");
     }
 
     #[test]
@@ -516,7 +527,7 @@ mod tests {
         assert!(app.handle_keybinding_stroke("down"));
         assert_eq!(app.completion_index, 1);
         assert!(app.handle_keybinding_stroke("enter"));
-        assert_eq!(app.tabs[0].buffer.text(), "second");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "second");
         assert!(app.completion_items.is_empty());
     }
 
@@ -539,23 +550,23 @@ mod tests {
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("enter"));
-        assert_eq!(app.tabs[0].buffer.text(), "");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "");
         assert!(app.handle_keybinding_stroke("ctrl+j"));
-        assert_eq!(app.tabs[0].buffer.text(), "hello 🙂");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "hello 🙂");
         assert!(app.snippet_query.is_none());
-        app.tabs[0].buffer.undo();
-        assert_eq!(app.tabs[0].buffer.text(), "");
+        app.test_editor_mut(0).undo();
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "");
     }
 
     #[test]
     fn find_commands_respect_context_remapping_and_invalid_regex() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("é one one");
+        app.test_editor_mut(0).insert("é one one");
         app.open_local_search(true);
         app.local_search.as_mut().unwrap().query = "one".into();
         assert!(app.handle_keybinding_stroke("enter"));
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("one"));
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("one"));
         app.keymap
             .reload(
                 r#"[
@@ -568,9 +579,12 @@ mod tests {
         assert!(!app.local_search.as_ref().unwrap().options.regex);
         assert!(app.handle_keybinding_stroke("ctrl+r"));
         app.local_search.as_mut().unwrap().query = "(".into();
-        let revision = app.tabs[0].buffer.revision();
+        let revision = app.documents[app.document_at(0)].buffer.revision();
         assert!(app.handle_keybinding_stroke("ctrl+enter"));
-        assert_eq!(app.tabs[0].buffer.revision(), revision);
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.revision(),
+            revision
+        );
         assert!(app
             .local_search
             .as_ref()
@@ -596,7 +610,10 @@ mod tests {
         assert_eq!(app.quick_open.as_ref().unwrap().index, 1);
         assert!(app.handle_keybinding_stroke("enter"));
         assert!(app.quick_open.is_none());
-        assert_eq!(app.tabs[app.active_tab].buffer.path(), Some(b.as_path()));
+        assert_eq!(
+            app.documents[app.active_document()].buffer.path(),
+            Some(b.as_path())
+        );
         assert!(!app.accept_quick_open("", generation, vec![b]));
     }
 
@@ -625,23 +642,32 @@ mod tests {
     fn f8_visits_each_same_line_diagnostic_and_problems_include_schema_errors() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("one two");
-        app.tabs[0].buffer.set_selection(0, 0);
-        app.tabs[0].diagnostics = vec![diagnostic(0, 3, "first"), diagnostic(4, 7, "second")];
-        app.tabs[0].schema_diagnostics = vec![diagnostic(0, 1, "schema")];
+        app.test_editor_mut(0).insert("one two");
+        app.test_editor_mut(0).set_selection(0, 0);
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .diagnostics = vec![diagnostic(0, 3, "first"), diagnostic(4, 7, "second")];
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .schema_diagnostics = vec![diagnostic(0, 1, "schema")];
         assert_eq!(app.diagnostic_entries().len(), 3);
 
         assert!(app.handle_keybinding_stroke("f8"));
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 4);
+        assert_eq!(app.test_editor(0).cursor().char_idx, 4);
     }
 
     #[test]
     fn f8_cycles_diagnostics_that_share_the_same_range() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("problem");
-        app.tabs[0].buffer.set_selection(0, 0);
-        app.tabs[0].diagnostics = vec![diagnostic(0, 7, "first"), diagnostic(0, 7, "second")];
+        app.test_editor_mut(0).insert("problem");
+        app.test_editor_mut(0).set_selection(0, 0);
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .diagnostics = vec![diagnostic(0, 7, "first"), diagnostic(0, 7, "second")];
 
         app.navigate_diagnostic(1);
         assert_eq!(
@@ -668,24 +694,24 @@ mod tests {
         std::fs::write(&second, "second").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(first.clone());
-        app.tabs[0].buffer.set_selection(1, 1);
+        app.test_editor_mut(0).set_selection(1, 1);
         app.push_navigation_location();
-        app.tabs[0].buffer.set_selection(3, 3);
+        app.test_editor_mut(0).set_selection(3, 3);
         app.push_navigation_location();
         app.handle_keybinding_stroke("alt+left");
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 1);
+        assert_eq!(app.test_editor(0).cursor().char_idx, 1);
         app.handle_keybinding_stroke("alt+right");
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 3);
+        assert_eq!(app.test_editor(0).cursor().char_idx, 3);
 
         app.open_file(second.clone());
         app.handle_keybinding_stroke("ctrl+tab");
         assert_eq!(
-            app.tabs[app.active_tab].buffer.path(),
+            app.documents[app.active_document()].buffer.path(),
             Some(first.as_path())
         );
         app.handle_keybinding_stroke("ctrl+shift+tab");
         assert_eq!(
-            app.tabs[app.active_tab].buffer.path(),
+            app.documents[app.active_document()].buffer.path(),
             Some(second.as_path())
         );
     }
@@ -698,10 +724,16 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path.clone());
         app.close_active_tab();
-        assert!(app.tabs[app.active_tab].buffer.path().is_none());
+        assert!(app.documents[app.active_document()].buffer.path().is_none());
         assert!(app.handle_keybinding_stroke("ctrl+shift+t"));
-        assert_eq!(app.tabs[app.active_tab].buffer.path(), Some(path.as_path()));
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "restore me");
+        assert_eq!(
+            app.documents[app.active_document()].buffer.path(),
+            Some(path.as_path())
+        );
+        assert_eq!(
+            app.documents[app.active_document()].buffer.text(),
+            "restore me"
+        );
     }
 
     #[test]
@@ -713,9 +745,9 @@ mod tests {
             body: "fn name() {}".into(),
             scope: Some(vec!["rust".into()]),
         };
-        app.tabs[0].language = Some(Language::Rust);
+        app.documents.get_mut(app.document_at(0)).unwrap().language = Some(Language::Rust);
         assert!(app.snippet_scope_matches(&snippet));
-        app.tabs[0].language = Some(Language::Python);
+        app.documents.get_mut(app.document_at(0)).unwrap().language = Some(Language::Python);
         assert!(!app.snippet_scope_matches(&snippet));
     }
 
@@ -766,15 +798,18 @@ mod tests {
         app.quick_fix_actions = vec![action];
         app.apply_quick_fix();
         assert_eq!(
-            app.tabs[app.active_tab].buffer.text(),
+            app.documents[app.active_document()].buffer.text(),
             "aXb",
             "quick fix status: {}",
             app.status
         );
-        app.tabs[app.active_tab].buffer.undo();
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "a\u{1f642}b");
-        app.tabs[app.active_tab].buffer.redo();
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "aXb");
+        app.editor_mut().undo();
+        assert_eq!(
+            app.documents[app.active_document()].buffer.text(),
+            "a\u{1f642}b"
+        );
+        app.editor_mut().redo();
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "aXb");
     }
 
     #[test]
@@ -804,22 +839,22 @@ mod tests {
         app.quick_fix_actions = vec![action];
         app.apply_quick_fix();
         assert_eq!(app.status, "Quick fix applied");
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "Abc");
-        let tab = app
-            .tabs
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "Abc");
+        let (_, tab) = app
+            .documents
             .iter_mut()
-            .find(|tab| {
+            .find(|(_, tab)| {
                 tab.buffer
                     .path()
                     .is_some_and(|path| super::super::super::same_file_path(path, &second))
             })
             .unwrap();
         assert_eq!(tab.buffer.text(), "Xyz");
-        assert!(tab.buffer.is_dirty());
+        assert!(tab.is_dirty());
         assert_eq!(std::fs::read(&second).unwrap(), original);
         tab.buffer.undo();
         assert_eq!(tab.buffer.text(), "xyz");
-        assert!(!tab.buffer.is_dirty());
+        assert!(!tab.is_dirty());
     }
 
     #[test]
@@ -837,11 +872,12 @@ mod tests {
         })).unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
-        app.tabs[app.active_tab].lsp_revision = Some(0);
-        app.tabs[app.active_tab].buffer.insert("!");
+        let document = app.active_document();
+        app.documents[document].lsp_revision = Some(0);
+        app.editor_mut().insert("!");
         app.quick_fix_actions = vec![action];
         app.apply_quick_fix();
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "!abc");
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "!abc");
         assert!(app.status.contains("stale"), "{}", app.status);
     }
 
@@ -875,7 +911,7 @@ mod tests {
         app.open_file(first.clone());
         app.quick_fix_actions = vec![action];
         app.apply_quick_fix();
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "abc");
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "abc");
         assert_eq!(std::fs::read_to_string(second).unwrap(), "xyz");
         assert!(app.status.contains("overlap"), "{}", app.status);
     }
@@ -905,10 +941,17 @@ mod tests {
         .unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
-        app.tabs[app.active_tab].buffer.set_read_only(true);
+        app.documents
+            .get_mut(app.active_document())
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.quick_fix_actions = vec![action];
         app.apply_quick_fix();
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "original");
+        assert_eq!(
+            app.documents[app.active_document()].buffer.text(),
+            "original"
+        );
         assert!(app.status.contains("read-only"), "status: {}", app.status);
     }
 }

@@ -1,12 +1,12 @@
 use super::*;
 
 impl App {
-    pub(super) fn sync_lsp_document(&mut self, index: usize) {
-        if index == self.active_tab {
+    pub(super) fn sync_lsp_document(&mut self, index: DocumentId) {
+        if index == self.active_document() {
             self.sync_lsp_active();
             return;
         }
-        let tab = &mut self.tabs[index];
+        let tab = &mut self.documents[index];
         let Some(path) = tab.buffer.path().map(PathBuf::from) else {
             return;
         };
@@ -34,14 +34,18 @@ impl App {
 
     pub(crate) fn register_lsp_active(&mut self) {
         self.sync_schema_active();
-        let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) else {
+        let Some(path) = self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(PathBuf::from)
+        else {
             return;
         };
         if !self.lsp_manager.supports_path(&path) {
             return;
         }
-        let version = self.tabs[self.active_tab].buffer.revision() as i32;
-        let text = self.tabs[self.active_tab].buffer.text();
+        let version = self.documents[self.active_document()].buffer.revision() as i32;
+        let text = self.documents[self.active_document()].buffer.text();
         self.lsp_manager.open(
             &path,
             self.tree.root(),
@@ -49,13 +53,15 @@ impl App {
             version,
             self.lsp_sender.clone(),
         );
-        self.tabs[self.active_tab].lsp_revision = Some(version as u64);
+        let document = self.active_document();
+        self.documents[document].lsp_revision = Some(version as u64);
         self.request_inlay_hints();
     }
 
     pub(crate) fn sync_lsp_active(&mut self) {
         self.sync_schema_active();
-        let tab = &mut self.tabs[self.active_tab];
+        let document = self.active_document();
+        let tab = &mut self.documents[document];
         let Some(path) = tab.buffer.path().map(PathBuf::from) else {
             return;
         };
@@ -110,17 +116,15 @@ impl App {
                     diagnostics,
                 } => {
                     if let Some(path) = lsp::uri_to_path(&uri) {
-                        if let Some(index) = self.tabs.iter().position(|t| {
-                            t.buffer
-                                .path()
-                                .is_some_and(|open_path| same_file_path(open_path, &path))
-                        }) {
-                            let tab = &mut self.tabs[index];
+                        let index = self.documents.id_for_path(&path);
+                        let active = self.active_document();
+                        if let Some(index) = index {
+                            let tab = &mut self.documents[index];
                             if !lsp::diagnostics_are_current(tab.lsp_revision, version) {
                                 continue;
                             }
                             tab.diagnostics = diagnostics;
-                            if index == self.active_tab {
+                            if index == active {
                                 self.status = format!(
                                     "{} diagnostic(s)",
                                     tab.diagnostics.len() + tab.schema_diagnostics.len()
@@ -144,12 +148,10 @@ impl App {
                             self.open_file(path);
                             let line = location.range.start.line as usize;
                             let col = utf16_column_to_chars(
-                                &self.tabs[self.active_tab].buffer.line(line),
+                                &self.editor().line(line),
                                 location.range.start.character,
                             );
-                            self.tabs[self.active_tab]
-                                .buffer
-                                .set_cursor_line_col(line, col);
+                            self.editor_mut().set_cursor_line_col(line, col);
                             self.push_navigation_location();
                             self.status = "Definition opened".into();
                         }
@@ -163,7 +165,8 @@ impl App {
                 LspUiEvent::InlayHints { request_id, hints }
                     if request_id == self.inlay_request_id =>
                 {
-                    let tab = &mut self.tabs[self.active_tab];
+                    let document = self.active_document();
+                    let tab = &mut self.documents[document];
                     tab.inlay_hints = hints;
                     tab.inlay_revision = Some(tab.buffer.revision());
                 }
@@ -190,7 +193,7 @@ impl App {
                     diagnostics,
                 } => {
                     if let Some(path) = lsp::uri_to_path(&uri) {
-                        if let Some(tab) = self.tabs.iter_mut().find(|tab| {
+                        if let Some((_, tab)) = self.documents.iter_mut().find(|(_, tab)| {
                             tab.buffer
                                 .path()
                                 .is_some_and(|open| same_file_path(open, &path))
@@ -217,19 +220,19 @@ impl App {
     }
 
     pub(crate) fn active_lsp_position(&self) -> Option<(PathBuf, lsp_types::Position)> {
-        let tab = &self.tabs[self.active_tab];
+        let tab = &self.documents[self.active_document()];
         let path = tab.buffer.path()?.to_path_buf();
-        let char_index = tab.buffer.cursor().char_idx;
+        let char_index = self.editor().cursor().char_idx;
         Some((path, lsp::position_at_char(&tab.buffer.text(), char_index)))
     }
 
-    pub(crate) fn editor_state(&self) -> (usize, usize, u64, Vec<shoppe_text::Selection>) {
-        let tab = &self.tabs[self.active_tab];
+    pub(crate) fn editor_state(&self) -> (DocumentId, usize, u64, Vec<shoppe_text::Selection>) {
+        let tab = &self.documents[self.active_document()];
         (
-            self.active_tab,
-            tab.buffer.cursor().char_idx,
+            self.active_document(),
+            self.editor().cursor().char_idx,
             tab.buffer.revision(),
-            tab.buffer.selections(),
+            self.editor().selections(),
         )
     }
 
@@ -241,7 +244,7 @@ impl App {
     }
 
     pub(crate) fn request_inlay_hints(&mut self) {
-        let tab = &self.tabs[self.active_tab];
+        let tab = &self.documents[self.active_document()];
         let Some(path) = tab.buffer.path().map(PathBuf::from) else {
             return;
         };
@@ -251,7 +254,8 @@ impl App {
         let text = tab.buffer.text();
         let end = lsp::position_at_char(&text, text.chars().count());
         self.inlay_request_id = self.inlay_request_id.wrapping_add(1);
-        self.tabs[self.active_tab].inlay_revision = None;
+        let document = self.active_document();
+        self.documents[document].inlay_revision = None;
         self.lsp_manager.request_inlay_hints(
             &path,
             lsp_types::Position::new(0, 0),
@@ -261,8 +265,8 @@ impl App {
     }
 
     fn sync_schema_active(&mut self) {
-        let index = self.active_tab;
-        let tab = &self.tabs[index];
+        let index = self.active_document();
+        let tab = &self.documents[index];
         let Some(path) = tab.buffer.path().map(PathBuf::from) else {
             return;
         };
@@ -275,16 +279,16 @@ impl App {
             return;
         };
         manager.validate(path, text, revision);
-        self.tabs[index].schema_revision = Some(revision);
+        self.documents[index].schema_revision = Some(revision);
     }
 
     pub(crate) fn request_quick_fixes(&mut self) {
-        let Some(diagnostic) = self.tabs[self.active_tab]
+        let Some(diagnostic) = self.documents[self.active_document()]
             .diagnostics
             .iter()
             .find(|diagnostic| {
-                let tab = &self.tabs[self.active_tab];
-                let (line, col) = tab.buffer.cursor_line_col();
+                let tab = &self.documents[self.active_document()];
+                let (line, col) = self.editor().cursor_line_col();
                 let start_line = (diagnostic.range.start.line as usize)
                     .min(tab.buffer.len_lines().saturating_sub(1));
                 let end_line = (diagnostic.range.end.line as usize)
@@ -312,7 +316,11 @@ impl App {
     }
 
     pub(crate) fn request_quick_fixes_for(&mut self, diagnostic: lsp_types::Diagnostic) {
-        let Some(path) = self.tabs[self.active_tab].buffer.path().map(PathBuf::from) else {
+        let Some(path) = self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(PathBuf::from)
+        else {
             self.quick_fix_visible = false;
             self.status = "Save this file to use quick fixes".into();
             return;
@@ -335,12 +343,14 @@ impl App {
             self.status = "Save this file to use language features".into();
             return;
         };
-        if kind == "completion" && self.tabs[self.active_tab].language == Some(Language::Json) {
+        if kind == "completion"
+            && self.documents[self.active_document()].language == Some(Language::Json)
+        {
             self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
             if let Some(manager) = &self.json_schema_manager {
                 manager.complete(
                     path,
-                    self.tabs[self.active_tab].buffer.text(),
+                    self.documents[self.active_document()].buffer.text(),
                     position,
                     self.lsp_request_id,
                 );

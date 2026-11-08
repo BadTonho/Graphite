@@ -13,9 +13,7 @@ impl App {
             })
             .unwrap_or_default();
         for request in actions {
-            let before = self.begin_editor_event();
             self.process_accessibility_action(request);
-            self.end_editor_event(before);
         }
     }
 
@@ -42,7 +40,7 @@ impl App {
             if !views.iter().any(|view| view.document == document_id) {
                 return;
             }
-            let Some(document) = self.document_index(document_id) else {
+            let Some(document) = self.resolve_document(document_id) else {
                 return;
             };
             self.focus_editor_group(group);
@@ -57,18 +55,19 @@ impl App {
             match (request.action, request.data) {
                 (Action::Focus, _) => self.status = "Editor focused".into(),
                 (Action::SetValue, Some(ActionData::Value(value))) => {
-                    let b = &mut self.tabs[self.active_tab].buffer;
+                    let mut b = self.editor_mut();
                     if b.is_read_only() {
                         return;
                     }
-                    b.set_selection(0, b.len_chars());
+                    let len = b.len_chars();
+                    b.set_selection(0, len);
                     b.insert(&value);
                 }
                 (Action::ReplaceSelectedText, Some(ActionData::Value(value))) => {
-                    self.tabs[self.active_tab].buffer.insert(&value)
+                    self.editor_mut().insert(&value)
                 }
                 (Action::SetTextSelection, Some(ActionData::SetTextSelection(selection))) => {
-                    let b = &mut self.tabs[self.active_tab].buffer;
+                    let mut b = self.editor_mut();
                     let Some((anchor_group, anchor_line)) =
                         super::accessibility::line_target(selection.anchor.node)
                     else {
@@ -87,12 +86,12 @@ impl App {
                         return;
                     }
                     let anchor = accessibility_position_to_char(
-                        b,
+                        &b,
                         anchor_line,
                         selection.anchor.character_index,
                     );
                     let focus = accessibility_position_to_char(
-                        b,
+                        &b,
                         focus_line,
                         selection.focus.character_index,
                     );
@@ -113,7 +112,7 @@ impl App {
                 diagnostics
                     .iter()
                     .map(|(document, diagnostic)| {
-                        let name = self.tabs[*document]
+                        let name = self.documents[*document]
                             .buffer
                             .path()
                             .and_then(Path::file_name)
@@ -166,10 +165,10 @@ mod tests {
     fn accessible_groups_expose_focus_selections_and_unicode_text_runs() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("é🙂\r\nend");
-        app.tabs[0].buffer.set_selection(1, 2);
+        app.test_editor_mut(0).insert("é🙂\r\nend");
+        app.test_editor_mut(0).set_selection(1, 2);
         let right = app.split_editor_group(SplitDirection::Vertical);
-        app.tabs[0].buffer.set_selection(5, 6);
+        app.test_editor_mut(0).set_selection(5, 6);
         let tree = app.grouped_accessibility_tree(1200.0, 800.0, 20.0);
         assert_eq!(tree.focus, editor_node(right));
         let left_editor = &tree
@@ -196,16 +195,16 @@ mod tests {
         assert_eq!(run.character_lengths(), &[2, 4, 2]);
         app.process_accessibility_action(request(Action::Focus, editor_node(0), None));
         assert_eq!(app.editor_groups.focused(), 0);
-        assert_eq!(app.tabs[0].buffer.selection().unwrap().head, 2);
+        assert_eq!(app.test_editor(0).selection().unwrap().head, 2);
     }
 
     #[test]
     fn accessible_actions_focus_target_group_and_block_readonly_changes() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("é🙂\ntext");
+        app.test_editor_mut(0).insert("é🙂\ntext");
         let other = app.split_editor_group(SplitDirection::Horizontal);
-        let document_id = app.tabs[0].id;
+        let document_id = app.active_document();
         app.process_accessibility_action(request(Action::Click, tab_node(0, document_id), None));
         assert_eq!(app.editor_groups.focused(), 0);
         let selection = accesskit::TextSelection {
@@ -225,18 +224,22 @@ mod tests {
         ));
         assert_eq!(app.editor_groups.focused(), other);
         assert_eq!(
-            app.tabs[0].buffer.selection().unwrap(),
+            app.test_editor(0).selection().unwrap(),
             shoppe_text::Selection { anchor: 1, head: 5 }
         );
-        app.tabs[0].buffer.set_read_only(true);
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.process_accessibility_action(request(
             Action::SetValue,
             editor_node(other),
             Some(ActionData::Value("changed".into())),
         ));
-        assert_eq!(app.tabs[0].buffer.text(), "é🙂\ntext");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "é🙂\ntext");
         assert_eq!(
-            app.tabs[0].buffer.selection().unwrap(),
+            app.test_editor(0).selection().unwrap(),
             shoppe_text::Selection { anchor: 1, head: 5 }
         );
         let tree = app.grouped_accessibility_tree(1000., 800., 20.);
@@ -254,20 +257,20 @@ mod tests {
     fn accessible_edit_in_other_group_updates_positions_in_previous_group() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("abcd");
-        app.tabs[0].buffer.set_selection(3, 3);
+        app.test_editor_mut(0).insert("abcd");
+        app.test_editor_mut(0).set_selection(3, 3);
         let other = app.split_editor_group(SplitDirection::Vertical);
-        app.tabs[0].buffer.set_selection(1, 1);
+        app.test_editor_mut(0).set_selection(1, 1);
         assert!(app.focus_editor_group(0));
-        let before = app.begin_editor_event();
+
         app.process_accessibility_action(request(
             Action::ReplaceSelectedText,
             editor_node(other),
             Some(ActionData::Value("é".into())),
         ));
-        app.end_editor_event(before);
+
         assert!(app.focus_editor_group(0));
-        assert_eq!(app.tabs[0].buffer.text(), "aébcd");
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 4);
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "aébcd");
+        assert_eq!(app.test_editor(0).cursor().char_idx, 4);
     }
 }

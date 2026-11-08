@@ -7,6 +7,10 @@ use std::{
 };
 
 mod edit;
+mod editor;
+pub use editor::{
+    Editor, EditorRead, HistorySelection, SelectionState, TransactionOutcome, ViewId,
+};
 mod file_io;
 mod indentation;
 pub use indentation::Indentation;
@@ -107,7 +111,7 @@ pub enum MultiDocumentError {
 /// File operations and persistence are outside this in-memory atomicity guarantee.
 pub fn apply_document_transactions(
     transactions: &mut [DocumentTransaction<'_>],
-) -> Result<(), MultiDocumentError> {
+) -> Result<Vec<TransactionOutcome>, MultiDocumentError> {
     for (document, transaction) in transactions.iter().enumerate() {
         let actual = transaction.buffer.revision();
         if let Some(expected) = transaction.expected_revision {
@@ -124,13 +128,16 @@ pub fn apply_document_transactions(
             .validate_transaction(transaction.replacements)
             .map_err(|source| MultiDocumentError::InvalidTransaction { document, source })?;
     }
+    let mut outcomes = Vec::with_capacity(transactions.len());
     for transaction in transactions {
+        let revision = transaction.buffer.revision();
         transaction
             .buffer
             .apply_transaction(transaction.replacements)
             .expect("transaction validated while buffers were exclusively borrowed");
+        outcomes.push(transaction.buffer.outcome_since(revision));
     }
-    Ok(())
+    Ok(outcomes)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -151,12 +158,7 @@ struct Edit {
     start: usize,
     removed: String,
     inserted: String,
-    before: usize,
-    after: usize,
-    before_selection: Option<Selection>,
-    before_extra: Vec<Selection>,
-    after_extra: Vec<Selection>,
-    after_selection: Option<Selection>,
+    selections: Option<HistorySelection>,
     position_edits: Vec<PositionEdit>,
 }
 
@@ -164,11 +166,8 @@ struct Edit {
 pub struct Buffer {
     rope: Rope,
     path: Option<PathBuf>,
-    cursor: Cursor,
     dirty: bool,
     revision: u64,
-    selection: Option<Selection>,
-    extra_selections: Vec<Selection>,
     undo: Vec<Edit>,
     redo: Vec<Edit>,
     saved_text: Rope,
@@ -253,6 +252,18 @@ impl Buffer {
         self.read_only = read_only;
     }
 
+    pub(crate) fn line_content_len(&self, line: usize) -> usize {
+        let slice = self.rope.line(line);
+        let mut len = slice.len_chars();
+        if len > 0 && slice.char(len - 1) == '\n' {
+            len -= 1;
+            if len > 0 && slice.char(len - 1) == '\r' {
+                len -= 1;
+            }
+        }
+        len
+    }
+
     pub fn len_chars(&self) -> usize {
         self.rope.len_chars()
     }
@@ -286,31 +297,6 @@ impl Buffer {
     pub fn rope(&self) -> &Rope {
         &self.rope
     }
-
-    pub fn cursor(&self) -> Cursor {
-        self.cursor
-    }
-
-    pub fn selection(&self) -> Option<Selection> {
-        self.selection
-    }
-
-    pub fn selected_text(&self) -> Option<String> {
-        self.selection.map(|s| {
-            self.rope
-                .slice(s.anchor.min(s.head)..s.anchor.max(s.head))
-                .to_string()
-        })
-    }
-
-    pub fn set_selection(&mut self, anchor: usize, head: usize) {
-        let len = self.rope.len_chars();
-        let anchor = anchor.min(len);
-        let head = head.min(len);
-        self.selection = (anchor != head).then_some(Selection { anchor, head });
-        self.cursor.char_idx = head;
-        self.extra_selections.clear();
-    }
 }
 
 #[cfg(test)]
@@ -320,7 +306,9 @@ mod tests {
 
     #[test]
     fn insert_and_backspace() {
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("héllo");
         assert_eq!(b.text(), "héllo");
         b.backspace();
@@ -330,9 +318,11 @@ mod tests {
 
     #[test]
     fn vertical_movement_clamps_column() {
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("abcdef\nab\nabcd");
-        b.cursor.char_idx = 5; // line 0, col 5
+        b.state.cursor.char_idx = 5; // line 0, col 5
         b.move_vertical(1);
         assert_eq!(b.cursor_line_col(), (1, 2));
         b.move_vertical(1);
@@ -342,7 +332,9 @@ mod tests {
     #[test]
     fn save_roundtrip() {
         let path = std::env::temp_dir().join("shoppe_text_roundtrip.txt");
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("olá\nmundo");
         b.save_as(&path).unwrap();
         let loaded = Buffer::open(&path).unwrap();
@@ -353,7 +345,9 @@ mod tests {
 
     #[test]
     fn selection_replace_and_unicode_undo_redo() {
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("Olá, mundo");
         b.set_selection(5, 10);
         assert_eq!(b.selected_text().as_deref(), Some("mundo"));
@@ -368,7 +362,9 @@ mod tests {
     #[test]
     fn undo_to_saved_text_clears_dirty_state() {
         let path = std::env::temp_dir().join("shoppe_text_saved_state.txt");
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("saved");
         b.save_as(&path).unwrap();
         b.insert(" change");
@@ -380,7 +376,9 @@ mod tests {
 
     #[test]
     fn edit_delta_tracks_utf8_bytes_and_lines() {
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("a\nb");
         let first = b.last_change().unwrap();
         assert_eq!(
@@ -410,7 +408,9 @@ mod tests {
         let path = std::env::temp_dir().join(format!("shoppe_large_{}.txt", std::process::id()));
         let content = "Olá 🌎\r\n".repeat(150_000);
         fs::write(&path, &content).unwrap();
-        let mut b = Buffer::open(&path).unwrap();
+        let mut b_document = Buffer::open(&path).unwrap();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         assert_eq!(b.rope().len_bytes(), content.len());
         b.set_cursor_line_col(149_999, 2);
         b.insert("🙂");
@@ -429,7 +429,9 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("original.txt");
         fs::write(&path, "original").unwrap();
-        let mut b = Buffer::open(&path).unwrap();
+        let mut b_document = Buffer::open(&path).unwrap();
+        let mut b_view = crate::SelectionState::default();
+        let mut b = b_document.edit(&mut b_view, crate::ViewId(1));
         b.insert("é");
         let revision = b.revision();
         assert!(b.save_as(dir.join("missing").join("file")).is_err());

@@ -468,7 +468,7 @@ mod tests {
                 other => panic!("unexpected response: {other:?}"),
             }
         }
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "Xbc");
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "Xbc");
     }
 
     #[test]
@@ -509,7 +509,7 @@ mod tests {
             }
             app.lsp_queue.lock().unwrap().push(event);
             app.process_lsp_events();
-            assert_eq!(app.tabs[app.active_tab].buffer.text(), "abc");
+            assert_eq!(app.documents[app.active_document()].buffer.text(), "abc");
         }
     }
 

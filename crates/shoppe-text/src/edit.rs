@@ -86,36 +86,24 @@ impl Buffer {
         if removed == text {
             return;
         }
-        let before = self.cursor.char_idx;
-        let before_selection = self.selection;
-        let before_extra = self.extra_selections.clone();
         self.record_change(start, end, text);
         self.rope.remove(start..end);
         self.rope.insert(start, text);
-        let after = start + text.chars().count();
         let position_edits = vec![PositionEdit {
             start,
             end,
             inserted_chars: text.chars().count(),
         }];
         self.last_position_edits = position_edits.clone();
-        self.cursor.char_idx = after;
-        self.selection = None;
-        self.extra_selections.clear();
         self.undo.push(Edit {
             start,
             removed,
             inserted: text.to_owned(),
-            before,
-            after,
-            before_selection,
-            before_extra,
-            after_extra: Vec::new(),
-            after_selection: None,
+            selections: None,
             position_edits,
         });
         self.redo.clear();
-        self.dirty = true;
+        self.dirty = self.rope != self.saved_text;
         self.revision += 1;
     }
 
@@ -129,9 +117,6 @@ impl Buffer {
             self.record_change(edit.start, end, &edit.removed);
             self.rope.remove(edit.start..end);
             self.rope.insert(edit.start, &edit.removed);
-            self.cursor.char_idx = edit.before.min(self.rope.len_chars());
-            self.selection = edit.before_selection;
-            self.extra_selections = edit.before_extra.clone();
             self.dirty = self.rope != self.saved_text;
             self.redo.push(edit);
             self.revision += 1;
@@ -148,9 +133,6 @@ impl Buffer {
             self.record_change(edit.start, end, &edit.inserted);
             self.rope.remove(edit.start..end);
             self.rope.insert(edit.start, &edit.inserted);
-            self.cursor.char_idx = edit.after.min(self.rope.len_chars());
-            self.selection = edit.after_selection;
-            self.extra_selections = edit.after_extra.clone();
             self.dirty = self.rope != self.saved_text;
             self.undo.push(edit);
             self.revision += 1;

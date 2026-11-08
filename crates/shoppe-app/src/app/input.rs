@@ -144,7 +144,10 @@ impl App {
             }
             return;
         }
-        if !self.close_confirm && !self.ime_composing && self.handle_custom_keybinding(event) {
+        if !self.close_confirm
+            && !self.editor_groups.active_view_mut().ime_composing
+            && self.handle_custom_keybinding(event)
+        {
             return;
         }
         if self.terminal_focused {
@@ -159,7 +162,10 @@ impl App {
             self.handle_local_search(event);
             return;
         }
-        self.smart_selection_history.clear();
+        self.editor_groups
+            .active_view_mut()
+            .smart_selection_history
+            .clear();
         if !self.completion_items.is_empty() {
             self.completion_items.clear();
         }
@@ -173,7 +179,7 @@ impl App {
             if key == "s" {
                 self.save();
                 self.close_confirm = false;
-                if !self.tabs[self.active_tab].buffer.is_dirty() {
+                if !self.documents[self.active_document()].is_dirty() {
                     self.close_active_tab();
                 }
                 return;
@@ -186,7 +192,11 @@ impl App {
         }
         if self.snippet_query.is_some() {
             if !ctrl && !self.modifiers.alt_key() {
-                if let Some(text) = event.text.as_ref().filter(|_| !self.ime_composing) {
+                if let Some(text) = event
+                    .text
+                    .as_ref()
+                    .filter(|_| !self.editor_groups.active_view_mut().ime_composing)
+                {
                     if !text.chars().any(char::is_control) {
                         if let Some(q) = &mut self.snippet_query {
                             q.push_str(text);
@@ -197,7 +207,10 @@ impl App {
             return;
         }
         if self.search_query.is_some() {
-            if !self.ime_composing && !ctrl && !self.modifiers.alt_key() {
+            if !self.editor_groups.active_view_mut().ime_composing
+                && !ctrl
+                && !self.modifiers.alt_key()
+            {
                 if let Some(text) = &event.text {
                     if !text.chars().any(char::is_control) {
                         if let Some(q) = &mut self.search_query {
@@ -209,10 +222,10 @@ impl App {
             }
             return;
         }
-        if !ctrl && !self.ime_composing {
+        if !ctrl && !self.editor_groups.active_view_mut().ime_composing {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {
-                    self.tabs[self.active_tab].buffer.insert(text);
+                    self.editor_mut().insert(text);
                 }
             }
         }

@@ -2,10 +2,7 @@ use super::*;
 
 impl App {
     pub(crate) fn push_navigation_location(&mut self) {
-        let location = (
-            self.tabs[self.active_tab].id,
-            self.tabs[self.active_tab].buffer.cursor().char_idx,
-        );
+        let location = (self.active_document(), self.editor().cursor().char_idx);
         if let Some(index) = self.navigation_history_index {
             self.navigation_history.truncate(index + 1);
         }
@@ -37,10 +34,10 @@ impl App {
             };
             index = next;
             let (document_id, position) = self.navigation_history[index];
-            if let Some(document) = self.tabs.index_for(document_id) {
+            if let Some(document) = self.documents.resolve(document_id) {
                 self.navigation_history_index = Some(index);
                 self.activate_editor_document(document);
-                self.tabs[document].buffer.set_selection(position, position);
+                self.editor_mut().set_selection(position, position);
                 self.reveal_cursor = true;
                 self.status = "Cursor history".into();
                 return;
@@ -49,39 +46,40 @@ impl App {
     }
 
     pub(crate) fn switch_recent_document(&mut self, reverse: bool) {
-        let current_id = self.tabs[self.active_tab].id;
+        let current_id = self.active_document();
         let target = if reverse {
             self.recent_documents
                 .iter()
                 .rev()
-                .find(|id| **id != current_id && self.tabs.index_for(**id).is_some())
+                .find(|id| **id != current_id && self.documents.resolve(**id).is_some())
         } else {
             self.recent_documents
                 .iter()
-                .find(|id| **id != current_id && self.tabs.index_for(**id).is_some())
+                .find(|id| **id != current_id && self.documents.resolve(**id).is_some())
         }
-        .and_then(|id| self.tabs.index_for(*id));
+        .and_then(|id| self.documents.resolve(*id));
         if let Some(document) = target {
             self.activate_editor_document(document);
             self.status = "Switched to recent tab".into();
         }
     }
 
-    pub(crate) fn diagnostic_entries(&self) -> Vec<(usize, lsp_types::Diagnostic)> {
+    pub(crate) fn diagnostic_entries(&self) -> Vec<(DocumentId, lsp_types::Diagnostic)> {
         let mut entries = self
-            .tabs
+            .documents
             .iter()
-            .enumerate()
-            .flat_map(|(document, tab)| {
+            .flat_map(|tab| {
+                let document = tab.id;
                 tab.diagnostics
                     .iter()
                     .chain(&tab.schema_diagnostics)
                     .cloned()
                     .map(move |diagnostic| (document, diagnostic))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
         entries.sort_by_key(|(document, diagnostic)| {
-            let path = self.tabs[*document]
+            let path = self.documents[*document]
                 .buffer
                 .path()
                 .map(|path| path.to_string_lossy().to_lowercase())
@@ -96,32 +94,93 @@ impl App {
     }
 
     pub(crate) fn reopen_closed_tab(&mut self) {
-        let Some(tab) = self.closed_tabs.pop() else {
+        let Some(closed) = self.closed_tabs.pop() else {
             self.status = "No closed tab to reopen".into();
             return;
         };
-        self.snapshot_editor_view();
-        if self.tabs.len() == 1
-            && self.tabs[0].buffer.path().is_none()
-            && !self.tabs[0].buffer.is_dirty()
-            && self.editor_groups.group_count() == 1
-        {
-            self.tabs.replace(0, tab);
-            self.active_tab = 0;
-            self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
+        let existing = if let Some(document) = &closed.document {
+            document
+                .document
+                .buffer
+                .path()
+                .and_then(|path| self.documents.id_for_path(path))
         } else {
-            self.tabs.push(tab);
-            let document = self.tabs.len() - 1;
-            self.activate_editor_document(document);
+            (self.editor_groups.view_count(closed.id) > 0).then_some(closed.id)
+        };
+        if let Some(id) = existing {
+            self.activate_editor_document(id);
+            self.status = "Reopened closed tab".into();
+            return;
         }
-        self.snapshot_editor_view();
+        let replace_empty = self.documents.len() == 1
+            && self.documents[self.active_document()]
+                .buffer
+                .path()
+                .is_none()
+            && !self.documents[self.active_document()].is_dirty()
+            && self.editor_groups.group_count() == 1;
+        if replace_empty {
+            self.documents.remove(self.active_document());
+        }
+        let id = if let Some(document) = closed.document {
+            self.documents.reopen(document)
+        } else {
+            closed.id
+        };
+        if replace_empty {
+            self.editor_groups = super::editor_groups::EditorGroups::new(id);
+        } else {
+            self.activate_editor_document(id);
+        }
+        self.editor_groups.restore_closed_view(closed.view);
         self.register_lsp_active();
         self.push_navigation_location();
         self.status = "Reopened closed tab".into();
     }
 
+    /// Detach closed documents only after their pending operations release them.
+    pub(super) fn collect_closed_documents(&mut self) {
+        self.closed_tabs.retain(|closed| {
+            closed.document.is_some() || self.editor_groups.view_count(closed.id) == 0
+        });
+        for closed in &mut self.closed_tabs {
+            if closed.document.is_none() && !self.documents.is_retained(closed.id) {
+                if let Some(path) = self.documents[closed.id].buffer.path() {
+                    self.lsp_manager.close(path);
+                }
+                closed.document = Some(self.documents.remove(closed.id));
+            }
+        }
+    }
+
+    fn remember_closed_view(&mut self, view: super::editor_groups::View) {
+        let id = view.document;
+        let document = if self.documents.is_retained(id) {
+            None
+        } else {
+            if let Some(path) = self.documents[id].buffer.path() {
+                self.lsp_manager.close(path);
+            }
+            Some(self.documents.remove(id))
+        };
+        self.closed_tabs
+            .push(super::editor_groups::ClosedTab { id, document, view });
+        // A retained entry stays in the history until the operation finishes.
+        while self.closed_tabs.len() > 20 {
+            if let Some(index) = self
+                .closed_tabs
+                .iter()
+                .position(|closed| closed.document.is_some())
+            {
+                self.closed_tabs.remove(index);
+            } else {
+                break;
+            }
+        }
+    }
+
     pub(crate) fn request_window_close(&mut self) {
-        if self.tabs.iter().any(|tab| tab.buffer.is_dirty()) {
+        if self.documents.iter().any(|tab| tab.is_dirty()) {
             self.close_window_confirm = true;
             self.status = "Unsaved documents: S save all, D discard, Esc cancel".into();
         } else {
@@ -130,31 +189,18 @@ impl App {
     }
 
     pub(crate) fn save_all_before_close(&mut self) {
-        self.snapshot_editor_view();
-        let previous = self.active_tab;
-        for index in 0..self.tabs.len() {
-            if !self.tabs[index].buffer.is_dirty() {
+        let documents: Vec<_> = self.documents.ids().collect();
+        for document in documents {
+            if !self.documents[document].is_dirty() {
                 continue;
             }
-            self.active_tab = index;
-            let revision = self.tabs[index].buffer.revision();
-            self.save();
-            if self.tabs[index].buffer.revision() == revision + 1 {
-                self.editor_groups.remap_other_views(
-                    self.tabs[index].id,
-                    self.tabs[index].buffer.last_position_edits(),
-                );
-            }
-            if self.tabs[index].buffer.is_dirty() {
+            self.save_document(document);
+            if self.documents[document].is_dirty() {
                 self.status = format!("Cannot close: {}", self.status);
                 self.close_window_confirm = false;
-                self.active_tab = previous;
-                self.snapshot_editor_view();
                 return;
             }
         }
-        self.active_tab = previous;
-        self.snapshot_editor_view();
         self.close_window_confirm = false;
         self.exit_requested = true;
     }
@@ -164,13 +210,12 @@ impl App {
             return;
         };
         let text = item.insert_text.unwrap_or_else(|| item.label.clone());
-        let buffer = &mut self.tabs[self.active_tab].buffer;
-        if buffer.is_read_only() {
+        if self.editor().is_read_only() {
             self.completion_items.clear();
             self.status = "Read-only document".into();
             return;
         }
-        buffer.complete_word(&text);
+        self.editor_mut().complete_word(&text);
         self.completion_items.clear();
         self.hover_text = None;
     }
@@ -186,7 +231,7 @@ impl App {
                 .as_ref()
                 .and_then(|(document_id, range, message)| {
                     diagnostics.iter().position(|(document, diagnostic)| {
-                        self.tabs[*document].id == *document_id
+                        *document == *document_id
                             && diagnostic.range == *range
                             && diagnostic.message == *message
                     })
@@ -198,21 +243,21 @@ impl App {
                 (index + diagnostics.len() - 1) % diagnostics.len()
             }
         } else {
-            let current_path = self.tabs[self.active_tab]
+            let current_path = self.documents[self.active_document()]
                 .buffer
                 .path()
                 .map(|path| path.to_string_lossy().to_lowercase())
                 .unwrap_or_default();
-            let current_position = self.tabs[self.active_tab].buffer.cursor().char_idx;
-            let current_line = self.tabs[self.active_tab]
+            let current_position = self.editor().cursor().char_idx;
+            let current_line = self.documents[self.active_document()]
                 .buffer
                 .rope()
                 .char_to_line(current_position);
             let current_col = current_position
-                - self.tabs[self.active_tab]
+                - self.documents[self.active_document()]
                     .buffer
                     .line_start_char(current_line);
-            let current_utf16_col = self.tabs[self.active_tab]
+            let current_utf16_col = self.documents[self.active_document()]
                 .buffer
                 .line(current_line)
                 .chars()
@@ -224,7 +269,7 @@ impl App {
                 diagnostics
                     .iter()
                     .position(|(document, diagnostic)| {
-                        let path = self.tabs[*document]
+                        let path = self.documents[*document]
                             .buffer
                             .path()
                             .map(|path| path.to_string_lossy().to_lowercase())
@@ -240,7 +285,7 @@ impl App {
                 diagnostics
                     .iter()
                     .rposition(|(document, diagnostic)| {
-                        let path = self.tabs[*document]
+                        let path = self.documents[*document]
                             .buffer
                             .path()
                             .map(|path| path.to_string_lossy().to_lowercase())
@@ -255,24 +300,20 @@ impl App {
             }
         };
         let (document, diagnostic) = diagnostics[next_index].clone();
-        let document_id = self.tabs[document].id;
+        let document_id = document;
         self.diagnostic_navigation =
             Some((document_id, diagnostic.range, diagnostic.message.clone()));
         self.push_navigation_location();
         self.activate_editor_document(document);
         let line = (diagnostic.range.start.line as usize).min(
-            self.tabs[self.active_tab]
+            self.documents[self.active_document()]
                 .buffer
                 .len_lines()
                 .saturating_sub(1),
         );
-        let col = utf16_column_to_chars(
-            &self.tabs[self.active_tab].buffer.line(line),
-            diagnostic.range.start.character,
-        );
-        self.tabs[self.active_tab]
-            .buffer
-            .set_cursor_line_col(line, col);
+        let col =
+            utf16_column_to_chars(&self.editor().line(line), diagnostic.range.start.character);
+        self.editor_mut().set_cursor_line_col(line, col);
         self.status = diagnostic.message.clone();
         self.push_navigation_location();
         self.request_quick_fixes_for(diagnostic);
@@ -280,12 +321,12 @@ impl App {
 
     pub(crate) fn remember_diagnostic(
         &mut self,
-        document: usize,
+        document: DocumentId,
         diagnostic: &lsp_types::Diagnostic,
     ) {
-        if let Some(tab) = self.tabs.get(document) {
+        if self.documents.get(document).is_some() {
             self.diagnostic_navigation =
-                Some((tab.id, diagnostic.range, diagnostic.message.clone()));
+                Some((document, diagnostic.range, diagnostic.message.clone()));
         }
     }
 
@@ -313,7 +354,7 @@ impl App {
         self.quick_fix_visible = false;
         self.quick_fix_actions.clear();
         if let Some(command) = command {
-            let sent = self.tabs[self.active_tab]
+            let sent = self.documents[self.active_document()]
                 .buffer
                 .path()
                 .is_some_and(|path| {
@@ -335,61 +376,38 @@ impl App {
     }
 
     pub(crate) fn close_active_tab(&mut self) {
-        self.smart_selection_history.clear();
-        self.smart_selection_guard = None;
-        self.snapshot_editor_view();
-        let document = self.active_tab;
-        let active_selections = self.editor_groups.active_view().selections.clone();
-        self.tabs[document].buffer.set_selections(active_selections);
-        let last_view = self.editor_groups.view_count(self.tabs[document].id) == 1;
-        if self.editor_groups.close_active(false) {
-            if last_view {
-                if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
-                    self.lsp_manager.close(&path);
-                }
-                let closed = self.tabs.remove(document);
-                let closed_id = closed.id;
-                self.closed_tabs.push(closed);
-                if self.closed_tabs.len() > 20 {
-                    self.closed_tabs.remove(0);
-                }
-                self.editor_groups.forget_document(closed_id);
-            }
-            self.restore_editor_view();
-        } else {
-            if let Some(path) = self.tabs[document].buffer.path().map(PathBuf::from) {
-                self.lsp_manager.close(&path);
-            }
-            let closed = self.tabs.replace(
-                document,
-                Tab {
-                    id: next_document_id(),
-                    buffer: Buffer::new(),
-                    scroll_line: 0,
-                    language: None,
-                    highlights: None,
-                    sticky_headers_cache: None,
-                    highlighter: IncrementalHighlighter::new(),
-                    diagnostics: Vec::new(),
-                    inlay_hints: Vec::new(),
-                    inlay_revision: None,
-                    schema_diagnostics: Vec::new(),
-                    schema_revision: None,
-                    lsp_revision: None,
-                    indentation: shoppe_text::Indentation {
-                        insert_spaces: self.insert_spaces,
-                        tab_size: self.tab_size,
-                    },
-                    encoding: crate::file_format::Encoding::Utf8,
-                    line_ending: crate::file_format::LineEnding::Lf,
+        let view = self.editor_groups.active_view().clone();
+        let document = view.document;
+        let last_view = self.editor_groups.view_count(document) == 1;
+        if !self.editor_groups.close_active(false) {
+            let replacement = self.documents.push(Document {
+                buffer: Buffer::new(),
+
+                language: None,
+                highlights: None,
+                sticky_headers_cache: None,
+                highlighter: IncrementalHighlighter::new(),
+                diagnostics: Vec::new(),
+                inlay_hints: Vec::new(),
+                inlay_revision: None,
+                schema_diagnostics: Vec::new(),
+                schema_revision: None,
+                lsp_revision: None,
+                indentation: shoppe_text::Indentation {
+                    insert_spaces: self.insert_spaces,
+                    tab_size: self.tab_size,
                 },
-            );
-            self.closed_tabs.push(closed);
-            if self.closed_tabs.len() > 20 {
-                self.closed_tabs.remove(0);
-            }
-            self.editor_groups.active_view_mut().document = self.tabs[document].id;
-            self.snapshot_editor_view();
+                saved_format: (
+                    crate::file_format::Encoding::Utf8,
+                    crate::file_format::LineEnding::Lf,
+                ),
+                encoding: crate::file_format::Encoding::Utf8,
+                line_ending: crate::file_format::LineEnding::Lf,
+            });
+            self.editor_groups = super::editor_groups::EditorGroups::new(replacement);
+        }
+        if last_view {
+            self.remember_closed_view(view);
         }
         self.status = "Tab closed".into();
         self.check_cli_waiters();

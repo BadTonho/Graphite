@@ -62,7 +62,10 @@ impl App {
         let Some(state) = &mut self.quick_open else {
             return;
         };
-        if !self.ime_composing && !self.modifiers.control_key() && !self.modifiers.alt_key() {
+        if !self.editor_groups.active_view_mut().ime_composing
+            && !self.modifiers.control_key()
+            && !self.modifiers.alt_key()
+        {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {
                     state.query.push_str(text);

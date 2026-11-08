@@ -15,11 +15,8 @@ impl Buffer {
             saved_text: rope.clone(),
             rope,
             path: Some(path.to_path_buf()),
-            cursor: Cursor::default(),
             dirty: false,
             revision: 0,
-            selection: None,
-            extra_selections: Vec::new(),
             undo: Vec::new(),
             redo: Vec::new(),
             last_change: None,
@@ -76,7 +73,7 @@ impl Buffer {
             .clone();
         let edits = self.trailing_whitespace_edits();
         Self::write_bytes_to_path(&path, bytes)?;
-        self.apply_preserving_selections(&edits)
+        self.apply_transaction(&edits)
             .expect("validated trimming edits");
         self.saved_text = self.rope.clone();
         self.dirty = false;
@@ -119,7 +116,7 @@ impl Buffer {
             trimmed.remove(edit.range.clone());
         }
         Self::write_rope_to_path(&path, &trimmed)?;
-        self.apply_preserving_selections(&edits)
+        self.apply_transaction(&edits)
             .expect("validated trimming edits");
         self.saved_text = self.rope.clone();
         self.dirty = false;
