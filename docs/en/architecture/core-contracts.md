@@ -10,9 +10,9 @@ This document proposes three contracts: **document/view**, **commands and contex
 
 `Buffer::apply_transaction` already validates disjoint replacements, and effective replacements, undo and redo update its revision in `crates/graphite-text/src/edit.rs`. These are useful foundations, not proof that every future document operation satisfies the proposed contract.
 
-`graphite-text` also provides pre-validation and an in-memory multi-buffer transaction with optional expected revisions. It does not yet integrate with the editor's workspace edits or provide disk atomicity; the migration below remains necessary.
+`graphite-text` provides pre-validation and an in-memory multi-buffer transaction with optional expected revisions. Quick fixes use this transaction; disk persistence remains outside its atomicity guarantee.
 
-The quick-fix path pre-validates text edits, rejects unsupported resource operations and invalid UTF-16 positions, and checks supplied LSP document versions. It still writes closed files separately, so its workspace edits are not yet atomic across disk writes and open documents.
+The quick-fix path prepares all text edits, rejects unsupported resource operations and invalid UTF-16 positions, and checks supplied LSP document versions. Previously closed targets are opened as dirty documents in memory without writing the files. Other document and view migrations below remain necessary.
 
 ### Target contract
 

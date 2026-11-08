@@ -29,4 +29,5 @@ mod terminal_ui;
 pub(super) mod theme;
 mod visual_lines;
 mod window_events;
+mod workspace_edit;
 mod wrap_drawing;

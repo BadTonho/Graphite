@@ -10,9 +10,9 @@ Este documento propõe três contratos: **documento/view**, **comandos e context
 
 `Buffer::apply_transaction` já valida substituições não sobrepostas, e substituições efetivas, undo e redo atualizam sua revisão em `crates/graphite-text/src/edit.rs`. Isso oferece uma base útil, mas não demonstra que toda operação futura de documento satisfaça o contrato proposto.
 
-`graphite-text` também oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Ela ainda não está integrada às edições de workspace do editor nem garante atomicidade em disco; a migração abaixo continua necessária.
+`graphite-text` oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Quick fixes usam essa transação; a persistência em disco permanece fora de sua garantia de atomicidade.
 
-O caminho de quick fix pré-valida edições de texto, rejeita operações de recursos não suportadas e posições UTF-16 inválidas e verifica as versões de documento fornecidas pelo LSP. Ele ainda grava arquivos fechados separadamente, portanto suas edições de workspace não são atômicas entre gravações em disco e documentos abertos.
+O caminho de quick fix prepara todas as edições de texto, rejeita operações de recursos não suportadas e posições UTF-16 inválidas e verifica as versões de documento fornecidas pelo LSP. Alvos antes fechados são abertos como documentos alterados em memória, sem gravação dos arquivos. As demais migrações de documento e view abaixo continuam necessárias.
 
 ### Contrato alvo
 

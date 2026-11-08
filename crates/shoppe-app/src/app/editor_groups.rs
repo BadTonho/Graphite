@@ -113,6 +113,18 @@ impl EditorGroups {
         let group = self.group_mut(id).expect("focused group exists");
         &mut group.tabs[group.active]
     }
+    /// Add a background document to the focused group without changing focus.
+    pub(super) fn add_background_document(&mut self, document: usize) {
+        let id = self.focused;
+        let group = self.group_mut(id).expect("focused group exists");
+        if !group.tabs.iter().any(|view| view.document == document) {
+            group.tabs.push(View {
+                document,
+                selections: vec![Selection::default()],
+                scroll_line: 0,
+            });
+        }
+    }
     pub(super) fn views(&self, id: u64) -> Option<(&[View], usize)> {
         self.group(id)
             .map(|group| (group.tabs.as_slice(), group.active))
