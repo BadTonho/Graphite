@@ -86,141 +86,222 @@ impl App {
             .map(|mut q| std::mem::take(&mut *q))
             .unwrap_or_default();
         for event in events {
-            match event {
-                LspUiEvent::Status(status) => self.status = status,
-                LspUiEvent::ApplyEdit {
-                    id,
-                    edit,
-                    reply,
-                    active,
-                } => {
-                    if !active.swap(false, std::sync::atomic::Ordering::AcqRel) {
-                        continue;
-                    }
-                    let result = self.apply_workspace_edit(edit);
-                    let payload = match result {
-                        Ok(()) => serde_json::json!({ "applied": true }),
-                        Err(error) => {
-                            serde_json::json!({ "applied": false, "failureReason": error })
-                        }
-                    };
-                    let _ = reply.send(lsp_server::Response {
-                        id,
-                        result: Some(payload),
-                        error: None,
-                    });
+            if let LspUiEvent::ServerStopped { extension } = &event {
+                let executions: Vec<_> = self
+                    .command_runtime
+                    .lsp_jobs
+                    .values()
+                    .filter(|(_, path)| {
+                        self.lsp_manager.server_extension_for(path).as_ref() == Some(extension)
+                    })
+                    .map(|(job, _)| job.id)
+                    .collect();
+                for execution in executions {
+                    self.finish_command(
+                        execution,
+                        Err(super::command_execution::CommandError::Failed(
+                            "Language server stopped".into(),
+                        )),
+                    );
                 }
-                LspUiEvent::Diagnostics {
-                    uri,
-                    version,
-                    diagnostics,
-                } => {
-                    if let Some(path) = lsp::uri_to_path(&uri) {
-                        let index = self.documents.id_for_path(&path);
-                        let active = self.active_document();
-                        if let Some(index) = index {
-                            let tab = &mut self.documents[index];
-                            if !lsp::diagnostics_are_current(tab.lsp_revision, version) {
-                                continue;
-                            }
-                            tab.diagnostics = diagnostics;
-                            if index == active {
-                                self.status = format!(
-                                    "{} diagnostic(s)",
-                                    tab.diagnostics.len() + tab.schema_diagnostics.len()
-                                );
-                            }
-                        }
-                    }
-                }
-                LspUiEvent::Completion { request_id, items }
-                    if request_id == self.lsp_request_id =>
-                {
-                    self.completion_items = items;
-                    self.completion_index = 0;
-                }
-                LspUiEvent::Definition {
-                    request_id,
-                    location,
-                } if request_id == self.lsp_request_id => {
-                    if let Some(location) = location {
-                        if let Some(path) = lsp::uri_to_path(location.uri.as_str()) {
-                            self.open_file(path);
-                            let line = location.range.start.line as usize;
-                            let col = utf16_column_to_chars(
-                                &self.editor().line(line),
-                                location.range.start.character,
-                            );
-                            self.editor_mut().set_cursor_line_col(line, col);
-                            self.push_navigation_location();
-                            self.status = "Definition opened".into();
-                        }
-                    } else {
-                        self.status = "No definition found".into();
-                    }
-                }
-                LspUiEvent::Hover { request_id, text } if request_id == self.lsp_request_id => {
-                    self.hover_text = text;
-                }
-                LspUiEvent::InlayHints { request_id, hints }
-                    if request_id == self.inlay_request_id =>
-                {
-                    let document = self.active_document();
-                    let tab = &mut self.documents[document];
-                    tab.inlay_hints = hints;
-                    tab.inlay_revision = Some(tab.buffer.revision());
-                }
-                LspUiEvent::CodeActions {
-                    request_id,
-                    actions,
-                    error,
-                } if request_id == self.lsp_request_id => {
-                    self.quick_fix_actions = actions;
-                    self.quick_fix_index = 0;
-                    self.quick_fix_visible = true;
-                    self.status = if let Some(error) = error {
-                        self.quick_fix_visible = false;
-                        format!("Quick fix request failed: {error}")
-                    } else if self.quick_fix_actions.is_empty() {
-                        "No quick fixes available".into()
-                    } else {
-                        "Quick Fix: Up/Down to choose, Enter to apply, Esc to close".into()
-                    };
-                }
-                LspUiEvent::JsonDiagnostics {
-                    uri,
-                    revision,
-                    diagnostics,
-                } => {
-                    if let Some(path) = lsp::uri_to_path(&uri) {
-                        if let Some((_, tab)) = self.documents.iter_mut().find(|(_, tab)| {
-                            tab.buffer
-                                .path()
-                                .is_some_and(|open| same_file_path(open, &path))
-                        }) {
-                            if tab.buffer.revision() == revision {
-                                tab.schema_revision = Some(revision);
-                                tab.schema_diagnostics = diagnostics;
-                            }
-                        }
-                    }
-                }
-                LspUiEvent::JsonCompletion { request_id, items }
-                    if request_id == self.lsp_request_id =>
-                {
-                    self.completion_items = items;
-                    self.completion_index = 0;
-                    if self.completion_items.is_empty() {
-                        self.status = "No schema completions available".into();
-                    }
-                }
-                _ => {}
+                continue;
             }
+            let request = match &event {
+                LspUiEvent::Completion { request_id, .. }
+                | LspUiEvent::Definition { request_id, .. }
+                | LspUiEvent::Hover { request_id, .. }
+                | LspUiEvent::JsonCompletion { request_id, .. }
+                | LspUiEvent::CodeActions { request_id, .. }
+                | LspUiEvent::RequestFailed { request_id, .. }
+                | LspUiEvent::ServerCommandCompleted { request_id, .. } => Some(*request_id),
+                _ => None,
+            };
+            if let Some(request) = request {
+                if let Some((job, _)) = self.command_runtime.lsp_jobs.remove(&request) {
+                    let result = match &event {
+                        LspUiEvent::RequestFailed { message, .. } => Err(
+                            super::command_execution::CommandError::Failed(message.clone()),
+                        ),
+                        LspUiEvent::CodeActions {
+                            error: Some(message),
+                            ..
+                        } => Err(super::command_execution::CommandError::Failed(
+                            message.clone(),
+                        )),
+                        LspUiEvent::ServerCommandCompleted { result, .. } => result
+                            .clone()
+                            .map_err(super::command_execution::CommandError::Failed),
+                        LspUiEvent::Completion { items, .. }
+                        | LspUiEvent::JsonCompletion { items, .. } => {
+                            Ok(serde_json::to_value(items).unwrap())
+                        }
+                        LspUiEvent::Hover { text, .. } => Ok(serde_json::to_value(text).unwrap()),
+                        LspUiEvent::Definition { location, .. } => {
+                            Ok(serde_json::to_value(location).unwrap())
+                        }
+                        LspUiEvent::CodeActions { actions, .. } => {
+                            Ok(serde_json::to_value(actions).unwrap())
+                        }
+                        _ => Ok(serde_json::Value::Null),
+                    };
+                    self.accept_command_event(
+                        job.id,
+                        Some(Box::new(UserEvent::LspCommandEvent(Box::new(event)))),
+                        result,
+                    );
+                    continue;
+                }
+                // Every user query has an execution. Missing correlation means
+                // it finished or was cancelled; late/duplicate replies are inert.
+                continue;
+            }
+            self.apply_lsp_ui_event(event, false);
+        }
+    }
+    pub(crate) fn apply_lsp_ui_event(&mut self, event: LspUiEvent, tracked: bool) {
+        match event {
+            LspUiEvent::ServerStopped { .. } => {}
+            LspUiEvent::RequestFailed { message, .. } => self.status = message,
+            LspUiEvent::ServerCommandCompleted { result, .. } => {
+                self.status = result
+                    .map(|_| "Server command completed".to_string())
+                    .unwrap_or_else(|e| format!("Server command failed: {e}"));
+            }
+            LspUiEvent::Status(status) => self.status = status,
+            LspUiEvent::ApplyEdit {
+                id,
+                edit,
+                reply,
+                active,
+            } => {
+                if !active.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                    return;
+                }
+                let result = self.apply_workspace_edit(edit);
+                let payload = match result {
+                    Ok(()) => serde_json::json!({ "applied": true }),
+                    Err(error) => {
+                        serde_json::json!({ "applied": false, "failureReason": error })
+                    }
+                };
+                let _ = reply.send(lsp_server::Response {
+                    id,
+                    result: Some(payload),
+                    error: None,
+                });
+            }
+            LspUiEvent::Diagnostics {
+                uri,
+                version,
+                diagnostics,
+            } => {
+                if let Some(path) = lsp::uri_to_path(&uri) {
+                    let index = self.documents.id_for_path(&path);
+                    let active = self.command_document();
+                    if let Some(index) = index {
+                        let tab = &mut self.documents[index];
+                        if !lsp::diagnostics_are_current(tab.lsp_revision, version) {
+                            return;
+                        }
+                        tab.diagnostics = diagnostics;
+                        if index == active {
+                            self.status = format!(
+                                "{} diagnostic(s)",
+                                tab.diagnostics.len() + tab.schema_diagnostics.len()
+                            );
+                        }
+                    }
+                }
+            }
+            LspUiEvent::Completion { request_id, items }
+                if (tracked || request_id == self.lsp_request_id) =>
+            {
+                self.completion_items = items;
+                self.completion_index = 0;
+            }
+            LspUiEvent::Definition {
+                request_id,
+                location,
+            } if (tracked || request_id == self.lsp_request_id) => {
+                if let Some(location) = location {
+                    if let Some(path) = lsp::uri_to_path(location.uri.as_str()) {
+                        self.open_file(path);
+                        let line = location.range.start.line as usize;
+                        let col = utf16_column_to_chars(
+                            &self.editor().line(line),
+                            location.range.start.character,
+                        );
+                        self.editor_mut().set_cursor_line_col(line, col);
+                        self.push_navigation_location();
+                        self.status = "Definition opened".into();
+                    }
+                } else {
+                    self.status = "No definition found".into();
+                }
+            }
+            LspUiEvent::Hover { request_id, text }
+                if (tracked || request_id == self.lsp_request_id) =>
+            {
+                self.hover_text = text;
+            }
+            LspUiEvent::InlayHints { request_id, hints }
+                if (tracked || request_id == self.inlay_request_id) =>
+            {
+                let document = self.command_document();
+                let tab = &mut self.documents[document];
+                tab.inlay_hints = hints;
+                tab.inlay_revision = Some(tab.buffer.revision());
+            }
+            LspUiEvent::CodeActions {
+                request_id,
+                actions,
+                error,
+            } if (tracked || request_id == self.lsp_request_id) => {
+                self.quick_fix_actions = actions;
+                self.quick_fix_index = 0;
+                self.quick_fix_visible = true;
+                self.status = if let Some(error) = error {
+                    self.quick_fix_visible = false;
+                    format!("Quick fix request failed: {error}")
+                } else if self.quick_fix_actions.is_empty() {
+                    "No quick fixes available".into()
+                } else {
+                    "Quick Fix: Up/Down to choose, Enter to apply, Esc to close".into()
+                };
+            }
+            LspUiEvent::JsonDiagnostics {
+                uri,
+                revision,
+                diagnostics,
+            } => {
+                if let Some(path) = lsp::uri_to_path(&uri) {
+                    if let Some((_, tab)) = self.documents.iter_mut().find(|(_, tab)| {
+                        tab.buffer
+                            .path()
+                            .is_some_and(|open| same_file_path(open, &path))
+                    }) {
+                        if tab.buffer.revision() == revision {
+                            tab.schema_revision = Some(revision);
+                            tab.schema_diagnostics = diagnostics;
+                        }
+                    }
+                }
+            }
+            LspUiEvent::JsonCompletion { request_id, items }
+                if (tracked || request_id == self.lsp_request_id) =>
+            {
+                self.completion_items = items;
+                self.completion_index = 0;
+                if self.completion_items.is_empty() {
+                    self.status = "No schema completions available".into();
+                }
+            }
+            _ => {}
         }
     }
 
     pub(crate) fn active_lsp_position(&self) -> Option<(PathBuf, lsp_types::Position)> {
-        let tab = &self.documents[self.active_document()];
+        let tab = &self.documents[self.command_document()];
         let path = tab.buffer.path()?.to_path_buf();
         let char_index = self.editor().cursor().char_idx;
         Some((path, lsp::position_at_char(&tab.buffer.text(), char_index)))
@@ -283,11 +364,11 @@ impl App {
     }
 
     pub(crate) fn request_quick_fixes(&mut self) {
-        let Some(diagnostic) = self.documents[self.active_document()]
+        let Some(diagnostic) = self.documents[self.command_document()]
             .diagnostics
             .iter()
             .find(|diagnostic| {
-                let tab = &self.documents[self.active_document()];
+                let tab = &self.documents[self.command_document()];
                 let (line, col) = self.editor().cursor_line_col();
                 let start_line = (diagnostic.range.start.line as usize)
                     .min(tab.buffer.len_lines().saturating_sub(1));
@@ -316,7 +397,7 @@ impl App {
     }
 
     pub(crate) fn request_quick_fixes_for(&mut self, diagnostic: lsp_types::Diagnostic) {
-        let Some(path) = self.documents[self.active_document()]
+        let Some(path) = self.documents[self.command_document()]
             .buffer
             .path()
             .map(PathBuf::from)
@@ -326,16 +407,24 @@ impl App {
             return;
         };
         self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
+        self.context_keys
+            .close_widget(super::context_keys::WidgetKind::QuickFix);
         self.quick_fix_actions.clear();
         self.quick_fix_index = 0;
         self.quick_fix_visible = true;
         self.status = "Loading quick fixes…".into();
-        self.lsp_manager.request_code_actions(
+        self.track_lsp_command(self.lsp_request_id, &path);
+        let sent = self.lsp_manager.request_code_actions(
             &path,
             diagnostic.range,
             vec![diagnostic],
             self.lsp_request_id,
         );
+        if !sent {
+            self.fail_current_command(super::command_execution::CommandError::Failed(
+                "Language server unavailable".into(),
+            ));
+        }
     }
 
     pub(crate) fn request_lsp(&mut self, kind: &str) {
@@ -344,13 +433,14 @@ impl App {
             return;
         };
         if kind == "completion"
-            && self.documents[self.active_document()].language == Some(Language::Json)
+            && self.documents[self.command_document()].language == Some(Language::Json)
         {
             self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
-            if let Some(manager) = &self.json_schema_manager {
-                manager.complete(
+            if self.json_schema_manager.is_some() {
+                self.track_lsp_command(self.lsp_request_id, &path);
+                self.json_schema_manager.as_ref().unwrap().complete(
                     path,
-                    self.documents[self.active_document()].buffer.text(),
+                    self.documents[self.command_document()].buffer.text(),
                     position,
                     self.lsp_request_id,
                 );
@@ -359,10 +449,14 @@ impl App {
         }
         if !self.lsp_manager.supports_path(&path) {
             self.status = "No language server configured for this file type".into();
+            self.fail_current_command(super::command_execution::CommandError::Failed(
+                self.status.clone(),
+            ));
             return;
         }
         self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
-        match kind {
+        self.track_lsp_command(self.lsp_request_id, &path);
+        let sent = match kind {
             "completion" => {
                 self.lsp_manager
                     .request_completion(&path, position, self.lsp_request_id)
@@ -374,7 +468,12 @@ impl App {
             "hover" => self
                 .lsp_manager
                 .request_hover(&path, position, self.lsp_request_id),
-            _ => {}
+            _ => false,
+        };
+        if !sent {
+            self.fail_current_command(super::command_execution::CommandError::Failed(
+                "Language server unavailable".into(),
+            ));
         }
     }
 }

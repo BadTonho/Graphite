@@ -20,54 +20,48 @@ impl App {
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
         if id == 3 && request.action == Action::Click {
-            self.toggle_terminal();
+            self.run_ui_command("workbench.action.terminal.toggleTerminal");
             return;
         }
         if id == 4 && request.action == Action::Click {
-            self.terminal_visible = true;
-            self.terminal_problems = true;
-            self.terminal_focused = false;
-            self.resize_terminal();
+            self.run_ui_command("workbench.actions.view.problems");
             return;
         }
         if let Some((group, document_id)) = super::accessibility::tab_target(request.target_node) {
             if !matches!(request.action, Action::Click | Action::Focus) {
                 return;
             }
-            let Some((views, _)) = self.editor_groups.views(group) else {
-                return;
-            };
-            if !views.iter().any(|view| view.document == document_id) {
-                return;
+            let target = self.editor_groups.views(group).and_then(|(views, _)| {
+                views
+                    .iter()
+                    .find(|view| view.document == document_id)
+                    .map(|view| view.id)
+            });
+            if let Some(view) = target {
+                self.run_view_command_args("shoppe.view.focus", view, serde_json::Value::Null);
             }
-            let Some(document) = self.resolve_document(document_id) else {
-                return;
-            };
-            self.focus_editor_group(group);
-            self.activate_editor_document(document);
             return;
         }
         if let Some(group) = super::accessibility::editor_target(request.target_node) {
-            if !self.focus_editor_group(group) {
+            let Some((views, active)) = self.editor_groups.views(group) else {
                 return;
-            }
-            self.terminal_focused = false;
+            };
+            let view = views[active].id;
             match (request.action, request.data) {
-                (Action::Focus, _) => self.status = "Editor focused".into(),
-                (Action::SetValue, Some(ActionData::Value(value))) => {
-                    let mut b = self.editor_mut();
-                    if b.is_read_only() {
-                        return;
-                    }
-                    let len = b.len_chars();
-                    b.set_selection(0, len);
-                    b.insert(&value);
+                (Action::Focus, _) => {
+                    self.run_view_command_args("shoppe.view.focus", view, serde_json::Value::Null);
+                    self.terminal_focused = false;
                 }
+                (Action::SetValue, Some(ActionData::Value(value))) => self.run_view_command_args(
+                    "shoppe.editor.setValue",
+                    view,
+                    serde_json::json!({"text":value}),
+                ),
                 (Action::ReplaceSelectedText, Some(ActionData::Value(value))) => {
-                    self.editor_mut().insert(&value)
+                    self.run_view_command_args("type", view, serde_json::json!({"text":value}))
                 }
                 (Action::SetTextSelection, Some(ActionData::SetTextSelection(selection))) => {
-                    let mut b = self.editor_mut();
+                    let buffer = &self.documents[views[active].document].buffer;
                     let Some((anchor_group, anchor_line)) =
                         super::accessibility::line_target(selection.anchor.node)
                     else {
@@ -80,22 +74,26 @@ impl App {
                     };
                     if anchor_group != group
                         || focus_group != group
-                        || anchor_line >= b.len_lines()
-                        || focus_line >= b.len_lines()
+                        || anchor_line >= buffer.len_lines()
+                        || focus_line >= buffer.len_lines()
                     {
                         return;
                     }
                     let anchor = accessibility_position_to_char(
-                        &b,
+                        buffer,
                         anchor_line,
                         selection.anchor.character_index,
                     );
-                    let focus = accessibility_position_to_char(
-                        &b,
+                    let head = accessibility_position_to_char(
+                        buffer,
                         focus_line,
                         selection.focus.character_index,
                     );
-                    b.set_selection(anchor, focus);
+                    self.run_view_command_args(
+                        "shoppe.editor.setSelection",
+                        view,
+                        serde_json::json!({"anchor":anchor,"head":head}),
+                    );
                 }
                 _ => {}
             }
@@ -222,7 +220,8 @@ mod tests {
             editor_node(other),
             Some(ActionData::SetTextSelection(selection)),
         ));
-        assert_eq!(app.editor_groups.focused(), other);
+        assert_eq!(app.editor_groups.focused(), 0);
+        app.focus_editor_group(other);
         assert_eq!(
             app.test_editor(0).selection().unwrap(),
             shoppe_text::Selection { anchor: 1, head: 5 }

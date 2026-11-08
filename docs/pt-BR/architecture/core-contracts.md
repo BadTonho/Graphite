@@ -1,6 +1,6 @@
 # Contratos do Núcleo do Editor
 
-Este documento descreve o contrato **documento/view** implementado e os contratos planejados de **comandos e contexto** e **fronteira de extensões**. O comportamento alvo para comandos e extensões continua sendo uma especificação de projeto, não uma afirmação de suporte atual.
+Este documento descreve os contratos **documento/view** e **comandos e contexto** implementados e a **fronteira de extensões** planejada. Serviços do extension host e participantes assíncronos de salvamento continuam como especificações de projeto.
 
 ## 1. Documento e view
 
@@ -35,15 +35,15 @@ A migração de documento/view está concluída. Os chamadores de edição usam 
 
 ### Estado atual
 
-`execute_custom_command` em `crates/shoppe-app/src/app/commands.rs` despacha por um `match` extenso e altera a aplicação diretamente. O handler de keybindings atualiza um `ContextKeyService` com valores globais e por view; `crates/shoppe-app/src/keybindings/when.rs` fornece o parser de expressões para resolução de keybindings. Escopos de widgets, enablement centralizado e outros produtores de contexto ainda precisam ser implementados. O código de quick fix trata `CodeActionOrCommand` em `crates/shoppe-app/src/app/editor_commands.rs`, mas esses caminhos não estabelecem um registro unificado nem um contrato geral assíncrono de comandos.
+`CommandRegistry` descreve todos os comandos locais, com handlers separados por domínio. Teclado, ações semânticas de widgets, acessibilidade e chamadas programáticas usam `App::execute_command`, validando argumentos, alvos explícitos e enablement antes do despacho. Requisições e resultados são serializáveis; tickets acompanham conclusão síncrona, cancelamento cooperativo, resultados de workers e confirmações pendentes. `ContextKeyService` resolve escopos globais, de views e de widgets e se atualiza sem exigir evento de teclado. O dispatcher legado e seu fallback foram removidos. Consulte [Comandos e contexto](commands-context.md) para API, ciclo de vida e testes implementados.
 
 ### Contrato alvo
 
-- Um registro associa um ID estável a metadados, enablement opcional e um handler. Usar IDs compatíveis com VS Code quando houver comando correspondente com semântica compatível. Argumentos e resultados que cruzam processos são serializáveis; handlers recebem um contexto explícito de serviços em vez de propriedade irrestrita da aplicação.
+- Um registro associa um ID estável a metadados, enablement e um handler. IDs e atalhos existentes são preservados. Argumentos e resultados são serializáveis. Os handlers atuais recebem por empréstimo a aplicação do event loop com um alvo explícito na invocação; interfaces de serviços para a fronteira de extensões pertencem à próxima etapa.
 - Um único ponto de execução recebe ID, argumentos, contexto alvo e token de cancelamento e retorna assincronamente um resultado ou erro tipado. O cancelamento é cooperativo e não implica desfazer efeitos já confirmados. Comandos desconhecidos, desabilitados, com falha ou cancelados são informados sem derrubar ou bloquear a interface.
 - Um contexto global fornece chaves compartilhadas; cada view ou widget alvo tem um contexto próprio. Uma chave é resolvida primeiro no escopo alvo e depois no global. Foco e alvos explícitos determinam o escopo avaliado; chamadas sem alvo usam o escopo global.
 - Expressões `when` de keybindings controlam a elegibilidade do atalho; condições de menu controlam visibilidade; enablement controla se o comando pode ser executado. Elas compartilham a avaliação de contexto, mas continuam sendo condições distintas. O registro verifica enablement centralmente, inclusive em chamadas programáticas.
-- Keybindings, menus, paleta, extensões e testes entram pelo registro. Comandos LSP são adaptados ao protocolo: comandos destinados a um servidor de linguagem usam sua requisição `workspace/executeCommand`; apenas comandos do cliente são encaminhados ao registro local quando apropriado. Alterações de texto usam transações de documento e undo.
+- As fontes existentes de comandos entram pelo registro; futuros adaptadores de menus, paleta e extensões usarão a mesma API. Entrada bruta de texto e transporte de terminal mantêm seus fluxos. Comandos destinados ao servidor usam `workspace/executeCommand`; IDs locais desconhecidos nunca são encaminhados automaticamente. Alterações de texto usam transações e undo. Edições em views sem foco e undo/redo preservam o foco.
 
 ### Critérios de aceitação
 
@@ -54,7 +54,7 @@ A migração de documento/view está concluída. Os chamadores de edição usam 
 
 ### Migração incremental
 
-Adicionar o registro e o serviço de contexto com escopos, extrair um pequeno conjunto de comandos existentes para handlers e encaminhar chamadas pelo registro com fallback legado temporário. Migrar os comandos restantes e remover o fallback; usar os metadados do registro em uma futura paleta de comandos.
+A migração de comandos está concluída, incluindo todos os IDs do dispatcher anterior, atalhos padrão e argumentos JSON. Workers devolvem resultados próprios ao event loop, que revalida cancelamento, existência do alvo, workspace e versões antes de aplicá-los. O salvamento permanece síncrono; interfaces de serviços de extensões e futura paleta são trabalhos separados.
 
 ## 3. Fronteira de extensões e protocolos
 
@@ -87,7 +87,7 @@ O host Code OSS real continua sendo uma etapa posterior obrigatória: fixar um r
 
 ## Como os contratos interagem
 
-A digitação envia uma transação para a view em foco, avança a versão do documento e envia a alteração LSP correspondente. Salvar é resolvido pelo registro, executa participantes com prazo e aplica somente edições cujas versões esperadas ainda coincidam; grava um snapshot e atualiza o estado salvo de referência apenas em caso de sucesso. Cada view afetada é remapeada. Um comando de extensão usa o registro e o contexto com escopo, enquanto um comando de servidor de linguagem é enviado ao servidor quando o contrato LSP exigir.
+A digitação envia uma transação para a view em foco, avança a versão do documento e envia a alteração LSP correspondente. Salvar é resolvido pelo registro e atualmente grava de forma síncrona, atualizando o estado salvo de referência somente em caso de sucesso. Cada view afetada é remapeada. Um futuro coordenador executará participantes com prazo e rejeitará edições obsoletas antes de gravar snapshots assincronamente. Futuros comandos de extensão usarão o registro e o contexto com escopo; comandos de servidores de linguagem já usam o transporte exigido pelo LSP.
 
 ## Ordem recomendada
 

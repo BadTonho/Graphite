@@ -135,6 +135,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn save(&mut self) {
         self.save_document(self.active_document());
     }
@@ -152,7 +153,7 @@ impl App {
                 tab.buffer.text()
             };
             let bytes = crate::file_format::encode(&text, tab.encoding, tab.line_ending);
-            let result = if self.trim_trailing_whitespace && document == self.active_document() {
+            let result = if self.trim_trailing_whitespace && document == self.command_document() {
                 self.editor_mut().save_encoded_bytes_with_trim(&bytes)
             } else {
                 let tab = &mut self.documents[document];

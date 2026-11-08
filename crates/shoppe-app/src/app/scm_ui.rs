@@ -1,3 +1,4 @@
+use super::command_execution::{deliver_command_event, CommandError};
 use super::*;
 
 #[derive(Clone, Debug)]
@@ -65,7 +66,9 @@ impl App {
 
     pub(crate) fn checkout_selected_branch(&mut self) {
         if self.documents.iter().any(|tab| tab.is_dirty()) {
-            self.status = "Checkout refused because an open document has unsaved changes".into();
+            self.fail_current_command(CommandError::Failed(
+                "Checkout refused because an open document has unsaved changes".into(),
+            ));
             return;
         }
         let Some(branch) = self
@@ -84,12 +87,24 @@ impl App {
             .filter_map(|tab| tab.buffer.path().map(PathBuf::from))
             .collect::<Vec<_>>();
         let Some(proxy) = self.event_proxy.clone() else {
+            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
             return;
         };
-        std::thread::Builder::new()
+        let job = self.command_job(false);
+        let spawned = std::thread::Builder::new()
             .name("shoppe-git-checkout".into())
             .spawn(move || {
+                if job
+                    .as_ref()
+                    .is_some_and(|job| job.cancellation.is_cancelled())
+                {
+                    return;
+                }
                 let result = crate::scm::checkout_branch(&root, &branch);
+                let outcome = result
+                    .as_ref()
+                    .map(|_| serde_json::Value::Null)
+                    .map_err(|error| CommandError::Failed(error.clone()));
                 let documents = if result.is_ok() {
                     open_paths
                         .into_iter()
@@ -104,22 +119,30 @@ impl App {
                 let message = result
                     .map(|_| format!("Checked out {branch}"))
                     .unwrap_or_else(|error| format!("Checkout failed: {error}"));
-                let _ = proxy.send_event(UserEvent::BranchCheckoutCompleted {
-                    message,
-                    snapshot: crate::scm::snapshot(&root),
-                    documents,
-                });
-            })
-            .ok();
+                deliver_command_event(
+                    &proxy,
+                    job.as_ref(),
+                    UserEvent::BranchCheckoutCompleted {
+                        message,
+                        snapshot: crate::scm::snapshot(&root),
+                        documents,
+                    },
+                    outcome,
+                );
+            });
+        if let Err(error) = spawned {
+            self.fail_current_command(CommandError::Failed(error.to_string()));
+        }
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = "SCM actions require the native event loop".into();
+            self.fail_current_command(CommandError::Failed(self.status.clone()));
             return;
         };
-        let active_path = self.documents[self.active_document()]
+        let active_path = self.documents[self.command_document()]
             .buffer
             .path()
             .map(PathBuf::from);
@@ -134,9 +157,16 @@ impl App {
         let message = self.scm_commit_message.clone();
         let line = self.editor().cursor_line_col().0;
         self.status = "Git operation running…".into();
-        std::thread::Builder::new()
+        let job = self.command_job(false);
+        let spawned = std::thread::Builder::new()
             .name("shoppe-scm-operation".into())
             .spawn(move || {
+                if job
+                    .as_ref()
+                    .is_some_and(|job| job.cancellation.is_cancelled())
+                {
+                    return;
+                }
                 let result = match action {
                     ScmAction::Stage => selected
                         .ok_or_else(|| "Select a changed file first".to_owned())
@@ -175,15 +205,26 @@ impl App {
                                 .map(|_| "First hunk reverted".into())
                         }),
                 };
+                let outcome = result
+                    .as_ref()
+                    .map(|_| serde_json::Value::Null)
+                    .map_err(|error| CommandError::Failed(error.clone()));
                 let snapshot = crate::scm::snapshot(&root);
                 let message =
                     result.unwrap_or_else(|error| format!("Git operation failed: {error}"));
-                let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
-                    message,
-                    snapshot: Some(snapshot),
-                });
-            })
-            .ok();
+                deliver_command_event(
+                    &proxy,
+                    job.as_ref(),
+                    UserEvent::ScmOperationCompleted {
+                        message,
+                        snapshot: Some(snapshot),
+                    },
+                    outcome,
+                );
+            });
+        if let Err(error) = spawned {
+            self.fail_current_command(CommandError::Failed(error.to_string()));
+        }
     }
 
     pub(crate) fn open_diff_paths(&mut self, left: PathBuf, right: PathBuf) {
@@ -226,7 +267,7 @@ impl App {
     }
 
     pub(crate) fn open_active_file_diff(&mut self) {
-        let Some(path) = self.documents[self.active_document()]
+        let Some(path) = self.documents[self.command_document()]
             .buffer
             .path()
             .map(PathBuf::from)
@@ -236,13 +277,21 @@ impl App {
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
+            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
             return;
         };
         self.diff_loading = true;
-        let current = self.documents[self.active_document()].buffer.text();
-        std::thread::Builder::new()
+        let current = self.documents[self.command_document()].buffer.text();
+        let job = self.command_job(true);
+        let spawned = std::thread::Builder::new()
             .name("shoppe-head-diff".into())
             .spawn(move || {
+                if job
+                    .as_ref()
+                    .is_some_and(|job| job.cancellation.is_cancelled())
+                {
+                    return;
+                }
                 let result = (|| {
                     let previous = crate::scm::head_file_text(&root, &path)?;
                     Ok::<_, String>(DiffView {
@@ -256,17 +305,29 @@ impl App {
                 })();
                 match result {
                     Ok(view) => {
-                        let _ = proxy.send_event(UserEvent::DiffReady(view));
+                        deliver_command_event(
+                            &proxy,
+                            job.as_ref(),
+                            UserEvent::DiffReady(view),
+                            Ok(serde_json::Value::Null),
+                        );
                     }
                     Err(error) => {
-                        let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
-                            message: format!("Cannot compare with HEAD: {error}"),
-                            snapshot: None,
-                        });
+                        deliver_command_event(
+                            &proxy,
+                            job.as_ref(),
+                            UserEvent::ScmOperationCompleted {
+                                message: format!("Cannot compare with HEAD: {error}"),
+                                snapshot: None,
+                            },
+                            Err(CommandError::Failed(error)),
+                        );
                     }
                 }
-            })
-            .ok();
+            });
+        if let Err(error) = spawned {
+            self.fail_current_command(CommandError::Failed(error.to_string()));
+        }
     }
 
     pub(crate) fn stage_saved_conflict(&mut self, path: &Path) {
@@ -306,23 +367,44 @@ impl App {
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
+            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
             return;
         };
-        std::thread::Builder::new()
+        let job = self.command_job(false);
+        let spawned = std::thread::Builder::new()
             .name("shoppe-conflict-load".into())
-            .spawn(move || match crate::scm::merge_conflict(&root, &path) {
-                Ok(sides) => {
-                    let _ =
-                        proxy.send_event(UserEvent::ConflictReady(ConflictView { path, sides }));
+            .spawn(move || {
+                if job
+                    .as_ref()
+                    .is_some_and(|job| job.cancellation.is_cancelled())
+                {
+                    return;
                 }
-                Err(error) => {
-                    let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
-                        message: format!("Cannot open conflict: {error}"),
-                        snapshot: None,
-                    });
+                match crate::scm::merge_conflict(&root, &path) {
+                    Ok(sides) => {
+                        deliver_command_event(
+                            &proxy,
+                            job.as_ref(),
+                            UserEvent::ConflictReady(ConflictView { path, sides }),
+                            Ok(serde_json::Value::Null),
+                        );
+                    }
+                    Err(error) => {
+                        deliver_command_event(
+                            &proxy,
+                            job.as_ref(),
+                            UserEvent::ScmOperationCompleted {
+                                message: format!("Cannot open conflict: {error}"),
+                                snapshot: None,
+                            },
+                            Err(CommandError::Failed(error)),
+                        );
+                    }
                 }
-            })
-            .ok();
+            });
+        if let Err(error) = spawned {
+            self.fail_current_command(CommandError::Failed(error.to_string()));
+        }
     }
 
     pub(crate) fn resolve_conflict_choice(&mut self, side: usize) {
@@ -341,22 +423,41 @@ impl App {
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
+            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
             return;
         };
         let path = conflict.path;
-        std::thread::Builder::new()
+        let job = self.command_job(false);
+        let spawned = std::thread::Builder::new()
             .name("shoppe-conflict-resolve".into())
             .spawn(move || {
+                if job
+                    .as_ref()
+                    .is_some_and(|job| job.cancellation.is_cancelled())
+                {
+                    return;
+                }
                 let result = crate::scm::resolve_conflict(&root, &path, &contents);
+                let outcome = result
+                    .as_ref()
+                    .map(|_| serde_json::Value::Null)
+                    .map_err(|error| CommandError::Failed(error.clone()));
                 let message = result
                     .map(|_| "Conflict resolution written and staged".into())
                     .unwrap_or_else(|error| format!("Conflict resolution failed: {error}"));
-                let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
-                    message,
-                    snapshot: Some(crate::scm::snapshot(&root)),
-                });
-            })
-            .ok();
+                deliver_command_event(
+                    &proxy,
+                    job.as_ref(),
+                    UserEvent::ScmOperationCompleted {
+                        message,
+                        snapshot: Some(crate::scm::snapshot(&root)),
+                    },
+                    outcome,
+                );
+            });
+        if let Err(error) = spawned {
+            self.fail_current_command(CommandError::Failed(error.to_string()));
+        }
     }
 
     pub(crate) fn draw_scm_sidebar(

@@ -99,6 +99,27 @@ impl EditorGroups {
     fn group_mut(&mut self, id: u64) -> Option<&mut Group> {
         self.groups.iter_mut().find(|group| group.id == id)
     }
+    pub(crate) fn group_for_view(&self, id: ViewId) -> Option<u64> {
+        self.groups
+            .iter()
+            .find(|group| group.tabs.iter().any(|view| view.id == id))
+            .map(|group| group.id)
+    }
+    pub(crate) fn view(&self, id: ViewId) -> Option<&View> {
+        self.groups
+            .iter()
+            .flat_map(|g| &g.tabs)
+            .find(|v| v.id == id)
+    }
+    pub(crate) fn view_mut(&mut self, id: ViewId) -> Option<&mut View> {
+        self.groups
+            .iter_mut()
+            .flat_map(|g| &mut g.tabs)
+            .find(|v| v.id == id)
+    }
+    pub(crate) fn all_views(&self) -> impl Iterator<Item = &View> {
+        self.groups.iter().flat_map(|g| &g.tabs)
+    }
     pub fn focused(&self) -> u64 {
         self.focused
     }
@@ -204,9 +225,13 @@ impl EditorGroups {
         true
     }
     pub(super) fn split(&mut self, direction: SplitDirection) -> u64 {
+        self.split_view(self.active_view().id, direction)
+    }
+    pub(super) fn split_view(&mut self, source: ViewId, direction: SplitDirection) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        let mut view = self.active_view().clone();
+        let group = self.group_for_view(source).expect("source view exists");
+        let mut view = self.view(source).unwrap().clone();
         view.id = next_view_id();
         view.ime_preedit.clear();
         view.ime_composing = false;
@@ -217,39 +242,43 @@ impl EditorGroups {
             tabs: vec![view],
             active: 0,
         });
-        assert!(self.layout.split_leaf(self.focused, id, direction));
+        assert!(self.layout.split_leaf(group, id, direction));
         self.focused = id;
         id
     }
     /// A dirty document may close here only if another view keeps it open.
     pub fn close_active(&mut self, dirty: bool) -> bool {
-        let document = self.active_view().document;
-        if dirty
-            && self
-                .groups
-                .iter()
-                .flat_map(|g| &g.tabs)
-                .filter(|v| v.document == document)
-                .count()
-                == 1
-        {
+        self.close_view(self.active_view().id, dirty)
+    }
+    pub(crate) fn close_view(&mut self, target: ViewId, dirty: bool) -> bool {
+        let Some(view) = self.view(target) else {
+            return false;
+        };
+        if dirty && self.view_count(view.document) == 1 {
             return false;
         }
-        let id = self.focused;
-        let group = self.group_mut(id).expect("focused group exists");
+        let id = self.group_for_view(target).unwrap();
+        let group = self.group_mut(id).unwrap();
+        let index = group
+            .tabs
+            .iter()
+            .position(|view| view.id == target)
+            .unwrap();
         if group.tabs.len() > 1 {
-            group.tabs.remove(group.active);
-            group.active = group.active.min(group.tabs.len() - 1);
+            let active_id = group.tabs[group.active].id;
+            group.tabs.remove(index);
+            group.active = group
+                .tabs
+                .iter()
+                .position(|view| view.id == active_id)
+                .unwrap_or(index.min(group.tabs.len() - 1));
         } else if self.groups.len() > 1 {
-            self.layout = self
-                .layout
-                .clone()
-                .remove(id)
-                .expect("another group remains");
-            self.groups.retain(|g| g.id != id);
-            self.focused = self.groups[0].id;
+            self.layout = self.layout.clone().remove(id).unwrap();
+            self.groups.retain(|group| group.id != id);
+            if self.focused == id {
+                self.focused = self.groups[0].id;
+            }
         } else {
-            // The application replaces the last clean document with an untitled one.
             return false;
         }
         true
@@ -336,6 +365,34 @@ impl Layout {
 }
 
 impl App {
+    pub(super) fn command_group_rect(&self, width: f32, height: f32, lh: f32) -> GroupRect {
+        let group = self
+            .editor_groups
+            .group_for_view(self.command_view_ref().id)
+            .unwrap();
+        self.group_rectangles(width, height, lh)
+            .into_iter()
+            .find(|rect| rect.id == group)
+            .unwrap()
+    }
+    pub(crate) fn command_view_ref(&self) -> &View {
+        self.command_runtime
+            .view
+            .and_then(|id| self.editor_groups.view(id))
+            .unwrap_or_else(|| self.editor_groups.active_view())
+    }
+    pub(crate) fn command_view_mut(&mut self) -> &mut View {
+        let id = self
+            .command_runtime
+            .view
+            .unwrap_or(self.editor_groups.active_view().id);
+        self.editor_groups
+            .view_mut(id)
+            .expect("validated command view exists")
+    }
+    pub(crate) fn command_document(&self) -> DocumentId {
+        self.command_view_ref().document
+    }
     pub(crate) fn active_document(&self) -> DocumentId {
         self.editor_groups.active_view().document
     }
@@ -372,14 +429,14 @@ impl App {
         self.editor_mut()
     }
     pub(crate) fn editor(&self) -> shoppe_text::EditorRead<'_> {
-        let view = self.editor_groups.active_view();
-        self.documents[self.active_document()]
+        let view = self.command_view_ref();
+        self.documents[view.document]
             .buffer
             .view(&view.selection_state)
     }
     pub(crate) fn editor_mut(&mut self) -> EditorSession<'_> {
-        let active = self.editor_groups.active_view().id;
-        let document = self.active_document();
+        let active = self.command_view_ref().id;
+        let document = self.command_document();
         let mut origin = None;
         let mut peers = Vec::new();
         for group in &mut self.editor_groups.groups {
@@ -422,22 +479,29 @@ impl App {
         }
         self.editor_groups
             .activate_document(document, Default::default(), 0);
+        if self.command_runtime.current.is_some() {
+            self.command_runtime.view = Some(self.editor_groups.active_view().id);
+        }
         self.invalidate_lsp_requests();
         self.request_inlay_hints();
     }
 
     pub(super) fn active_view_needs_confirmation(&self) -> bool {
-        self.documents[self.active_document()].is_dirty()
-            && self.editor_groups.view_count(self.active_document()) <= 1
+        self.documents[self.command_document()].is_dirty()
+            && self.editor_groups.view_count(self.command_document()) <= 1
     }
 
     pub(super) fn split_editor_group(&mut self, direction: SplitDirection) -> u64 {
-        self.editor_groups.split(direction)
+        self.editor_groups
+            .split_view(self.command_view_ref().id, direction)
     }
 
     pub(super) fn focus_editor_group(&mut self, id: u64) -> bool {
         if !self.editor_groups.focus(id) {
             return false;
+        }
+        if self.command_runtime.current.is_some() {
+            self.command_runtime.view = Some(self.editor_groups.active_view().id);
         }
         true
     }

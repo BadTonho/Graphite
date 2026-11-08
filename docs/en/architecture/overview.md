@@ -30,6 +30,10 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + winit Window)
 - Visual-line mapping computes wrapped rows and maps Unicode character positions and pointer columns without modifying the document. Rendering, pointer input and vertical cursor movement use this mapping when wrapping is enabled; interactive verification is pending.
 - `shoppe-syntax` provides incremental tree-sitter parsing over Rope chunks and a full-document highlighter; both return per-line byte-range spans with a semantic `Class`. The app maps classes to colors and re-highlights only when the revision changes.
 
+## Commands
+
+`CommandRegistry` centralizes metadata, explicit targets, enablement and typed execution results. Domain handlers share the same entry point for keyboard, widgets and accessibility. Global, view and widget contexts resolve through their ancestors. Workers return results to the event loop with cancellation and version checks; inactive-view edits preserve focus. See [Commands and context](commands-context.md).
+
 ## Platforms
 
 Windows and Linux; platform differences are delegated to `winit`, `wgpu` and `cosmic-text`.

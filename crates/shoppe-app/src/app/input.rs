@@ -6,15 +6,13 @@ impl App {
         if self.scm_commit_prompt {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) => {
-                    self.scm_commit_prompt = false;
-                    self.status = "Commit cancelled".into();
+                    self.run_ui_command("shoppe.commit.cancel");
                 }
                 Key::Named(NamedKey::Enter) => {
-                    self.scm_commit_prompt = false;
-                    self.perform_scm_action(super::scm_ui::ScmAction::Commit);
+                    self.run_ui_command("shoppe.scm.commit");
                 }
                 Key::Named(NamedKey::Backspace) => {
-                    self.scm_commit_message.pop();
+                    self.run_ui_command("shoppe.commit.deleteLeft");
                 }
                 _ if !ctrl && !self.modifiers.alt_key() => {
                     if let Some(text) = event
@@ -31,15 +29,10 @@ impl App {
         }
         if self.branch_picker {
             match event.logical_key {
-                Key::Named(NamedKey::Escape) => self.branch_picker = false,
-                Key::Named(NamedKey::ArrowDown) => {
-                    self.branch_selected = (self.branch_selected + 1)
-                        .min(self.scm_snapshot.branches.len().saturating_sub(1))
-                }
-                Key::Named(NamedKey::ArrowUp) => {
-                    self.branch_selected = self.branch_selected.saturating_sub(1)
-                }
-                Key::Named(NamedKey::Enter) => self.checkout_selected_branch(),
+                Key::Named(NamedKey::Escape) => self.run_ui_command("shoppe.branch.close"),
+                Key::Named(NamedKey::ArrowDown) => self.run_ui_command("shoppe.branch.next"),
+                Key::Named(NamedKey::ArrowUp) => self.run_ui_command("shoppe.branch.previous"),
+                Key::Named(NamedKey::Enter) => self.run_ui_command("shoppe.scm.checkout"),
                 _ => {}
             }
             return;
@@ -52,12 +45,16 @@ impl App {
                 .to_ascii_lowercase()
                 .as_str()
             {
-                "o" => self.resolve_conflict_choice(1),
-                "t" => self.resolve_conflict_choice(2),
-                "b" => self.resolve_conflict_choice(0),
-                "e" => self.resolve_conflict_choice(3),
+                "o" => self
+                    .run_ui_command_args("shoppe.conflict.resolve", serde_json::json!({"index":1})),
+                "t" => self
+                    .run_ui_command_args("shoppe.conflict.resolve", serde_json::json!({"index":2})),
+                "b" => self
+                    .run_ui_command_args("shoppe.conflict.resolve", serde_json::json!({"index":0})),
+                "e" => self
+                    .run_ui_command_args("shoppe.conflict.resolve", serde_json::json!({"index":3})),
                 _ if matches!(event.logical_key, Key::Named(NamedKey::Escape)) => {
-                    self.conflict_view = None
+                    self.run_ui_command("shoppe.conflict.close")
                 }
                 _ => {}
             }
@@ -65,13 +62,11 @@ impl App {
         }
         if self.diff_view.is_some() {
             if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
-                self.diff_view = None;
+                self.run_ui_command("shoppe.action.closeDiffEditor");
                 self.status = "Diff view closed".into();
                 self.check_cli_waiters();
             } else if matches!(event.logical_key, Key::Named(NamedKey::Tab)) {
-                if let Some(diff) = &mut self.diff_view {
-                    diff.inline = !diff.inline;
-                }
+                self.run_ui_command("shoppe.diff.toggleLayout");
             }
             return;
         }
@@ -84,46 +79,42 @@ impl App {
                 .as_str()
             {
                 "s" => {
-                    self.perform_scm_action(super::scm_ui::ScmAction::Stage);
+                    self.run_ui_command("shoppe.scm.stage");
                     return;
                 }
                 "u" => {
-                    self.perform_scm_action(super::scm_ui::ScmAction::Unstage);
+                    self.run_ui_command("shoppe.scm.unstage");
                     return;
                 }
                 "c" => {
-                    self.scm_commit_prompt = true;
-                    self.scm_commit_message.clear();
+                    self.run_ui_command("shoppe.scm.promptCommit");
                     return;
                 }
                 "h" => {
-                    self.perform_scm_action(super::scm_ui::ScmAction::StageHunk(0));
+                    self.run_ui_command("shoppe.scm.stageHunk");
                     return;
                 }
                 "r" => {
-                    self.open_selected_conflict();
+                    self.run_ui_command("shoppe.scm.openConflict");
                     return;
                 }
                 _ => {}
             }
             match event.logical_key {
                 Key::Named(NamedKey::ArrowDown) => {
-                    self.scm_selected = (self.scm_selected + 1)
-                        .min(self.scm_snapshot.files.len().saturating_sub(1));
+                    self.run_ui_command("shoppe.scm.next");
                     return;
                 }
                 Key::Named(NamedKey::ArrowUp) => {
-                    self.scm_selected = self.scm_selected.saturating_sub(1);
+                    self.run_ui_command("shoppe.scm.previous");
                     return;
                 }
                 Key::Named(NamedKey::Enter) => {
-                    if let Some(path) = self.scm_selected_path() {
-                        self.open_file(path);
-                    }
+                    self.run_ui_command("shoppe.scm.open");
                     return;
                 }
                 Key::Named(NamedKey::Escape) => {
-                    self.scm_visible = false;
+                    self.run_ui_command("shoppe.scm.close");
                     return;
                 }
                 _ => {}
@@ -131,15 +122,13 @@ impl App {
         }
         if self.close_window_confirm {
             match &event.logical_key {
-                Key::Character(c) if c.eq_ignore_ascii_case("s") => self.save_all_before_close(),
+                Key::Character(c) if c.eq_ignore_ascii_case("s") => {
+                    self.run_ui_command("shoppe.window.saveAndClose")
+                }
                 Key::Character(c) if c.eq_ignore_ascii_case("d") => {
-                    self.close_window_confirm = false;
-                    self.exit_requested = true;
+                    self.run_ui_command("shoppe.window.discardAndClose")
                 }
-                Key::Named(NamedKey::Escape) => {
-                    self.close_window_confirm = false;
-                    self.status = "Close cancelled".into();
-                }
+                Key::Named(NamedKey::Escape) => self.run_ui_command("shoppe.window.cancelClose"),
                 _ => {}
             }
             return;
@@ -172,21 +161,11 @@ impl App {
         if self.close_confirm {
             let key = event.text.as_deref().unwrap_or("").to_ascii_lowercase();
             if key == "d" {
-                self.close_confirm = false;
-                self.close_active_tab();
-                return;
-            }
-            if key == "s" {
-                self.save();
-                self.close_confirm = false;
-                if !self.documents[self.active_document()].is_dirty() {
-                    self.close_active_tab();
-                }
-                return;
-            }
-            if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
-                self.close_confirm = false;
-                self.status = "Close cancelled".into();
+                self.run_ui_command("shoppe.close.discard");
+            } else if key == "s" {
+                self.run_ui_command("shoppe.close.save");
+            } else if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
+                self.run_ui_command("shoppe.close.cancel");
             }
             return;
         }

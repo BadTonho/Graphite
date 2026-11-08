@@ -3,6 +3,9 @@ pub(super) mod accessibility;
 mod accessibility_actions;
 pub(crate) mod cli_ui;
 mod clipboard;
+pub(crate) mod command_execution;
+mod command_handlers;
+pub(crate) mod command_registry;
 mod commands;
 pub(super) mod context_keys;
 mod document;
@@ -37,3 +40,6 @@ mod document_edit;
 
 #[cfg(test)]
 mod document_view_tests;
+
+#[cfg(test)]
+mod command_tests;

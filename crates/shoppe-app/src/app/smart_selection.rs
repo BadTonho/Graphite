@@ -8,8 +8,8 @@ impl App {
             head: self.editor().cursor().char_idx,
         });
         let guard = (
-            self.active_document(),
-            self.documents[self.active_document()].buffer.revision(),
+            self.command_document(),
+            self.documents[self.command_document()].buffer.revision(),
             current,
         );
         if self
@@ -22,7 +22,7 @@ impl App {
                 .active_view_mut()
                 .smart_selection_history
                 .clear();
-            self.editor_groups.active_view_mut().smart_selection_guard = None;
+            self.command_view_mut().smart_selection_guard = None;
         }
         if !expand {
             if let Some(selection) = self
@@ -33,19 +33,19 @@ impl App {
             {
                 self.editor_mut()
                     .set_selection(selection.anchor, selection.head);
-                self.editor_groups.active_view_mut().smart_selection_guard =
-                    Some((self.active_document(), guard.1, selection));
+                self.command_view_mut().smart_selection_guard =
+                    Some((self.command_document(), guard.1, selection));
             }
             return;
         }
-        self.refresh_highlights();
+        self.refresh_document_highlights(self.command_document());
         let before = self.editor().selection().unwrap_or(Selection {
             anchor: self.editor().cursor().char_idx,
             head: self.editor().cursor().char_idx,
         });
         let start = before.anchor.min(before.head);
         let end = before.anchor.max(before.head);
-        let document = self.active_document();
+        let document = self.command_document();
         let tab = &mut self.documents[document];
         let rope = tab.buffer.rope();
         let byte_start = rope.char_to_byte(start);
@@ -62,8 +62,8 @@ impl App {
                 .smart_selection_history
                 .push(before);
             self.editor_mut().set_selection(next.start, next.end);
-            self.editor_groups.active_view_mut().smart_selection_guard = Some((
-                self.active_document(),
+            self.command_view_mut().smart_selection_guard = Some((
+                self.command_document(),
                 guard.1,
                 Selection {
                     anchor: next.start,

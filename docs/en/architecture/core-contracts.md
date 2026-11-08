@@ -1,6 +1,6 @@
 # Editor Core Contracts
 
-This document describes the implemented **document/view** contract and the planned **commands and context** and **extension boundary** contracts. The target behavior for commands and extensions remains a design specification, not a claim of current support.
+This document describes the implemented **document/view** and **commands and context** contracts and the planned **extension boundary**. Extension-host services and asynchronous save participants remain design specifications.
 
 ## 1. Document and view
 
@@ -35,15 +35,15 @@ The document/view migration is complete. Editing callers use borrowed view state
 
 ### Current state
 
-`execute_custom_command` in `crates/shoppe-app/src/app/commands.rs` dispatches through a large match and mutates the app directly. The keybinding handler refreshes a `ContextKeyService` with global and per-view values; `crates/shoppe-app/src/keybindings/when.rs` provides expression parsing for keybinding resolution. Widget scopes, centralized enablement and other context producers remain to be implemented. The quick-fix code handles `CodeActionOrCommand` in `crates/shoppe-app/src/app/editor_commands.rs`, but a unified command registry and general asynchronous command contract are not established by these paths.
+`CommandRegistry` describes every local command, with handlers separated by domain. Keyboard, semantic widget actions, accessibility and programmatic calls use `App::execute_command`, validating arguments, explicit targets and enablement before dispatch. Requests and results are serializable; tickets track synchronous completion, cooperative cancellation, worker results and pending confirmations. `ContextKeyService` resolves global, view and widget scopes and refreshes without requiring a keyboard event. The legacy dispatcher and fallback have been removed. See [Commands and context](commands-context.md) for the implemented API, lifecycle and tests.
 
 ### Target contract
 
-- A registry associates a stable command ID with metadata, optional enablement and a handler. Use VS Code-compatible IDs where a corresponding command has compatible semantics. Arguments and results crossing a process boundary are serializable; handlers receive an explicit service context instead of unrestricted app ownership.
+- A registry associates a stable command ID with metadata, enablement and a handler. Existing IDs and shortcuts are preserved. Arguments and results are serializable. Current handlers borrow the event-loop-owned application with an explicit invocation target; service interfaces for an extension boundary belong to the next stage.
 - One execution entry point accepts an ID, arguments, target context and cancellation token, and asynchronously returns a result or a typed error. Cancellation is cooperative and must not imply rollback of effects already committed. Unknown, disabled, failed and cancelled commands are reported without crashing or blocking the UI.
 - A global context supplies shared keys; each target view or widget has a scoped context. Resolve a key from the target scope first, then the global scope. Focus and explicit targets determine which scope is evaluated; invocations without a target use the global scope.
 - Keybinding `when` expressions control binding eligibility; menu conditions control visibility; command enablement controls whether execution is permitted. They share context evaluation but remain distinct conditions. The registry checks enablement centrally even for programmatic calls.
-- Keybindings, menus, palette, extensions and tests enter through the registry. Adapt LSP commands according to their protocol: commands intended for a language server use its `workspace/executeCommand` request; only client-owned commands route to the local registry when appropriate. Text changes use document transactions and undo.
+- Existing command sources enter through the registry; future menu, palette and extension adapters will use the same API. Raw text input and terminal transport retain their input paths. Server-directed commands use `workspace/executeCommand`; unknown local IDs are never forwarded automatically. Text changes use document transactions and undo. Explicit inactive-view edits and undo/redo preserve focus.
 
 ### Acceptance criteria
 
@@ -54,7 +54,7 @@ The document/view migration is complete. Editing callers use borrowed view state
 
 ### Incremental migration
 
-Add the registry and scoped context service, extract a small set of existing commands into handlers, and route calls through the registry with a temporary legacy fallback. Migrate remaining commands and remove the fallback; use registry metadata for a future command palette.
+The command migration is complete, including all former dispatcher IDs, default bindings and JSON arguments. Workers return owned results to the event loop, which revalidates cancellation, target lifetime, workspace and document versions before applying them. Synchronous saving remains unchanged; extension service interfaces and a future command palette are separate work.
 
 ## 3. Extension and protocol boundary
 
@@ -87,7 +87,7 @@ The real Code OSS host remains a required later step: pin a release or commit, i
 
 ## How the contracts interact
 
-Typing submits a transaction for the focused view, advances the document version and sends the corresponding LSP change. Save resolves through the registry, runs bounded participants and applies only edits whose expected versions still match; it writes a snapshot and updates the saved baseline only on success. Each affected view is remapped. An extension command uses the registry and scoped context, while a language-server command is sent to the server when the LSP contract requires it.
+Typing submits a transaction for the focused view, advances the document version and sends the corresponding LSP change. Save resolves through the registry and currently writes synchronously, updating the saved baseline only on success. Each affected view is remapped. A future save coordinator will run bounded participants and reject stale edits before writing snapshots asynchronously. Future extension commands will use the registry and scoped context; language-server commands already use the server transport required by LSP.
 
 ## Recommended order
 

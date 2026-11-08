@@ -299,7 +299,7 @@ impl App {
         down: bool,
         extend: bool,
     ) {
-        let document = self.active_document();
+        let document = self.command_document();
         let tab = &mut self.documents[document];
         let tab_size = tab.indentation.tab_size;
         let indent = self.wrapping_indent;

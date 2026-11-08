@@ -244,6 +244,13 @@ impl Buffer {
     }
 
     /// A read-only buffer rejects all text mutations and history operations.
+    pub fn can_undo(&self) -> bool {
+        !self.read_only && !self.undo.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        !self.read_only && !self.redo.is_empty()
+    }
+
     pub fn is_read_only(&self) -> bool {
         self.read_only
     }

@@ -3,6 +3,8 @@ use super::*;
 impl ApplicationHandler<UserEvent> for App {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         self.collect_closed_documents();
+        self.refresh_command_context();
+        self.reap_commands();
         self.check_cli_waiters();
     }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -67,7 +69,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.process_accessibility_actions();
         match event {
             WindowEvent::CloseRequested => {
-                self.request_window_close();
+                self.run_ui_command("workbench.action.quit");
             }
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = &mut self.gpu {
@@ -197,7 +199,38 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        self.handle_user_event(event);
+        self.refresh_command_context();
+        self.reap_commands();
+    }
+}
+impl App {
+    pub(crate) fn handle_user_event(&mut self, event: UserEvent) {
         match event {
+            UserEvent::SettingsImported(settings) => self.apply_imported_settings(*settings),
+            UserEvent::SnippetsLoaded { snippets, warnings } => {
+                self.context_keys
+                    .close_widget(super::context_keys::WidgetKind::Snippet);
+                self.snippets = snippets;
+                self.snippet_load_warnings = warnings;
+                self.snippet_query = Some(String::new());
+                self.status = self
+                    .snippet_load_warnings
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "Snippet: type prefix, Enter inserts, Esc closes".into());
+            }
+            UserEvent::LspCommandEvent(event) => self.apply_lsp_ui_event(*event, true),
+            UserEvent::CommandCompleted {
+                execution,
+                event,
+                result,
+            } => {
+                self.accept_command_event(execution, event, result);
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
             UserEvent::AccessibilityWake => {
                 let editor_state = self.editor_state();
                 self.process_accessibility_actions();

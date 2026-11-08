@@ -341,29 +341,48 @@ impl App {
         };
         if edit.is_none() && command.is_none() {
             self.quick_fix_visible = false;
-            self.status = "Quick fix has no workspace edit".into();
+            self.fail_current_command(super::command_execution::CommandError::Failed(
+                "Quick fix has no workspace edit or command".into(),
+            ));
             return;
         };
         if let Some(edit) = edit {
             if let Err(error) = self.apply_workspace_edit(edit) {
                 self.quick_fix_visible = false;
                 self.status = format!("Cannot apply quick fix: {error}");
+                self.fail_current_command(super::command_execution::CommandError::Failed(error));
                 return;
             }
         }
         self.quick_fix_visible = false;
         self.quick_fix_actions.clear();
         if let Some(command) = command {
-            let sent = self.documents[self.active_document()]
+            self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
+            let request = self.lsp_request_id;
+            let sent = self.documents[self.command_document()]
                 .buffer
                 .path()
                 .is_some_and(|path| {
-                    self.lsp_manager.execute_server_command(
+                    self.lsp_manager.execute_server_command_tracked(
                         path,
                         command.command,
                         command.arguments.unwrap_or_default(),
+                        request,
                     )
                 });
+            if sent {
+                if let Some(path) = self.documents[self.command_document()]
+                    .buffer
+                    .path()
+                    .map(PathBuf::from)
+                {
+                    self.track_lsp_command(request, &path);
+                }
+            } else {
+                self.fail_current_command(super::command_execution::CommandError::Failed(
+                    "Server command unavailable".into(),
+                ));
+            }
             self.status = if sent {
                 "Server command requested"
             } else {
@@ -376,10 +395,10 @@ impl App {
     }
 
     pub(crate) fn close_active_tab(&mut self) {
-        let view = self.editor_groups.active_view().clone();
+        let view = self.command_view_ref().clone();
         let document = view.document;
         let last_view = self.editor_groups.view_count(document) == 1;
-        if !self.editor_groups.close_active(false) {
+        if !self.editor_groups.close_view(view.id, false) {
             let replacement = self.documents.push(Document {
                 buffer: Buffer::new(),
 
