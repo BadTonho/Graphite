@@ -11,9 +11,9 @@ pub use import::import_vscode;
 pub(crate) use paths::terminal_settings;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, TerminalProfile};
-pub use settings::editor_prefs_for_workspace;
 pub(crate) use settings::parse_jsonc;
 use settings::project_settings;
+pub use settings::{editor_prefs_for_workspace, workspace_configuration};
 #[cfg(test)]
 use snippets::expand_snippet;
 pub use snippets::{load_snippets_for_workspace, Snippet};

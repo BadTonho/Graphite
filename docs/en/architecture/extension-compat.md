@@ -2,6 +2,8 @@
 
 Compatibility with `.vsix` extensions is a **core goal** and shapes the architecture from the start.
 
+Shared internal services and an isolated Rust simulation host are implemented; see [Services and simulated host](services-host.md). This validates sessions, resource ownership, requests and crash isolation. The Code OSS/Node host described below is still a required later integration: pin its version and test a real extension before claiming `.vsix` compatibility.
+
 ## Approach
 
 Run the **Code OSS extension host** (MIT licensed, `microsoft/vscode`) as a separate **Node.js process**, connected to the Rust editor over RPC:

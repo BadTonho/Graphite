@@ -300,3 +300,7 @@ pub(super) fn read_editor_prefs(paths: &[PathBuf]) -> Result<EditorPrefs, String
     }
     Ok(prefs)
 }
+
+pub fn workspace_configuration(workspace: &Path) -> Result<Value, String> {
+    merge_settings(&settings_paths(workspace))
+}

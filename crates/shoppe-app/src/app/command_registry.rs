@@ -1,31 +1,8 @@
 //! Command descriptions are independent of keybindings and menu visibility.
 use super::command_execution::{CommandError, CommandInvocation};
 use super::*;
-use serde::{Deserialize, Serialize};
+pub(crate) use graphite_core_api::{CommandTarget, TargetKind};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "id", rename_all = "camelCase")]
-pub(crate) enum CommandTarget {
-    #[default]
-    Global,
-    View(u64),
-    Widget(u64),
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TargetKind {
-    Global,
-    View,
-    Widget,
-}
-impl CommandTarget {
-    pub fn kind(self) -> TargetKind {
-        match self {
-            Self::Global => TargetKind::Global,
-            Self::View(_) => TargetKind::View,
-            Self::Widget(_) => TargetKind::Widget,
-        }
-    }
-}
 pub(crate) type Handler = fn(&mut App, &CommandInvocation) -> Result<(), CommandError>;
 
 #[derive(Clone)]

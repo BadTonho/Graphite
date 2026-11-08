@@ -43,3 +43,6 @@ mod document_view_tests;
 
 #[cfg(test)]
 mod command_tests;
+
+pub(crate) mod extension_host;
+pub(crate) mod services;

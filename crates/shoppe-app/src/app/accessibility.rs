@@ -58,6 +58,7 @@ impl ActivationHandler for AccessibilityActivation {
 }
 #[derive(Debug)]
 pub(crate) enum UserEvent {
+    ExtensionHostWake,
     CommandCompleted {
         execution: u64,
         event: Option<Box<UserEvent>>,

@@ -2,6 +2,7 @@
 use super::*;
 use crate::app::command_execution::{CommandError, CommandRequest};
 use crate::app::command_registry::CommandTarget;
+use std::sync::Arc;
 
 fn fixture() -> (
     crate::test_support::TempDir,
@@ -25,6 +26,7 @@ fn fixture() -> (
     app.lsp_manager.servers.insert(
         "rs".into(),
         ServerHandle {
+            instance: 0,
             sender,
             worker: None,
         },
@@ -212,4 +214,318 @@ fn disconnected_provider_fails_the_command_instead_of_leaking_a_ticket() {
         Some(Err(CommandError::Failed(_)))
     ));
     assert!(app.command_runtime.pending.is_empty());
+}
+
+fn host_executable() -> PathBuf {
+    let current = std::env::current_exe().unwrap();
+    current
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(if cfg!(windows) {
+            "graphite-extension-host.exe"
+        } else {
+            "graphite-extension-host"
+        })
+}
+fn pump_host(app: &mut crate::App, wakes: &Receiver<()>, done: impl Fn(&crate::App) -> bool) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_extension_host(std::time::Instant::now());
+        if done(app) {
+            return;
+        }
+        wakes
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .expect("host did not wake editor");
+    }
+}
+#[test]
+fn real_host_crash_cleans_resources_but_editor_and_lsp_continue_then_restart() {
+    let (_dir, mut app, messages, _path) = fixture();
+    let (wake, wakes) = mpsc::channel();
+    app.extension_host.enabled = true;
+    app.extension_host.executable = Some(host_executable());
+    app.extension_host.wake = Some(Arc::new(move || {
+        let _ = wake.send(());
+    }));
+    app.restart_extension_host().unwrap();
+    pump_host(&mut app, &wakes, |app| {
+        app.extension_host.commands.len() == 4 && !app.extension_host.subscriptions.is_empty()
+    });
+    let session = app.extension_host.supervisor.as_ref().unwrap().session;
+    let remote = |id: &str| CommandRequest {
+        id: format!("shoppe.simulated.{id}"),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    };
+    let pending = app.execute_command(remote("wait"));
+    let lsp = app.execute_command(request(&app, "editor.action.triggerSuggest"));
+    let ui = match messages.recv_timeout(Duration::from_secs(1)).unwrap() {
+        WorkerMessage::Command(LspCommand::Complete { request_id, .. }) => request_id,
+        other => panic!("unexpected {other:?}"),
+    };
+    let crash = app.execute_command(remote("crash"));
+    pump_host(&mut app, &wakes, |app| {
+        app.extension_host.supervisor.as_ref().unwrap().state
+            == graphite_extension_host::HostState::Stopped
+    });
+    let outcome = pending.try_result();
+    assert!(
+        matches!(outcome, Some(Err(CommandError::HostStopped))),
+        "{outcome:?}"
+    );
+    assert!(crash.try_result().is_some());
+    assert!(app.extension_host.commands.is_empty());
+    assert!(app.extension_host.subscriptions.is_empty());
+    assert!(lsp.try_result().is_none());
+    respond(&mut app, ui, "completion", json!([{"label":"still alive"}]));
+    assert!(matches!(lsp.try_result(), Some(Ok(_))));
+    app.run_ui_command("type"); // Invalid arguments must still be rejected locally.
+    app.run_ui_command_args("type", json!({"text":"X"}));
+    assert_eq!(app.editor().text(), "Xabc");
+    app.run_ui_command("shoppe.extensions.restartHost");
+    pump_host(&mut app, &wakes, |app| {
+        app.extension_host.commands.len() == 4
+    });
+    assert_ne!(
+        app.extension_host.supervisor.as_ref().unwrap().session,
+        session
+    );
+    let echo = app.execute_command(CommandRequest {
+        id: "shoppe.simulated.echo".into(),
+        arguments: json!({"ok":true}),
+        target: CommandTarget::Global,
+    });
+    pump_host(&mut app, &wakes, |app| {
+        !app.command_runtime.pending.contains_key(&echo.id)
+    });
+    assert_eq!(echo.try_result(), Some(Ok(json!({"ok":true}))));
+}
+#[test]
+fn stale_lsp_instance_cannot_apply_edit_or_stop_current_requests() {
+    let (_dir, mut app, messages, path) = fixture();
+    app.lsp_manager.servers.get_mut("rs").unwrap().instance = 9;
+    let ticket = app.execute_command(request(&app, "editor.action.triggerSuggest"));
+    let _ = messages.recv_timeout(Duration::from_secs(1)).unwrap();
+    let (reply, replies) = mpsc::channel();
+    let active = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let edit=serde_json::from_value(json!({"changes":{path_to_uri(&path).unwrap():[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"Q"}]}})).unwrap();
+    let mut queue = app.lsp_queue.lock().unwrap();
+    queue.push(LspUiEvent::Instance {
+        extension: "rs".into(),
+        instance: 8,
+        event: Box::new(LspUiEvent::ApplyEdit {
+            id: RequestId::from(5),
+            edit,
+            reply,
+            active,
+        }),
+    });
+    queue.push(LspUiEvent::Instance {
+        extension: "rs".into(),
+        instance: 8,
+        event: Box::new(LspUiEvent::ServerStopped {
+            extension: "rs".into(),
+        }),
+    });
+    drop(queue);
+    app.process_lsp_events();
+    assert_eq!(app.editor().text(), "abc");
+    assert!(replies.try_recv().is_err());
+    assert!(ticket.try_result().is_none());
+    assert!(app.lsp_manager.current_instance("rs", 9));
+    app.cancel_command(ticket.id);
+}
+
+fn attach_host(app: &mut crate::App) -> Receiver<()> {
+    let (tx, rx) = mpsc::channel();
+    app.extension_host.enabled = true;
+    app.extension_host.executable = Some(host_executable());
+    app.extension_host.wake = Some(Arc::new(move || {
+        let _ = tx.send(());
+    }));
+    app.restart_extension_host().unwrap();
+    pump_host(app, &rx, |app| {
+        app.extension_host.commands.len() == 4 && !app.extension_host.subscriptions.is_empty()
+    });
+    rx
+}
+#[test]
+fn nested_host_service_edits_keep_origin_view_and_typed_command_errors() {
+    use graphite_core_api::{
+        DocumentEdit, DocumentUri, Position as ApiPosition, ServiceRequest, TextEdit,
+    };
+    let (_dir, mut app, _messages, path) = fixture();
+    app.editor_mut().set_selection(1, 1);
+    let first = app.command_view_ref().id;
+    app.run_ui_command("workbench.action.splitEditorRight");
+    app.editor_mut().set_selection(3, 3);
+    let focused = app.command_view_ref().id;
+    let wakes = attach_host(&mut app);
+    let service = ServiceRequest::ApplyEdits {
+        edits: vec![DocumentEdit {
+            uri: DocumentUri::from_path(&path).unwrap(),
+            version: Some(0),
+            edits: vec![TextEdit {
+                start: ApiPosition {
+                    line: 0,
+                    character: 1,
+                },
+                end: ApiPosition {
+                    line: 0,
+                    character: 1,
+                },
+                text: "X".into(),
+            }],
+        }],
+    };
+    let ticket = app.execute_command(CommandRequest {
+        id: "shoppe.simulated.service".into(),
+        arguments: serde_json::to_value(service).unwrap(),
+        target: CommandTarget::View(first.0),
+    });
+    pump_host(&mut app, &wakes, |app| {
+        !app.command_runtime.pending.contains_key(&ticket.id)
+    });
+    assert_eq!(ticket.try_result(), Some(Ok(Value::Null)));
+    assert_eq!(app.command_view_ref().id, focused);
+    assert_eq!(app.editor().text(), "aXbc");
+    assert_eq!(app.editor().cursor().char_idx, 4);
+    app.run_ui_command("undo");
+    assert_eq!(app.command_view_ref().id, focused);
+    assert_eq!(
+        app.editor_groups
+            .view(first)
+            .unwrap()
+            .selection_state
+            .cursor()
+            .char_idx,
+        1
+    );
+    let ticket = app.execute_command(CommandRequest {
+        id: "shoppe.simulated.service".into(),
+        arguments: serde_json::to_value(ServiceRequest::Execute(CommandRequest {
+            id: "does.not.exist".into(),
+            arguments: Value::Null,
+            target: CommandTarget::Global,
+        }))
+        .unwrap(),
+        target: CommandTarget::Global,
+    });
+    pump_host(&mut app, &wakes, |app| {
+        !app.command_runtime.pending.contains_key(&ticket.id)
+    });
+    assert!(matches!(
+        ticket.try_result(),
+        Some(Err(CommandError::UnknownCommand(_)))
+    ));
+}
+#[test]
+fn host_command_awaiting_user_confirmation_has_no_rpc_timeout() {
+    use graphite_core_api::ServiceRequest;
+    let (_dir, mut app, _messages, _path) = fixture();
+    app.editor_mut().insert("dirty");
+    let view = app.command_view_ref().id;
+    let wakes = attach_host(&mut app);
+    let service = ServiceRequest::Execute(CommandRequest {
+        id: "workbench.action.closeActiveEditor".into(),
+        arguments: Value::Null,
+        target: CommandTarget::View(view.0),
+    });
+    let ticket = app.execute_command(CommandRequest {
+        id: "shoppe.simulated.service".into(),
+        arguments: serde_json::to_value(service).unwrap(),
+        target: CommandTarget::View(view.0),
+    });
+    pump_host(&mut app, &wakes, |app| {
+        app.close_confirm
+            && app
+                .extension_host
+                .supervisor
+                .as_ref()
+                .unwrap()
+                .pending
+                .get(*app.extension_host.outbound.keys().next().unwrap())
+                .is_some_and(|state| state.deadline.is_none())
+    });
+    app.poll_extension_host(std::time::Instant::now() + Duration::from_secs(31));
+    assert!(ticket.try_result().is_none());
+    assert!(app.close_confirm);
+    app.run_ui_command("shoppe.close.cancel");
+    pump_host(&mut app, &wakes, |app| {
+        !app.command_runtime.pending.contains_key(&ticket.id)
+    });
+    assert_eq!(ticket.try_result(), Some(Err(CommandError::Cancelled)));
+    assert_eq!(app.editor().text(), "dirtyabc");
+}
+
+#[test]
+fn host_resource_disposal_old_sessions_and_closed_targets_are_inert() {
+    use graphite_core_api::{protocol::RpcRequest, ServiceRequest};
+    let (_dir, mut app, _messages, _path) = fixture();
+    let wakes = attach_host(&mut app);
+    let session = app.extension_host.supervisor.as_ref().unwrap().session;
+    let echo = app.extension_host.commands["shoppe.simulated.echo"].resource;
+    let id = app.extension_host.last_request + 1;
+    app.handle_host_request(
+        session,
+        id,
+        RpcRequest::Dispose { resource: echo },
+        std::time::Instant::now(),
+    );
+    assert!(!app
+        .extension_host
+        .commands
+        .contains_key("shoppe.simulated.echo"));
+    let text = app.editor().text();
+    app.handle_host_request(
+        session - 1,
+        id + 1,
+        RpcRequest::Service {
+            request: ServiceRequest::Message {
+                text: "stale session".into(),
+            },
+            parent: None,
+        },
+        std::time::Instant::now(),
+    );
+    assert_ne!(app.status, "stale session");
+    assert_eq!(app.editor().text(), text);
+    let view = app.command_view_ref().id;
+    app.run_ui_command("workbench.action.splitEditorRight");
+    let focused = app.command_view_ref().id;
+    let wait = app.execute_command(CommandRequest {
+        id: "shoppe.simulated.wait".into(),
+        arguments: Value::Null,
+        target: CommandTarget::View(view.0),
+    });
+    let close = app.execute_command(CommandRequest {
+        id: "workbench.action.closeActiveEditor".into(),
+        arguments: Value::Null,
+        target: CommandTarget::View(view.0),
+    });
+    assert_eq!(close.try_result(), Some(Ok(Value::Null)));
+    assert_eq!(wait.try_result(), Some(Err(CommandError::TargetClosed)));
+    assert_eq!(app.command_view_ref().id, focused);
+    pump_host(&mut app, &wakes, |app| {
+        app.extension_host.outbound.is_empty()
+    });
+}
+
+#[test]
+fn replacing_server_instance_finishes_old_tickets_without_cancelling_the_replacement() {
+    let (_dir, mut app, messages, _path) = fixture();
+    let ticket = app.execute_command(request(&app, "editor.action.triggerSuggest"));
+    let _ = messages.recv_timeout(Duration::from_secs(1)).unwrap();
+    app.lsp_manager.servers.get_mut("rs").unwrap().instance = 3;
+    app.process_lsp_events();
+    assert!(matches!(
+        ticket.try_result(),
+        Some(Err(CommandError::Failed(_)))
+    ));
+    assert!(app.command_runtime.lsp_jobs.is_empty());
+    assert!(messages.try_recv().is_err());
+    assert!(app.lsp_manager.current_instance("rs", 3));
 }

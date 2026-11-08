@@ -146,6 +146,18 @@ impl super::App {
                 .map(CommandTarget::Widget)
                 .unwrap_or(CommandTarget::Global);
         }
+        if self.extension_host.commands.get(id).is_some_and(|command| {
+            !command
+                .metadata
+                .targets
+                .contains(&super::command_registry::TargetKind::View)
+                && command
+                    .metadata
+                    .targets
+                    .contains(&super::command_registry::TargetKind::Global)
+        }) {
+            return CommandTarget::Global;
+        }
         CommandTarget::View(self.editor_groups.active_view().id.0)
     }
     pub(crate) fn refresh_command_context(&mut self) {
@@ -255,6 +267,18 @@ impl super::App {
             ),
         ];
         let mut global = HashMap::new();
+        global.insert(
+            "extensionHostEnabled".into(),
+            self.extension_host.enabled.to_string(),
+        );
+        global.insert(
+            "extensionHostReady".into(),
+            self.extension_host
+                .supervisor
+                .as_ref()
+                .is_some_and(|host| host.state == graphite_extension_host::HostState::Ready)
+                .to_string(),
+        );
         for (_, key, value, _) in flags {
             global.insert(key.into(), value.to_string());
         }

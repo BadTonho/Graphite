@@ -1,5 +1,6 @@
 mod dispatch;
 mod protocol;
+mod requests;
 mod worker;
 use dispatch::dispatch_server_message;
 #[cfg(test)]
@@ -43,6 +44,22 @@ struct ServerConfigFile {
 
 #[derive(Debug, Clone)]
 pub enum LspUiEvent {
+    ServiceRequest {
+        id: RequestId,
+        method: String,
+        params: Value,
+        reply: Sender<lsp_server::Response>,
+        active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    },
+    Instance {
+        extension: String,
+        instance: u64,
+        event: Box<LspUiEvent>,
+    },
+    RequestRejected {
+        request_id: u64,
+        error: graphite_core_api::ServiceError,
+    },
     Status(String),
     ServerStopped {
         extension: String,
@@ -156,6 +173,20 @@ enum LspCommand {
     Shutdown,
 }
 
+impl LspCommand {
+    fn request_id(&self) -> Option<u64> {
+        match self {
+            Self::Complete { request_id, .. }
+            | Self::Definition { request_id, .. }
+            | Self::Hover { request_id, .. }
+            | Self::InlayHints { request_id, .. }
+            | Self::CodeActions { request_id, .. }
+            | Self::ExecuteCommand { request_id, .. } => Some(*request_id),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 enum WorkerMessage {
     Command(LspCommand),
@@ -164,6 +195,7 @@ enum WorkerMessage {
 }
 
 struct ServerHandle {
+    instance: u64,
     sender: Sender<WorkerMessage>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -208,6 +240,18 @@ impl LspManager {
         }
     }
 
+    pub fn server_instance_for(&self, path: &Path) -> Option<u64> {
+        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+        self.servers.get(&extension).map(|server| server.instance)
+    }
+    pub fn current_instance(&self, extension: &str, instance: u64) -> bool {
+        self.servers
+            .get(extension)
+            .is_some_and(|server| server.instance == instance)
+    }
+    pub fn retire_instance(&mut self, extension: &str) {
+        self.servers.remove(extension);
+    }
     pub fn server_extension_for(&self, path: &Path) -> Option<String> {
         self.config_for(path).map(|config| config.extension.clone())
     }
@@ -234,13 +278,32 @@ impl LspManager {
         let config = config.clone();
         let extension = config.extension.clone();
         let root = root.to_path_buf();
+        static NEXT_INSTANCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let instance = NEXT_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (worker_events, events) = mpsc::channel();
+        let event_extension = extension.clone();
+        thread::spawn(move || {
+            while let Ok(event) = events.recv() {
+                if event_tx
+                    .send(LspUiEvent::Instance {
+                        extension: event_extension.clone(),
+                        instance,
+                        event: Box::new(event),
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         let worker = thread::Builder::new()
             .name(format!("lsp-{}", config.language_id))
-            .spawn(move || run_server(config, root, receiver, event_tx))
+            .spawn(move || run_server(config, root, receiver, worker_events))
             .expect("failed to create LSP worker thread");
         self.servers.insert(
             extension,
             ServerHandle {
+                instance,
                 sender: sender.clone(),
                 worker: Some(worker),
             },
@@ -561,6 +624,7 @@ mod tests {
         manager.servers.insert(
             "rs".into(),
             ServerHandle {
+                instance: 0,
                 sender,
                 worker: None,
             },

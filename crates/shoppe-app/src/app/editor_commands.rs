@@ -433,29 +433,18 @@ impl App {
     }
 }
 
+#[cfg(test)]
 pub(super) fn strict_lsp_position_to_char(
     text: &str,
     position: lsp_types::Position,
 ) -> Option<usize> {
-    let mut offset = 0;
-    let mut lines = text.split('\n');
-    for _ in 0..position.line {
-        offset += lines.next()?.chars().count() + 1;
-    }
-    let line = lines.next()?;
-    let line = line.strip_suffix('\r').unwrap_or(line);
-    let mut utf16 = 0;
-    for ch in line.chars() {
-        if utf16 == position.character {
-            return Some(offset);
-        }
-        utf16 += ch.len_utf16() as u32;
-        if utf16 > position.character {
-            return None;
-        }
-        offset += 1;
-    }
-    (utf16 == position.character).then_some(offset)
+    graphite_core_api::position_to_char(
+        text,
+        graphite_core_api::Position {
+            line: position.line,
+            character: position.character,
+        },
+    )
 }
 
 #[cfg(test)]

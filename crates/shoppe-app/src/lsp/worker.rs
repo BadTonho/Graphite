@@ -1,3 +1,5 @@
+use super::requests::PendingClientRequests;
+pub(super) use super::requests::ServerRequests;
 use super::*;
 
 pub(super) fn run_server(
@@ -53,7 +55,12 @@ pub(super) fn run_server(
                         break;
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    let _ = reader_tx.send(WorkerMessage::IoError(
+                        "Language server closed stdout".into(),
+                    ));
+                    break;
+                }
                 Err(error) => {
                     let _ = reader_tx.send(WorkerMessage::IoError(error.to_string()));
                     break;
@@ -84,7 +91,7 @@ pub(super) fn run_server(
             "processId": std::process::id(),
             "rootUri": path_to_uri(&root),
             "capabilities": {
-                "workspace": {"applyEdit": true},
+                "workspace": {"applyEdit": true,"configuration":true,"workspaceFolders":true},
                 "textDocument": {
                     "completion": { "completionItem": { "snippetSupport": false } },
                     "hover": {},
@@ -104,8 +111,18 @@ pub(super) fn run_server(
         stop_child(&mut child);
         return;
     }
+    let initialize_deadline = std::time::Instant::now() + Duration::from_secs(20);
     let sync_kind = loop {
-        match signal_rx.recv_timeout(Duration::from_secs(20)) {
+        if std::time::Instant::now() >= initialize_deadline {
+            let _ = event_tx.send(LspUiEvent::Status("LSP initialization timed out".into()));
+            stop_child(&mut child);
+            return;
+        }
+        match signal_rx.recv_timeout(
+            initialize_deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .min(Duration::from_millis(40)),
+        ) {
             Ok(WorkerMessage::Incoming(Message::Response(response)))
                 if response.id == RequestId::from(1) =>
             {
@@ -147,7 +164,21 @@ pub(super) fn run_server(
                 stop_child(&mut child);
                 return;
             }
-            Ok(command @ WorkerMessage::Command(_)) => deferred.push(command),
+            Ok(command @ WorkerMessage::Command(_)) => {
+                if deferred.len() < graphite_core_api::protocol::MAX_PENDING {
+                    deferred.push(command);
+                } else if let WorkerMessage::Command(command) = command {
+                    if let Some(request_id) = command.request_id() {
+                        let _ = event_tx.send(LspUiEvent::RequestRejected {
+                            request_id,
+                            error: graphite_core_api::ServiceError::Busy,
+                        });
+                    }
+                }
+            }
+            Err(RecvTimeoutError::Timeout) if std::time::Instant::now() < initialize_deadline => {
+                continue
+            }
             Err(RecvTimeoutError::Timeout) => {
                 let _ = event_tx.send(LspUiEvent::Status(format!(
                     "{} LSP initialization timed out",
@@ -162,10 +193,7 @@ pub(super) fn run_server(
         let _ = signal_tx.send(message);
     }
     let mut text_cache = HashMap::<String, String>::new();
-    let mut pending = PendingClientRequests {
-        entries: HashMap::new(),
-        events: event_tx.clone(),
-    };
+    let mut pending = PendingClientRequests::new(event_tx.clone());
     let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
     let mut child_exited = false;
@@ -179,8 +207,23 @@ pub(super) fn run_server(
         if child_exited {
             break;
         }
+        for message in pending.expire(std::time::Instant::now()) {
+            if write_message(&mut writer, message).is_err() {
+                stop_child(&mut child);
+                return;
+            }
+        }
         match signal_rx.recv_timeout(Duration::from_millis(40)) {
             Ok(WorkerMessage::Command(command)) => {
+                if let Some(request_id) = command.request_id() {
+                    if pending.len() >= graphite_core_api::protocol::MAX_PENDING {
+                        let _ = event_tx.send(LspUiEvent::RequestRejected {
+                            request_id,
+                            error: graphite_core_api::ServiceError::Busy,
+                        });
+                        continue;
+                    }
+                }
                 let messages = match command {
                     LspCommand::Cancel { request_id } => {
                         let ids: Vec<_> = pending
@@ -401,7 +444,10 @@ pub(super) fn run_server(
                     }
                 };
                 for message in messages {
-                    let _ = write_message(&mut writer, message);
+                    if write_message(&mut writer, message).is_err() {
+                        stop_child(&mut child);
+                        return;
+                    }
                 }
             }
             Ok(WorkerMessage::Incoming(Message::Request(request))) => {
@@ -452,163 +498,6 @@ impl Drop for ServerLifetime {
         let _ = self.events.send(LspUiEvent::ServerStopped {
             extension: self.extension.clone(),
         });
-    }
-}
-
-/// Resolves outstanding UI requests on every worker exit, including shutdown.
-struct PendingClientRequests {
-    entries: HashMap<i32, (u64, &'static str)>,
-    events: Sender<LspUiEvent>,
-}
-impl std::ops::Deref for PendingClientRequests {
-    type Target = HashMap<i32, (u64, &'static str)>;
-    fn deref(&self) -> &Self::Target {
-        &self.entries
-    }
-}
-impl std::ops::DerefMut for PendingClientRequests {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entries
-    }
-}
-impl Drop for PendingClientRequests {
-    fn drop(&mut self) {
-        for (_, (request_id, _)) in self.entries.drain() {
-            if request_id != 0 {
-                let _ = self.events.send(LspUiEvent::RequestFailed {
-                    request_id,
-                    message: "Language server stopped".into(),
-                });
-            }
-        }
-    }
-}
-
-struct PendingServerRequest {
-    receiver: Receiver<lsp_server::Response>,
-    deadline: std::time::Instant,
-    active: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-#[derive(Default)]
-pub(super) struct ServerRequests {
-    pending: HashMap<RequestId, PendingServerRequest>,
-}
-
-impl Drop for PendingServerRequest {
-    fn drop(&mut self) {
-        self.active
-            .store(false, std::sync::atomic::Ordering::Release);
-    }
-}
-
-impl ServerRequests {
-    pub(super) fn handle(
-        &mut self,
-        request: Request,
-        event_tx: &Sender<LspUiEvent>,
-    ) -> Option<lsp_server::Response> {
-        if request.method != "workspace/applyEdit" {
-            return Some(lsp_server::Response::new_err(
-                request.id,
-                -32601,
-                "Unsupported method".into(),
-            ));
-        }
-        if self.pending.len() >= 64 || self.pending.contains_key(&request.id) {
-            return Some(lsp_server::Response::new_err(
-                request.id,
-                -32600,
-                "Too many or duplicate requests".into(),
-            ));
-        }
-        let params: lsp_types::ApplyWorkspaceEditParams =
-            match serde_json::from_value(request.params) {
-                Ok(params) => params,
-                Err(error) => {
-                    return Some(lsp_server::Response::new_err(
-                        request.id,
-                        -32602,
-                        error.to_string(),
-                    ))
-                }
-            };
-        let (reply, receiver) = mpsc::channel();
-        let id = request.id;
-        let active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-        if event_tx
-            .send(LspUiEvent::ApplyEdit {
-                id: id.clone(),
-                edit: params.edit,
-                reply,
-                active: active.clone(),
-            })
-            .is_err()
-        {
-            return Some(lsp_server::Response::new_err(
-                id,
-                -32603,
-                "Editor unavailable".into(),
-            ));
-        }
-        self.pending.insert(
-            id,
-            PendingServerRequest {
-                receiver,
-                deadline: std::time::Instant::now() + Duration::from_secs(30),
-                active,
-            },
-        );
-        None
-    }
-
-    pub(super) fn cancel(&mut self, id: &RequestId) -> Option<lsp_server::Response> {
-        if !self
-            .pending
-            .get(id)?
-            .active
-            .swap(false, std::sync::atomic::Ordering::AcqRel)
-        {
-            return None;
-        }
-        self.pending
-            .remove(id)
-            .map(|_| lsp_server::Response::new_err(id.clone(), -32800, "Request cancelled".into()))
-    }
-
-    pub(super) fn poll(&mut self, now: std::time::Instant) -> Vec<lsp_server::Response> {
-        let mut responses = Vec::new();
-        self.pending
-            .retain(|id, pending| match pending.receiver.try_recv() {
-                Ok(mut response) => {
-                    response.id = id.clone();
-                    responses.push(response);
-                    false
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    responses.push(lsp_server::Response::new_err(
-                        id.clone(),
-                        -32603,
-                        "Editor unavailable".into(),
-                    ));
-                    false
-                }
-                Err(mpsc::TryRecvError::Empty)
-                    if now >= pending.deadline
-                        && pending
-                            .active
-                            .swap(false, std::sync::atomic::Ordering::AcqRel) =>
-                {
-                    responses.push(lsp_server::Response::new_err(
-                        id.clone(),
-                        -32800,
-                        "Request timed out".into(),
-                    ));
-                    false
-                }
-                Err(mpsc::TryRecvError::Empty) => true,
-            });
-        responses
     }
 }
 

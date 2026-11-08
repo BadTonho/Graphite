@@ -7,6 +7,16 @@ pub(super) fn dispatch_server_message(
 ) {
     match message {
         Message::Notification(notification)
+            if matches!(
+                notification.method.as_str(),
+                "window/showMessage" | "window/logMessage"
+            ) =>
+        {
+            if let Some(message) = notification.params.get("message").and_then(Value::as_str) {
+                let _ = event_tx.send(LspUiEvent::Status(message.into()));
+            }
+        }
+        Message::Notification(notification)
             if notification.method == "textDocument/publishDiagnostics" =>
         {
             if let Ok(params) =

@@ -7,6 +7,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+graphite-core-api = { path = "../graphite-core-api" }
+graphite-extension-host = { path = "../graphite-extension-host" }
 winit = "0.30"
 graphite-text = { path = "../graphite-text" }
 graphite-workspace = { path = "../graphite-workspace" }

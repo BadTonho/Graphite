@@ -40,6 +40,16 @@ fn add(
         .expect("unique built-in command");
 }
 pub(super) fn register(registry: &mut CommandRegistry) {
+    add(
+        registry,
+        "shoppe.extensions.restartHost",
+        "Restart simulated extension host",
+        "Developer",
+        ALL,
+        "extensionHostEnabled",
+        None,
+        |app, _| app.restart_extension_host(),
+    );
     ui::register(registry);
     widget_controls::register(registry);
     editor::register(registry);

@@ -1,8 +1,21 @@
 use super::*;
 
 impl ApplicationHandler<UserEvent> for App {
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.collect_closed_documents();
+        self.poll_extension_host(std::time::Instant::now());
+        if self.extension_host.enabled {
+            let pending = self.extension_host.supervisor.as_ref().is_some_and(|host| {
+                host.state == graphite_extension_host::HostState::Starting || !host.pending.is_empty()
+            }) || !self.extension_host.incoming.is_empty();
+            event_loop.set_control_flow(if pending {
+                ControlFlow::WaitUntil(
+                    std::time::Instant::now() + std::time::Duration::from_millis(25),
+                )
+            } else {
+                ControlFlow::Wait
+            });
+        }
         self.refresh_command_context();
         self.reap_commands();
         self.check_cli_waiters();
@@ -207,6 +220,7 @@ impl ApplicationHandler<UserEvent> for App {
 impl App {
     pub(crate) fn handle_user_event(&mut self, event: UserEvent) {
         match event {
+            UserEvent::ExtensionHostWake => self.poll_extension_host(std::time::Instant::now()),
             UserEvent::SettingsImported(settings) => self.apply_imported_settings(*settings),
             UserEvent::SnippetsLoaded { snippets, warnings } => {
                 self.context_keys
