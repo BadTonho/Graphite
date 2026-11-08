@@ -46,10 +46,10 @@ cargo run -p graphite-app -- --simulate-extension-host <pasta>
 
 O executável auxiliar fica ao lado do Graphite. Para testes específicos da aplicação que usam o processo real, compile-o antes com `cargo build -p graphite-extension-host`; os testes do workspace o compilam pelo alvo de integração de processos. Não é necessário servidor de linguagem externo nem serviço de rede.
 
-O simulador registra `shoppe.simulated.echo`, `shoppe.simulated.wait`, `shoppe.simulated.crash` e `shoppe.simulated.service`. Echo retorna JSON, wait exercita cancelamento/prazos, crash exercita isolamento e service chama o contrato de serviços do editor. Reinicie com `shoppe.extensions.restartHost`, por exemplo por um atalho personalizado:
+O simulador registra `graphite.simulated.echo`, `graphite.simulated.wait`, `graphite.simulated.crash` e `graphite.simulated.service`. Echo retorna JSON, wait exercita cancelamento/prazos, crash exercita isolamento e service chama o contrato de serviços do editor. Reinicie com `graphite.extensions.restartHost`, por exemplo por um atalho personalizado:
 
 ```json
-{"key":"ctrl+alt+r","command":"shoppe.extensions.restartHost","when":"extensionHostEnabled"}
+{"key":"ctrl+alt+r","command":"graphite.extensions.restartHost","when":"extensionHostEnabled"}
 ```
 
 Testes cobrem snapshots, assinaturas e saturação, edições atômicas com documentos abertos/fechados/sem título, permissões, UTF-16, erros de metadados/registros, handshake e queda/reinício de processo real, cancelamento e prazos com tempo controlado, mensagens antigas, histórico de views sem foco, decisões pendentes, continuidade do LSP e instâncias antigas de servidor. A validação automatizada nativa é realizada no Windows; execução no Linux e verificações interativas de UI/GPU não foram realizadas neste ambiente.

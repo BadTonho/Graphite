@@ -1,5 +1,7 @@
 # Comandos e contexto
 
+Os IDs de comandos específicos da aplicação usam o namespace `graphite.`. Atualize atalhos personalizados e integrações salvos com um prefixo anterior do projeto. Crates, imports Rust e executáveis auxiliares também usam o prefixo `graphite`.
+
 ## Registro e ponto de entrada
 
 `app/command_registry.rs` mantém as descrições dos comandos: ID estável, título em inglês, categoria, tipos de alvo aceitos, esquema de argumentos, enablement, visibilidade opcional de menu e handler. IDs duplicados e condições malformadas são rejeitados. Os handlers por domínio ficam em `app/command_handlers/`; `app/commands.rs` apenas adapta atalhos e contém suas regressões. Os 106 IDs do dispatcher anterior e todos os atalhos padrão estão registrados. Não existe fallback legado.

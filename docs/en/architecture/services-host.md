@@ -46,10 +46,10 @@ cargo run -p graphite-app -- --simulate-extension-host <folder>
 
 The helper executable is located beside Graphite. For targeted application tests involving the real helper process, build it first with `cargo build -p graphite-extension-host`; workspace tests build it through the process integration test target. No external language server or network service is required.
 
-The simulator registers `shoppe.simulated.echo`, `shoppe.simulated.wait`, `shoppe.simulated.crash` and `shoppe.simulated.service`. Echo returns JSON, wait exercises cancellation/deadlines, crash exercises isolation, and service invokes the editor's service request contract. Restart with `shoppe.extensions.restartHost`, for example through a custom binding:
+The simulator registers `graphite.simulated.echo`, `graphite.simulated.wait`, `graphite.simulated.crash` and `graphite.simulated.service`. Echo returns JSON, wait exercises cancellation/deadlines, crash exercises isolation, and service invokes the editor's service request contract. Restart with `graphite.extensions.restartHost`, for example through a custom binding:
 
 ```json
-{"key":"ctrl+alt+r","command":"shoppe.extensions.restartHost","when":"extensionHostEnabled"}
+{"key":"ctrl+alt+r","command":"graphite.extensions.restartHost","when":"extensionHostEnabled"}
 ```
 
 Tests cover snapshots, subscriptions and overflow, mixed open/closed/untitled atomic edits, permissions, UTF-16, metadata/registration errors, real-process handshake and crash/restart, cancellation and deadlines with controlled time, stale messages, inactive-view history, pending user decisions, LSP survival and stale server instances. Native automated validation is performed on Windows; Linux execution and interactive UI/GPU checks remain unperformed in this environment.

@@ -19,7 +19,7 @@ cargo run -p graphite-app -- <pasta>
 
 ## Host de extensões simulado
 
-Compile o workspace antes de executar `cargo run -p graphite-app -- --simulate-extension-host <pasta>`. O auxiliar Rust deve ficar ao lado do Graphite. É desativado por padrão; Node e Code OSS não são necessários. O comando registrado `shoppe.extensions.restartHost` o reinicia manualmente. Consulte [Serviços e host simulado](../architecture/services-host.md) para limites do protocolo, exemplos de atalhos e testes de processo. Para testes específicos da aplicação que usam o auxiliar, execute antes `cargo build -p graphite-extension-host`; `cargo test --workspace` compila automaticamente o alvo de integração de processos.
+Compile o workspace antes de executar `cargo run -p graphite-app -- --simulate-extension-host <pasta>`. O auxiliar Rust deve ficar ao lado do Graphite. É desativado por padrão; Node e Code OSS não são necessários. O comando registrado `graphite.extensions.restartHost` o reinicia manualmente. Consulte [Serviços e host simulado](../architecture/services-host.md) para limites do protocolo, exemplos de atalhos e testes de processo. Para testes específicos da aplicação que usam o auxiliar, execute antes `cargo build -p graphite-extension-host`; `cargo test --workspace` compila automaticamente o alvo de integração de processos.
 
 ## Convenções
 

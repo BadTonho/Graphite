@@ -2521,6 +2521,110 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-app"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "accesskit_winit",
+ "alacritty_terminal",
+ "arboard",
+ "gix",
+ "globset",
+ "graphite-core-api",
+ "graphite-extension-host",
+ "graphite-plugins",
+ "graphite-render",
+ "graphite-syntax",
+ "graphite-text",
+ "graphite-workspace",
+ "interprocess",
+ "jsonschema",
+ "lsp-server",
+ "lsp-types",
+ "notify",
+ "portable-pty",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "similar",
+ "sysinfo",
+ "winit",
+]
+
+[[package]]
+name = "graphite-core-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "graphite-extension-host"
+version = "0.1.0"
+dependencies = [
+ "graphite-core-api",
+ "serde_json",
+]
+
+[[package]]
+name = "graphite-plugins"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
+name = "graphite-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cosmic-text",
+ "pollster",
+ "thiserror 2.0.21",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "graphite-syntax"
+version = "0.1.0"
+dependencies = [
+ "ropey",
+ "tree-sitter",
+ "tree-sitter-highlight",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+]
+
+[[package]]
+name = "graphite-text"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "ropey",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "graphite-workspace"
+version = "0.1.0"
+dependencies = [
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "regex",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "grep-matcher"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4855,110 +4959,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "graphite-app"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_winit",
- "alacritty_terminal",
- "arboard",
- "gix",
- "globset",
- "interprocess",
- "jsonschema",
- "lsp-server",
- "lsp-types",
- "notify",
- "portable-pty",
- "reqwest",
- "serde",
- "serde_json",
- "graphite-core-api",
- "graphite-extension-host",
- "graphite-plugins",
- "graphite-render",
- "graphite-syntax",
- "graphite-text",
- "graphite-workspace",
- "similar",
- "sysinfo",
- "winit",
-]
-
-[[package]]
-name = "graphite-core-api"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "url",
-]
-
-[[package]]
-name = "graphite-extension-host"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "graphite-core-api",
-]
-
-[[package]]
-name = "graphite-plugins"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "zip",
-]
-
-[[package]]
-name = "graphite-render"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cosmic-text",
- "pollster",
- "thiserror 2.0.21",
- "wgpu",
- "winit",
-]
-
-[[package]]
-name = "graphite-syntax"
-version = "0.1.0"
-dependencies = [
- "ropey",
- "tree-sitter",
- "tree-sitter-highlight",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-python",
- "tree-sitter-rust",
-]
-
-[[package]]
-name = "graphite-text"
-version = "0.1.0"
-dependencies = [
- "regex",
- "ropey",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "graphite-workspace"
-version = "0.1.0"
-dependencies = [
- "grep-regex",
- "grep-searcher",
- "ignore",
- "regex",
- "thiserror 2.0.21",
-]
 
 [[package]]
 name = "signal-hook"
