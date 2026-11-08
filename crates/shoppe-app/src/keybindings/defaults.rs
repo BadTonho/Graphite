@@ -1,5 +1,6 @@
 //! Default command bindings; user entries are evaluated after these rules.
 pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
+    ("ctrl+shift+x", "graphite.plugins.open", "true"),
     (
         "left",
         "cursorLeft",

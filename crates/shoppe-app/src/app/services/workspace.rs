@@ -1,4 +1,12 @@
 use super::*;
+impl App {
+    pub(crate) fn service_configuration(&self) -> Result<serde_json::Value, String> {
+        if let Some(settings) = &self.service_configuration_override {
+            return Ok(settings.clone());
+        }
+        crate::config::workspace_configuration(self.tree.root())
+    }
+}
 impl WorkspaceService for App {
     fn workspace(&self) -> ServiceResult<WorkspaceSnapshot> {
         Ok(WorkspaceSnapshot {
@@ -6,8 +14,7 @@ impl WorkspaceService for App {
         })
     }
     fn configuration(&self) -> ServiceResult<serde_json::Value> {
-        let mut settings = crate::config::workspace_configuration(self.tree.root())
-            .map_err(ServiceError::Failed)?;
+        let mut settings = self.service_configuration().map_err(ServiceError::Failed)?;
         let effective = serde_json::json!({
             "editor.fontSize":self.font_size,"editor.tabSize":self.tab_size,"editor.insertSpaces":self.insert_spaces,
             "editor.detectIndentation":self.detect_indentation,"editor.wordWrap":if self.word_wrap{"on"}else{"off"},

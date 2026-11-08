@@ -11,15 +11,20 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.collect_closed_documents();
         self.poll_extension_host(std::time::Instant::now());
+        self.poll_plugins();
         let host_pending = self.extension_host.enabled
             && (self.extension_host.supervisor.as_ref().is_some_and(|host| {
                 host.state == shoppe_extension_host::HostState::Starting || !host.pending.is_empty()
             }) || !self.extension_host.incoming.is_empty());
-        event_loop.set_control_flow(if self.saving.pending() || host_pending {
-            ControlFlow::WaitUntil(std::time::Instant::now() + std::time::Duration::from_millis(10))
-        } else {
-            ControlFlow::Wait
-        });
+        event_loop.set_control_flow(
+            if self.saving.pending() || host_pending || self.plugins.pending() {
+                ControlFlow::WaitUntil(
+                    std::time::Instant::now() + std::time::Duration::from_millis(10),
+                )
+            } else {
+                ControlFlow::Wait
+            },
+        );
         if self.exit_requested {
             event_loop.exit();
         }
@@ -144,7 +149,9 @@ impl ApplicationHandler<UserEvent> for App {
                         self.mouse.y as f32 >= gpu.renderer.line_height()
                             && (self.mouse.y as f32) < height - gpu.renderer.line_height() * 2.0
                     });
-                if over_process_panel {
+                if self.plugins.visible {
+                    self.scroll_plugins(lines as i32);
+                } else if over_process_panel {
                     let max_scroll = self.process_metrics.len().saturating_sub(9);
                     self.process_scroll = (self.process_scroll as i32 + lines as i32)
                         .clamp(0, max_scroll as i32)

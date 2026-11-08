@@ -88,6 +88,9 @@ struct App {
     context_keys: app::context_keys::ContextKeyService,
     command_runtime: app::command_execution::CommandRuntime,
     extension_host: app::extension_host::ExtensionRuntime,
+    plugins: app::plugins::Plugins,
+    /// Isolated constructors inject configuration so tests never read user settings.
+    service_configuration_override: Option<serde_json::Value>,
     saving: app::saving::SaveRuntime,
     document_events: app::services::DocumentEventHub,
     selecting: bool,
@@ -329,6 +332,8 @@ impl App {
             context_keys: app::context_keys::ContextKeyService::default(),
             command_runtime: Default::default(),
             extension_host: Default::default(),
+            plugins: Default::default(),
+            service_configuration_override: isolated.then(|| serde_json::json!({})),
             saving: Default::default(),
             document_events: Default::default(),
             selecting: false,
@@ -452,6 +457,27 @@ fn main() {
         .skip(1)
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
+    if args.first().is_some_and(|a| a == "plugin") {
+        let result = match args.as_slice() {
+            [_, action, directory] if action == "create" => {
+                shoppe_plugins::sdk::create(&cwd.join(directory))
+                    .map(|_| "Plugin project created".to_owned())
+            }
+            [_, action, directory] if action == "pack" => {
+                shoppe_plugins::package::pack(&cwd.join(directory))
+                    .map(|path| path.display().to_string())
+            }
+            _ => Err("Usage: graphite plugin <create|pack> <directory>".into()),
+        };
+        match result {
+            Ok(message) => println!("{message}"),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
     let simulate_host = args.iter().any(|arg| arg == "--simulate-extension-host");
     args.retain(|arg| arg != "--simulate-extension-host");
     let request = match cli::parse_args(args, cwd.clone()) {
@@ -515,6 +541,7 @@ fn main() {
     let _ = cli::start_ipc_server(proxy.clone());
     let mut app = App::new(root, Some(proxy));
     app.initial_cli_request = Some(request);
+    app.initialize_plugins();
     app.extension_host.enabled = simulate_host;
     if simulate_host {
         if let Err(error) = app.restart_extension_host() {

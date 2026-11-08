@@ -1,5 +1,7 @@
 # VS Code Extension Compatibility (planned)
 
+**Current prototype:** Graphite can install and inspect local or GitHub release VSIX packages, showing their manifest and contribution categories. No VSIX code or contributions execute. Native Graphite JS/TS plugins already use a separate API and Node host; see [Native plugins and VSIX inspection](native-plugins.md). The Code OSS integration below remains future work.
+
 Compatibility with `.vsix` extensions is a **core goal** and shapes the architecture from the start.
 
 Shared internal services and an isolated Rust simulation host are implemented; see [Services and simulated host](services-host.md). This validates sessions, resource ownership, requests and crash isolation. The Code OSS/Node host described below is still a required later integration: pin its version and test a real extension before claiming `.vsix` compatibility.

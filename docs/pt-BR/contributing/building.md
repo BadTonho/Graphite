@@ -1,5 +1,7 @@
 # Compilação e Testes
 
+Plugins nativos e seus testes de integração exigem Node.js 24+. O editor e a inspeção de VSIX podem funcionar sem Node; consulte [Desenvolvimento de plugins](plugins.md).
+
 ## Requisitos
 
 - Toolchain Rust estável recente (`rustup`).

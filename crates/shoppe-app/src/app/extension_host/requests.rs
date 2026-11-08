@@ -24,6 +24,27 @@ impl App {
             return;
         }
         self.extension_host.last_request = id;
+        if self.extension_host.native_manifest.is_some()
+            && matches!(
+                &request,
+                RpcRequest::RegisterSaveParticipant(_)
+                    | RpcRequest::Service {
+                        request: ServiceRequest::Execute(_)
+                            | ServiceRequest::Save(_)
+                            | ServiceRequest::Open { .. }
+                            | ServiceRequest::Focus { .. },
+                        ..
+                    }
+            )
+        {
+            self.reply_host(
+                id,
+                Err(ServiceError::InvalidArguments(
+                    "Not part of Graphite plugin API v1".into(),
+                )),
+            );
+            return;
+        }
         if self.extension_host.incoming.len() >= MAX_PENDING {
             self.reply_host(id, Err(ServiceError::Busy));
             return;
@@ -82,6 +103,11 @@ impl App {
         };
         let previous_view = std::mem::replace(&mut self.command_runtime.view, parent_view);
         let result = match request {
+            RpcRequest::Activated if self.extension_host.native_manifest.is_some() => {
+                self.extension_host.native_active = true;
+                self.extension_host.activation_deadline = None;
+                Ok(Value::Null)
+            }
             RpcRequest::RegisterSaveParticipant(metadata) => {
                 if metadata.id.is_empty()
                     || self
@@ -198,11 +224,22 @@ impl App {
         self.command_runtime.view = previous_view;
         self.reply_host(id, result);
     }
-    pub(super) fn register_host_command(
+    pub(crate) fn register_host_command(
         &mut self,
         session: u64,
         metadata: CommandMetadata,
     ) -> ServiceResult<u64> {
+        if let Some(manifest) = &self.extension_host.native_manifest {
+            if !manifest
+                .commands
+                .iter()
+                .any(|c| c.id == metadata.id && c.title == metadata.title)
+            {
+                return Err(ServiceError::InvalidArguments(
+                    "Command must be declared in the plugin manifest".into(),
+                ));
+            }
+        }
         if super::super::command_registry::registry()
             .get(&metadata.id)
             .is_some()

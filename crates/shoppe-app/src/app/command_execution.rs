@@ -176,6 +176,20 @@ impl App {
         request: CommandRequest,
         cancellation: CancellationToken,
     ) -> CommandTicket {
+        if let Some(owner) = self
+            .plugins
+            .hosts
+            .iter()
+            .find(|(_, host)| host.commands.contains_key(&request.id))
+            .map(|(id, _)| id.clone())
+        {
+            let mut host = self.plugins.hosts.remove(&owner).unwrap();
+            std::mem::swap(&mut self.extension_host, &mut host);
+            let ticket = self.execute_host_command(request, cancellation);
+            std::mem::swap(&mut self.extension_host, &mut host);
+            self.plugins.hosts.insert(owner, host);
+            return ticket;
+        }
         if self.extension_host.commands.contains_key(&request.id) {
             return self.execute_host_command(request, cancellation);
         }

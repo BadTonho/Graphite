@@ -19,6 +19,9 @@ pub(crate) struct Incoming {
 }
 #[derive(Default)]
 pub(crate) struct ExtensionRuntime {
+    pub native_manifest: Option<shoppe_plugins::manifest::Manifest>,
+    pub native_active: bool,
+    pub activation_deadline: Option<Instant>,
     pub enabled: bool,
     pub supervisor: Option<Supervisor>,
     pub next_session: u64,
@@ -50,6 +53,11 @@ impl App {
         };
         let validate = || {
             cancellation.check()?;
+            if self.extension_host.native_manifest.is_some() && !self.extension_host.native_active {
+                return Err(CommandError::Disabled(
+                    "Plugin activation is incomplete".into(),
+                ));
+            }
             let descriptor = self
                 .extension_host
                 .commands
