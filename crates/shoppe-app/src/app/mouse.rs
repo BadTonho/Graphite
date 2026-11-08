@@ -192,6 +192,9 @@ impl App {
                     .map(|view| view.document)
                     .collect();
                 for document in documents {
+                    let Some(document) = self.document_index(document) else {
+                        continue;
+                    };
                     let width = super::group_drawing::tab_width(&self.tabs[document], cw);
                     if mx >= x && mx < x + width {
                         self.activate_editor_document(document);

@@ -6,13 +6,13 @@ Este documento propõe três contratos: **documento/view**, **comandos e context
 
 ### Estado atual
 
-`Tab` em `crates/shoppe-app/src/main.rs` combina estado de documento e apresentação. `Buffer` em `crates/shoppe-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/shoppe-app/src/app/editor_groups.rs` guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
+`Tab` em `crates/shoppe-app/src/main.rs` combina estado de documento e apresentação e tem um ID de documento tipado usado pelas views, navegação e diagnósticos. `Buffer` em `crates/shoppe-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/shoppe-app/src/app/editor_groups.rs` tem identidade tipada estável e guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. Os IDs de documentos são resolvidos na coleção de abas, ainda sem um armazenamento dedicado. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
 
 `Buffer::apply_transaction` já valida substituições não sobrepostas, e substituições efetivas, undo e redo atualizam sua revisão em `crates/shoppe-text/src/edit.rs`. Isso oferece uma base útil, mas não demonstra que toda operação futura de documento satisfaça o contrato proposto.
 
 `shoppe-text` oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Quick fixes usam essa transação; a persistência em disco permanece fora de sua garantia de atomicidade.
 
-O caminho de quick fix prepara todas as edições de texto, rejeita operações de recursos não suportadas e posições UTF-16 inválidas e verifica as versões de documento fornecidas pelo LSP. Alvos antes fechados são abertos como documentos alterados em memória, sem gravação dos arquivos. As demais migrações de documento e view abaixo continuam necessárias.
+Quick fixes e requisições `workspace/applyEdit` do servidor compartilham um caminho de preparação e aplicação: ele rejeita operações de recursos não suportadas e posições UTF-16 inválidas, verifica as versões de documento fornecidas pelo LSP e retorna erros ao chamador. Alvos antes fechados tornam-se documentos alterados em memória, sem gravação dos arquivos. As demais migrações de documento e view abaixo continuam necessárias.
 
 ### Contrato alvo
 

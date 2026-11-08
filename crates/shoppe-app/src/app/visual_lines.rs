@@ -265,7 +265,9 @@ impl App {
             let Some(rect) = rects.iter().find(|rect| rect.id == group) else {
                 return;
             };
-            let tab = &tabs[view.document];
+            let Some(tab) = tabs.iter().find(|tab| tab.id == view.document) else {
+                return;
+            };
             let gutter = tab.buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
             let columns = (((rect.width - gutter).max(cw)) / cw) as usize;
             let top = if old_enabled {

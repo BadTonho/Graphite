@@ -19,8 +19,8 @@ pub(super) fn group_node(group: u64) -> NodeId {
 pub(super) fn editor_node(group: u64) -> NodeId {
     node_id(EDITOR, group, 0)
 }
-pub(super) fn tab_node(group: u64, document_id: u64) -> NodeId {
-    node_id(TAB, group, document_id)
+pub(super) fn tab_node(group: u64, document_id: DocumentId) -> NodeId {
+    node_id(TAB, group, document_id.0)
 }
 pub(super) fn line_node(group: u64, line: usize) -> NodeId {
     node_id(LINE, group, line as u64)
@@ -36,9 +36,9 @@ pub(super) fn editor_target(id: NodeId) -> Option<u64> {
     let (kind, group, _) = node_target(id);
     (kind == EDITOR || kind == GROUP).then_some(group)
 }
-pub(super) fn tab_target(id: NodeId) -> Option<(u64, u64)> {
+pub(super) fn tab_target(id: NodeId) -> Option<(u64, DocumentId)> {
     let (kind, group, document) = node_target(id);
-    (kind == TAB).then_some((group, document))
+    (kind == TAB).then_some((group, DocumentId(document)))
 }
 pub(super) fn line_target(id: NodeId) -> Option<(u64, usize)> {
     let (kind, group, line) = node_target(id);
@@ -196,7 +196,10 @@ impl App {
                 .views(rect.id)
                 .expect("layout group exists");
             let view = &views[active];
-            let buffer = &self.tabs[view.document].buffer;
+            let buffer = &self.tabs[self
+                .document_index(view.document)
+                .expect("view document exists")]
+            .buffer;
             let editor_id = editor_node(rect.id);
             let tab_list_id = node_id(TAB_LIST, rect.id, 0);
             let mut group = Node::new(Role::Group);
@@ -213,12 +216,14 @@ impl App {
             let mut tab_list = Node::new(Role::TabList);
             let ids: Vec<_> = views
                 .iter()
-                .map(|view| tab_node(rect.id, self.tabs[view.document].id))
+                .map(|view| tab_node(rect.id, view.document))
                 .collect();
             tab_list.set_children(ids.clone());
             nodes.push((tab_list_id, tab_list));
             for (i, item) in views.iter().enumerate() {
-                let tab = &self.tabs[item.document];
+                let tab = &self.tabs[self
+                    .document_index(item.document)
+                    .expect("view document exists")];
                 let mut node = Node::new(Role::Tab);
                 node.set_label(super::group_drawing::tab_label(tab).trim());
                 node.set_selected(i == active);

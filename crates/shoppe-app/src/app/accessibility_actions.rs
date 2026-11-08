@@ -39,11 +39,10 @@ impl App {
             let Some((views, _)) = self.editor_groups.views(group) else {
                 return;
             };
-            let Some(document) = views
-                .iter()
-                .map(|view| view.document)
-                .find(|&index| self.tabs[index].id == document_id)
-            else {
+            if !views.iter().any(|view| view.document == document_id) {
+                return;
+            }
+            let Some(document) = self.document_index(document_id) else {
                 return;
             };
             self.focus_editor_group(group);

@@ -8,9 +8,41 @@ struct Target {
     edits: Vec<lsp_types::TextEdit>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_prepared_edit_does_not_add_closed_documents_or_change_history() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.rs");
+        let second = dir.path().join("second.rs");
+        std::fs::write(&first, "abc").unwrap();
+        std::fs::write(&second, "xyz").unwrap();
+        let mut changes = serde_json::Map::new();
+        let edit = serde_json::json!([{ "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText":"Q" }]);
+        changes.insert(lsp::path_to_uri(&first).unwrap(), edit.clone());
+        changes.insert(lsp::path_to_uri(&second).unwrap(), edit);
+        let workspace = serde_json::from_value(serde_json::json!({"changes": changes})).unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first);
+        let prepared = app.prepare_workspace_edit(workspace).unwrap();
+        let count = app.tabs.len();
+        app.tabs[app.active_tab].buffer.insert("!");
+        let revision = app.tabs[app.active_tab].buffer.revision();
+        assert!(app.commit_workspace_edit(prepared).is_err());
+        assert_eq!(app.tabs.len(), count);
+        assert_eq!(app.tabs[app.active_tab].buffer.text(), "!abc");
+        assert_eq!(app.tabs[app.active_tab].buffer.revision(), revision);
+        assert_eq!(std::fs::read_to_string(second).unwrap(), "xyz");
+    }
+}
+
 struct Prepared {
     index: Option<usize>,
     tab: Option<Tab>,
+    revision: u64,
+    document_id: DocumentId,
     replacements: Vec<TextReplacement>,
 }
 
@@ -19,6 +51,14 @@ impl App {
         &mut self,
         edit: lsp_types::WorkspaceEdit,
     ) -> Result<(), String> {
+        let prepared = self.prepare_workspace_edit(edit)?;
+        self.commit_workspace_edit(prepared)
+    }
+
+    fn prepare_workspace_edit(
+        &self,
+        edit: lsp_types::WorkspaceEdit,
+    ) -> Result<Vec<Prepared>, String> {
         let mut targets: Vec<Target> = Vec::new();
         let mut add = |uri: &str,
                        version: Option<i32>,
@@ -55,27 +95,32 @@ impl App {
             }
         }
         if let Some(changes) = edit.document_changes {
-            match changes {
-                lsp_types::DocumentChanges::Edits(documents) => {
-                    for document in documents {
-                        let edits = document
-                            .edits
-                            .into_iter()
-                            .map(|edit| match edit {
-                                lsp_types::OneOf::Left(edit) => edit,
-                                lsp_types::OneOf::Right(edit) => edit.text_edit,
-                            })
-                            .collect();
-                        add(
-                            document.text_document.uri.as_str(),
-                            document.text_document.version,
-                            edits,
-                        )?;
-                    }
-                }
-                lsp_types::DocumentChanges::Operations(_) => {
-                    return Err("unsupported resource operations".into())
-                }
+            let documents = match changes {
+                lsp_types::DocumentChanges::Edits(documents) => documents,
+                lsp_types::DocumentChanges::Operations(operations) => operations
+                    .into_iter()
+                    .map(|operation| match operation {
+                        lsp_types::DocumentChangeOperation::Edit(document) => Ok(document),
+                        lsp_types::DocumentChangeOperation::Op(_) => {
+                            Err("unsupported resource operations".to_string())
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            };
+            for document in documents {
+                let edits = document
+                    .edits
+                    .into_iter()
+                    .map(|edit| match edit {
+                        lsp_types::OneOf::Left(edit) => edit,
+                        lsp_types::OneOf::Right(edit) => edit.text_edit,
+                    })
+                    .collect();
+                add(
+                    document.text_document.uri.as_str(),
+                    document.text_document.version,
+                    edits,
+                )?;
             }
         }
         if targets.is_empty() {
@@ -156,7 +201,7 @@ impl App {
             };
             let buffer = match index {
                 Some(index) => &self.tabs[index].buffer,
-                None => &tab.as_ref().expect("prepared tab").buffer,
+                None => &tab.as_ref().ok_or("missing prepared document")?.buffer,
             };
             let text = buffer.text();
             let mut replacements = Vec::new();
@@ -176,46 +221,78 @@ impl App {
             buffer
                 .validate_transaction(&replacements)
                 .map_err(|e| e.to_string())?;
+            let revision = buffer.revision();
+            let document_id = match index {
+                Some(index) => self.tabs[index].id,
+                None => tab.as_ref().ok_or("missing prepared document")?.id,
+            };
             prepared.push(Prepared {
                 index,
                 tab,
+                revision,
+                document_id,
                 replacements,
             });
         }
-        for target in &mut prepared {
-            if let Some(tab) = target.tab.take() {
-                let index = self.tabs.len();
-                self.tabs.push(tab);
-                self.editor_groups.add_background_document(index);
-                target.index = Some(index);
+        Ok(prepared)
+    }
+
+    fn commit_workspace_edit(&mut self, prepared: Vec<Prepared>) -> Result<(), String> {
+        let mut staged = Vec::new();
+        let mut replacements = Vec::new();
+        let mut existing = HashMap::new();
+        let mut staged_entries = Vec::new();
+        let mut before = Vec::new();
+        for target in prepared {
+            let edit_index = replacements.len();
+            replacements.push(target.replacements);
+            match (target.index, target.tab) {
+                (Some(index), None) => {
+                    if self.tabs.get(index).is_none_or(|tab| {
+                        tab.id != target.document_id || tab.buffer.revision() != target.revision
+                    }) {
+                        return Err("document changed before applying edits".into());
+                    }
+                    existing.insert(index, (edit_index, target.revision));
+                    before.push((index, target.revision));
+                }
+                (None, Some(tab)) => {
+                    staged.push(tab);
+                    staged_entries.push((edit_index, target.revision));
+                }
+                _ => return Err("invalid prepared document".into()),
             }
         }
-        let before: Vec<_> = prepared
-            .iter()
-            .map(|p| {
-                (
-                    p.index.expect("document index"),
-                    self.tabs[p.index.unwrap()].buffer.revision(),
-                )
-            })
-            .collect();
         let mut transactions: Vec<_> = self
             .tabs
             .iter_mut()
             .enumerate()
             .filter_map(|(index, tab)| {
-                prepared.iter().find(|p| p.index == Some(index)).map(|p| {
-                    let revision = tab.buffer.revision();
-                    DocumentTransaction {
+                existing
+                    .get(&index)
+                    .map(|&(edit_index, revision)| DocumentTransaction {
                         buffer: &mut tab.buffer,
                         expected_revision: Some(revision),
-                        replacements: &p.replacements,
-                    }
-                })
+                        replacements: &replacements[edit_index],
+                    })
             })
             .collect();
-        apply_document_transactions(&mut transactions)
-            .expect("all documents were validated before commit");
+        transactions.extend(staged.iter_mut().zip(&staged_entries).map(
+            |(tab, &(edit_index, revision))| DocumentTransaction {
+                buffer: &mut tab.buffer,
+                expected_revision: Some(revision),
+                replacements: &replacements[edit_index],
+            },
+        ));
+        apply_document_transactions(&mut transactions).map_err(|error| error.to_string())?;
+        drop(transactions);
+        for (tab, (_, revision)) in staged.into_iter().zip(staged_entries) {
+            let index = self.tabs.len();
+            self.tabs.push(tab);
+            self.editor_groups
+                .add_background_document(self.tabs[index].id);
+            before.push((index, revision));
+        }
         for (index, revision) in before {
             self.update_other_editor_views(index, revision);
             self.sync_lsp_document(index);

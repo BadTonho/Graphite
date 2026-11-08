@@ -121,7 +121,7 @@ impl App {
                 {
                     self.tabs[0] = tab;
                     self.active_tab = 0;
-                    self.editor_groups = super::editor_groups::EditorGroups::new(0);
+                    self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
                     self.snapshot_editor_view();
                 } else {
                     self.snapshot_editor_view();
@@ -227,7 +227,7 @@ impl App {
             tab.schema_revision = None;
             tab.lsp_revision = None;
             self.editor_groups.for_each_view_mut(|_, view| {
-                if view.document == index {
+                if view.document == tab.id {
                     view.selections = vec![shoppe_text::Selection {
                         anchor: cursor,
                         head: cursor,
