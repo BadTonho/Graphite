@@ -1,74 +1,11 @@
 //! Tickets and cooperative cancellation never block the owning event loop.
 use super::command_registry::{registry, ArgumentKind, CommandTarget};
 use super::*;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::mpsc::{self, Receiver, Sender};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct CommandRequest {
-    pub id: String,
-    #[serde(default)]
-    pub arguments: Value,
-    #[serde(default)]
-    pub target: CommandTarget,
-}
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "message", rename_all = "camelCase")]
-pub(crate) enum CommandError {
-    UnknownCommand(String),
-    InvalidArguments(String),
-    InvalidTarget(String),
-    TargetClosed,
-    Disabled(String),
-    Cancelled,
-    Failed(String),
-    StaleDocument,
-}
-impl std::fmt::Display for CommandError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnknownCommand(id) => write!(f, "Unknown command: {id}"),
-            Self::InvalidArguments(message)
-            | Self::InvalidTarget(message)
-            | Self::Failed(message) => f.write_str(message),
-            Self::Disabled(message) => write!(f, "Command disabled: {message}"),
-            Self::TargetClosed => f.write_str("Command target closed"),
-            Self::Cancelled => f.write_str("Command cancelled"),
-            Self::StaleDocument => f.write_str("Document changed while command was pending"),
-        }
-    }
-}
-pub(crate) type CommandResult = Result<Value, CommandError>;
-#[derive(Clone, Debug, Default)]
-pub(crate) struct CancellationToken(Arc<AtomicBool>);
-impl CancellationToken {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-    pub fn check(&self) -> Result<(), CommandError> {
-        if self.is_cancelled() {
-            Err(CommandError::Cancelled)
-        } else {
-            Ok(())
-        }
-    }
-}
-// Exposed to programmatic consumers, including cancellation without UI input.
-#[allow(dead_code)]
-pub(crate) struct CommandTicket {
-    pub id: u64,
-    pub cancellation: CancellationToken,
-    receiver: Receiver<CommandResult>,
-}
-impl CommandTicket {
-    pub fn try_result(&self) -> Option<CommandResult> {
-        self.receiver.try_recv().ok()
-    }
-}
+pub(crate) use shoppe_core_api::{
+    CancellationToken, CommandError, CommandRequest, CommandResult, CommandTicket,
+};
+use std::sync::mpsc::{self, Sender};
 pub(crate) struct CommandInvocation {
     pub request: CommandRequest,
     pub execution: u64,
@@ -106,13 +43,18 @@ pub(crate) fn deliver_command_event(
     };
     let _ = proxy.send_event(event);
 }
+pub(crate) struct LspJob {
+    pub execution: CommandJob,
+    pub path: PathBuf,
+    pub instance: Option<u64>,
+}
 #[derive(Default)]
 pub(crate) struct CommandRuntime {
     pub next: u64,
     pub pending: HashMap<u64, PendingCommand>,
     pub current: Option<u64>,
     pub view: Option<shoppe_text::ViewId>,
-    pub lsp_jobs: HashMap<u64, (CommandJob, PathBuf)>,
+    pub lsp_jobs: HashMap<u64, LspJob>,
     pub pending_close: Option<(u64, shoppe_text::ViewId)>,
     pub pending_window_close: Option<u64>,
 }
@@ -120,9 +62,14 @@ pub(crate) struct CommandRuntime {
 impl App {
     pub(super) fn track_lsp_command(&mut self, request_id: u64, path: &Path) {
         if let Some(job) = self.command_job(true) {
-            self.command_runtime
-                .lsp_jobs
-                .insert(request_id, (job, path.to_path_buf()));
+            self.command_runtime.lsp_jobs.insert(
+                request_id,
+                LspJob {
+                    execution: job,
+                    path: path.into(),
+                    instance: self.lsp_manager.server_instance_for(path),
+                },
+            );
         }
     }
     pub(super) fn command_job(&mut self, version_sensitive: bool) -> Option<CommandJob> {
@@ -229,6 +176,9 @@ impl App {
         request: CommandRequest,
         cancellation: CancellationToken,
     ) -> CommandTicket {
+        if self.extension_host.commands.contains_key(&request.id) {
+            return self.execute_host_command(request, cancellation);
+        }
         self.refresh_command_context();
         self.command_runtime.next += 1;
         let id = self.command_runtime.next;
@@ -352,11 +302,13 @@ impl App {
             .command_runtime
             .lsp_jobs
             .iter()
-            .filter(|(_, (job, _))| job.id == id)
-            .map(|(request, (_, path))| (*request, path.clone()))
+            .filter(|(_, job)| job.execution.id == id)
+            .map(|(request, job)| (*request, job.path.clone(), job.instance))
             .collect();
-        for (request, path) in lsp {
-            self.lsp_manager.cancel_request(&path, request);
+        for (request, path, instance) in lsp {
+            if instance == self.lsp_manager.server_instance_for(&path) {
+                self.lsp_manager.cancel_request(&path, request);
+            }
             self.command_runtime.lsp_jobs.remove(&request);
         }
         if let Some(pending) = self.command_runtime.pending.remove(&id) {

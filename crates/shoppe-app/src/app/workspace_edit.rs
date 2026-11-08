@@ -1,11 +1,16 @@
-use super::editor_commands::{strict_lsp_position_to_char, workspace_relative_path};
+use super::editor_commands::workspace_relative_path;
 use super::*;
+use shoppe_core_api::{
+    position_to_char, DocumentEdit, DocumentUri, FileSystem, LocalFileSystem,
+    TextEdit as ApiTextEdit,
+};
 use shoppe_text::{apply_document_transactions, DocumentTransaction, TextReplacement};
 
 struct Target {
-    path: PathBuf,
-    version: Option<i32>,
-    edits: Vec<lsp_types::TextEdit>,
+    uri: DocumentUri,
+    path: Option<PathBuf>,
+    version: Option<u64>,
+    edits: Vec<ApiTextEdit>,
 }
 
 #[cfg(test)]
@@ -163,14 +168,14 @@ mod tests {
     }
 }
 
-struct Prepared {
+pub(super) struct Prepared {
     index: Option<DocumentId>,
     tab: Option<Document>,
     revision: u64,
     document_id: DocumentId,
     replacements: Vec<TextReplacement>,
     source_bytes: Option<Vec<u8>>,
-    path: PathBuf,
+    path: Option<PathBuf>,
     _lease: Option<crate::document_store::DocumentLease>,
 }
 
@@ -179,76 +184,64 @@ impl App {
         &mut self,
         edit: lsp_types::WorkspaceEdit,
     ) -> Result<(), String> {
-        let prepared = self.prepare_workspace_edit(edit)?;
-        self.commit_workspace_edit(prepared)
+        use shoppe_core_api::DocumentService;
+        let edits = super::services::lsp::workspace_edits(edit).map_err(|e| e.to_string())?;
+        self.apply_edits(edits).map_err(|e| e.to_string())
     }
 
+    #[cfg(test)]
     fn prepare_workspace_edit(
         &self,
         edit: lsp_types::WorkspaceEdit,
     ) -> Result<Vec<Prepared>, String> {
+        self.prepare_document_edits(
+            super::services::lsp::workspace_edits(edit).map_err(|e| e.to_string())?,
+        )
+    }
+
+    pub(super) fn prepare_document_edits(
+        &self,
+        edits: Vec<DocumentEdit>,
+    ) -> Result<Vec<Prepared>, String> {
         let mut targets: Vec<Target> = Vec::new();
-        let mut add = |uri: &str,
-                       version: Option<i32>,
-                       edits: Vec<lsp_types::TextEdit>|
-         -> Result<(), String> {
-            let path = lsp::uri_to_path(uri).ok_or("unsupported URI")?;
-            let path = path
-                .canonicalize()
-                .map_err(|e| format!("cannot resolve target: {e}"))?;
-            if workspace_relative_path(self.tree.root(), &path).is_none() {
-                return Err("target outside the workspace".into());
-            }
-            if let Some(target) = targets
-                .iter_mut()
-                .find(|target| same_file_path(&target.path, &path))
-            {
-                if target.version.is_some() && version.is_some() && target.version != version {
+        for edit in edits {
+            let path = if edit.uri.is_untitled() {
+                None
+            } else {
+                let path = edit
+                    .uri
+                    .to_path()
+                    .map_err(|e| e.to_string())?
+                    .canonicalize()
+                    .map_err(|e| format!("cannot resolve target: {e}"))?;
+                if workspace_relative_path(self.tree.root(), &path).is_none() {
+                    return Err("target outside the workspace".into());
+                }
+                Some(path)
+            };
+            if let Some(target) = targets.iter_mut().find(|target| {
+                target.uri == edit.uri
+                    || target
+                        .path
+                        .as_ref()
+                        .zip(path.as_ref())
+                        .is_some_and(|(a, b)| same_file_path(a, b))
+            }) {
+                if target.version.is_some()
+                    && edit.version.is_some()
+                    && target.version != edit.version
+                {
                     return Err("conflicting document versions".into());
                 }
-                target.version = target.version.or(version);
-                target.edits.extend(edits);
+                target.version = target.version.or(edit.version);
+                target.edits.extend(edit.edits);
             } else {
                 targets.push(Target {
+                    uri: edit.uri,
                     path,
-                    version,
-                    edits,
+                    version: edit.version,
+                    edits: edit.edits,
                 });
-            }
-            Ok(())
-        };
-        if let Some(changes) = edit.changes {
-            for (uri, edits) in changes {
-                add(uri.as_str(), None, edits)?;
-            }
-        }
-        if let Some(changes) = edit.document_changes {
-            let documents = match changes {
-                lsp_types::DocumentChanges::Edits(documents) => documents,
-                lsp_types::DocumentChanges::Operations(operations) => operations
-                    .into_iter()
-                    .map(|operation| match operation {
-                        lsp_types::DocumentChangeOperation::Edit(document) => Ok(document),
-                        lsp_types::DocumentChangeOperation::Op(_) => {
-                            Err("unsupported resource operations".to_string())
-                        }
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            };
-            for document in documents {
-                let edits = document
-                    .edits
-                    .into_iter()
-                    .map(|edit| match edit {
-                        lsp_types::OneOf::Left(edit) => edit,
-                        lsp_types::OneOf::Right(edit) => edit.text_edit,
-                    })
-                    .collect();
-                add(
-                    document.text_document.uri.as_str(),
-                    document.text_document.version,
-                    edits,
-                )?;
             }
         }
         if targets.is_empty() {
@@ -257,42 +250,44 @@ impl App {
 
         let mut prepared = Vec::new();
         for target in targets {
-            let index = self.documents.id_for_path(&target.path);
+            let index = if let Some(path) = &target.path {
+                self.documents.id_for_path(path)
+            } else {
+                self.service_document_id(&target.uri)
+            };
+            if target.path.is_none() && index.is_none() {
+                return Err("document no longer exists".into());
+            }
             if let Some(version) = target.version {
-                let current = index.and_then(|index| {
-                    let tab = &self.documents[index];
-                    tab.lsp_revision
-                        .filter(|revision| *revision == tab.buffer.revision())
-                });
-                if version < 0 || current != Some(version as u64) {
+                let current = index.map(|id| self.documents[id].buffer.revision());
+                if current != Some(version) {
                     return Err("stale or unavailable document version".into());
                 }
             }
             let mut source_bytes = None;
+            let path = target.path.as_deref();
             let tab = if index.is_none() {
-                let relative = workspace_relative_path(self.tree.root(), &target.path)
-                    .ok_or("target outside workspace")?
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                let relative =
+                    workspace_relative_path(self.tree.root(), path.ok_or("missing document path")?)
+                        .ok_or("target outside workspace")?
+                        .to_string_lossy()
+                        .replace('\\', "/");
                 if self.read_only_patterns.iter().any(|pattern| {
                     globset::Glob::new(pattern)
                         .is_ok_and(|glob| glob.compile_matcher().is_match(&relative))
                 }) {
                     return Err("target matches a read-only pattern".into());
                 }
-                let bytes =
-                    std::fs::read(&target.path).map_err(|e| format!("cannot read target: {e}"))?;
+                let bytes = LocalFileSystem
+                    .read(&target.uri)
+                    .map_err(|e| format!("cannot read target: {e}"))?;
                 let decoded = crate::file_format::decode(&bytes)?;
                 source_bytes = Some(bytes);
-                let mut buffer = Buffer::from_text(&target.path, &decoded.text);
-                if std::fs::metadata(&target.path)
+                let mut buffer =
+                    Buffer::from_text(path.ok_or("missing document path")?, &decoded.text);
+                if LocalFileSystem
+                    .read_only(&target.uri)
                     .map_err(|e| e.to_string())?
-                    .permissions()
-                    .readonly()
-                    || std::fs::OpenOptions::new()
-                        .write(true)
-                        .open(&target.path)
-                        .is_err()
                 {
                     buffer.set_read_only(true);
                 }
@@ -308,7 +303,7 @@ impl App {
                 Some(Document {
                     buffer,
 
-                    language: Language::from_path(&target.path),
+                    language: Language::from_path(path.ok_or("missing document path")?),
                     highlights: None,
                     sticky_headers_cache: None,
                     highlighter: IncrementalHighlighter::new(),
@@ -333,16 +328,14 @@ impl App {
             let text = buffer.text();
             let mut replacements = Vec::new();
             for edit in target.edits {
-                let start = strict_lsp_position_to_char(&text, edit.range.start)
-                    .ok_or("invalid text range")?;
-                let end = strict_lsp_position_to_char(&text, edit.range.end)
-                    .ok_or("invalid text range")?;
+                let start = position_to_char(&text, edit.start).ok_or("invalid text range")?;
+                let end = position_to_char(&text, edit.end).ok_or("invalid text range")?;
                 if start > end {
                     return Err("invalid text range".into());
                 }
                 replacements.push(TextReplacement {
                     range: start..end,
-                    text: edit.new_text,
+                    text: edit.text,
                 });
             }
             buffer
@@ -367,7 +360,7 @@ impl App {
         Ok(prepared)
     }
 
-    fn commit_workspace_edit(&mut self, prepared: Vec<Prepared>) -> Result<(), String> {
+    pub(super) fn commit_workspace_edit(&mut self, prepared: Vec<Prepared>) -> Result<(), String> {
         let result = self.commit_prepared_workspace_edit(prepared);
         self.collect_closed_documents();
         result
@@ -379,8 +372,17 @@ impl App {
                 Some(id) => self.documents.get(id).ok_or("document no longer exists")?,
                 None => target.tab.as_ref().ok_or("missing prepared document")?,
             };
-            let path = document.buffer.path().ok_or("missing document path")?;
-            if !same_file_path(path, &target.path) {
+            let Some(path) = document.buffer.path() else {
+                if target.path.is_some() {
+                    return Err("document path changed after preparation".into());
+                }
+                continue;
+            };
+            if target
+                .path
+                .as_ref()
+                .is_none_or(|expected| !same_file_path(path, expected))
+            {
                 return Err("document path changed after preparation".into());
             }
             if std::fs::metadata(path)

@@ -4855,6 +4855,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "shoppe-core-api",
+ "shoppe-extension-host",
  "shoppe-render",
  "shoppe-syntax",
  "shoppe-text",
@@ -4862,6 +4864,23 @@ dependencies = [
  "similar",
  "sysinfo",
  "winit",
+]
+
+[[package]]
+name = "shoppe-core-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "shoppe-extension-host"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "shoppe-core-api",
 ]
 
 [[package]]

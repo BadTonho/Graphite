@@ -1,100 +1,129 @@
 use super::*;
 
 impl App {
-    pub(super) fn sync_lsp_document(&mut self, index: DocumentId) {
-        if index == self.active_document() {
-            self.sync_lsp_active();
-            return;
+    pub(super) fn sync_lsp_document(&mut self, document: DocumentId) {
+        if document == self.active_document() {
+            self.sync_schema_active();
         }
-        let tab = &mut self.documents[index];
-        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
-            return;
-        };
-        if !self.lsp_manager.supports_path(&path) {
-            return;
-        }
-        let revision = tab.buffer.revision();
-        if tab.lsp_revision == Some(revision) {
-            return;
-        }
-        if tab.lsp_revision.is_none() {
-            self.lsp_manager.open(
-                &path,
-                self.tree.root(),
-                tab.buffer.text(),
-                revision as i32,
-                self.lsp_sender.clone(),
-            );
-        } else {
-            self.lsp_manager
-                .change(&path, tab.buffer.text(), revision as i32);
-        }
-        tab.lsp_revision = Some(revision);
-    }
-
-    pub(crate) fn register_lsp_active(&mut self) {
-        self.sync_schema_active();
-        let Some(path) = self.documents[self.active_document()]
-            .buffer
-            .path()
-            .map(PathBuf::from)
+        let Ok(snapshot) = super::services::snapshot_document(document, &self.documents[document])
         else {
             return;
         };
+        let Ok(path) = snapshot.uri.to_path() else {
+            return;
+        };
         if !self.lsp_manager.supports_path(&path) {
             return;
         }
-        let version = self.documents[self.active_document()].buffer.revision() as i32;
-        let text = self.documents[self.active_document()].buffer.text();
-        self.lsp_manager.open(
-            &path,
-            self.tree.root(),
-            text,
-            version,
-            self.lsp_sender.clone(),
-        );
-        let document = self.active_document();
-        self.documents[document].lsp_revision = Some(version as u64);
-        self.request_inlay_hints();
-    }
-
-    pub(crate) fn sync_lsp_active(&mut self) {
-        self.sync_schema_active();
-        let document = self.active_document();
-        let tab = &mut self.documents[document];
-        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
+        let revision = snapshot.version.unwrap();
+        let opened = self.documents[document].lsp_revision;
+        if opened == Some(revision) {
+            return;
+        }
+        use shoppe_core_api::WorkspaceService;
+        let Ok(workspace) = self.workspace() else {
             return;
         };
-        let revision = tab.buffer.revision();
-        if tab.lsp_revision == Some(revision) {
-            return;
+        if super::services::lsp::publish_document(
+            &mut self.lsp_manager,
+            &snapshot,
+            &workspace,
+            self.lsp_sender.clone(),
+            opened.is_some(),
+        )
+        .is_ok()
+        {
+            self.documents[document].lsp_revision = Some(revision);
+            if document == self.active_document() {
+                self.request_inlay_hints();
+            }
         }
-        if tab.lsp_revision.is_none() {
-            self.register_lsp_active();
-            return;
-        }
-        self.lsp_manager
-            .change(&path, tab.buffer.text(), revision as i32);
-        tab.lsp_revision = Some(revision);
-        self.request_inlay_hints();
+    }
+    pub(crate) fn register_lsp_active(&mut self) {
+        self.sync_lsp_document(self.active_document());
+    }
+    pub(crate) fn sync_lsp_active(&mut self) {
+        self.sync_lsp_document(self.active_document());
     }
 
     pub(crate) fn process_lsp_events(&mut self) {
+        let replaced: Vec<_> = self
+            .command_runtime
+            .lsp_jobs
+            .values()
+            .filter(|job| {
+                job.instance.is_some()
+                    && job.instance != self.lsp_manager.server_instance_for(&job.path)
+            })
+            .map(|job| job.execution.id)
+            .collect();
+        for id in replaced {
+            self.finish_command(
+                id,
+                Err(super::command_execution::CommandError::Failed(
+                    "Language server instance changed".into(),
+                )),
+            );
+        }
+
         let events = self
             .lsp_queue
             .lock()
             .map(|mut q| std::mem::take(&mut *q))
             .unwrap_or_default();
         for event in events {
+            let event = match event {
+                LspUiEvent::Instance {
+                    extension,
+                    instance,
+                    event,
+                } => {
+                    if !self.lsp_manager.current_instance(&extension, instance) {
+                        continue;
+                    }
+                    *event
+                }
+                event => event,
+            };
             if let LspUiEvent::ServerStopped { extension } = &event {
+                self.lsp_manager.retire_instance(extension);
+                for (_, document) in self.documents.iter_mut() {
+                    if document.buffer.path().is_some_and(|path| {
+                        self.lsp_manager.server_extension_for(path).as_ref() == Some(extension)
+                    }) {
+                        document.lsp_revision = None;
+                        document.inlay_hints.clear();
+                        document.inlay_revision = None;
+                        document.diagnostics.clear();
+                    }
+                }
+                let source_matches = |kind| {
+                    self.context_keys
+                        .widget_id(kind)
+                        .and_then(|id| self.context_keys.widget(id))
+                        .and_then(|scope| scope.parent)
+                        .and_then(|view| self.editor_groups.view(view))
+                        .and_then(|view| self.documents[view.document].buffer.path())
+                        .is_some_and(|path| {
+                            self.lsp_manager.server_extension_for(path).as_ref() == Some(extension)
+                        })
+                };
+                if source_matches(super::context_keys::WidgetKind::QuickFix) {
+                    self.quick_fix_visible = false;
+                    self.quick_fix_actions.clear();
+                }
+                if source_matches(super::context_keys::WidgetKind::Suggest) {
+                    self.completion_items.clear();
+                }
+
                 let executions: Vec<_> = self
                     .command_runtime
                     .lsp_jobs
                     .values()
-                    .filter(|(_, path)| {
-                        self.lsp_manager.server_extension_for(path).as_ref() == Some(extension)
+                    .filter(|job| {
+                        self.lsp_manager.server_extension_for(&job.path).as_ref() == Some(extension)
                     })
-                    .map(|(job, _)| job.id)
+                    .map(|job| job.execution.id)
                     .collect();
                 for execution in executions {
                     self.finish_command(
@@ -113,12 +142,22 @@ impl App {
                 | LspUiEvent::JsonCompletion { request_id, .. }
                 | LspUiEvent::CodeActions { request_id, .. }
                 | LspUiEvent::RequestFailed { request_id, .. }
+                | LspUiEvent::RequestRejected { request_id, .. }
                 | LspUiEvent::ServerCommandCompleted { request_id, .. } => Some(*request_id),
                 _ => None,
             };
             if let Some(request) = request {
-                if let Some((job, _)) = self.command_runtime.lsp_jobs.remove(&request) {
+                if let Some(job) = self.command_runtime.lsp_jobs.remove(&request) {
                     let result = match &event {
+                        LspUiEvent::RequestRejected { error, .. } => Err(match error {
+                            shoppe_core_api::ServiceError::Timeout => {
+                                super::command_execution::CommandError::Timeout
+                            }
+                            shoppe_core_api::ServiceError::Busy => {
+                                super::command_execution::CommandError::Busy
+                            }
+                            _ => super::command_execution::CommandError::Failed(error.to_string()),
+                        }),
                         LspUiEvent::RequestFailed { message, .. } => Err(
                             super::command_execution::CommandError::Failed(message.clone()),
                         ),
@@ -145,7 +184,7 @@ impl App {
                         _ => Ok(serde_json::Value::Null),
                     };
                     self.accept_command_event(
-                        job.id,
+                        job.execution.id,
                         Some(Box::new(UserEvent::LspCommandEvent(Box::new(event)))),
                         result,
                     );
@@ -160,6 +199,35 @@ impl App {
     }
     pub(crate) fn apply_lsp_ui_event(&mut self, event: LspUiEvent, tracked: bool) {
         match event {
+            LspUiEvent::ServiceRequest {
+                id,
+                method,
+                params,
+                reply,
+                active,
+            } => {
+                if !active.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                    return;
+                }
+                let result = if method == "window/showMessageRequest" {
+                    use shoppe_core_api::WindowService;
+                    self.show_message(
+                        params
+                            .get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .into(),
+                    )
+                    .map(|_| serde_json::Value::Null)
+                } else {
+                    super::services::lsp::workspace_request(self, &method, &params)
+                };
+                let response = match result {
+                    Ok(value) => lsp_server::Response::new_ok(id, value),
+                    Err(error) => lsp_server::Response::new_err(id, -32603, error.to_string()),
+                };
+                let _ = reply.send(response);
+            }
             LspUiEvent::ServerStopped { .. } => {}
             LspUiEvent::RequestFailed { message, .. } => self.status = message,
             LspUiEvent::ServerCommandCompleted { result, .. } => {
@@ -167,7 +235,10 @@ impl App {
                     .map(|_| "Server command completed".to_string())
                     .unwrap_or_else(|e| format!("Server command failed: {e}"));
             }
-            LspUiEvent::Status(status) => self.status = status,
+            LspUiEvent::Status(status) => {
+                use shoppe_core_api::WindowService;
+                let _ = self.show_message(status);
+            }
             LspUiEvent::ApplyEdit {
                 id,
                 edit,
@@ -301,10 +372,14 @@ impl App {
     }
 
     pub(crate) fn active_lsp_position(&self) -> Option<(PathBuf, lsp_types::Position)> {
-        let tab = &self.documents[self.command_document()];
-        let path = tab.buffer.path()?.to_path_buf();
+        let snapshot = super::services::snapshot_document(
+            self.command_document(),
+            &self.documents[self.command_document()],
+        )
+        .ok()?;
+        let path = snapshot.uri.to_path().ok()?;
         let char_index = self.editor().cursor().char_idx;
-        Some((path, lsp::position_at_char(&tab.buffer.text(), char_index)))
+        Some((path, lsp::position_at_char(&snapshot.text, char_index)))
     }
 
     pub(crate) fn editor_state(&self) -> (DocumentId, usize, u64, Vec<shoppe_text::Selection>) {

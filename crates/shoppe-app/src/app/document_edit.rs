@@ -2,6 +2,10 @@ use super::editor_groups::View;
 
 /// A borrowed edit publishes its changes to every peer view when the command finishes.
 pub(crate) struct EditorSession<'a> {
+    pub(super) document: super::DocumentId,
+    pub(super) language: Option<String>,
+    pub(super) format_dirty: bool,
+    pub(super) events: &'a mut super::services::DocumentEventHub,
     pub(super) editor: shoppe_text::Editor<'a>,
     pub(super) peers: Vec<&'a mut View>,
     pub(super) lsp_revision: &'a mut Option<u64>,
@@ -39,6 +43,22 @@ impl Drop for EditorSession<'_> {
         if self.editor.outcomes().is_empty() {
             return;
         }
+        let uri = self
+            .editor
+            .path()
+            .map(shoppe_core_api::DocumentUri::from_path)
+            .unwrap_or_else(|| Ok(shoppe_core_api::DocumentUri::untitled(self.document)));
+        if let Ok(uri) = uri {
+            self.events.record(shoppe_core_api::DocumentSnapshot {
+                id: Some(self.document),
+                uri,
+                text: self.editor.text(),
+                version: Some(self.editor.revision()),
+                language: self.language.clone(),
+                dirty: self.format_dirty || self.editor.is_dirty(),
+                read_only: self.editor.is_read_only(),
+            });
+        }
         let Some(path) = self.editor.path() else {
             return;
         };
@@ -55,17 +75,32 @@ impl Drop for EditorSession<'_> {
         if *self.lsp_revision == Some(revision) {
             return;
         }
-        if self.lsp_revision.is_none() {
-            self.manager.open(
-                path,
-                self.root,
-                self.editor.text(),
-                revision as i32,
-                self.sender.clone(),
-            );
-        } else {
-            self.manager
-                .change(path, self.editor.text(), revision as i32);
+        let Ok(uri) = shoppe_core_api::DocumentUri::from_path(path) else {
+            return;
+        };
+        let Ok(root) = shoppe_core_api::DocumentUri::from_path(self.root) else {
+            return;
+        };
+        let snapshot = shoppe_core_api::DocumentSnapshot {
+            id: None,
+            uri,
+            text: self.editor.text(),
+            version: Some(revision),
+            language: None,
+            dirty: true,
+            read_only: self.editor.is_read_only(),
+        };
+        let workspace = shoppe_core_api::WorkspaceSnapshot { root };
+        if super::services::lsp::publish_document(
+            self.manager,
+            &snapshot,
+            &workspace,
+            self.sender.clone(),
+            self.lsp_revision.is_some(),
+        )
+        .is_err()
+        {
+            return;
         }
         *self.lsp_revision = Some(revision);
     }

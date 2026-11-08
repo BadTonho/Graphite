@@ -7,6 +7,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+shoppe-core-api = { path = "../shoppe-core-api" }
+shoppe-extension-host = { path = "../shoppe-extension-host" }
 winit = "0.30"
 shoppe-text = { path = "../shoppe-text" }
 shoppe-workspace = { path = "../shoppe-workspace" }

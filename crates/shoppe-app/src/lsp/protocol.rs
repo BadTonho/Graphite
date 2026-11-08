@@ -82,53 +82,15 @@ pub(super) fn utf16_len(chars: &[char]) -> usize {
 }
 
 pub fn path_to_uri(path: &Path) -> Option<String> {
-    let absolute = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let mut raw = absolute.to_string_lossy().replace('\\', "/");
-    #[cfg(windows)]
-    if let Some(without_prefix) = raw.strip_prefix("//?/") {
-        raw = without_prefix.to_owned();
-    }
-    let path_part = if cfg!(windows) && !raw.starts_with('/') {
-        format!("/{raw}")
-    } else {
-        raw
-    };
-    let mut encoded = String::new();
-    for byte in path_part.bytes() {
-        if byte.is_ascii_alphanumeric() || b"/-._~:".contains(&byte) {
-            encoded.push(byte as char);
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    Some(format!("file://{encoded}"))
+    shoppe_core_api::DocumentUri::from_path(path)
+        .ok()
+        .map(|uri| uri.as_str().to_owned())
 }
-
 pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
-    let encoded = uri.strip_prefix("file://")?;
-    let bytes = encoded.as_bytes();
-    let mut decoded = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
-            decoded.push(u8::from_str_radix(hex, 16).ok()?);
-            i += 3;
-        } else {
-            decoded.push(bytes[i]);
-            i += 1;
-        }
-    }
-    let mut path = PathBuf::from(String::from_utf8(decoded).ok()?);
-    #[cfg(windows)]
-    if path.to_string_lossy().starts_with("/:") || path.to_string_lossy().get(2..3) == Some(":") {
-        let raw = path
-            .to_string_lossy()
-            .trim_start_matches('/')
-            .replace('/', "\\");
-        path = PathBuf::from(raw);
-    }
-    Some(path)
+    shoppe_core_api::DocumentUri::parse(uri)
+        .ok()?
+        .to_path()
+        .ok()
 }
 
 pub fn diagnostics_are_current(

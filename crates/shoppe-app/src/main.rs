@@ -69,8 +69,7 @@ struct Gpu {
     accessibility_actions: Arc<std::sync::Mutex<Vec<ActionRequest>>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct DocumentId(u64);
+use shoppe_core_api::DocumentId;
 
 fn next_document_id() -> DocumentId {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -88,6 +87,8 @@ struct App {
     keymap: keybindings::Keymap,
     context_keys: app::context_keys::ContextKeyService,
     command_runtime: app::command_execution::CommandRuntime,
+    extension_host: app::extension_host::ExtensionRuntime,
+    document_events: app::services::DocumentEventHub,
     selecting: bool,
     reveal_cursor: bool,
     status: String,
@@ -326,6 +327,8 @@ impl App {
             keymap,
             context_keys: app::context_keys::ContextKeyService::default(),
             command_runtime: Default::default(),
+            extension_host: Default::default(),
+            document_events: Default::default(),
             selecting: false,
             reveal_cursor: true,
             status: settings_error
@@ -443,10 +446,12 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 
 fn main() {
     let cwd = std::env::current_dir().expect("no current directory");
-    let args = std::env::args_os()
+    let mut args = std::env::args_os()
         .skip(1)
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
+    let simulate_host = args.iter().any(|arg| arg == "--simulate-extension-host");
+    args.retain(|arg| arg != "--simulate-extension-host");
     let request = match cli::parse_args(args, cwd.clone()) {
         Ok(request) => request,
         Err(error) => {
@@ -455,7 +460,7 @@ fn main() {
         }
     };
     let ipc_server_child = std::env::var_os("GRAPHITE_IPC_SERVER_CHILD").is_some();
-    if !ipc_server_child {
+    if !ipc_server_child && !simulate_host {
         match cli::send_to_existing(&request) {
             Ok(true) => return,
             Ok(false) => {}
@@ -508,6 +513,12 @@ fn main() {
     let _ = cli::start_ipc_server(proxy.clone());
     let mut app = App::new(root, Some(proxy));
     app.initial_cli_request = Some(request);
+    app.extension_host.enabled = simulate_host;
+    if simulate_host {
+        if let Err(error) = app.restart_extension_host() {
+            app.status = error.to_string();
+        }
+    }
     event_loop.run_app(&mut app).expect("event loop failed");
 }
 

@@ -453,7 +453,24 @@ impl App {
             .documents
             .get_mut(document)
             .expect("active document exists");
+        if self.document_events.needs_record(document, tab) {
+            if let Ok(snapshot) = super::services::snapshot_document(document, tab) {
+                self.document_events.record(snapshot);
+            }
+        }
         EditorSession {
+            document,
+            language: tab.language.map(|l| {
+                match l {
+                    shoppe_syntax::Language::Rust => "rust",
+                    shoppe_syntax::Language::Python => "python",
+                    shoppe_syntax::Language::JavaScript => "javascript",
+                    shoppe_syntax::Language::Json => "json",
+                }
+                .to_owned()
+            }),
+            format_dirty: tab.saved_format != (tab.encoding, tab.line_ending),
+            events: &mut self.document_events,
             editor: tab.buffer.edit(&mut view.selection_state, active),
             peers,
             schema_revision: &mut tab.schema_revision,

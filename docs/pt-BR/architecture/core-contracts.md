@@ -1,6 +1,6 @@
 # Contratos do Núcleo do Editor
 
-Este documento descreve os contratos **documento/view** e **comandos e contexto** implementados e a **fronteira de extensões** planejada. Serviços do extension host e participantes assíncronos de salvamento continuam como especificações de projeto.
+Este documento descreve os contratos **documento/view**, **comandos e contexto**, **serviços internos** e **fronteira de extensões simulada** implementados. O host Code OSS real e participantes assíncronos de salvamento permanecem como trabalhos futuros.
 
 ## 1. Documento e view
 
@@ -39,7 +39,7 @@ A migração de documento/view está concluída. Os chamadores de edição usam 
 
 ### Contrato alvo
 
-- Um registro associa um ID estável a metadados, enablement e um handler. IDs e atalhos existentes são preservados. Argumentos e resultados são serializáveis. Os handlers atuais recebem por empréstimo a aplicação do event loop com um alvo explícito na invocação; interfaces de serviços para a fronteira de extensões pertencem à próxima etapa.
+- Um registro associa um ID estável a metadados, enablement e um handler. IDs e atalhos existentes são preservados. Argumentos e resultados são serializáveis. Handlers internos recebem por empréstimo a aplicação do event loop com alvo explícito; adaptadores externos usam contratos de serviços compartilhados. Comandos pertencentes à sessão do host participam da mesma API de execução.
 - Um único ponto de execução recebe ID, argumentos, contexto alvo e token de cancelamento e retorna assincronamente um resultado ou erro tipado. O cancelamento é cooperativo e não implica desfazer efeitos já confirmados. Comandos desconhecidos, desabilitados, com falha ou cancelados são informados sem derrubar ou bloquear a interface.
 - Um contexto global fornece chaves compartilhadas; cada view ou widget alvo tem um contexto próprio. Uma chave é resolvida primeiro no escopo alvo e depois no global. Foco e alvos explícitos determinam o escopo avaliado; chamadas sem alvo usam o escopo global.
 - Expressões `when` de keybindings controlam a elegibilidade do atalho; condições de menu controlam visibilidade; enablement controla se o comando pode ser executado. Elas compartilham a avaliação de contexto, mas continuam sendo condições distintas. O registro verifica enablement centralmente, inclusive em chamadas programáticas.
@@ -54,23 +54,23 @@ A migração de documento/view está concluída. Os chamadores de edição usam 
 
 ### Migração incremental
 
-A migração de comandos está concluída, incluindo todos os IDs do dispatcher anterior, atalhos padrão e argumentos JSON. Workers devolvem resultados próprios ao event loop, que revalida cancelamento, existência do alvo, workspace e versões antes de aplicá-los. O salvamento permanece síncrono; interfaces de serviços de extensões e futura paleta são trabalhos separados.
+A migração de comandos está concluída, incluindo todos os IDs do dispatcher anterior, atalhos padrão e argumentos JSON. Workers devolvem resultados próprios ao event loop, que revalida cancelamento, existência do alvo, workspace e versões antes de aplicá-los. O salvamento permanece síncrono. Interfaces compartilhadas e comandos pertencentes a sessões são descritos abaixo; uma paleta permanece como trabalho futuro.
 
 ## 3. Fronteira de extensões e protocolos
 
 ### Estado atual
 
-`docs/en/architecture/extension-compat.md` descreve um extension host Code OSS planejado em processo Node separado e compatibilidade em camadas. O cliente LSP em `crates/shoppe-app/src/lsp.rs` e sua integração com a interface já usam mensagens de worker e notificações ao event loop. É um exemplo útil de concorrência, mas não estabelece um protocolo de extensão versionado compartilhado nem um dispatcher reutilizável para o extension host.
+`shoppe-core-api` define contratos independentes de serviços e dados serializáveis; a aplicação os implementa no event loop. `shoppe-extension-host` oferece um processo Rust simulado e supervisor reutilizável com framing versionado, sessões, registros com proprietário, cancelamento, prazos e reinício manual. Uma falha do host libera seus recursos enquanto edição e LSP continuam. Consulte [Serviços internos e host de extensões simulado](services-host.md).
 
-Requisições de edição recebidas do LSP são acompanhadas pelo worker com fila limitada, cancelamento e prazos; cancelamento ou expiração antes do início do processamento pela interface impede a edição. Depois que a interface assume uma requisição, ela termina antes da resposta. Isso ainda não implementa a fronteira do extension host nem participantes assíncronos de salvamento.
+Publicação e edições LSP usam os serviços de documentos; consultas de workspace e mensagens usam serviços de workspace/janela. Instâncias de servidor identificam seus eventos, e requisições pendentes têm limites, cancelamento, prazos e limpeza no encerramento. Edições canceladas antes de a interface assumir a requisição não são aplicadas; edições já assumidas terminam atomicamente. Isso implementa a fronteira simulada; o host Code OSS real e participantes assíncronos de salvamento permanecem em etapas separadas.
 
 ### Contrato alvo
 
-- Definir serviços internos reutilizáveis de documento, comandos, workspace/configuração e janela, além de mensagens, identidade, versões, cancelamento e ciclo de vida explícitos. Fixar o release ou commit do Code OSS visado pelo bridge de extensões; adicionar outros serviços conforme as camadas de compatibilidade exigirem.
-- Manter adaptadores de protocolo distintos: LSP e extension host têm semânticas, direções, transportes e ciclos de vida diferentes. Eles podem chamar os mesmos serviços internos, mas não precisam compartilhar transporte ou dispatcher. Um crate de protocolo e um crate supervisor do plugin host são fronteiras propostas, sujeitas ao protocolo real do host escolhido.
+- Serviços reutilizáveis de documento, comandos, workspace/configuração e janela expõem mensagens, identidade, versões, cancelamento e ciclo de vida explícitos. O bridge real posterior deverá fixar o release ou commit do Code OSS e adicionar os serviços exigidos pelas camadas reais de compatibilidade.
+- Manter adaptadores de protocolo distintos: LSP e host simulado têm transportes e ciclos de vida separados, chamando serviços compartilhados. O protocolo simulado não declara compatibilidade com o futuro protocolo Code OSS.
 - Extensões e workers nunca alteram o estado da interface diretamente. Entregar resultados ao event loop responsável; não bloquear a interface esperando RPC. Acompanhar requisições, cancelamento, prazos, controle de fluxo, encerramento e reinício do host, liberando registros e requisições pendentes associados a ele quando terminar.
 - Definir abstrações de URI e sistema de arquivos, começando por arquivos locais. Alterações de documento versionadas e edições de texto passam pelo contrato de documento; converter posições e garantias específicas de cada protocolo em sua fronteira. Operações sobre recursos e persistência em disco ficam fora da garantia inicial de atomicidade de texto multidocumento.
-- Participantes de salvamento executam assincronamente em sequência limitada por tempo. Associar as edições retornadas por cada participante à versão de documento que ele observou e rejeitá-las se essa versão estiver obsoleta. Em caso de falha, timeout ou edições obsoletas, informar a falha do participante e continuar salvando o conteúdo atual, sem bloquear a interface. Um salvamento bem-sucedido atualiza o estado salvo de referência para o conteúdo efetivamente gravado: edições feitas enquanto a gravação estiver pendente permanecem *dirty*. Emitir eventos de antes e depois de salvar apropriados ao protocolo, incluindo `willSave`, `willSaveWaitUntil` e `didSave` quando suportados.
+- O item 4 adicionará participantes assíncronos de salvamento em sequência limitada, rejeição de edições obsoletas e gravações de snapshots que preservem texto novo como dirty. O salvamento permanece síncrono na implementação atual.
 
 ### Critérios de aceitação
 
@@ -81,7 +81,7 @@ Requisições de edição recebidas do LSP são acompanhadas pelo worker com fil
 
 ### Migração incremental
 
-Especificar primeiro as interfaces dos serviços de documento, comandos, workspace/configuração e janela. Adaptar fluxos LSP existentes como casos de aceitação dos serviços compartilhados, mantendo despacho e comportamento de protocolo específicos do LSP. Introduzir separadamente o supervisor do host e seu bridge versionado, depois acrescentar camadas de compatibilidade gradualmente.
+Interfaces de serviços, adaptador LSP e supervisor do host simulado estão implementados. Testes nativos exercitam falhas de protocolo, queda/reinício de processo real, limpeza de recursos e operação independente do LSP. As próximas etapas são salvamento assíncrono e integração do host Code OSS real.
 
 O host Code OSS real continua sendo uma etapa posterior obrigatória: fixar um release ou commit, integrar o host Node real e validá-lo com uma extensão real antes de declarar compatibilidade.
 

@@ -1,6 +1,6 @@
 # Editor Core Contracts
 
-This document describes the implemented **document/view** and **commands and context** contracts and the planned **extension boundary**. Extension-host services and asynchronous save participants remain design specifications.
+This document describes the implemented **document/view**, **commands and context**, **internal services** and **simulated extension boundary**. The real Code OSS host and asynchronous save participants remain future work.
 
 ## 1. Document and view
 
@@ -39,7 +39,7 @@ The document/view migration is complete. Editing callers use borrowed view state
 
 ### Target contract
 
-- A registry associates a stable command ID with metadata, enablement and a handler. Existing IDs and shortcuts are preserved. Arguments and results are serializable. Current handlers borrow the event-loop-owned application with an explicit invocation target; service interfaces for an extension boundary belong to the next stage.
+- A registry associates a stable command ID with metadata, enablement and a handler. Existing IDs and shortcuts are preserved. Arguments and results are serializable. Built-in handlers borrow the event-loop-owned application with an explicit invocation target; external adapters use the shared service contracts. Session-owned host commands participate in the same execution API.
 - One execution entry point accepts an ID, arguments, target context and cancellation token, and asynchronously returns a result or a typed error. Cancellation is cooperative and must not imply rollback of effects already committed. Unknown, disabled, failed and cancelled commands are reported without crashing or blocking the UI.
 - A global context supplies shared keys; each target view or widget has a scoped context. Resolve a key from the target scope first, then the global scope. Focus and explicit targets determine which scope is evaluated; invocations without a target use the global scope.
 - Keybinding `when` expressions control binding eligibility; menu conditions control visibility; command enablement controls whether execution is permitted. They share context evaluation but remain distinct conditions. The registry checks enablement centrally even for programmatic calls.
@@ -54,23 +54,23 @@ The document/view migration is complete. Editing callers use borrowed view state
 
 ### Incremental migration
 
-The command migration is complete, including all former dispatcher IDs, default bindings and JSON arguments. Workers return owned results to the event loop, which revalidates cancellation, target lifetime, workspace and document versions before applying them. Synchronous saving remains unchanged; extension service interfaces and a future command palette are separate work.
+The command migration is complete, including all former dispatcher IDs, default bindings and JSON arguments. Workers return owned results to the event loop, which revalidates cancellation, target lifetime, workspace and document versions before applying them. Synchronous saving remains unchanged. Shared service interfaces and session-owned commands are described below; a command palette remains future work.
 
 ## 3. Extension and protocol boundary
 
 ### Current state
 
-`docs/en/architecture/extension-compat.md` describes a planned Code OSS extension host in a separate Node process and staged compatibility. The LSP client in `crates/shoppe-app/src/lsp.rs` and its UI integration already use worker messages and event-loop wakeups. This is a useful concurrency example, but does not establish a shared versioned extension protocol or a reusable extension-host dispatcher.
+`shoppe-core-api` defines independent service contracts and serializable data; the application implements them on its event loop. `shoppe-extension-host` provides a separate Rust simulation process and reusable supervisor with versioned framing, sessions, owned registrations, cancellation, deadlines and manual restart. Host failure releases its resources while editing and LSP continue. See [Internal services and simulated extension host](services-host.md).
 
-Incoming LSP edit requests are tracked by the worker with a bounded queue, cancellation and deadlines; cancellation or expiry before the UI starts processing prevents the edit. Once the UI has claimed a request, it completes before the response is sent. This does not yet implement the extension-host boundary or asynchronous save participants.
+LSP publication and edits use the document services; workspace queries and messages use workspace/window services. Server instances identify events, and pending requests have limits, cancellation, deadlines and shutdown cleanup. Incoming edits cancelled before UI claim cannot apply; claimed edits finish atomically. This implements the simulated boundary, while the real Code OSS host and asynchronous save participants remain separate stages.
 
 ### Target contract
 
-- Define reusable internal document, command, workspace/configuration and window services, along with explicit messages, identity, versions, cancellation and lifecycle. Pin the Code OSS release or commit targeted by the extension bridge; add further services as compatibility layers require them.
-- Keep protocol adapters distinct: LSP and the extension host have different message semantics, directions, transports and lifecycles. They may call the same internal services, but need not share a transport or dispatcher. A protocol crate and a supervised plugin-host crate are proposed boundaries, subject to the selected host's actual protocol.
+- Reusable document, command, workspace/configuration and window services expose explicit messages, identity, versions, cancellation and lifecycle. The later real bridge must pin its Code OSS release or commit and add services required by actual compatibility layers.
+- Keep protocol adapters distinct: LSP and the simulated host have separate transports and lifecycles while calling shared services. The simulation protocol does not claim compatibility with the eventual Code OSS wire protocol.
 - Extensions and workers never mutate UI state directly. Deliver results to the owning event loop; do not block the UI waiting for RPC. Track requests, cancellation, deadlines, backpressure, host shutdown and restart, and release host-owned registrations and pending requests on exit.
 - Define URI and filesystem abstractions with local files first. Versioned document changes and text edits pass through the document contract; translate positions and protocol-specific guarantees at each boundary. Resource operations and disk persistence are outside the initial multi-document text atomicity guarantee.
-- Save participants run asynchronously in a bounded sequence. Associate each participant's returned edits with the document version it observed and reject them if that version is stale. On failure, timeout or stale edits, report the participant failure and continue saving the current content; never block the UI. A successful save updates the baseline to the content actually written: edits made while the write is pending remain dirty. Deliver protocol-appropriate before- and after-save events, including `willSave`, `willSaveWaitUntil` and `didSave` where supported.
+- Item 4 will add asynchronous save participants in a bounded sequence, stale-edit rejection and snapshot writes that preserve newer dirty text. Saving remains synchronous in the current implementation.
 
 ### Acceptance criteria
 
@@ -81,7 +81,7 @@ Incoming LSP edit requests are tracked by the worker with a bounded queue, cance
 
 ### Incremental migration
 
-Specify document, command, workspace/configuration and window service interfaces first. Adapt existing LSP flows as acceptance cases for the shared services, retaining LSP-specific dispatch and wire behavior. Introduce the host supervisor and its versioned bridge separately, then add compatibility layers incrementally.
+Service interfaces, the LSP adapter and the simulated host supervisor are implemented. Native tests exercise protocol failures, real process crash/restart, resource cleanup and independent LSP operation. The next stages are asynchronous saving and integration of the actual Code OSS host.
 
 The real Code OSS host remains a required later step: pin a release or commit, integrate the actual Node host, and validate it with a real extension before claiming compatibility.
 

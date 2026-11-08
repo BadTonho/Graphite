@@ -15,6 +15,10 @@ cargo test --workspace
 cargo run -p shoppe-app -- <folder>
 ```
 
+## Simulated extension host
+
+Build the workspace first, then use `cargo run -p shoppe-app -- --simulate-extension-host <folder>`. The Rust helper must be beside Graphite. It is disabled by default; Node and Code OSS are not required. The registered `shoppe.extensions.restartHost` command restarts it manually. See [Services and simulated host](../architecture/services-host.md) for protocol limits, sample bindings and process tests. For targeted application tests that use the helper, run `cargo build -p shoppe-extension-host` first; `cargo test --workspace` builds the process integration target automatically.
+
 ## Conventions
 
 - Add or update Rust tests for new and changed behavior and bug fixes, including relevant failure cases. Keep test data isolated and independent of personal files, network services and external language servers.

@@ -11,6 +11,7 @@ shoppe-app ──► shoppe-render     (wgpu + cosmic-text + Window do winit)
 
 ## Responsabilidades dos módulos
 
+- `shoppe-core-api` fornece contratos de serviços independentes da interface e dados serializáveis. `shoppe-extension-host` fornece um supervisor reutilizável de processos e simulador Rust ativado explicitamente. O LSP usa os mesmos serviços com transporte e ciclo de vida próprios por instância. Consulte [Serviços e host simulado](services-host.md).
 - `shoppe-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo.
 - `shoppe-text` separa entrada e saída de arquivos, edições e histórico, e navegação do cursor. `shoppe-workspace` separa a busca no projeto da listagem de pastas.
 - `shoppe-render` separa a modelagem do texto e rasterização de glifos do pipeline da superfície GPU. `shoppe-syntax` mantém os mecanismos de realce incremental e de documento completo em módulos distintos.

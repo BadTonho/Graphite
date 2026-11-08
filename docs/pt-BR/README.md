@@ -6,6 +6,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Visão geral](architecture/overview.md)
   - [Documento e view](architecture/document-view.md)
   - [Comandos e contexto](architecture/commands-context.md)
+  - [Serviços internos e host simulado](architecture/services-host.md)
   - [Compatibilidade com extensões do VS Code](architecture/extension-compat.md)
 - **Funcionalidades**
   - [v0.1 — Editor base](features/v0.1-editor.md)
