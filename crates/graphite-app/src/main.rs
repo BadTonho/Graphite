@@ -7,6 +7,7 @@ use app::local_search::LocalSearch;
 use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
 
+mod branding;
 mod cli;
 mod config;
 mod document;
