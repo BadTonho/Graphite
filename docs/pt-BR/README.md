@@ -17,6 +17,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Roadmap](roadmap/roadmap.md)
 - **Contribuição**
   - [Compilação e testes](contributing/building.md)
+  - [Testes de regressão e cobertura](contributing/testing.md)
 - **Segurança**
   - [Política de segurança](security/policy.md)
 

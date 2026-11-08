@@ -17,6 +17,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Roadmap](roadmap/roadmap.md)
 - **Contributing**
   - [Building and testing](contributing/building.md)
+  - [Regression testing and coverage](contributing/testing.md)
 - **Security**
   - [Security policy](security/policy.md)
 

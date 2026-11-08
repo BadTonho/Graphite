@@ -32,6 +32,8 @@ A atomicidade cobre texto e histórico de undo em memória. Persistência em dis
 
 ## Validação e trabalho posterior
 
+A [matriz de cobertura de regressão](../contributing/testing.md) relaciona esses invariantes aos testes, incluindo cenários combinados de multicursor/IME/histórico e verificações de rejeição para views, assinaturas, retenção e estado do disco.
+
 Testes nativos usam dados temporários isolados e recursos simulados de clipboard/LSP. Cobrem views independentes, IME, multicursor, clipboard, busca, completion, comandos de linha, acessibilidade, origens do histórico, operações sem alteração, revisões crescentes na recarga, metadados de salvamento, fechamento/reabertura, liberação de leases e falhas multidocumento.
 
 Execute `cargo test --workspace` e `cargo build --workspace` na plataforma disponível. A verificação interativa nativa de UI/GPU continua pendente no Windows e no Linux; não é obrigatório executar testes Linux na mesma sessão de desenvolvimento Windows.

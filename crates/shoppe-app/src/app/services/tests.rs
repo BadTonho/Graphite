@@ -94,6 +94,115 @@ fn read_only_rejects_batch_without_text_or_collection_effects() {
     assert_eq!(app.editor().revision(), 0);
     assert_eq!(std::fs::read_to_string(path).unwrap(), "abc");
 }
+
+#[test]
+fn rejected_batches_preserve_views_redo_events_leases_and_disk() {
+    for failure in ["missing", "overlap", "surrogate", "stale", "readonly"] {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("closed.txt");
+        std::fs::write(&path, "a🌎b").unwrap();
+        let closed = DocumentUri::from_path(&path).unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.editor_mut().insert("live");
+        app.editor_mut().insert("!");
+        app.editor_mut().undo();
+        let id = app.active_document();
+        let uri = DocumentUri::untitled(id);
+        app.editor_mut().set_selection(1, 3);
+        app.split_editor_group(super::super::editor_groups::SplitDirection::Vertical);
+        app.editor_mut().set_selection(4, 4);
+        app.editor_groups.active_view_mut().scroll_line = 2;
+        if failure == "readonly" {
+            app.editor_mut().set_read_only(true);
+        }
+        let before = app.snapshot(&uri).unwrap();
+        let views = app.editor_groups.view_ids();
+        let focused = app.editor_groups.active_view().id;
+        let selections = app.editor().selections();
+        let subscription = app.subscribe_documents().unwrap();
+        subscription.receiver.try_iter().for_each(drop);
+        let mut batch = vec![
+            edit(closed.clone(), None, 0, 1, "Q"),
+            edit(uri.clone(), before.version, 0, 1, "L"),
+        ];
+        match failure {
+            "missing" => batch.push(edit(
+                DocumentUri::from_path(&dir.path().join("missing.txt")).unwrap(),
+                None,
+                0,
+                0,
+                "X",
+            )),
+            "overlap" => {
+                let duplicate = batch[0].edits[0].clone();
+                batch[0].edits.push(duplicate);
+            }
+            "surrogate" => batch[0] = edit(closed.clone(), None, 1, 2, "X"),
+            "stale" => batch[1].version = Some(0),
+            "readonly" => {}
+            _ => unreachable!(),
+        }
+        assert!(app.apply_edits(batch).is_err(), "{failure}");
+        app.reconcile_document_events();
+        assert_eq!(app.snapshot(&uri).unwrap(), before, "{failure}");
+        assert_eq!(app.documents.len(), 1, "{failure}");
+        assert!(!app.documents.is_retained(id), "{failure}");
+        assert_eq!(app.editor_groups.view_ids(), views, "{failure}");
+        assert_eq!(app.editor_groups.active_view().id, focused);
+        assert_eq!(app.editor_groups.active_view().scroll_line, 2);
+        assert_eq!(app.editor().selections(), selections);
+        assert!(subscription.receiver.try_recv().is_err(), "{failure}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "a🌎b");
+        app.editor_mut().set_read_only(false);
+        assert!(app.editor().can_redo());
+        app.editor_mut().redo();
+        assert_eq!(app.editor().text(), "live!");
+    }
+}
+
+#[test]
+fn mixed_open_closed_untitled_batch_publishes_only_after_success() {
+    let dir = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(dir.path().into(), None, true);
+    let untitled = DocumentUri::untitled(app.active_document());
+    app.editor_mut().insert("a🌎b");
+    let open_path = dir.path().join("open.txt");
+    let closed_path = dir.path().join("closed.txt");
+    for path in [&open_path, &closed_path] {
+        std::fs::write(path, "a🌎b").unwrap();
+    }
+    let open = DocumentUri::from_path(&open_path).unwrap();
+    let closed = DocumentUri::from_path(&closed_path).unwrap();
+    app.open_document(&open).unwrap();
+    let focus = app.editor_groups.active_view().id;
+    let subscription = app.subscribe_documents().unwrap();
+    subscription.receiver.try_iter().for_each(drop);
+    app.apply_edits(vec![
+        edit(untitled.clone(), Some(1), 1, 3, "é"),
+        edit(open.clone(), Some(0), 1, 3, "é"),
+        edit(closed.clone(), None, 1, 3, "é"),
+    ])
+    .unwrap();
+    assert_eq!(app.editor_groups.active_view().id, focus);
+    let events: Vec<_> = subscription.receiver.try_iter().collect();
+    assert_eq!(events.len(), 3);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e, DocumentEvent::Opened(_)))
+            .count(),
+        1
+    );
+    for uri in [untitled, open, closed] {
+        let snapshot = app.snapshot(&uri).unwrap();
+        assert_eq!(snapshot.text, "aéb");
+        assert!(snapshot.dirty);
+        assert!(!app.documents.is_retained(snapshot.id.unwrap()));
+    }
+    for path in [&open_path, &closed_path] {
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "a🌎b");
+    }
+}
 #[test]
 fn service_commands_window_focus_and_catalog_share_central_entry() {
     let dir = crate::test_support::TempDir::new();

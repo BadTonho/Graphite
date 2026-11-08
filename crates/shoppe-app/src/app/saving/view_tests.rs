@@ -1,6 +1,31 @@
 use super::tests::{fixture, pause_writer};
 use std::time::{Duration, Instant};
 #[test]
+fn saved_text_and_format_baselines_survive_undo_redo_and_format_roundtrip() {
+    let (_dir, mut app, path) = fixture();
+    let id = app.active_document();
+    app.documents[id].encoding = crate::file_format::Encoding::Utf8Bom;
+    app.documents[id].line_ending = crate::file_format::LineEnding::Crlf;
+    app.set_save_test_text("é🌎\n");
+    app.save();
+    assert_eq!(std::fs::read(path).unwrap(), "\u{feff}é🌎\r\n".as_bytes());
+    let revision = app.editor().revision();
+    assert!(!app.documents[id].is_dirty());
+    app.documents[id].line_ending = crate::file_format::LineEnding::Lf;
+    assert!(app.documents[id].is_dirty());
+    app.documents[id].line_ending = crate::file_format::LineEnding::Crlf;
+    assert!(!app.documents[id].is_dirty());
+    assert_eq!(app.editor().revision(), revision);
+    app.editor_mut().insert("!");
+    assert!(app.documents[id].is_dirty());
+    app.editor_mut().undo();
+    assert!(!app.documents[id].is_dirty());
+    app.editor_mut().redo();
+    assert!(app.documents[id].is_dirty());
+    app.editor_mut().undo();
+    assert!(!app.documents[id].is_dirty());
+}
+#[test]
 fn trim_remaps_independent_views_and_undo_origin_without_moving_focus() {
     let (_dir, mut app, _path) = fixture();
     app.set_save_test_text("one  \ntwo  \nthree\n");

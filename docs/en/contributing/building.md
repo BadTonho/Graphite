@@ -21,6 +21,8 @@ Build the workspace first, then use `cargo run -p graphite-app -- --simulate-ext
 
 ## Conventions
 
+See [Regression testing](testing.md) for the coverage matrix, targeted test commands, stdio LSP fixture and remaining manual/platform checks.
+
 - Add or update Rust tests for new and changed behavior and bug fixes, including relevant failure cases. Keep test data isolated and independent of personal files, network services and external language servers.
 - Run relevant tests and `cargo test --workspace` before completing a code change; use `cargo build --workspace` to validate the build. Report failed or unrun checks, their reason and the platform tested. Document-only changes do not need new tests unless they change executable behavior.
 - Native tests run locally on the available operating system. Verify window or GPU interactions manually when they cannot be reliably automated and report any remaining gaps.

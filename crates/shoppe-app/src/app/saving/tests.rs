@@ -329,6 +329,73 @@ fn participant_deadline_uses_controlled_clock_and_rejects_late_replies() {
     assert!(app.status.contains("Timeout"));
     assert!(app.extension_host.save_replies.is_empty());
 }
+
+#[test]
+fn typing_and_format_change_during_host_participant_save_latest_snapshot() {
+    let (_dir, mut app, path) = fixture();
+    let _wakes = start_save_host(&mut app, "--save-wait");
+    app.set_save_test_text("body  \n");
+    app.trim_trailing_whitespace = true;
+    let document = app.active_document();
+    let ticket = save_command(&mut app);
+    let start = Instant::now();
+    app.poll_saves(start);
+    assert_eq!(app.extension_host.save_replies.len(), 1);
+    app.editor_mut().set_selection(0, 0);
+    app.editor_mut().insert("new ");
+    app.documents[document].encoding = crate::file_format::Encoding::Utf8Bom;
+    let revision = app.editor().revision();
+    app.poll_saves(start + Duration::from_secs(1));
+    app.wait_for_saves();
+    assert_eq!(ticket.try_result(), Some(Ok(serde_json::Value::Null)));
+    assert_eq!(
+        std::fs::read(path).unwrap(),
+        "\u{feff}new body\n".as_bytes()
+    );
+    assert_eq!(app.editor().text(), "new body\n");
+    assert_eq!(app.editor().revision(), revision + 1);
+    assert!(!app.documents[document].is_dirty());
+    assert!(!app.documents.is_retained(document));
+    assert!(app.extension_host.save_replies.is_empty());
+    app.editor_mut().undo();
+    assert_eq!(app.editor().text(), "new body  \n");
+    app.editor_mut().undo();
+    assert_eq!(app.editor().text(), "body  \n");
+}
+
+#[test]
+fn save_all_keeps_successful_file_and_dirty_untitled_after_partial_failure() {
+    let dir = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(dir.path().into(), None, true);
+    app.editor_mut().insert("untitled");
+    let untitled = app.active_document();
+    let untitled_view = app.command_view_ref().id;
+    let path = dir.path().join("valid.txt");
+    std::fs::write(&path, "old").unwrap();
+    app.open_file(path.clone());
+    let saved = app.active_document();
+    app.editor_mut().insert("new ");
+    let focus = app.command_view_ref().id;
+    let ticket = app.execute_command(graphite_core_api::CommandRequest {
+        id: "workbench.action.files.saveAll".into(),
+        arguments: serde_json::Value::Null,
+        target: graphite_core_api::CommandTarget::Global,
+    });
+    app.wait_for_saves();
+    assert!(matches!(
+        ticket.try_result(),
+        Some(Err(CommandError::Failed(_)))
+    ));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "new old");
+    assert!(!app.documents[saved].is_dirty());
+    assert_eq!(app.documents[untitled].buffer.text(), "untitled");
+    assert!(app.documents[untitled].is_dirty());
+    assert!(app.editor_groups.view(untitled_view).is_some());
+    assert_eq!(app.command_view_ref().id, focus);
+    assert!(!app.saving.pending());
+    assert!(!app.documents.is_retained(saved));
+    assert!(!app.documents.is_retained(untitled));
+}
 #[test]
 fn save_service_reports_snapshot_outcome_without_implying_a_focused_view() {
     use graphite_core_api::{

@@ -34,7 +34,7 @@ The simulation protocol is version 2. User confirmations suspend ordinary RPC de
 
 ## Validation and boundaries
 
-Tests use temporary files, controlled clocks and channels that pause workers before or after commit claim. They cover queues, independent writes, cancellation, dirty/history/format behavior, view mappings, decision barriers, CLI continuation, malformed/stale results and real simulated-host crashes. LSP tests use owned mock channels rather than external servers.
+Tests use temporary files, controlled clocks and channels that pause workers before or after commit claim. They cover queues, independent writes, cancellation, dirty/history/format behavior, view mappings, decision barriers, CLI continuation, malformed/stale results and real simulated-host crashes. Save-participant LSP tests use owned mock channels; additional worker tests use a local Rust stdio fixture. Neither requires an external server. See the [regression coverage matrix](../contributing/testing.md).
 
 Build the helper before targeted process tests: `cargo build -p graphite-extension-host`. Its `--save-edit`, `--save-wait`, `--save-crash`, `--save-stale`, `--save-invalid`, `--save-mutate` and `--save-check-lsp` scenarios are test fixtures, not editor options. Run `cargo test --workspace` and `cargo build --workspace` for full validation. Linux execution and interactive Windows/Linux UI/GPU verification remain unperformed in this Windows environment.
 

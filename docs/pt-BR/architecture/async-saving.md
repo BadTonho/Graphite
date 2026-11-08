@@ -34,7 +34,7 @@ O protocolo simulado está na versão 2. Confirmações do usuário suspendem os
 
 ## Validação e limites
 
-Os testes usam arquivos temporários, relógios controlados e canais que pausam workers antes ou depois de assumir o commit. Cobrem filas, gravações independentes, cancelamento, dirty/histórico/formato, mapeamento de views, barreiras de decisões, continuação CLI, resultados inválidos/obsoletos e quedas reais do host simulado. Testes LSP usam canais simulados com dados próprios, sem servidores externos.
+Os testes usam arquivos temporários, relógios controlados e canais que pausam workers antes ou depois de assumir o commit. Cobrem filas, gravações independentes, cancelamento, dirty/histórico/formato, mapeamento de views, barreiras de decisões, continuação CLI, resultados inválidos/obsoletos e quedas reais do host simulado. Testes de participantes LSP usam canais simulados com dados próprios; testes adicionais de worker usam uma fixture Rust stdio local. Nenhum exige servidor externo. Consulte a [matriz de cobertura de regressão](../contributing/testing.md).
 
 Compile o auxiliar antes de testes de processo específicos: `cargo build -p graphite-extension-host`. Seus cenários `--save-edit`, `--save-wait`, `--save-crash`, `--save-stale`, `--save-invalid`, `--save-mutate` e `--save-check-lsp` são fixtures de teste, não opções do editor. Execute `cargo test --workspace` e `cargo build --workspace` para validação completa. Execução no Linux e verificação interativa de UI/GPU no Windows/Linux não foram realizadas neste ambiente Windows.
 

@@ -34,6 +34,8 @@ Outgoing requests have a 30-second deadline, a limit of 128 outstanding entries,
 
 ## Development and validation
 
+The local `graphite-test-lsp` fixture exercises the production LSP worker over stdin/stdout, including initialization, JSON results, applyEdit service transactions, malformed responses, cancellation, late replies and EOF with pending requests. See [Regression testing](../contributing/testing.md) for commands and the complete coverage matrix. Channel-based tests additionally verify old-instance rejection and controlled deadlines.
+
 After `cargo build --workspace`, run:
 
 ```bash

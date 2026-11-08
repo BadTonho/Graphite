@@ -34,6 +34,8 @@ Requisições enviadas têm prazo de 30 segundos, limite de 128 entradas, valida
 
 ## Desenvolvimento e validação
 
+A fixture local `graphite-test-lsp` exercita o worker LSP de produção por stdin/stdout, incluindo inicialização, resultados JSON, transações de serviços por applyEdit, respostas inválidas, cancelamento, respostas tardias e EOF com requisições pendentes. Consulte [Testes de regressão](../contributing/testing.md) para comandos e a matriz completa de cobertura. Testes por canais também verificam rejeição de instâncias anteriores e prazos controlados.
+
 Depois de `cargo build --workspace`, execute:
 
 ```bash
