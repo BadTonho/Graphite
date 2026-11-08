@@ -95,7 +95,7 @@ impl Buffer {
             }
         }
         let count = edits.len();
-        self.apply_preserving_selections(&edits)?;
+        self.apply_transaction(&edits)?;
         Ok(count)
     }
 
@@ -106,7 +106,7 @@ impl Buffer {
         }
         let edits = self.trailing_whitespace_edits();
         let count = edits.len();
-        self.apply_preserving_selections(&edits)?;
+        self.apply_transaction(&edits)?;
         Ok(count)
     }
 

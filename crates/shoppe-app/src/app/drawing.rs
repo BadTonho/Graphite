@@ -39,7 +39,7 @@ impl App {
                 break;
             }
             let is_open = row.entry.path.as_path()
-                == self.tabs[self.active_tab]
+                == self.documents[self.active_document()]
                     .buffer
                     .path()
                     .unwrap_or(std::path::Path::new(""));
@@ -75,7 +75,7 @@ impl App {
         self.draw_editor_groups(r, &rects, lh, cw);
         let focused_rect = self.focused_group_rect(w, h, lh);
         let text_x = focused_rect.x + self.gutter_width(cw);
-        let (cur_line, cur_col) = self.tabs[self.active_tab].buffer.cursor_line_col();
+        let (cur_line, cur_col) = self.editor().cursor_line_col();
         // Status bar
         r.set_clip(None);
         r.draw_rect(
@@ -105,7 +105,11 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &format!("Open file: {}{}", quick.query, self.ime_preedit),
+                &format!(
+                    "Open file: {}{}",
+                    quick.query,
+                    self.editor_groups.active_view_mut().ime_preedit
+                ),
                 SIDEBAR_WIDTH + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -160,7 +164,7 @@ impl App {
                     if search.edit_replacement {
                         ""
                     } else {
-                        &self.ime_preedit
+                        &self.editor_groups.active_view_mut().ime_preedit
                     }
                 ),
                 search.message
@@ -173,13 +177,13 @@ impl App {
             );
             if search.replace {
                 let replacement = format!(
-                    "{} Replace: {}   (Tab: field; Alt+Enter: one; Ctrl+Enter: all)",
+                    "{} Replace: {}   (Document: field; Alt+Enter: one; Ctrl+Enter: all)",
                     if search.edit_replacement { ">" } else { " " },
                     format!(
                         "{}{}",
                         search.replacement,
                         if search.edit_replacement {
-                            &self.ime_preedit
+                            &self.editor_groups.active_view_mut().ime_preedit
                         } else {
                             ""
                         }
@@ -203,7 +207,7 @@ impl App {
         if let Some(query) = &self.search_query {
             let label = format!(
                 "Search: {query}{}  ({} matches; Up/Down, Enter, Esc)",
-                self.ime_preedit,
+                self.editor_groups.active_view_mut().ime_preedit,
                 self.search_results.len()
             );
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
@@ -272,7 +276,10 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &format!("Snippet prefix: {query}{}", self.ime_preedit),
+                &format!(
+                    "Snippet prefix: {query}{}",
+                    self.editor_groups.active_view_mut().ime_preedit
+                ),
                 SIDEBAR_WIDTH + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -296,7 +303,8 @@ impl App {
                 .collect::<Vec<_>>();
             let box_height = lh * visible_items.len() as f32;
             let y = (focused_rect.y
-                + lh * (cur_line.saturating_sub(self.tabs[self.active_tab].scroll_line) as f32
+                + lh * (cur_line.saturating_sub(self.editor_groups.active_view_mut().scroll_line)
+                    as f32
                     + 1.5)
                 + 2.0)
                 .min(focused_rect.y + focused_rect.height - box_height);

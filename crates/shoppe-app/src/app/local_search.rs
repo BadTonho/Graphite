@@ -16,7 +16,7 @@ pub(crate) struct LocalSearch {
 
 impl App {
     pub(crate) fn open_local_search(&mut self, replace: bool) {
-        let buffer = &self.tabs[self.active_tab].buffer;
+        let buffer = self.editor();
         self.local_search = Some(LocalSearch {
             query: buffer
                 .selected_text()
@@ -34,7 +34,7 @@ impl App {
     }
 
     pub(crate) fn local_search_next(&mut self, search: &mut LocalSearch, backwards: bool) {
-        let buffer = &mut self.tabs[self.active_tab].buffer;
+        let mut buffer = self.editor_mut();
         match buffer.find_matches(&search.query, search.options, search.scope.clone()) {
             Ok(matches) if matches.is_empty() => {
                 search.message = "No matches".into();
@@ -66,7 +66,7 @@ impl App {
     }
 
     pub(crate) fn local_replace_all(&mut self, search: &mut LocalSearch) {
-        let buffer = &mut self.tabs[self.active_tab].buffer;
+        let mut buffer = self.editor_mut();
         if buffer.is_read_only() {
             search.message = "Read-only document".into();
             return;
@@ -86,7 +86,7 @@ impl App {
     }
 
     pub(crate) fn local_replace_selected(&mut self, search: &mut LocalSearch) {
-        let buffer = &mut self.tabs[self.active_tab].buffer;
+        let mut buffer = self.editor_mut();
         if buffer.is_read_only() {
             search.message = "Read-only document".into();
             return;
@@ -117,7 +117,7 @@ impl App {
         };
         let ctrl = self.modifiers.control_key();
         let alt = self.modifiers.alt_key();
-        if !self.ime_composing && !ctrl && !alt {
+        if !self.editor_groups.active_view_mut().ime_composing && !ctrl && !alt {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {
                     if search.edit_replacement {
@@ -166,8 +166,7 @@ impl App {
                 search.scope = if search.scope.is_some() {
                     None
                 } else {
-                    self.tabs[self.active_tab]
-                        .buffer
+                    self.editor()
                         .selection()
                         .map(|s| s.anchor.min(s.head)..s.anchor.max(s.head))
                 };

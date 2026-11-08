@@ -1,6 +1,6 @@
 use super::*;
 
-impl Buffer {
+impl Editor<'_> {
     /// Insert line breaks using each cursor's local line-ending convention.
     pub fn insert_newline(&mut self) {
         if self.read_only {
@@ -38,46 +38,39 @@ impl Buffer {
         self.apply_cursor_replacements(&edits);
     }
 
-    pub(super) fn line_content_len(&self, line: usize) -> usize {
-        let slice = self.rope.line(line);
-        let mut len = slice.len_chars();
-        if len > 0 && slice.char(len - 1) == '\n' {
-            len -= 1;
-            if len > 0 && slice.char(len - 1) == '\r' {
-                len -= 1;
-            }
-        }
-        len
-    }
     /// Cursor as (line, column) in characters.
     pub fn cursor_line_col(&self) -> (usize, usize) {
-        let line = self.rope.char_to_line(self.cursor.char_idx);
-        (line, self.cursor.char_idx - self.rope.line_to_char(line))
+        let line = self.rope.char_to_line(self.state.cursor.char_idx);
+        (
+            line,
+            self.state.cursor.char_idx - self.rope.line_to_char(line),
+        )
     }
 
     pub fn insert(&mut self, text: &str) {
-        if !self.extra_selections.is_empty() {
+        if !self.state.extra_selections.is_empty() {
             self.replace_selections(text, false, false);
             return;
         }
         let (start, end) = self
+            .state
             .selection
             .map(|s| (s.anchor.min(s.head), s.anchor.max(s.head)))
-            .unwrap_or((self.cursor.char_idx, self.cursor.char_idx));
+            .unwrap_or((self.state.cursor.char_idx, self.state.cursor.char_idx));
         self.replace(start, end, text);
     }
 
     /// Deletes the character before the cursor.
     pub fn backspace(&mut self) {
-        if !self.extra_selections.is_empty() {
+        if !self.state.extra_selections.is_empty() {
             self.replace_selections("", true, false);
             return;
         }
-        if let Some(s) = self.selection {
+        if let Some(s) = self.state.selection {
             self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
             return;
         }
-        let i = self.cursor.char_idx;
+        let i = self.state.cursor.char_idx;
         if i > 0 {
             let mut start = i - 1;
             if start > 0 && self.rope.char(start) == '\n' && self.rope.char(start - 1) == '\r' {
@@ -89,15 +82,15 @@ impl Buffer {
 
     /// Deletes the character after the cursor.
     pub fn delete(&mut self) {
-        if !self.extra_selections.is_empty() {
+        if !self.state.extra_selections.is_empty() {
             self.replace_selections("", false, true);
             return;
         }
-        if let Some(s) = self.selection {
+        if let Some(s) = self.state.selection {
             self.replace(s.anchor.min(s.head), s.anchor.max(s.head), "");
             return;
         }
-        let i = self.cursor.char_idx;
+        let i = self.state.cursor.char_idx;
         if i < self.rope.len_chars() {
             let mut end = i + 1;
             if self.rope.char(i) == '\r'
@@ -112,53 +105,53 @@ impl Buffer {
 
     /// Places the cursor at (line, column), clamping to valid positions.
     pub fn set_cursor_line_col(&mut self, line: usize, col: usize) {
-        self.selection = None;
-        self.extra_selections.clear();
+        self.state.selection = None;
+        self.state.extra_selections.clear();
         let line = line.min(self.rope.len_lines() - 1);
         let max_col = self.line_content_len(line);
-        self.cursor.char_idx = self.rope.line_to_char(line) + col.min(max_col);
+        self.state.cursor.char_idx = self.rope.line_to_char(line) + col.min(max_col);
     }
 
     pub fn move_home(&mut self) {
-        self.selection = None;
+        self.state.selection = None;
         let (line, _) = self.cursor_line_col();
-        self.cursor.char_idx = self.rope.line_to_char(line);
+        self.state.cursor.char_idx = self.rope.line_to_char(line);
     }
 
     pub fn move_end(&mut self) {
-        self.selection = None;
+        self.state.selection = None;
         let (line, _) = self.cursor_line_col();
         self.set_cursor_line_col(line, usize::MAX);
     }
 
     pub fn move_left(&mut self) {
-        self.selection = None;
-        self.cursor.char_idx = self.cursor.char_idx.saturating_sub(1);
-        if self.cursor.char_idx > 0
-            && self.rope.char(self.cursor.char_idx) == '\n'
-            && self.rope.char(self.cursor.char_idx - 1) == '\r'
+        self.state.selection = None;
+        self.state.cursor.char_idx = self.state.cursor.char_idx.saturating_sub(1);
+        if self.state.cursor.char_idx > 0
+            && self.rope.char(self.state.cursor.char_idx) == '\n'
+            && self.rope.char(self.state.cursor.char_idx - 1) == '\r'
         {
-            self.cursor.char_idx -= 1;
+            self.state.cursor.char_idx -= 1;
         }
     }
 
     pub fn move_right(&mut self) {
-        self.selection = None;
-        self.cursor.char_idx = (self.cursor.char_idx + 1).min(self.rope.len_chars());
-        if self.cursor.char_idx < self.rope.len_chars()
-            && self.rope.char(self.cursor.char_idx) == '\n'
-            && self.cursor.char_idx > 0
-            && self.rope.char(self.cursor.char_idx - 1) == '\r'
+        self.state.selection = None;
+        self.state.cursor.char_idx = (self.state.cursor.char_idx + 1).min(self.rope.len_chars());
+        if self.state.cursor.char_idx < self.rope.len_chars()
+            && self.rope.char(self.state.cursor.char_idx) == '\n'
+            && self.state.cursor.char_idx > 0
+            && self.rope.char(self.state.cursor.char_idx - 1) == '\r'
         {
-            self.cursor.char_idx += 1;
+            self.state.cursor.char_idx += 1;
         }
     }
 
     pub fn move_vertical(&mut self, delta: isize) {
-        self.selection = None;
+        self.state.selection = None;
         let (line, col) = self.cursor_line_col();
         let target = (line as isize + delta).clamp(0, self.rope.len_lines() as isize - 1) as usize;
         let max_col = self.line_content_len(target);
-        self.cursor.char_idx = self.rope.line_to_char(target) + col.min(max_col);
+        self.state.cursor.char_idx = self.rope.line_to_char(target) + col.min(max_col);
     }
 }

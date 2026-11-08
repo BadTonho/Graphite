@@ -7,6 +7,74 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+#[test]
+fn no_op_preserves_revision_redo_and_view_state() {
+    let mut document = Buffer::from_text("unused.txt", "abc");
+    let mut view = graphite_text::SelectionState::default();
+    let mut editor = document.edit(&mut view, graphite_text::ViewId(42));
+    editor.insert("!");
+    editor.undo();
+    editor.set_selection(0, 1);
+    let revision = editor.revision();
+    let selections = editor.selections();
+    editor.insert("a");
+    assert_eq!(editor.revision(), revision);
+    assert_eq!(editor.selections(), selections);
+    editor.redo();
+    assert_eq!(editor.text(), "!abc");
+    assert_eq!(editor.revision(), revision + 1);
+}
+
+#[test]
+fn search_replacements_report_each_match_for_peer_mapping_and_inverse_history() {
+    use graphite_text::{map_position, SelectionState, ViewId};
+    let mut document = Buffer::from_text("unused.txt", "a bc a def");
+    let mut state = SelectionState::default();
+    let mut editor = document.edit(&mut state, ViewId(42));
+    let revision = editor.revision();
+    assert_eq!(
+        editor
+            .replace_matches("a", "🌎🌎🌎", SearchOptions::default(), None)
+            .unwrap(),
+        2
+    );
+    let outcome = editor.outcomes().last().unwrap();
+    assert_eq!(outcome.positions.len(), 2);
+    assert_eq!(map_position(3, &outcome.positions), 5);
+    assert_eq!(map_position(9, &outcome.positions), 13);
+    assert_eq!(outcome.revision, revision + 1);
+    let undo = editor.undo();
+    assert_eq!(map_position(13, &undo.positions), 9);
+    assert_eq!(editor.text(), "a bc a def");
+    assert!(!editor.is_dirty());
+}
+
+#[test]
+fn failed_edit_has_no_selection_or_history_effect_and_reload_version_never_resets() {
+    let mut document = Buffer::from_text("unused.txt", "abc");
+    let mut state = graphite_text::SelectionState::default();
+    {
+        let mut editor = document.edit(&mut state, graphite_text::ViewId(42));
+        editor.set_selection(3, 1);
+        assert!(editor
+            .apply_transaction(&[TextReplacement {
+                range: 0..8,
+                text: "Q".into()
+            }])
+            .is_err());
+        assert_eq!(editor.selection(), Some(Selection { anchor: 3, head: 1 }));
+        assert!(editor.outcomes().is_empty());
+        editor.insert("Q");
+    }
+    let revision = document.revision();
+    let outcome = document.reload_text("xyz");
+    assert_eq!(outcome.revision, revision + 1);
+    assert!(outcome.changed);
+    assert!(!document.is_dirty());
+    assert!(!document.undo_transaction().changed);
+    assert!(!document.reload_text("xyz").changed);
+}
+
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 struct TempDir(PathBuf);
 impl TempDir {
@@ -34,7 +102,9 @@ impl Drop for TempDir {
 
 #[test]
 fn reverse_unicode_selection_restores_on_undo_and_new_edit_discards_redo() {
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("a🌎éz");
     buffer.set_selection(3, 1);
     assert_eq!(buffer.selected_text().as_deref(), Some("🌎é"));
@@ -53,7 +123,9 @@ fn save_and_reopen_preserve_unicode_crlf_and_history() {
     let temp = TempDir::new();
     let path = temp.path().join("doc.txt");
     fs::write(&path, "a🌎\r\nbé\r\n").unwrap();
-    let mut buffer = Buffer::open(&path).unwrap();
+    let mut buffer_document = Buffer::open(&path).unwrap();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.set_cursor_line_col(1, 2);
     buffer.insert("!");
     buffer.save().unwrap();
@@ -67,7 +139,9 @@ fn save_and_reopen_preserve_unicode_crlf_and_history() {
 
 #[test]
 fn line_end_and_vertical_navigation_stop_before_crlf() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("ab\r\n🌎\r\n");
     b.set_cursor_line_col(0, usize::MAX);
     assert_eq!(b.cursor_line_col(), (0, 2));
@@ -79,7 +153,9 @@ fn line_end_and_vertical_navigation_stop_before_crlf() {
 
 #[test]
 fn crlf_navigation_and_deletion_keep_line_endings_intact() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a\r\nb\r\nc");
     b.set_cursor_line_col(1, 0);
     b.move_left();
@@ -116,7 +192,9 @@ fn invalid_utf8_and_failed_save_leave_existing_data_intact() {
     fs::write(&invalid, [0xff, 0xfe]).unwrap();
     assert!(Buffer::open(&invalid).is_err());
     fs::write(&original, "original").unwrap();
-    let mut buffer = Buffer::open(&original).unwrap();
+    let mut buffer_document = Buffer::open(&original).unwrap();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("🌎");
     assert!(buffer.save_as(temp.path()).is_err());
     assert_eq!(buffer.path(), Some(original.as_path()));
@@ -127,7 +205,9 @@ fn invalid_utf8_and_failed_save_leave_existing_data_intact() {
 
 #[test]
 fn line_actions_preserve_unicode_crlf_and_undo() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("α\r\n🌎\r\nlast");
     b.set_cursor_line_col(1, 1);
     b.move_line(-1);
@@ -149,7 +229,9 @@ fn line_actions_preserve_unicode_crlf_and_undo() {
 
 #[test]
 fn readonly_blocks_mutations_and_history_without_losing_history() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a🌎");
     let revision = b.revision();
     b.set_read_only(true);
@@ -177,7 +259,9 @@ fn file_permissions_enable_read_only_on_open() {
     let mut protected = original.clone();
     protected.set_readonly(true);
     fs::set_permissions(&path, protected).unwrap();
-    let mut b = Buffer::open(&path).unwrap();
+    let mut b_document = Buffer::open(&path).unwrap();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     assert!(b.is_read_only());
     b.insert("changed");
     assert_eq!(b.text(), "original");
@@ -187,7 +271,9 @@ fn file_permissions_enable_read_only_on_open() {
 
 #[test]
 fn multiple_unicode_edits_are_one_revision_and_one_undo() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a🌎b\nabc");
     let before = b.revision();
     let cursors = b
@@ -213,7 +299,9 @@ fn multiple_unicode_edits_are_one_revision_and_one_undo() {
 
 #[test]
 fn multiple_cursors_edit_and_history_restore_all_positions() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a🌎b\na🌎b");
     b.set_selections(vec![
         Selection { anchor: 1, head: 2 },
@@ -244,7 +332,9 @@ fn multiple_cursors_edit_and_history_restore_all_positions() {
 
 #[test]
 fn indentation_conversion_and_trim_preserve_crlf_and_undo() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("fn x() {  \r\n    α();\t\r\n        β();  \r\n}\r\n");
     let original = b.text();
     assert_eq!(
@@ -278,7 +368,9 @@ fn indentation_conversion_and_trim_preserve_crlf_and_undo() {
 
 #[test]
 fn trimming_keeps_multiple_cursors_at_their_text_positions() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a  \nb  \n");
     b.set_selections(vec![
         Selection { anchor: 1, head: 1 },
@@ -313,7 +405,9 @@ fn trimming_keeps_multiple_cursors_at_their_text_positions() {
 
 #[test]
 fn next_and_all_occurrences_create_unicode_safe_selections() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("école école 🌎 école");
     b.set_cursor_line_col(0, 2);
     b.select_occurrences(false);
@@ -330,7 +424,9 @@ fn next_and_all_occurrences_create_unicode_safe_selections() {
 
 #[test]
 fn multi_cursor_paste_distributes_lines_and_undoes_as_one_edit() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("a\nb");
     b.set_selections(vec![
         Selection { anchor: 1, head: 1 },
@@ -346,7 +442,9 @@ fn multi_cursor_paste_distributes_lines_and_undoes_as_one_edit() {
 
 #[test]
 fn invalid_or_overlapping_transactions_are_atomic() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("abcd");
     let before = b.revision();
     let edits = [
@@ -378,7 +476,9 @@ fn invalid_or_overlapping_transactions_are_atomic() {
 
 #[test]
 fn replace_selected_match_checks_context_captures_and_whole_word() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("cat cater CAT");
     let options = SearchOptions {
         regex: true,
@@ -402,7 +502,9 @@ fn replace_selected_match_checks_context_captures_and_whole_word() {
 
 #[test]
 fn search_respects_unicode_whole_words_selection_and_regex_errors() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("Olá olá olá_mundo 🌎 olá");
     let options = SearchOptions {
         whole_word: true,
@@ -428,7 +530,9 @@ fn search_respects_unicode_whole_words_selection_and_regex_errors() {
 
 #[test]
 fn replace_all_supports_captures_case_and_single_undo() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("CAT cat Cat CATS");
     let options = SearchOptions {
         regex: true,
@@ -448,7 +552,9 @@ fn replace_all_supports_captures_case_and_single_undo() {
 
 #[test]
 fn selected_lines_sort_and_deduplicate_with_single_undo() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("outside\r\nzé\r\na\r\nzé\r\nend");
     b.set_selection(9, 19);
     b.deduplicate_lines();
@@ -463,7 +569,9 @@ fn selected_lines_sort_and_deduplicate_with_single_undo() {
 
 #[test]
 fn line_commands_apply_to_disjoint_cursors_as_one_undo_step() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     let original = "zero\r\none\r\ntwo\r\nthree\r\nfour";
     b.insert(original);
     let one = b.line_start_char(1);
@@ -514,7 +622,9 @@ fn line_commands_apply_to_disjoint_cursors_as_one_undo_step() {
 
 #[test]
 fn moving_a_multiline_selection_preserves_range_and_endings() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("zero\r\none\r\ntwo\r\nthree\r\nfour");
     let start = b.line_start_char(1);
     let end = b.line_start_char(3);
@@ -528,7 +638,9 @@ fn moving_a_multiline_selection_preserves_range_and_endings() {
 
 #[test]
 fn sort_and_deduplicate_multiple_selected_line_blocks() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     let original = "z\na\nz\nseparator\ny\nb\ny\n";
     b.insert(original);
     b.set_selections(vec![
@@ -553,7 +665,9 @@ fn sort_and_deduplicate_multiple_selected_line_blocks() {
 
 #[test]
 fn duplicate_and_delete_selected_last_line_without_final_newline() {
-    let mut b = Buffer::new();
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
     b.insert("first\r\nlast");
     b.set_cursor_line_col(1, 2);
     b.duplicate_line(true);
@@ -572,8 +686,12 @@ fn multi_document_transactions_validate_every_target_before_mutating() {
         apply_document_transactions, DocumentTransaction, MultiDocumentError, TextReplacement,
         TransactionError,
     };
-    let mut first = Buffer::new();
-    let mut second = Buffer::new();
+    let mut first_document = Buffer::new();
+    let mut first_view = graphite_text::SelectionState::default();
+    let mut first = first_document.edit(&mut first_view, graphite_text::ViewId(1));
+    let mut second_document = Buffer::new();
+    let mut second_view = graphite_text::SelectionState::default();
+    let mut second = second_document.edit(&mut second_view, graphite_text::ViewId(1));
     first.insert("abc");
     second.insert("é日");
     let rev1 = first.revision();
@@ -676,7 +794,9 @@ fn multi_document_transactions_validate_every_target_before_mutating() {
 #[test]
 fn position_changes_track_disjoint_unicode_transactions_and_history() {
     use graphite_text::{map_position, Buffer, PositionEdit, TextReplacement};
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("aé日z!");
     buffer
         .apply_transaction(&[
@@ -752,7 +872,9 @@ fn failed_trimmed_save_preserves_text_selection_revision_and_redo() {
     let temp = TempDir::new();
     let path = temp.path().join("document.txt");
     std::fs::write(&path, "é  \r\nsecond \n").unwrap();
-    let mut buffer = Buffer::open(&path).unwrap();
+    let mut buffer_document = Buffer::open(&path).unwrap();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.set_selection(1, 1);
     buffer.insert("X");
     buffer.undo();
@@ -777,7 +899,9 @@ fn readonly_save_as_cannot_write_a_new_file() {
     use graphite_text::Buffer;
     let temp = TempDir::new();
     let target = temp.path().join("new.txt");
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("protected");
     buffer.set_read_only(true);
     assert!(buffer.save_as(&target).is_err());
@@ -787,7 +911,9 @@ fn readonly_save_as_cannot_write_a_new_file() {
 }
 #[test]
 fn newline_uses_each_cursors_line_ending_and_is_one_undo_step() {
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("a\r\nb\nc");
     buffer.set_selections(vec![
         Selection { anchor: 1, head: 1 },
@@ -808,7 +934,9 @@ fn newline_uses_each_cursors_line_ending_and_is_one_undo_step() {
 
 #[test]
 fn newline_in_last_unterminated_crlf_line_and_readonly_document() {
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("é\r\nlast");
     buffer.insert_newline();
     assert_eq!(buffer.text(), "é\r\nlast\r\n");
@@ -820,7 +948,9 @@ fn newline_in_last_unterminated_crlf_line_and_readonly_document() {
 }
 #[test]
 fn completion_applies_to_all_unicode_cursors_as_one_edit() {
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("café café");
     buffer.set_selections(vec![
         Selection { anchor: 4, head: 4 },
@@ -840,7 +970,9 @@ fn completion_applies_to_all_unicode_cursors_as_one_edit() {
 
 #[test]
 fn completion_merges_overlapping_prefixes_and_respects_readonly() {
-    let mut buffer = Buffer::new();
+    let mut buffer_document = Buffer::new();
+    let mut buffer_view = graphite_text::SelectionState::default();
+    let mut buffer = buffer_document.edit(&mut buffer_view, graphite_text::ViewId(1));
     buffer.insert("café");
     buffer.set_selections(vec![
         Selection { anchor: 2, head: 2 },

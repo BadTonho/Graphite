@@ -1,18 +1,16 @@
 # Editor Core Contracts
 
-This document proposes three contracts: **document/view**, **commands and context**, and the **extension boundary**. The target behavior and acceptance criteria are design decisions for future implementation, not claims about current capabilities. The type examples are illustrative, not final Rust APIs. Formalizing these contracts does not require implementing the entire VS Code architecture at once.
+This document describes the implemented **document/view** contract and the planned **commands and context** and **extension boundary** contracts. The target behavior for commands and extensions remains a design specification, not a claim of current support.
 
 ## 1. Document and view
 
 ### Current state
 
-`Tab` in `crates/graphite-app/src/main.rs` combines document and presentation state and has a typed document ID used by views, navigation and diagnostics. `DocumentStore` indexes documents by ID while retaining the existing tab order and resolves file paths using the existing path-equivalence rules. `Buffer` in `crates/graphite-text/src/lib.rs` owns the active selections and text history. `View` in `crates/graphite-app/src/app/editor_groups.rs` has a stable typed identity and stores per-group selections and scroll; snapshots and restores synchronize the active view with the buffer, and position edits remap other views. The existing `app_views_share_text_and_history_with_independent_selections` test exercises independent selections, shared text and undo. The risk is that mutation paths must invoke this synchronization consistently, rather than ownership enforcing it.
+`Document` owns text, language, format and document caches. `DocumentStore` uses immutable keys independent of document data; there is no mutable slice or positional access. Groups own tab order and each `View` owns its selections, scroll, IME composition and smart-selection navigation state. The active document is derived from the focused view.
 
-`Buffer::apply_transaction` already validates disjoint replacements, and effective replacements, undo and redo update its revision in `crates/graphite-text/src/edit.rs`. These are useful foundations, not proof that every future document operation satisfies the proposed contract.
+`Buffer` contains text and history without an active cursor. `Buffer::edit` borrows a view's `SelectionState` and `ViewId`; text operations commit transactions and expose position mappings through `TransactionOutcome`. Application edit sessions remap peer views and publish document versions to LSP and schema validation. Undo/redo restore the originating view's selection snapshot when it still exists, remap the other views and retain the current focus. Snapshot/restore synchronization adapters have been removed.
 
-`graphite-text` provides pre-validation and an in-memory multi-buffer transaction with optional expected revisions. Quick fixes use this transaction; disk persistence remains outside its atomicity guarantee.
-
-Quick fixes and server `workspace/applyEdit` requests share a prepare-and-commit path: it rejects unsupported resource operations and invalid UTF-16 positions, checks supplied LSP document versions, and returns errors to the caller. Previously closed targets become dirty documents in memory without writing the files. Other document and view migrations below remain necessary.
+Prepared workspace edits retain their open documents and revalidate identities, versions, ranges, permissions and closed-file snapshots before committing. No-op closed targets do not create tabs. Atomicity covers text and history in memory; file operations and disk persistence remain outside this guarantee. See [Document and view implementation](document-view.md) for lifecycle and validation details.
 
 ### Target contract
 
@@ -31,7 +29,7 @@ Quick fixes and server `workspace/applyEdit` requests share a prepare-and-commit
 
 ### Incremental migration
 
-Introduce stable document and view identities, then move selection ownership from `Buffer` to views and pass selection state explicitly to editing operations. Route all text changes through document transactions and centralize view remapping. Migrate existing callers and tests incrementally; retain adapters for the current `Tab` structure until no longer needed.
+The document/view migration is complete. Editing callers use borrowed view state, stable document keys and centralized view remapping. Regression tests cover shared views, history ownership, no-ops, pending-operation retention and multi-document failure cases. Native UI/GPU verification remains pending on Windows and Linux.
 
 ## 2. Commands and context
 

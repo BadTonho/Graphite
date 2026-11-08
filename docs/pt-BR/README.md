@@ -4,6 +4,7 @@ Original em inglês: [../en/README.md](../en/README.md)
 
 - **Arquitetura**
   - [Visão geral](architecture/overview.md)
+  - [Documento e view](architecture/document-view.md)
   - [Compatibilidade com extensões do VS Code](architecture/extension-compat.md)
 - **Funcionalidades**
   - [v0.1 — Editor base](features/v0.1-editor.md)

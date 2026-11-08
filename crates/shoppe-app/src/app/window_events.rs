@@ -1,6 +1,10 @@
 use super::*;
 
 impl ApplicationHandler<UserEvent> for App {
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        self.collect_closed_documents();
+        self.check_cli_waiters();
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.gpu.is_some() {
             return;
@@ -85,7 +89,10 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
-                self.smart_selection_history.clear();
+                self.editor_groups
+                    .active_view_mut()
+                    .smart_selection_history
+                    .clear();
                 let editor_state = self.editor_state();
                 self.click();
                 if editor_state != self.editor_state() {
@@ -125,7 +132,7 @@ impl ApplicationHandler<UserEvent> for App {
                         terminal.scroll((lines * 3.0) as i32);
                     }
                 } else {
-                    let tab = &self.tabs[self.active_tab];
+                    let tab = &self.documents[self.active_document()];
                     let max = if self.word_wrap {
                         if let Some(gpu) = &self.gpu {
                             let (width, height) = gpu.renderer.size();
@@ -148,17 +155,17 @@ impl ApplicationHandler<UserEvent> for App {
                     } else {
                         tab.buffer.len_lines().saturating_sub(1)
                     } as f32;
-                    self.tabs[self.active_tab].scroll_line =
-                        (self.tabs[self.active_tab].scroll_line as f32 + lines).clamp(0.0, max)
-                            as usize;
+                    self.editor_groups.active_view_mut().scroll_line =
+                        (self.editor_groups.active_view_mut().scroll_line as f32 + lines)
+                            .clamp(0.0, max) as usize;
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.note_screencast_shortcut(&event);
                 let editor_state = self.editor_state();
-                let before = self.begin_editor_event();
+
                 self.handle_key(&event);
-                self.end_editor_event(before);
+
                 if editor_state != self.editor_state() {
                     self.reveal_cursor = true;
                     self.invalidate_lsp_requests();
@@ -168,9 +175,8 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::Ime(winit::event::Ime::Enabled) => self.ime_preedit(String::new()),
             WindowEvent::Ime(winit::event::Ime::Preedit(text, _)) => self.ime_preedit(text),
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                let before = self.begin_editor_event();
                 self.ime_commit(&text);
-                self.end_editor_event(before);
+
                 self.reveal_cursor = true;
             }
             WindowEvent::Ime(winit::event::Ime::Disabled) => self.ime_preedit(String::new()),

@@ -2,13 +2,13 @@ use super::*;
 
 impl App {
     pub(crate) fn ime_preedit(&mut self, text: String) {
-        self.ime_composing = !text.is_empty();
-        self.ime_preedit = text;
+        self.editor_groups.active_view_mut().ime_composing = !text.is_empty();
+        self.editor_groups.active_view_mut().ime_preedit = text;
     }
 
     pub(crate) fn ime_commit(&mut self, text: &str) {
-        self.ime_composing = false;
-        self.ime_preedit.clear();
+        self.editor_groups.active_view_mut().ime_composing = false;
+        self.editor_groups.active_view_mut().ime_preedit.clear();
         if self.terminal_focused {
             if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                 terminal.input(text.as_bytes().to_vec());
@@ -29,7 +29,7 @@ impl App {
             query.push_str(text);
         } else {
             let before = self.editor_state();
-            self.tabs[self.active_tab].buffer.insert(text);
+            self.editor_mut().insert(text);
             if before != self.editor_state() {
                 self.invalidate_lsp_requests();
             }

@@ -10,7 +10,7 @@ pub enum CursorMotion {
     End,
 }
 
-impl Buffer {
+impl Editor<'_> {
     /// Complete the word at each cursor, or replace each selected range, as one edit.
     pub fn complete_word(&mut self, text: &str) {
         if self.read_only {
@@ -85,14 +85,7 @@ impl Buffer {
         self.apply_transaction(edits)?;
         if self.revision() != revision {
             self.set_selections(after);
-            let cursor = self.cursor.char_idx;
-            let selection = self.selection;
-            let extra = self.extra_selections.clone();
-            if let Some(edit) = self.undo.last_mut() {
-                edit.after = cursor;
-                edit.after_selection = selection;
-                edit.after_extra = extra;
-            }
+            self.finish_selections();
         }
         Ok(())
     }
@@ -164,49 +157,18 @@ impl Buffer {
         self.set_selections(selections);
     }
     pub fn selections(&self) -> Vec<Selection> {
-        let mut result = vec![self.selection.unwrap_or(Selection {
-            anchor: self.cursor.char_idx,
-            head: self.cursor.char_idx,
+        let mut result = vec![self.state.selection.unwrap_or(Selection {
+            anchor: self.state.cursor.char_idx,
+            head: self.state.cursor.char_idx,
         })];
-        result.extend_from_slice(&self.extra_selections);
+        result.extend_from_slice(&self.state.extra_selections);
         result
     }
 
     /// Set all selections, clamping invalid offsets and merging overlaps.
-    pub fn set_selections(&mut self, mut selections: Vec<Selection>) {
-        if selections.is_empty() {
-            selections.push(Selection {
-                anchor: self.cursor.char_idx,
-                head: self.cursor.char_idx,
-            });
-        }
-        let len = self.len_chars();
-        for s in &mut selections {
-            s.anchor = s.anchor.min(len);
-            s.head = s.head.min(len);
-        }
-        selections.sort_by_key(|s| (s.anchor.min(s.head), s.anchor.max(s.head)));
-        let mut merged: Vec<Selection> = Vec::new();
-        for selection in selections {
-            let start = selection.anchor.min(selection.head);
-            let end = selection.anchor.max(selection.head);
-            if let Some(last) = merged.last_mut() {
-                let a = last.anchor.min(last.head);
-                let b = last.anchor.max(last.head);
-                if start < b || (start == a && end == b) || (start == b && start == end) {
-                    *last = Selection {
-                        anchor: a,
-                        head: b.max(end),
-                    };
-                    continue;
-                }
-            }
-            merged.push(selection);
-        }
-        let primary = merged.remove(0);
-        self.cursor.char_idx = primary.head;
-        self.selection = (primary.anchor != primary.head).then_some(primary);
-        self.extra_selections = merged;
+    pub fn set_selections(&mut self, selections: Vec<Selection>) {
+        self.state
+            .set_selections(selections, self.buffer.len_chars());
     }
 
     pub fn add_cursor(&mut self, offset: usize) {
@@ -266,14 +228,7 @@ impl Buffer {
                     .map(|head| Selection { anchor: head, head })
                     .collect(),
             );
-            let after = self.cursor.char_idx;
-            let selection = self.selection;
-            let extra = self.extra_selections.clone();
-            if let Some(edit) = self.undo.last_mut() {
-                edit.after = after;
-                edit.after_selection = selection;
-                edit.after_extra = extra;
-            }
+            self.finish_selections();
         }
     }
 

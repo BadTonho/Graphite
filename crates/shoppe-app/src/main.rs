@@ -9,7 +9,9 @@ use app::theme::{Theme, DARK_THEME};
 
 mod cli;
 mod config;
+mod document;
 mod document_store;
+use document::Document;
 mod file_format;
 mod json_schema;
 mod keybindings;
@@ -70,25 +72,6 @@ struct Gpu {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct DocumentId(u64);
 
-struct Tab {
-    id: DocumentId,
-    buffer: Buffer,
-    scroll_line: usize,
-    language: Option<Language>,
-    highlights: Option<HighlightCache>,
-    sticky_headers_cache: Option<(u64, usize, Vec<graphite_syntax::ScopeHeader>)>,
-    highlighter: IncrementalHighlighter,
-    diagnostics: Vec<lsp_types::Diagnostic>,
-    inlay_hints: Vec<lsp_types::InlayHint>,
-    inlay_revision: Option<u64>,
-    schema_diagnostics: Vec<lsp_types::Diagnostic>,
-    schema_revision: Option<u64>,
-    lsp_revision: Option<u64>,
-    indentation: graphite_text::Indentation,
-    encoding: file_format::Encoding,
-    line_ending: file_format::LineEnding,
-}
-
 fn next_document_id() -> DocumentId {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     DocumentId(NEXT_ID.fetch_add(1, Ordering::Relaxed))
@@ -97,8 +80,8 @@ fn next_document_id() -> DocumentId {
 struct App {
     gpu: Option<Gpu>,
     tree: FileTree,
-    tabs: document_store::DocumentStore,
-    active_tab: usize,
+    documents: document_store::DocumentStore,
+
     editor_groups: app::editor_groups::EditorGroups,
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
@@ -106,8 +89,6 @@ struct App {
     context_keys: app::context_keys::ContextKeyService,
     selecting: bool,
     reveal_cursor: bool,
-    ime_composing: bool,
-    ime_preedit: String,
     status: String,
     close_confirm: bool,
     close_window_confirm: bool,
@@ -119,8 +100,6 @@ struct App {
     search_cancel: Arc<std::sync::atomic::AtomicU64>,
     local_search: Option<LocalSearch>,
     quick_open: Option<QuickOpen>,
-    smart_selection_history: Vec<graphite_text::Selection>,
-    smart_selection_guard: Option<(usize, u64, graphite_text::Selection)>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
     snippet_load_warnings: Vec<String>,
@@ -150,7 +129,7 @@ struct App {
     navigation_history_index: Option<usize>,
     recent_documents: Vec<DocumentId>,
     diagnostic_navigation: Option<(DocumentId, lsp_types::Range, String)>,
-    closed_tabs: Vec<Tab>,
+    closed_tabs: Vec<app::editor_groups::ClosedTab>,
     terminals: Vec<TerminalSession>,
     terminal_names: Vec<String>,
     terminal_tab_offset: usize,
@@ -316,28 +295,30 @@ impl App {
         Self {
             gpu: None,
             tree: FileTree::new(workspace),
-            tabs: document_store::DocumentStore::new(Tab {
-                id: initial_document_id,
-                buffer: Buffer::new(),
-                scroll_line: 0,
-                language: None,
-                highlights: None,
-                sticky_headers_cache: None,
-                highlighter: IncrementalHighlighter::new(),
-                diagnostics: Vec::new(),
-                inlay_hints: Vec::new(),
-                inlay_revision: None,
-                schema_diagnostics: Vec::new(),
-                schema_revision: None,
-                lsp_revision: None,
-                indentation: graphite_text::Indentation {
-                    insert_spaces: prefs.insert_spaces,
-                    tab_size: prefs.tab_size,
+            documents: document_store::DocumentStore::new(
+                initial_document_id,
+                Document {
+                    buffer: Buffer::new(),
+
+                    language: None,
+                    highlights: None,
+                    sticky_headers_cache: None,
+                    highlighter: IncrementalHighlighter::new(),
+                    diagnostics: Vec::new(),
+                    inlay_hints: Vec::new(),
+                    inlay_revision: None,
+                    schema_diagnostics: Vec::new(),
+                    schema_revision: None,
+                    lsp_revision: None,
+                    indentation: graphite_text::Indentation {
+                        insert_spaces: prefs.insert_spaces,
+                        tab_size: prefs.tab_size,
+                    },
+                    saved_format: (file_format::Encoding::Utf8, file_format::LineEnding::Lf),
+                    encoding: file_format::Encoding::Utf8,
+                    line_ending: file_format::LineEnding::Lf,
                 },
-                encoding: file_format::Encoding::Utf8,
-                line_ending: file_format::LineEnding::Lf,
-            }),
-            active_tab: 0,
+            ),
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
@@ -345,8 +326,6 @@ impl App {
             context_keys: app::context_keys::ContextKeyService::default(),
             selecting: false,
             reveal_cursor: true,
-            ime_composing: false,
-            ime_preedit: String::new(),
             status: settings_error
                 .or_else(|| terminal_config_error.clone())
                 .or_else(|| snippet_load_warnings.first().cloned())
@@ -361,8 +340,6 @@ impl App {
             search_cancel: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             local_search: None,
             quick_open: None,
-            smart_selection_history: Vec::new(),
-            smart_selection_guard: None,
             snippet_query: None,
             snippets,
             snippet_load_warnings,
@@ -547,14 +524,14 @@ mod tests {
         fs::write(&second, "two").unwrap();
         let mut app = App::new_with_options(root.to_path_buf(), None, true);
         app.open_file(first.clone());
-        app.tabs[app.active_tab].buffer.set_cursor_line_col(0, 3);
-        app.tabs[app.active_tab].buffer.insert("!");
+        app.editor_mut().set_cursor_line_col(0, 3);
+        app.editor_mut().insert("!");
         app.open_file(second);
         app.open_file(first);
-        assert_eq!(app.tabs.len(), 2);
-        assert_eq!(app.tabs[app.active_tab].buffer.text(), "one!");
-        assert_eq!(app.tabs[0].buffer.text(), "one!");
-        assert_eq!(app.tabs[1].buffer.text(), "two");
+        assert_eq!(app.documents.len(), 2);
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "one!");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "one!");
+        assert_eq!(app.documents[app.document_at(1)].buffer.text(), "two");
     }
 
     #[test]
@@ -566,26 +543,29 @@ mod tests {
         fs::write(&second, "fn second() {}\n").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(first.clone());
-        app.tabs[0].buffer.set_cursor_line_col(0, 2);
-        app.tabs[0].buffer.insert("🌎");
+        app.test_editor_mut(0).set_cursor_line_col(0, 2);
+        app.test_editor_mut(0).insert("🌎");
         app.open_file(second);
         app.close_active_tab();
-        assert_eq!(app.tabs.len(), 1);
-        assert!(app.tabs[0].buffer.is_dirty());
+        assert_eq!(app.documents.len(), 1);
+        assert!(app.documents[app.document_at(0)].is_dirty());
         app.save();
         assert_eq!(fs::read_to_string(first).unwrap(), "fn🌎 first() {}\n");
-        assert!(!app.tabs[0].buffer.is_dirty());
+        assert!(!app.documents[app.document_at(0)].is_dirty());
     }
 
     #[test]
     fn open_failure_does_not_discard_unsaved_document() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("unsaved 🌎");
+        app.test_editor_mut(0).insert("unsaved 🌎");
         app.open_file(dir.path().join("missing.rs"));
-        assert_eq!(app.tabs.len(), 1);
-        assert_eq!(app.tabs[0].buffer.text(), "unsaved 🌎");
-        assert!(app.tabs[0].buffer.is_dirty());
+        assert_eq!(app.documents.len(), 1);
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "unsaved 🌎"
+        );
+        assert!(app.documents[app.document_at(0)].is_dirty());
         assert!(app.status.starts_with("Cannot open"));
     }
 
@@ -598,9 +578,9 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.read_only_patterns = vec!["generated/**".into()];
         app.open_file(file);
-        assert!(app.tabs[0].buffer.is_read_only());
-        app.tabs[0].buffer.insert("no");
-        assert_eq!(app.tabs[0].buffer.text(), "original");
+        assert!(app.documents[app.document_at(0)].buffer.is_read_only());
+        app.test_editor_mut(0).insert("no");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "original");
     }
 
     #[test]
@@ -611,7 +591,7 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(file.clone());
         assert_eq!(
-            app.tabs[0].indentation,
+            app.documents[app.document_at(0)].indentation,
             graphite_text::Indentation {
                 insert_spaces: true,
                 tab_size: 4
@@ -623,12 +603,12 @@ mod tests {
             fs::read_to_string(file).unwrap(),
             "fn main() {\n    let x = 1;\n}\n"
         );
-        app.tabs[0].buffer.undo();
+        app.test_editor_mut(0).undo();
         assert_eq!(
-            app.tabs[0].buffer.text(),
+            app.documents[app.document_at(0)].buffer.text(),
             "fn main() { \n    let x = 1;  \n}\n"
         );
-        assert!(app.tabs[0].buffer.is_dirty());
+        assert!(app.documents[app.document_at(0)].is_dirty());
     }
 
     #[test]
@@ -638,7 +618,7 @@ mod tests {
         fs::write(&file, "a").unwrap();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.open_file(file.clone());
-        app.tabs[0].buffer.insert("b");
+        app.test_editor_mut(0).insert("b");
         app.request_window_close();
         assert!(app.close_window_confirm);
         assert!(!app.exit_requested);
@@ -646,11 +626,11 @@ mod tests {
         assert!(app.exit_requested);
         assert_eq!(fs::read_to_string(file).unwrap(), "ba");
         let mut untitled = App::new_with_options(temp.path().to_path_buf(), None, true);
-        untitled.tabs[0].buffer.insert("unsaved");
+        untitled.test_editor_mut(0).insert("unsaved");
         untitled.request_window_close();
         untitled.save_all_before_close();
         assert!(!untitled.exit_requested);
-        assert!(untitled.tabs[0].buffer.is_dirty());
+        assert!(untitled.documents[untitled.document_at(0)].is_dirty());
         assert!(untitled.status.contains("Cannot close"));
     }
 
@@ -663,18 +643,18 @@ mod tests {
         fs::write(&b, "two  \n").unwrap();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.open_file(a.clone());
-        app.tabs[0].buffer.insert("é");
+        app.test_editor_mut(0).insert("é");
         app.open_file(b.clone());
-        app.tabs[1].buffer.insert("🙂");
+        app.test_editor_mut(1).insert("🙂");
         app.trim_trailing_whitespace = true;
         fs::remove_file(&a).unwrap();
         fs::create_dir(&a).unwrap();
         app.save_all_before_close();
         assert!(!app.exit_requested);
-        assert_eq!(app.active_tab, 1);
-        assert_eq!(app.tabs[0].buffer.text(), "éone  \n");
-        assert_eq!(app.tabs[1].buffer.text(), "🙂two  \n");
-        assert!(app.tabs.iter().all(|tab| tab.buffer.is_dirty()));
+        assert_eq!(app.active_document(), app.document_at(1));
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "éone  \n");
+        assert_eq!(app.documents[app.document_at(1)].buffer.text(), "🙂two  \n");
+        assert!(app.documents.iter().all(|tab| tab.is_dirty()));
         assert!(app.status.contains("Cannot close"));
     }
 
@@ -682,16 +662,23 @@ mod tests {
     fn completion_on_readonly_document_keeps_existing_selection() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("let value = 1;");
-        app.tabs[0].buffer.set_selection(4, 9);
-        app.tabs[0].buffer.set_read_only(true);
+        app.test_editor_mut(0).insert("let value = 1;");
+        app.test_editor_mut(0).set_selection(4, 9);
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.completion_items.push(lsp_types::CompletionItem {
             label: "other".into(),
             ..Default::default()
         });
         app.accept_completion();
-        assert_eq!(app.tabs[0].buffer.text(), "let value = 1;");
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "let value = 1;"
+        );
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("value"));
         assert_eq!(app.status, "Read-only document");
     }
 
@@ -699,8 +686,8 @@ mod tests {
     fn completion_updates_every_cursor_and_remains_one_undo_step() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("café café");
-        app.tabs[0].buffer.set_selections(vec![
+        app.test_editor_mut(0).insert("café café");
+        app.test_editor_mut(0).set_selections(vec![
             graphite_text::Selection { anchor: 4, head: 4 },
             graphite_text::Selection { anchor: 9, head: 9 },
         ]);
@@ -709,9 +696,12 @@ mod tests {
             ..Default::default()
         });
         app.accept_completion();
-        assert_eq!(app.tabs[0].buffer.text(), "crème crème");
-        app.tabs[0].buffer.undo();
-        assert_eq!(app.tabs[0].buffer.text(), "café café");
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "crème crème"
+        );
+        app.test_editor_mut(0).undo();
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "café café");
     }
 
     #[test]
@@ -722,18 +712,28 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
         app.refresh_highlights();
-        app.tabs[0].buffer.set_cursor_line_col(0, 0);
-        app.tabs[0].buffer.insert("// é\n");
+        app.test_editor_mut(0).set_cursor_line_col(0, 0);
+        app.test_editor_mut(0).insert("// é\n");
         app.refresh_highlights();
-        app.tabs[0].buffer.undo();
-        app.tabs[0].buffer.insert("/* note */\n");
+        app.test_editor_mut(0).undo();
+        app.test_editor_mut(0).insert("/* note */\n");
         app.refresh_highlights();
-        let actual = app.tabs[0].highlights.as_ref().unwrap();
-        assert_eq!(actual.revision, app.tabs[0].buffer.revision());
+        let actual = app.documents[app.document_at(0)]
+            .highlights
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            actual.revision,
+            app.documents[app.document_at(0)].buffer.revision()
+        );
         let mut fresh = IncrementalHighlighter::new();
         assert_eq!(
             actual.lines,
-            fresh.highlight_rope(Language::Rust, app.tabs[0].buffer.rope(), None)
+            fresh.highlight_rope(
+                Language::Rust,
+                app.documents[app.document_at(0)].buffer.rope(),
+                None
+            )
         );
     }
 
@@ -745,21 +745,24 @@ mod tests {
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.open_file(path);
         app.refresh_highlights();
-        app.tabs[0].buffer.set_cursor_line_col(0, 6);
+        app.test_editor_mut(0).set_cursor_line_col(0, 6);
         let previous_state = app.editor_state();
-        app.tabs[0].buffer.select_occurrences(true);
+        app.test_editor_mut(0).select_occurrences(true);
         assert_ne!(previous_state, app.editor_state());
-        app.tabs[0].buffer.insert("🌎");
+        app.test_editor_mut(0).insert("🌎");
         app.refresh_highlights();
-        let tab = &app.tabs[0];
+        let tab = &app.documents[app.document_at(0)];
         assert_eq!(tab.buffer.text(), "let 🌎 = 1;\nlet 🌎 = 2;\n");
         let mut fresh = IncrementalHighlighter::new();
         assert_eq!(
             tab.highlights.as_ref().unwrap().lines,
             fresh.highlight_rope(Language::Rust, tab.buffer.rope(), None)
         );
-        app.tabs[0].buffer.undo();
-        assert_eq!(app.tabs[0].buffer.text(), "let café = 1;\nlet café = 2;\n");
+        app.test_editor_mut(0).undo();
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "let café = 1;\nlet café = 2;\n"
+        );
     }
 
     #[test]
@@ -770,39 +773,45 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
         app.refresh_highlights();
-        app.tabs[0].buffer.set_cursor_line_col(0, 6);
+        app.test_editor_mut(0).set_cursor_line_col(0, 6);
         let before = app.editor_state();
-        app.tabs[0].buffer.select_occurrences(true);
+        app.test_editor_mut(0).select_occurrences(true);
         assert_ne!(app.editor_state(), before);
-        app.tabs[0].buffer.insert("🌎");
+        app.test_editor_mut(0).insert("🌎");
         app.refresh_highlights();
-        let tab = &app.tabs[0];
+        let tab = &app.documents[app.document_at(0)];
         assert_eq!(tab.buffer.text(), "let 🌎 = 1;\nlet 🌎 = 2;\n");
         let mut fresh = IncrementalHighlighter::new();
         assert_eq!(
             tab.highlights.as_ref().unwrap().lines,
             fresh.highlight_rope(Language::Rust, tab.buffer.rope(), None)
         );
-        app.tabs[0].buffer.undo();
-        assert_eq!(app.tabs[0].buffer.text(), "let café = 1;\nlet café = 2;\n");
+        app.test_editor_mut(0).undo();
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "let café = 1;\nlet café = 2;\n"
+        );
     }
 
     #[test]
     fn local_search_selects_matches_and_replacement_is_undoable() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("Olá olá");
-        app.tabs[0].buffer.set_cursor_line_col(0, 0);
+        app.test_editor_mut(0).insert("Olá olá");
+        app.test_editor_mut(0).set_cursor_line_col(0, 0);
         app.open_local_search(true);
         let mut search = app.local_search.take().unwrap();
         search.query = "olá".into();
         search.replacement = "adeus".into();
         app.local_search_next(&mut search, false);
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("Olá"));
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("Olá"));
         app.local_replace_all(&mut search);
-        assert_eq!(app.tabs[0].buffer.text(), "adeus adeus");
-        app.tabs[0].buffer.undo();
-        assert_eq!(app.tabs[0].buffer.text(), "Olá olá");
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "adeus adeus"
+        );
+        app.test_editor_mut(0).undo();
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "Olá olá");
     }
 
     #[test]
@@ -812,17 +821,17 @@ mod tests {
         fs::write(&path, "fn main() { let value = 1; }\n").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
-        app.tabs[0].buffer.set_cursor_line_col(0, 18);
-        let original = app.tabs[0].buffer.cursor().char_idx;
+        app.test_editor_mut(0).set_cursor_line_col(0, 18);
+        let original = app.test_editor(0).cursor().char_idx;
         app.smart_select(true);
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("value"));
         app.smart_select(true);
-        assert!(app.tabs[0].buffer.selected_text().unwrap().len() > 5);
+        assert!(app.test_editor(0).selected_text().unwrap().len() > 5);
         app.smart_select(false);
-        assert_eq!(app.tabs[0].buffer.selected_text().as_deref(), Some("value"));
+        assert_eq!(app.test_editor(0).selected_text().as_deref(), Some("value"));
         app.smart_select(false);
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, original);
-        assert_eq!(app.tabs[0].buffer.selection(), None);
+        assert_eq!(app.test_editor(0).cursor().char_idx, original);
+        assert_eq!(app.test_editor(0).selection(), None);
     }
 
     #[test]
@@ -832,17 +841,17 @@ mod tests {
         fs::write(&path, "fn main() { let value = 1; }\n").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(path);
-        app.tabs[0].buffer.set_cursor_line_col(0, 18);
+        app.test_editor_mut(0).set_cursor_line_col(0, 18);
         app.smart_select(true);
-        app.tabs[0].buffer.set_cursor_line_col(0, 0);
+        app.test_editor_mut(0).set_cursor_line_col(0, 0);
         app.smart_select(false);
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, 0);
-        app.tabs[0].buffer.set_cursor_line_col(0, 18);
+        assert_eq!(app.test_editor(0).cursor().char_idx, 0);
+        app.test_editor_mut(0).set_cursor_line_col(0, 18);
         app.smart_select(true);
-        app.tabs[0].buffer.insert("other");
-        let cursor = app.tabs[0].buffer.cursor().char_idx;
+        app.test_editor_mut(0).insert("other");
+        let cursor = app.test_editor(0).cursor().char_idx;
         app.smart_select(false);
-        assert_eq!(app.tabs[0].buffer.cursor().char_idx, cursor);
+        assert_eq!(app.test_editor(0).cursor().char_idx, cursor);
     }
 
     #[test]
@@ -888,20 +897,24 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.ime_preedit("に".into());
-        assert!(app.ime_composing);
-        assert!(app.tabs[0].buffer.text().is_empty());
+        assert!(app.editor_groups.active_view_mut().ime_composing);
+        assert!(app.documents[app.document_at(0)].buffer.text().is_empty());
         app.ime_commit("日本");
-        assert!(!app.ime_composing);
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        assert!(!app.editor_groups.active_view_mut().ime_composing);
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
         app.open_local_search(false);
         app.ime_preedit("世".into());
         app.ime_commit("世界");
         assert_eq!(app.local_search.as_ref().unwrap().query, "世界");
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
         app.local_search = None;
-        app.tabs[0].buffer.set_read_only(true);
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.ime_commit("変更");
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
     }
 
     #[test]
@@ -911,15 +924,19 @@ mod tests {
         app.ime_preedit("に".into());
         app.ime_preedit(String::new());
         app.ime_commit("日本");
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
         app.ime_preedit("あ".into());
         app.ime_preedit(String::new());
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
-        app.tabs[0].buffer.set_read_only(true);
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
+        app.documents
+            .get_mut(app.document_at(0))
+            .unwrap()
+            .buffer
+            .set_read_only(true);
         app.ime_preedit("字".into());
         app.ime_preedit(String::new());
         app.ime_commit("字");
-        assert_eq!(app.tabs[0].buffer.text(), "日本");
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "日本");
         app.start_quick_open();
         app.ime_preedit("東".into());
         app.ime_preedit(String::new());
@@ -929,7 +946,9 @@ mod tests {
 
     #[test]
     fn accessibility_text_positions_map_to_buffer_offsets() {
-        let mut b = Buffer::new();
+        let mut b_document = Buffer::new();
+        let mut b_state = graphite_text::SelectionState::default();
+        let mut b = b_document.edit(&mut b_state, graphite_text::ViewId(1));
         b.insert("one\ntwo");
         assert_eq!(accessibility_position_to_char(&b, 1, 2), 6);
     }
@@ -949,11 +968,20 @@ mod tests {
         .unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(file.clone());
-        assert_eq!(app.tabs[0].encoding, file_format::Encoding::Utf16Le);
-        assert_eq!(app.tabs[0].line_ending, file_format::LineEnding::Crlf);
-        assert_eq!(app.tabs[0].buffer.text(), "primeira\nsegunda\n");
-        app.tabs[0].buffer.set_cursor_line_col(0, 8);
-        app.tabs[0].buffer.insert(" 🌎");
+        assert_eq!(
+            app.documents[app.document_at(0)].encoding,
+            file_format::Encoding::Utf16Le
+        );
+        assert_eq!(
+            app.documents[app.document_at(0)].line_ending,
+            file_format::LineEnding::Crlf
+        );
+        assert_eq!(
+            app.documents[app.document_at(0)].buffer.text(),
+            "primeira\nsegunda\n"
+        );
+        app.test_editor_mut(0).set_cursor_line_col(0, 8);
+        app.test_editor_mut(0).insert(" 🌎");
         app.save();
         let decoded = file_format::decode(&fs::read(file).unwrap()).unwrap();
         assert_eq!(decoded.text, "primeira 🌎\nsegunda\n");
@@ -977,7 +1005,7 @@ mod tests {
             None,
         );
         assert_eq!(app.tree.root(), second.path().canonicalize().unwrap());
-        app.tabs[0].buffer.insert("unsaved");
+        app.test_editor_mut(0).insert("unsaved");
         let third = crate::test_support::TempDir::new();
         app.apply_cli_request(
             cli::CliRequest {
@@ -1019,7 +1047,7 @@ mod tests {
     fn branch_checkout_refuses_unsaved_editor_buffers() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.tabs[0].buffer.insert("unsaved");
+        app.test_editor_mut(0).insert("unsaved");
         app.checkout_selected_branch();
         assert!(app.status.contains("unsaved changes"));
     }
@@ -1031,18 +1059,24 @@ mod tests {
         fs::write(&file, "old\nsecond\n").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_file(file.clone());
-        app.tabs[0].buffer.set_cursor_line_col(1, 2);
+        app.test_editor_mut(0).set_cursor_line_col(1, 2);
         let decoded = file_format::DecodedFile {
             text: "new\n".into(),
             encoding: file_format::Encoding::Utf16Be,
             line_ending: file_format::LineEnding::Crlf,
         };
         app.reload_after_branch_checkout(vec![(file, Ok(decoded))]);
-        assert_eq!(app.tabs[0].buffer.text(), "new\n");
-        assert!(!app.tabs[0].buffer.is_dirty());
-        assert_eq!(app.tabs[0].encoding, file_format::Encoding::Utf16Be);
-        assert_eq!(app.tabs[0].line_ending, file_format::LineEnding::Crlf);
-        assert_eq!(app.tabs[0].buffer.cursor_line_col(), (1, 0));
+        assert_eq!(app.documents[app.document_at(0)].buffer.text(), "new\n");
+        assert!(!app.documents[app.document_at(0)].is_dirty());
+        assert_eq!(
+            app.documents[app.document_at(0)].encoding,
+            file_format::Encoding::Utf16Be
+        );
+        assert_eq!(
+            app.documents[app.document_at(0)].line_ending,
+            file_format::LineEnding::Crlf
+        );
+        assert_eq!(app.test_editor(0).cursor_line_col(), (1, 0));
     }
 
     #[test]

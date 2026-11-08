@@ -1,18 +1,16 @@
 # Contratos do Núcleo do Editor
 
-Este documento propõe três contratos: **documento/view**, **comandos e contexto** e **fronteira de extensões**. O comportamento alvo e os critérios de aceitação são decisões de projeto para implementação futura, não afirmações sobre capacidades atuais. Os exemplos de tipos são ilustrativos, não APIs Rust definitivas. Formalizar esses contratos não exige implementar toda a arquitetura do VS Code de uma vez.
+Este documento descreve o contrato **documento/view** implementado e os contratos planejados de **comandos e contexto** e **fronteira de extensões**. O comportamento alvo para comandos e extensões continua sendo uma especificação de projeto, não uma afirmação de suporte atual.
 
 ## 1. Documento e view
 
 ### Estado atual
 
-`Tab` em `crates/graphite-app/src/main.rs` combina estado de documento e apresentação e tem um ID de documento tipado usado pelas views, navegação e diagnósticos. `DocumentStore` indexa documentos por ID, preserva a ordem atual das abas e resolve caminhos de arquivo pelas regras de equivalência existentes. `Buffer` em `crates/graphite-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/graphite-app/src/app/editor_groups.rs` tem identidade tipada estável e guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
+`Document` mantém texto, linguagem, formato e caches do documento. `DocumentStore` usa chaves imutáveis independentes dos dados do documento; não oferece slice mutável nem acesso posicional. Os grupos mantêm a ordem das abas, e cada `View` mantém suas seleções, scroll, composição IME e navegação da seleção sintática. O documento ativo é derivado da view em foco.
 
-`Buffer::apply_transaction` já valida substituições não sobrepostas, e substituições efetivas, undo e redo atualizam sua revisão em `crates/graphite-text/src/edit.rs`. Isso oferece uma base útil, mas não demonstra que toda operação futura de documento satisfaça o contrato proposto.
+`Buffer` contém texto e histórico sem cursor ativo. `Buffer::edit` recebe por empréstimo o `SelectionState` e o `ViewId` da view; as operações de texto aplicam transações e expõem mapeamentos de posições por `TransactionOutcome`. As sessões de edição da aplicação remapeiam as outras views e publicam versões para LSP e validação de schema. Undo/redo restauram as seleções da view de origem quando ela ainda existe, remapeiam as demais e mantêm o foco atual. Os adaptadores de sincronização por snapshot/restauração foram removidos.
 
-`graphite-text` oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Quick fixes usam essa transação; a persistência em disco permanece fora de sua garantia de atomicidade.
-
-Quick fixes e requisições `workspace/applyEdit` do servidor compartilham um caminho de preparação e aplicação: ele rejeita operações de recursos não suportadas e posições UTF-16 inválidas, verifica as versões de documento fornecidas pelo LSP e retorna erros ao chamador. Alvos antes fechados tornam-se documentos alterados em memória, sem gravação dos arquivos. As demais migrações de documento e view abaixo continuam necessárias.
+Edições de workspace preparadas retêm documentos abertos e revalidam identidades, versões, intervalos, permissões e snapshots de arquivos fechados antes do commit. Alvos fechados sem alteração não criam abas. A atomicidade cobre texto e histórico em memória; operações de arquivo e persistência em disco permanecem fora dessa garantia. Consulte [Implementação de documento e view](document-view.md) para detalhes de ciclo de vida e validação.
 
 ### Contrato alvo
 
@@ -31,7 +29,7 @@ Quick fixes e requisições `workspace/applyEdit` do servidor compartilham um ca
 
 ### Migração incremental
 
-Introduzir identidades estáveis de documento e view, depois mover a propriedade das seleções de `Buffer` para as views e passar o estado de seleção explicitamente às operações de edição. Encaminhar todas as alterações de texto por transações de documento e centralizar o remapeamento de views. Migrar chamadores e testes gradualmente; manter adaptadores para a estrutura atual de `Tab` até deixarem de ser necessários.
+A migração de documento/view está concluída. Os chamadores de edição usam estado da view por empréstimo, chaves estáveis de documento e remapeamento centralizado. Os testes de regressão cobrem views compartilhadas, origem do histórico, operações sem alteração, retenção por operações pendentes e falhas multidocumento. A verificação nativa de UI/GPU continua pendente no Windows e no Linux.
 
 ## 2. Comandos e contexto
 

@@ -135,7 +135,7 @@ pub(crate) fn accessibility_tree(
     problems_button.set_label("Show diagnostics");
     nodes.push((NodeId(4), problems_button));
     for (id, title) in tab_ids.iter().zip(titles) {
-        let mut tab = Node::new(Role::Tab);
+        let mut tab = Node::new(Role::Document);
         tab.set_label(title.as_str());
         nodes.push((*id, tab));
     }
@@ -176,7 +176,6 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> TreeUpdate {
-        self.snapshot_editor_view();
         let rects = self.group_rectangles(width, height, line_height);
         let panel = self.accessible_panel_text();
         let panel_focus = panel.is_some() && self.terminal_focused;
@@ -196,8 +195,8 @@ impl App {
                 .views(rect.id)
                 .expect("layout group exists");
             let view = &views[active];
-            let buffer = &self.tabs[self
-                .document_index(view.document)
+            let buffer = &self.documents[self
+                .resolve_document(view.document)
                 .expect("view document exists")]
             .buffer;
             let editor_id = editor_node(rect.id);
@@ -221,10 +220,10 @@ impl App {
             tab_list.set_children(ids.clone());
             nodes.push((tab_list_id, tab_list));
             for (i, item) in views.iter().enumerate() {
-                let tab = &self.tabs[self
-                    .document_index(item.document)
+                let tab = &self.documents[self
+                    .resolve_document(item.document)
                     .expect("view document exists")];
-                let mut node = Node::new(Role::Tab);
+                let mut node = Node::new(Role::Document);
                 node.set_label(super::group_drawing::tab_label(tab).trim());
                 node.set_selected(i == active);
                 node.add_action(Action::Click);
@@ -257,7 +256,12 @@ impl App {
                     character_index: (offset - buffer.line_start_char(line)).min(max),
                 }
             };
-            let selection = view.selections.first().copied().unwrap_or_default();
+            let selection = view
+                .selection_state
+                .selections()
+                .first()
+                .copied()
+                .unwrap_or_default();
             editor.set_text_selection(accesskit::TextSelection {
                 anchor: position(selection.anchor),
                 focus: position(selection.head),

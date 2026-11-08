@@ -1,21 +1,17 @@
 use super::editor_groups::GroupRect;
 use super::*;
 
-pub(super) fn tab_label(tab: &Tab) -> String {
+pub(super) fn tab_label(tab: &Document) -> String {
     let name = tab
         .buffer
         .path()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Untitled".into());
-    format!(
-        " {}{} ",
-        name,
-        if tab.buffer.is_dirty() { " ●" } else { "" }
-    )
+    format!(" {}{} ", name, if tab.is_dirty() { " ●" } else { "" })
 }
 
-pub(super) fn tab_width(tab: &Tab, char_width: f32) -> f32 {
+pub(super) fn tab_width(tab: &Document, char_width: f32) -> f32 {
     tab_label(tab).chars().count() as f32 * char_width * 1.8
 }
 
@@ -27,7 +23,6 @@ impl App {
         lh: f32,
         cw: f32,
     ) {
-        self.snapshot_editor_view();
         for rect in rects {
             let (views, active) = self
                 .editor_groups
@@ -35,12 +30,12 @@ impl App {
                 .expect("layout group exists");
             let views = views.to_vec();
             let view = &views[active];
-            let Some(document) = self.document_index(view.document) else {
+            let Some(document) = self.resolve_document(view.document) else {
                 continue;
             };
             self.refresh_document_highlights(document);
-            let revision = self.tabs[document].buffer.revision();
-            let sticky_headers = self.tabs[document]
+            let revision = self.documents[document].buffer.revision();
+            let sticky_headers = self.documents[document]
                 .sticky_headers_cache
                 .as_ref()
                 .filter(|(cached_revision, cached_line, _)| {
@@ -48,7 +43,7 @@ impl App {
                 })
                 .map(|(_, _, headers)| headers.clone())
                 .unwrap_or_else(|| {
-                    let tab = &self.tabs[document];
+                    let tab = &self.documents[document];
                     let headers = tab
                         .language
                         .map(|language| {
@@ -59,7 +54,7 @@ impl App {
                             )
                         })
                         .unwrap_or_default();
-                    self.tabs[document].sticky_headers_cache =
+                    self.documents[document].sticky_headers_cache =
                         Some((revision, view.scroll_line, headers.clone()));
                     headers
                 });
@@ -70,7 +65,7 @@ impl App {
             if sticky_headers.len() > 5 {
                 sticky_headers.drain(..sticky_headers.len() - 5);
             }
-            let tab = &self.tabs[document];
+            let tab = &self.documents[document];
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
             let text_x = rect.x + gutter;
@@ -96,8 +91,8 @@ impl App {
             );
             let mut x = rect.x;
             for (index, view) in views.iter().enumerate() {
-                let tab = &self.tabs[self
-                    .document_index(view.document)
+                let tab = &self.documents[self
+                    .resolve_document(view.document)
                     .expect("view document exists")];
                 let width = tab_width(tab, cw);
                 let color = if index == active {
@@ -114,7 +109,12 @@ impl App {
                 );
                 x += width;
             }
-            let primary = view.selections.first().copied().unwrap_or_default();
+            let primary = view
+                .selection_state
+                .selections()
+                .first()
+                .copied()
+                .unwrap_or_default();
             let cursor = primary.head.min(buffer.len_chars());
             let cur_line = buffer.rope().char_to_line(cursor);
             let visible = ((body_height / lh) as usize).max(1);
@@ -141,7 +141,7 @@ impl App {
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
-                for selection in &view.selections {
+                for selection in &view.selection_state.selections() {
                     let start = selection.anchor.min(selection.head).max(line_start);
                     let end = selection.anchor.max(selection.head).min(line_end);
                     if start < end {
@@ -271,7 +271,7 @@ impl App {
                     }
                 }
             }
-            for selection in &view.selections {
+            for selection in &view.selection_state.selections() {
                 let head = selection.head.min(buffer.len_chars());
                 let line = buffer.rope().char_to_line(head);
                 if !(view.scroll_line..last).contains(&line) {
@@ -290,7 +290,7 @@ impl App {
                 r.draw_rect(x, y, 2.0, lh, rgb(Theme::color(Theme::CURSOR, 0x202020)));
                 if rect.id == self.editor_groups.focused()
                     && *selection == primary
-                    && !self.ime_preedit.is_empty()
+                    && !self.editor_groups.active_view_mut().ime_preedit.is_empty()
                     && self.local_search.is_none()
                     && self.quick_open.is_none()
                     && self.search_query.is_none()
@@ -298,7 +298,7 @@ impl App {
                     && !self.terminal_focused
                 {
                     r.draw_text(
-                        &self.ime_preedit,
+                        &self.editor_groups.active_view_mut().ime_preedit,
                         x,
                         y,
                         rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -306,7 +306,12 @@ impl App {
                     r.draw_rect(
                         x,
                         y + lh - 2.0,
-                        self.ime_preedit.chars().count() as f32 * cw,
+                        self.editor_groups
+                            .active_view_mut()
+                            .ime_preedit
+                            .chars()
+                            .count() as f32
+                            * cw,
                         1.0,
                         rgb(Theme::color(Theme::CURSOR, 0x202020)),
                     );

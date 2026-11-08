@@ -26,7 +26,7 @@ graphite-app ──► graphite-render     (wgpu + cosmic-text + winit Window)
 ## Text and highlighting
 
 - Text lives in a `ropey::Rope`; the cursor is a character offset. Every edit bumps a `revision` counter.
-- Transactions record their constituent character ranges for position mapping across edits, undo and redo. An editor-group model stores independent selections and scroll positions for views of the same document and calculates nested split geometry. Tab lifecycle, editing events, split controls and rendering use this model; interactive verification is pending.
+- Documents use stable keys and share text/history across views. Each view exclusively owns selections, scroll, IME composition and selection navigation. Borrowed edit sessions remap peers and synchronize LSP; undo/redo preserve focus. See [Document and view](document-view.md). Native UI/GPU verification is pending on Windows and Linux.
 - Visual-line mapping computes wrapped rows and maps Unicode character positions and pointer columns without modifying the document. Rendering, pointer input and vertical cursor movement use this mapping when wrapping is enabled; interactive verification is pending.
 - `graphite-syntax` provides incremental tree-sitter parsing over Rope chunks and a full-document highlighter; both return per-line byte-range spans with a semantic `Class`. The app maps classes to colors and re-highlights only when the revision changes.
 

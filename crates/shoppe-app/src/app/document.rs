@@ -3,11 +3,11 @@ use super::*;
 impl App {
     /// Re-highlights the buffer only when its text changed since the last run.
     pub(crate) fn refresh_highlights(&mut self) {
-        self.refresh_document_highlights(self.active_tab);
+        self.refresh_document_highlights(self.active_document());
     }
 
-    pub(crate) fn refresh_document_highlights(&mut self, document: usize) {
-        let tab = &mut self.tabs[document];
+    pub(crate) fn refresh_document_highlights(&mut self, document: DocumentId) {
+        let tab = &mut self.documents[document];
         let Some(lang) = tab.language else {
             tab.highlights = None;
             return;
@@ -43,10 +43,13 @@ impl App {
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf) {
-        self.smart_selection_history.clear();
-        self.smart_selection_guard = None;
-        if let Some(index) = self.tabs.index_for_path(&path) {
-            if index != self.active_tab {
+        self.editor_groups
+            .active_view_mut()
+            .smart_selection_history
+            .clear();
+        self.editor_groups.active_view_mut().smart_selection_guard = None;
+        if let Some(index) = self.documents.id_for_path(&path) {
+            if index != self.active_document() {
                 self.push_navigation_location();
             }
             self.activate_editor_document(index);
@@ -92,10 +95,9 @@ impl App {
                     insert_spaces: self.insert_spaces,
                     tab_size: self.tab_size,
                 });
-                let tab = Tab {
-                    id: next_document_id(),
+                let tab = Document {
                     buffer,
-                    scroll_line: 0,
+
                     language: Language::from_path(&path),
                     highlights: None,
                     sticky_headers_cache: None,
@@ -107,22 +109,23 @@ impl App {
                     schema_revision: None,
                     lsp_revision: None,
                     indentation,
+                    saved_format: (decoded.encoding, decoded.line_ending),
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
                 };
-                if self.tabs.len() == 1
+                if self.documents.len() == 1
                     && self.editor_groups.group_count() == 1
-                    && self.tabs[0].buffer.path().is_none()
-                    && !self.tabs[0].buffer.is_dirty()
+                    && self.documents[self.active_document()]
+                        .buffer
+                        .path()
+                        .is_none()
+                    && !self.documents[self.active_document()].is_dirty()
                 {
-                    self.tabs.replace(0, tab);
-                    self.active_tab = 0;
-                    self.editor_groups = super::editor_groups::EditorGroups::new(self.tabs[0].id);
-                    self.snapshot_editor_view();
+                    let (id, _) = self.documents.replace(self.active_document(), tab);
+                    self.editor_groups = super::editor_groups::EditorGroups::new(id);
                 } else {
-                    self.snapshot_editor_view();
-                    self.tabs.push(tab);
-                    self.activate_editor_document(self.tabs.len() - 1);
+                    let id = self.documents.push(tab);
+                    self.activate_editor_document(id);
                 }
                 self.register_lsp_active();
                 self.push_navigation_location();
@@ -133,34 +136,49 @@ impl App {
     }
 
     pub(crate) fn save(&mut self) {
-        let path = self.tabs[self.active_tab].buffer.path().map(PathBuf::from);
-        let previous = self.tabs[self.active_tab].buffer.revision();
-        self.status = if self.tabs[self.active_tab].buffer.path().is_none() {
+        self.save_document(self.active_document());
+    }
+
+    pub(crate) fn save_document(&mut self, document: DocumentId) {
+        let path = self.documents[document].buffer.path().map(PathBuf::from);
+        let previous = self.documents[document].buffer.revision();
+        self.status = if self.documents[document].buffer.path().is_none() {
             "No file to save".into()
         } else {
-            let tab = &mut self.tabs[self.active_tab];
+            let tab = &self.documents[document];
             let text = if self.trim_trailing_whitespace {
                 tab.buffer.text_with_trimmed_trailing_whitespace()
             } else {
                 tab.buffer.text()
             };
             let bytes = crate::file_format::encode(&text, tab.encoding, tab.line_ending);
-            match if self.trim_trailing_whitespace {
-                tab.buffer.save_encoded_bytes_with_trim(&bytes)
+            let result = if self.trim_trailing_whitespace && document == self.active_document() {
+                self.editor_mut().save_encoded_bytes_with_trim(&bytes)
             } else {
-                tab.buffer.save_encoded_bytes(&bytes)
-            } {
-                Ok(()) => "Saved".into(),
+                let tab = &mut self.documents[document];
+                let result = if self.trim_trailing_whitespace {
+                    tab.buffer.save_encoded_bytes_with_trim(&bytes)
+                } else {
+                    tab.buffer.save_encoded_bytes(&bytes)
+                };
+                self.remap_document_views(document, previous);
+                result
+            };
+            match result {
+                Ok(()) => {
+                    self.documents[document].mark_format_saved();
+                    "Saved".into()
+                }
                 Err(error) => format!("Save failed: {error}"),
             }
         };
         if self.status == "Saved" {
-            if self.tabs[self.active_tab].buffer.revision() != previous {
-                self.sync_lsp_active();
+            if self.documents[document].buffer.revision() != previous {
+                self.sync_lsp_document(document);
             }
             if let Some(path) = path {
                 self.lsp_manager
-                    .save(&path, self.tabs[self.active_tab].buffer.text());
+                    .save(&path, self.documents[document].buffer.text());
                 self.stage_saved_conflict(&path);
             }
             self.refresh_scm_async();
@@ -171,13 +189,17 @@ impl App {
         &mut self,
         documents: Vec<(PathBuf, Result<crate::file_format::DecodedFile, String>)>,
     ) {
-        self.snapshot_editor_view();
         for (path, decoded) in documents {
-            let Some(index) = self.tabs.iter().position(|tab| {
-                tab.buffer
-                    .path()
-                    .is_some_and(|open_path| same_file_path(open_path, &path))
-            }) else {
+            let Some(index) = self
+                .documents
+                .iter()
+                .find(|tab| {
+                    tab.buffer
+                        .path()
+                        .is_some_and(|open_path| same_file_path(open_path, &path))
+                })
+                .map(|document| document.id)
+            else {
                 continue;
             };
             let decoded = match decoded {
@@ -190,22 +212,17 @@ impl App {
                     continue;
                 }
             };
-            let (old_line, old_column) = self.tabs[index].buffer.cursor_line_col();
-            let old_scroll = self.tabs[index].scroll_line;
-            let was_read_only = self.tabs[index].buffer.is_read_only();
+            let was_read_only = self.documents[index].buffer.is_read_only();
             self.lsp_manager.close(&path);
-            let mut buffer = Buffer::from_text(&path, &decoded.text);
             if was_read_only
                 || std::fs::metadata(&path).is_ok_and(|metadata| metadata.permissions().readonly())
             {
-                buffer.set_read_only(true);
+                self.documents[index].buffer.set_read_only(true);
             }
-            buffer.set_cursor_line_col(old_line, old_column);
-            let cursor = buffer.cursor().char_idx;
-            let line_count = buffer.len_lines();
-            let tab = &mut self.tabs[index];
-            tab.buffer = buffer;
-            tab.scroll_line = old_scroll.min(line_count.saturating_sub(1));
+            let tab = &mut self.documents[index];
+            let outcome = tab.buffer.reload_text(&decoded.text);
+            let line_count = tab.buffer.len_lines();
+            tab.saved_format = (decoded.encoding, decoded.line_ending);
             tab.encoding = decoded.encoding;
             tab.line_ending = decoded.line_ending;
             tab.indentation = if self.detect_indentation {
@@ -223,11 +240,9 @@ impl App {
             tab.schema_revision = None;
             tab.lsp_revision = None;
             self.editor_groups.for_each_view_mut(|_, view| {
-                if view.document == tab.id {
-                    view.selections = vec![graphite_text::Selection {
-                        anchor: cursor,
-                        head: cursor,
-                    }];
+                if view.document == index {
+                    view.selection_state
+                        .remap(&outcome.positions, outcome.len_chars);
                     view.scroll_line = view.scroll_line.min(line_count.saturating_sub(1));
                 }
             });

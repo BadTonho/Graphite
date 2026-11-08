@@ -11,14 +11,14 @@ pub(crate) enum StatusSegment {
 
 impl App {
     pub(crate) fn status_bar_prefix(&self) -> String {
-        let tab = &self.tabs[self.active_tab];
-        let dirty = if tab.buffer.is_dirty() { " ●" } else { "" };
+        let tab = &self.documents[self.active_document()];
+        let dirty = if tab.is_dirty() { " ●" } else { "" };
         let read_only = if tab.buffer.is_read_only() {
             " 🔒 Read-only"
         } else {
             ""
         };
-        let (line, column) = tab.buffer.cursor_line_col();
+        let (line, column) = self.editor().cursor_line_col();
         format!(
             " {}{}{}   Ln {}, Col {}",
             self.status,
@@ -30,7 +30,7 @@ impl App {
     }
 
     pub(crate) fn status_bar_segments(&self) -> Vec<(StatusSegment, String)> {
-        let tab = &self.tabs[self.active_tab];
+        let tab = &self.documents[self.active_document()];
         vec![
             (
                 StatusSegment::Branch,

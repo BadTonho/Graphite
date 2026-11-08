@@ -31,9 +31,10 @@ impl App {
             "projectSearch.accept" => {
                 if let Some(hit) = self.search_results.get(self.search_index).cloned() {
                     self.open_file(hit.path);
-                    let b = &mut self.tabs[self.active_tab].buffer;
+                    let mut b = self.editor_mut();
                     let col = hit.text.get(..hit.start).unwrap_or("").chars().count();
                     b.set_cursor_line_col(hit.line, col);
+                    drop(b);
                     self.search_query = None;
                     self.search_generation = self.search_generation.wrapping_add(1);
                     self.search_cancel
@@ -74,10 +75,10 @@ impl App {
         }
         let root = self.tree.root().to_path_buf();
         let overlays: std::collections::HashMap<PathBuf, String> = self
-            .tabs
+            .documents
             .iter()
             .filter_map(|tab| {
-                if !tab.buffer.is_dirty() {
+                if !tab.is_dirty() {
                     return None;
                 }
                 let path = tab.buffer.path()?;
