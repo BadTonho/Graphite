@@ -1,4 +1,4 @@
-# VsCodeShoppe
+# Graphite
 
 A native **Rust** code editor aiming to recreate the VS Code experience — with a fraction of the RAM — and, long term, to run **VS Code extensions** (`.vsix`).
 
@@ -6,7 +6,7 @@ A native **Rust** code editor aiming to recreate the VS Code experience — with
 
 ## Why
 
-VS Code runs on Electron (a full Chromium + Node.js per window). VsCodeShoppe renders directly on the GPU with `wgpu` and `cosmic-text`, keeping the editor fast and light.
+VS Code runs on Electron (a full Chromium + Node.js per window). Graphite renders directly on the GPU with `wgpu` and `cosmic-text`, keeping the editor fast and light.
 
 ## Quick start
 
@@ -43,7 +43,9 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 | Show diagnostics / toggle terminal | `Ctrl+Shift+M` / `Ctrl+grave` |
 | Move / edit | Arrow keys, Home, End, Backspace, Delete, Enter, Tab |
 
-LSP servers are user-installed executables configured in `lsp.json` in the app configuration directory. The terminal uses the system shell by default and can be changed in `terminal.json` or with `VSCODESHOPPE_SHELL`.
+LSP servers are user-installed executables configured in `lsp.json` in the app configuration directory. The terminal uses the system shell by default and can be changed in `terminal.json` or with `GRAPHITE_SHELL`.
+
+For existing installations, Graphite keeps using the previous `VsCodeShoppe` configuration directory if no `Graphite` directory exists. The previous `VSCODESHOPPE_SHELL` variable remains a fallback when `GRAPHITE_SHELL` is unset or empty.
 
 ## Workspace layout
 

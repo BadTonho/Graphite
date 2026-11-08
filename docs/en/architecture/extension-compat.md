@@ -7,7 +7,7 @@ Compatibility with `.vsix` extensions is a **core goal** and shapes the architec
 Run the **Code OSS extension host** (MIT licensed, `microsoft/vscode`) as a separate **Node.js process**, connected to the Rust editor over RPC:
 
 ```
-[ VsCodeShoppe (Rust) ] ←─ RPC bridge ─→ [ Extension Host (Node) ] → [ .vsix extensions ]
+[ Graphite (Rust) ] ←─ RPC bridge ─→ [ Extension Host (Node) ] → [ .vsix extensions ]
 ```
 
 - **Reused as-is:** `.vsix` loading, activation, the `vscode` module, RPC transport.

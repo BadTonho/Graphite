@@ -53,7 +53,7 @@ pub(super) fn line_content(text: &str) -> &str {
 pub(crate) struct AccessibilityActivation;
 impl ActivationHandler for AccessibilityActivation {
     fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
-        Some(accessibility_tree(&[], "VsCodeShoppe editor", None, false))
+        Some(accessibility_tree(&[], "Graphite editor", None, false))
     }
 }
 #[derive(Debug)]
@@ -124,7 +124,7 @@ pub(crate) fn accessibility_tree(
         root_children.push(NodeId(5));
     }
     root_node.set_children(root_children);
-    root_node.set_label("VsCodeShoppe");
+    root_node.set_label("Graphite");
     let mut tabs_node = Node::new(Role::TabList);
     tabs_node.set_children(tab_ids.clone());
     let mut nodes = vec![(root, root_node), (tablist, tabs_node)];
@@ -182,7 +182,7 @@ impl App {
         let panel_focus = panel.is_some() && self.terminal_focused;
         let root = NodeId(0);
         let mut root_node = Node::new(Role::Window);
-        root_node.set_label("VsCodeShoppe");
+        root_node.set_label("Graphite");
         let mut children: Vec<_> = rects.iter().map(|rect| group_node(rect.id)).collect();
         children.extend([NodeId(3), NodeId(4)]);
         if panel.is_some() {

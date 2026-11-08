@@ -10,7 +10,7 @@ impl ApplicationHandler<UserEvent> for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("VsCodeShoppe")
+                        .with_title("Graphite")
                         .with_visible(false)
                         .with_inner_size(LogicalSize::new(1200.0, 760.0)),
                 )

@@ -1,5 +1,7 @@
 [package]
 name = "shoppe-app"
+default-run = "graphite"
+autobins = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,6 +29,10 @@ interprocess = "2.4"
 notify = "8.2"
 similar = "2.7"
 sysinfo = "0.40"
+
+[[bin]]
+name = "graphite"
+path = "src/main.rs"
 
 [[bin]]
 name = "code"

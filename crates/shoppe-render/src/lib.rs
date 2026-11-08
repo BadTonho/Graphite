@@ -1,4 +1,4 @@
-//! GPU rendering for VsCodeShoppe: `wgpu` for drawing, `cosmic-text` for text.
+//! GPU rendering for Graphite: `wgpu` for drawing, `cosmic-text` for text.
 
 mod atlas;
 mod renderer;

@@ -1,4 +1,4 @@
-# Documentação do VsCodeShoppe (Português)
+# Documentação do Graphite (Português)
 
 Original em inglês: [../en/README.md](../en/README.md)
 

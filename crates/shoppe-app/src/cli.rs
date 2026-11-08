@@ -101,7 +101,7 @@ fn socket_name() -> String {
         .unwrap_or_else(|_| "local-user".into());
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     identity.hash(&mut hasher);
-    format!("vscodeshoppe-{:016x}", hasher.finish())
+    format!("graphite-{:016x}", hasher.finish())
 }
 
 pub(crate) fn parse_args(

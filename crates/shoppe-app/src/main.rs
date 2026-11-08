@@ -1,4 +1,4 @@
-//! VsCodeShoppe desktop application (v0.1): window, file tree and text editor.
+//! Graphite desktop application (v0.1): window, file tree and text editor.
 
 mod app;
 use app::accessibility::*;
@@ -475,7 +475,7 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let ipc_server_child = std::env::var_os("VSCODESHOPPE_IPC_SERVER_CHILD").is_some();
+    let ipc_server_child = std::env::var_os("GRAPHITE_IPC_SERVER_CHILD").is_some();
     if !ipc_server_child {
         match cli::send_to_existing(&request) {
             Ok(true) => return,
@@ -485,7 +485,7 @@ fn main() {
         if request.wait {
             let executable = std::env::current_exe().expect("could not locate current executable");
             let mut child = std::process::Command::new(executable)
-                .env("VSCODESHOPPE_IPC_SERVER_CHILD", "1")
+                .env("GRAPHITE_IPC_SERVER_CHILD", "1")
                 .current_dir(&cwd)
                 .spawn()
                 .expect("could not start the editor window for --wait");

@@ -49,10 +49,10 @@ impl TerminalProfileConfig {
 }
 
 pub fn terminal_settings() -> Result<TerminalSettings, String> {
-    if let Some(shell) = std::env::var("VSCODESHOPPE_SHELL")
-        .ok()
-        .filter(|shell| !shell.trim().is_empty())
-    {
+    if let Some(shell) = shell_override(
+        std::env::var("GRAPHITE_SHELL").ok(),
+        std::env::var("VSCODESHOPPE_SHELL").ok(),
+    ) {
         return Ok(TerminalSettings {
             profiles: vec![TerminalProfile {
                 name: "Environment Shell".into(),
@@ -173,7 +173,23 @@ pub fn app_config_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("VsCodeShoppe")
+    config_dir_for_base(&base)
+}
+
+fn shell_override(graphite: Option<String>, legacy: Option<String>) -> Option<String> {
+    graphite
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| legacy.filter(|value| !value.trim().is_empty()))
+}
+
+fn config_dir_for_base(base: &Path) -> PathBuf {
+    let current = base.join("Graphite");
+    let legacy = base.join("VsCodeShoppe");
+    if current.exists() || !legacy.exists() {
+        current
+    } else {
+        legacy
+    }
 }
 
 pub fn lsp_config_path() -> PathBuf {
@@ -203,6 +219,30 @@ pub fn vscode_user_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphite_config_directory_prefers_existing_settings_and_preserves_legacy() {
+        let temp = crate::test_support::TempDir::new();
+        let base = temp.path();
+        assert_eq!(config_dir_for_base(base), base.join("Graphite"));
+        std::fs::create_dir(base.join("VsCodeShoppe")).unwrap();
+        assert_eq!(config_dir_for_base(base), base.join("VsCodeShoppe"));
+        std::fs::create_dir(base.join("Graphite")).unwrap();
+        assert_eq!(config_dir_for_base(base), base.join("Graphite"));
+    }
+
+    #[test]
+    fn graphite_shell_override_takes_precedence_and_falls_back_to_legacy() {
+        assert_eq!(
+            shell_override(Some("new".into()), Some("old".into())),
+            Some("new".into())
+        );
+        assert_eq!(
+            shell_override(Some(" ".into()), Some("old".into())),
+            Some("old".into())
+        );
+        assert_eq!(shell_override(None, Some(" ".into())), None);
+    }
 
     #[test]
     fn terminal_profiles_accept_legacy_shell_and_named_arguments() {
