@@ -81,6 +81,58 @@ pub enum TransactionError {
     OverlappingRanges,
 }
 
+/// A text transaction against one buffer and, optionally, an expected revision.
+pub struct DocumentTransaction<'a> {
+    pub buffer: &'a mut Buffer,
+    pub expected_revision: Option<u64>,
+    pub replacements: &'a [TextReplacement],
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum MultiDocumentError {
+    #[error("document {document} has revision {actual}, expected {expected}")]
+    StaleRevision {
+        document: usize,
+        expected: u64,
+        actual: u64,
+    },
+    #[error("document {document}: {source}")]
+    InvalidTransaction {
+        document: usize,
+        source: TransactionError,
+    },
+}
+
+/// Apply text edits to distinct buffers only after all transactions have been validated.
+/// File operations and persistence are outside this in-memory atomicity guarantee.
+pub fn apply_document_transactions(
+    transactions: &mut [DocumentTransaction<'_>],
+) -> Result<(), MultiDocumentError> {
+    for (document, transaction) in transactions.iter().enumerate() {
+        let actual = transaction.buffer.revision();
+        if let Some(expected) = transaction.expected_revision {
+            if expected != actual {
+                return Err(MultiDocumentError::StaleRevision {
+                    document,
+                    expected,
+                    actual,
+                });
+            }
+        }
+        transaction
+            .buffer
+            .validate_transaction(transaction.replacements)
+            .map_err(|source| MultiDocumentError::InvalidTransaction { document, source })?;
+    }
+    for transaction in transactions {
+        transaction
+            .buffer
+            .apply_transaction(transaction.replacements)
+            .expect("transaction validated while buffers were exclusively borrowed");
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TextChange {
     pub start_byte: usize,
