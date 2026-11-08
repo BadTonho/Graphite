@@ -1,29 +1,40 @@
 use super::*;
 
 impl Buffer {
+    /// Validate a transaction without changing text, selections, or history.
+    pub fn validate_transaction(
+        &self,
+        replacements: &[TextReplacement],
+    ) -> Result<(), TransactionError> {
+        if self.read_only {
+            return Err(TransactionError::ReadOnly);
+        }
+        let mut ordered: Vec<_> = replacements.iter().collect();
+        for edit in &ordered {
+            if edit.range.start > edit.range.end || edit.range.end > self.len_chars() {
+                return Err(TransactionError::InvalidRange);
+            }
+        }
+        ordered.sort_by_key(|edit| (edit.range.start, edit.range.end));
+        for pair in ordered.windows(2) {
+            let a = &pair[0].range;
+            let b = &pair[1].range;
+            if a.end > b.start || a.start == b.start {
+                return Err(TransactionError::OverlappingRanges);
+            }
+        }
+        Ok(())
+    }
+
     /// Apply disjoint replacements against one revision as a single undoable edit.
     /// Returns the resulting cursor position for each replacement in input order.
     pub fn apply_transaction(
         &mut self,
         replacements: &[TextReplacement],
     ) -> Result<Vec<usize>, TransactionError> {
-        if self.read_only {
-            return Err(TransactionError::ReadOnly);
-        }
+        self.validate_transaction(replacements)?;
         let mut ordered: Vec<_> = replacements.iter().enumerate().collect();
-        for (_, edit) in &ordered {
-            if edit.range.start > edit.range.end || edit.range.end > self.len_chars() {
-                return Err(TransactionError::InvalidRange);
-            }
-        }
         ordered.sort_by_key(|(_, edit)| (edit.range.start, edit.range.end));
-        for pair in ordered.windows(2) {
-            let a = &pair[0].1.range;
-            let b = &pair[1].1.range;
-            if a.end > b.start || a.start == b.start {
-                return Err(TransactionError::OverlappingRanges);
-            }
-        }
         if ordered.is_empty() {
             return Ok(Vec::new());
         }

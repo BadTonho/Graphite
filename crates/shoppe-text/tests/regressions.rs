@@ -567,6 +567,113 @@ fn duplicate_and_delete_selected_last_line_without_final_newline() {
     assert_eq!(b.text(), "first\r\nlast");
 }
 #[test]
+fn multi_document_transactions_validate_every_target_before_mutating() {
+    use graphite_text::{
+        apply_document_transactions, DocumentTransaction, MultiDocumentError, TextReplacement,
+        TransactionError,
+    };
+    let mut first = Buffer::new();
+    let mut second = Buffer::new();
+    first.insert("abc");
+    second.insert("é日");
+    let rev1 = first.revision();
+    let rev2 = second.revision();
+    let edits1 = [TextReplacement {
+        range: 1..2,
+        text: "X".into(),
+    }];
+    let bad = [TextReplacement {
+        range: 0..3,
+        text: "Y".into(),
+    }];
+    let error = apply_document_transactions(&mut [
+        DocumentTransaction {
+            buffer: &mut first,
+            expected_revision: Some(rev1),
+            replacements: &edits1,
+        },
+        DocumentTransaction {
+            buffer: &mut second,
+            expected_revision: Some(rev2),
+            replacements: &bad,
+        },
+    ])
+    .unwrap_err();
+    assert_eq!(
+        error,
+        MultiDocumentError::InvalidTransaction {
+            document: 1,
+            source: TransactionError::InvalidRange
+        }
+    );
+    assert_eq!((first.text(), first.revision()), ("abc".into(), rev1));
+    assert_eq!((second.text(), second.revision()), ("é日".into(), rev2));
+    let edits2 = [TextReplacement {
+        range: 1..2,
+        text: "🙂".into(),
+    }];
+    let error = apply_document_transactions(&mut [
+        DocumentTransaction {
+            buffer: &mut first,
+            expected_revision: Some(rev1),
+            replacements: &edits1,
+        },
+        DocumentTransaction {
+            buffer: &mut second,
+            expected_revision: Some(rev2 + 1),
+            replacements: &edits2,
+        },
+    ])
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        MultiDocumentError::StaleRevision { document: 1, .. }
+    ));
+    assert_eq!(first.text(), "abc");
+    second.set_read_only(true);
+    let error = apply_document_transactions(&mut [
+        DocumentTransaction {
+            buffer: &mut first,
+            expected_revision: Some(rev1),
+            replacements: &edits1,
+        },
+        DocumentTransaction {
+            buffer: &mut second,
+            expected_revision: None,
+            replacements: &edits2,
+        },
+    ])
+    .unwrap_err();
+    assert_eq!(
+        error,
+        MultiDocumentError::InvalidTransaction {
+            document: 1,
+            source: TransactionError::ReadOnly
+        }
+    );
+    assert_eq!(first.text(), "abc");
+    second.set_read_only(false);
+    apply_document_transactions(&mut [
+        DocumentTransaction {
+            buffer: &mut first,
+            expected_revision: Some(rev1),
+            replacements: &edits1,
+        },
+        DocumentTransaction {
+            buffer: &mut second,
+            expected_revision: Some(rev2),
+            replacements: &edits2,
+        },
+    ])
+    .unwrap();
+    assert_eq!((first.text(), first.revision()), ("aXc".into(), rev1 + 1));
+    assert_eq!((second.text(), second.revision()), ("é🙂".into(), rev2 + 1));
+    first.undo();
+    second.undo();
+    assert_eq!((first.text(), second.text()), ("abc".into(), "é日".into()));
+}
+
+#[test]
 fn position_changes_track_disjoint_unicode_transactions_and_history() {
     use graphite_text::{map_position, Buffer, PositionEdit, TextReplacement};
     let mut buffer = Buffer::new();

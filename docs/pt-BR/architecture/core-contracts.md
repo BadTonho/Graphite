@@ -1,163 +1,96 @@
 # Contratos do Núcleo do Editor
 
-Este documento descreve três contratos que devem ser formalizados enquanto o código ainda é pequeno: **separação model/view**, o **sistema de comandos/contexto** e a **fronteira de plugins**. É uma orientação de projeto, não uma descrição da implementação atual. As referências a arquivos e linhas refletem o código da v0.3.
+Este documento propõe três contratos: **documento/view**, **comandos e contexto** e **fronteira de extensões**. O comportamento alvo e os critérios de aceitação são decisões de projeto para implementação futura, não afirmações sobre capacidades atuais. Os exemplos de tipos são ilustrativos, não APIs Rust definitivas. Formalizar esses contratos não exige implementar toda a arquitetura do VS Code de uma vez.
 
-"Formalizar" aqui não significa reescrever a aplicação nem copiar a arquitetura inteira do VS Code. Significa definir identidades, interfaces e invariantes agora, para que cada subsistema evolua sem forçar mudanças nos outros. Hoje várias partes da aplicação dependem de convenções (por exemplo, todo chamador precisa lembrar de executar `snapshot_editor_view`) em vez de garantias impostas por tipos.
+## 1. Documento e view
 
-## 1. Model/View: documento não é editor
+### Estado atual
 
-### A distinção
+`Tab` em `crates/graphite-app/src/main.rs` combina estado de documento e apresentação. `Buffer` em `crates/graphite-text/src/lib.rs` mantém as seleções ativas e o histórico de texto. `View` em `crates/graphite-app/src/app/editor_groups.rs` guarda seleções e scroll por grupo; snapshots e restaurações sincronizam a view ativa com o buffer, e edições de posição remapeiam as demais views. O teste existente `app_views_share_text_and_history_with_independent_selections` exercita seleções independentes, texto compartilhado e undo. O risco é que os caminhos de mutação precisem executar essa sincronização consistentemente, em vez de a propriedade do estado garanti-la.
 
-- **Document (model):** texto, caminho, linguagem, versão, estado "sujo", histórico de undo e sincronização com LSP.
-- **View (editor):** seleções/cursores, scroll, folding, quebra de linha, decorações e foco.
-- A relação é **1 documento : N views**. É isso que permite split editor, diff, "peek definition", preview de busca e o mesmo documento exibido em vários lugares.
+`Buffer::apply_transaction` já valida substituições não sobrepostas, e substituições efetivas, undo e redo atualizam sua revisão em `crates/graphite-text/src/edit.rs`. Isso oferece uma base útil, mas não demonstra que toda operação futura de documento satisfaça o contrato proposto.
 
-### Como está hoje
-
-- `Tab` (`crates/graphite-app/src/main.rs`) mistura as duas coisas: guarda `buffer`, `scroll_line`, `language`, `highlights`, `diagnostics` e `indentation`.
-- O `Buffer` (`crates/graphite-text/src/lib.rs`) é dono de `selection` e `extra_selections`. Ou seja, a seleção está no modelo.
-- O `View` (`crates/graphite-app/src/app/editor_groups.rs`) tem `selections` e `scroll_line`, mas são cópias sincronizadas manualmente. `snapshot_editor_view` copia do buffer para a view, e `restore_editor_view` copia de volta. A mesma duplicação existe entre `Tab::scroll_line` e `View::scroll_line`.
-- Consequência: dois grupos mostrando o mesmo documento não conseguem manter cursores independentes, porque a fonte da verdade é o `Buffer`. Trocar de grupo sobrescreve a seleção do outro. Todo novo caminho de mutação (formatador LSP, edições de extensão, replace) precisa lembrar de fazer snapshot e restore na hora certa.
-
-O tipo `View` já aponta na direção certa; o que falta é ele ser **dono** do estado de view, em vez de espelhá-lo.
-
-### Modelo alvo
-
-```rust
-struct DocumentId(u64);
-
-struct Document {
-    text: Rope,
-    version: u64,        // incrementa a cada edição
-    path: Option<PathBuf>,
-    language: Option<Language>,
-    dirty: bool,
-    undo: EditStack,     // undo/redo pertence ao documento
-}
-
-struct EditorView {
-    document: DocumentId,
-    selections: Vec<Selection>, // independentes por view
-    scroll_line: usize,
-    // folding, decorations, wrapping...
-}
-```
-
-### Invariantes
-
-1. Toda mutação de texto incrementa `version` exatamente uma vez.
-2. Todas as views do mesmo documento observam o mesmo texto e a mesma versão.
-3. Seleções são por view. Após uma edição, cada view mapeia suas seleções usando o mapeamento de posição da edição (o projeto já tem `map_position` em `graphite-text`).
-4. Fechar uma view não fecha o documento enquanto outra view ainda o referencia.
-5. Undo/redo pertence ao documento, não a uma view.
-6. A sincronização com LSP é indexada por documento e versão, não por aba.
-
-### Por que adiar isso dói
-
-Quase todo caminho de entrada, desenho e comando hoje assume `self.tabs[self.active_tab].buffer.selection`. Introduzir splits, diffs, peek ou edições vindas de extensão exigiria mudar todos eles ao mesmo tempo. Bugs como "o cursor pulou", "a seleção do outro painel mudou" e "as posições de scroll se desalinharam" são difíceis de reproduzir e fáceis de reintroduzir. Separar o estado depois é um refactor transversal; separar agora é trabalho localizado.
-
-### Primeiro passo de migração
-
-Mover `selection` e `extra_selections` de `Buffer` para `View`. Fazer as operações de texto receberem as seleções (ou uma transação contendo a seleção antes e depois da edição). Introduzir um `DocumentStore` no `App`. Manter `Tab` temporariamente como um par `(DocumentId, ViewId)` para evitar uma reescrita total.
-
-## 2. Command/Context: comandos nomeados e contexto central
-
-### A distinção
-
-- **Comando:** uma ação com ID estável (`workbench.action.files.save`), metadados (título, categoria, enablement) e um handler.
-- **Contexto:** o conjunto de chaves que determina se um comando, keybinding ou menu está ativo (`editorTextFocus`, `editorHasSelection`, `resourceLangId` etc.).
-
-### Como está hoje
-
-- `execute_custom_command` (`crates/graphite-app/src/app/commands.rs`) é um `match` grande que muta `self` diretamente.
-- As chaves de contexto são montadas à mão em `handle_keybinding_stroke` como um `HashMap<String, String>` de booleanos hardcoded. Cada novo contexto exige editar essa função.
-- O parser de `when` já existe (`crates/graphite-app/src/keybindings/when.rs`) e é uma boa base, mas só é usado para keybindings, não para enablement de comandos, menus ou paleta.
-- Não existe um registro de comandos. Como resultado, não há paleta de comandos, introspecção, argumentos, valores de retorno nem enablement. O cliente LSP já precisa disso: `CodeActionOrCommand::Command` (`crates/graphite-app/src/app/editor_commands.rs`) carrega um ID e argumentos que exigem um registro para serem executados.
-
-### Modelo alvo
-
-```rust
-struct CommandDescriptor {
-    id: CommandId,                 // string compatível com VS Code
-    title: &'static str,
-    category: Option<&'static str>,
-    enablement: Option<when::Expr>,
-    handler: CommandHandler,
-}
-
-// Um único ponto de entrada para todos os chamadores:
-fn execute(&mut self, id: CommandId, args: serde_json::Value)
-    -> Result<serde_json::Value, CommandError>;
-```
-
-Com isso:
-
-- Keybindings, paleta, menus, LSP `workspace/executeCommand`, extensões e testes usam o mesmo caminho.
-- `ContextKeyService` passa a ser a única fonte das chaves de contexto, alimentado por documentos, views, foco e widgets abertos. O `when` é usado por keybindings **e** por enablement de comandos.
-- Os metadados alimentam automaticamente a paleta de comandos e uma futura UI de keybindings.
-- Handlers recebem um `CommandContext` com serviços (documents, views, workspace, window, LSP) em vez de `&mut App`. Isso melhora a testabilidade e evita conflitos de borrow quando um comando precisa tocar em mais de uma parte do estado.
-
-### Invariantes
-
-1. Todo comando passa por `execute`; não existe um segundo caminho de despacho.
-2. O enablement é checado centralmente.
-3. Os argumentos são serializáveis (JSON).
-4. Um erro de comando é exposto sem derrubar a aplicação.
-5. Comandos que editam texto passam por uma transação de documento e participam do undo.
-6. IDs de comando são estáveis e compatíveis com o VS Code quando existe um comando correspondente.
-
-### Por que adiar isso dói
-
-Cada nova funcionalidade vira mais um braço do `match`, e o acoplamento com `App` cresce. A paleta e a compatibilidade com extensões exigem exatamente o registro que não existe. O contrato que as extensões enxergam (`vscode.commands.registerCommand` / `executeCommand`) é essa camada; sem um registro, o bridge Node–Rust vira uma coleção de casos especiais. A lógica de `when` duplicada entre keybindings e enablement de comandos também começa a divergir.
-
-### Primeiro passo de migração
-
-Extrair os braços do `match` para handlers nomeados, adicionar `CommandRegistry` e `ContextKeyService`, migrar de 5 a 10 comandos e manter o `match` como fallback temporário. Depois, fazer a paleta de comandos listar o registro. Isso pode ser incremental.
-
-## 3. Fronteira de plugins: contrato, processo e concorrência
-
-### A distinção
-
-A fronteira entre o núcleo Rust e código de terceiros — extension host Node, LSP/DAP e webviews — com contratos explícitos de mensagens, identidade de documentos, versões, edições, eventos, threading, cancelamento e ciclo de vida.
-
-### Como está hoje
-
-`docs/en/architecture/extension-compat.md` descreve uma direção sólida: o extension host do Code OSS em um processo Node separado, conectado por RPC, distribuído pelo OpenVSX e entregue em camadas de compatibilidade. O cliente LSP já é um ensaio disso: `LspUiEvent`, `LspCommand`, `WorkerMessage`, `mpsc` e `UserEvent::LspWake`. Porém, cada evento é um enum interno específico; ainda não há protocolo versionado nem um dispatcher central reutilizável.
+`graphite-text` também oferece pré-validação e uma transação multidocumento em memória com revisões esperadas opcionais. Ela ainda não está integrada às edições de workspace do editor nem garante atomicidade em disco; a migração abaixo continua necessária.
 
 ### Contrato alvo
 
-- **Crates separados:** `graphite-protocol` (tipos de mensagem, sem lógica), `graphite-plugin-host` (supervisor do processo Node, transporte, ciclo de vida) e as implementações dos `MainThread*` na aplicação.
-- **Fixar a versão do Code OSS.** O protocolo (`extHost.protocol.ts`) evolui; a compatibilidade tem como alvo um commit ou release específico, não "VS Code" em geral.
-- **Serviços do main thread**, mesmo que mínimos no começo: documents, commands, workspace/fs/config, window, languages, decorations, terminal e webview.
-- **Contrato de documento e edição:** URI, versão, `contentChanges`, aplicação atômica de `WorkspaceEdit` com checagem de versão e mapeamento para o undo do documento. Sem isso, edições de extensão e digitação do usuário competem sob semântica indefinida.
-- **Save participants:** `willSave`, `willSaveWaitUntil` e `didSave`. O format-on-save de extensões depende disso.
-- **Abstração de FileSystem/URI**, mesmo que apenas local no começo. Extensões e LSP assumem URIs; hardcodar `std::fs` em todo lugar torna remote e webviews inviáveis depois.
-- **Threading:** extensões nunca tocam o estado da UI diretamente. Toda mensagem entra em uma fila drenada pelo event loop, e a UI nunca bloqueia esperando RPC. O mecanismo de eventos do LSP é o protótipo; generalize-o para um `MainThreadDispatcher`.
-- **Ciclo de vida:** request IDs, cancelamento, timeouts, backpressure, restart do host, isolamento de crash e nenhum estado vazando se o Node terminar.
-- **Camadas de compatibilidade:** recursos declarativos, comandos simples, UI pesada e API profunda, como já documentado. Isso permite entregar valor antes de o host completo existir.
+- Um documento tem identidade estável, texto, URI ou identidade sem título, linguagem, versão crescente, estado salvo e histórico de undo. Um documento pode ter várias views; cada view é dona de suas seleções, scroll, foco e demais estados de apresentação. Fechar uma view mantém o documento vivo enquanto outra o referenciar.
+- Uma transação de texto é uma alteração lógica, que pode conter várias substituições não sobrepostas sobre a mesma revisão. Uma transação efetiva incrementa a versão desse documento exatamente uma vez; uma operação sem alteração não a incrementa. Undo e redo que alteram texto produzem, cada um, uma nova versão. Todas as views observam o mesmo texto e versão, e suas seleções são remapeadas pela alteração, inclusive em undo e redo.
+- O estado *dirty* reflete se o conteúdo atual e os metadados relevantes para salvamento correspondem ao último salvamento bem-sucedido, não apenas se os números de versão coincidem: undo pode restaurar o conteúdo salvo enquanto avança a versão. Uma falha ao salvar não atualiza o estado salvo de referência.
+- Uma edição com versão esperada é rejeitada se o documento não estiver mais nessa versão. Em uma edição de texto com vários documentos, identidades, versões esperadas, permissões e intervalos são validados antes da aplicação; ou todas as alterações de texto são aplicadas ou nenhuma é. Cada documento alterado avança uma vez e registra uma transação no histórico de undo. Essa garantia inicial de atomicidade exclui operações de arquivo e persistência; elas não devem ser apresentadas como parte da operação atômica.
+- A sincronização com LSP usa identidade e versão do documento, não identidade da aba. A seleção da view ativa após a edição é definida pela operação; as demais views são remapeadas a partir de suas posições anteriores.
 
-### Por que adiar isso dói
+### Critérios de aceitação
 
-Se o núcleo assume posse absoluta do estado e o muta diretamente, o bridge precisa simular a semântica do VS Code (versões, eventos, edições concorrentes, saves, escopos de configuração) em cima de uma API que não foi projetada para isso. A parte mais difícil não é o RPC; é a **concorrência** entre extensões, o usuário, formatadores e LSP. Refatorar isso depois significa mexer em documentos, comandos, workspace, configuração e UI simultaneamente.
+1. Duas views de um documento mantêm seleções e scroll independentes após trocas de foco, edições, undo e redo; ambas veem o mesmo texto.
+2. Transações efetivas, operações sem alteração, undo e redo seguem as regras de versão; desfazer até o conteúdo salvo limpa o estado *dirty* sem reduzir a versão.
+3. Uma versão obsoleta, um intervalo inválido ou um destino somente leitura rejeita toda a edição de texto multidocumento sem alterar documentos, versões ou históricos.
+4. Fechar uma view preserva o documento e seu histórico enquanto outra view permanecer.
 
-### Primeiro passo
+### Migração incremental
 
-Escrever o contrato dos quatro ou cinco serviços exigidos pelas camadas de compatibilidade 1–2: documents, commands, workspace/config e window. Criar o crate de protocolo e o dispatcher central. Usar o LSP como teste de aceitação: se `didOpen`/`didChange` versionado, `applyEdit`, `executeCommand`, diagnostics e configuração passarem por esses contratos, a fronteira está validada antes de escrever qualquer código do host Node.
+Introduzir identidades estáveis de documento e view, depois mover a propriedade das seleções de `Buffer` para as views e passar o estado de seleção explicitamente às operações de edição. Encaminhar todas as alterações de texto por transações de documento e centralizar o remapeamento de views. Migrar chamadores e testes gradualmente; manter adaptadores para a estrutura atual de `Tab` até deixarem de ser necessários.
 
-## Como os três contratos interagem
+## 2. Comandos e contexto
 
-Considere um usuário digitando, salvando e uma extensão formatando ao salvar:
+### Estado atual
 
-1. **Digitação:** a view envia uma transação para o documento, `version` incrementa e o LSP recebe `didChange` com essa versão. (Model/View + fronteira)
-2. **Ctrl+S:** o keybinding resolve para `workbench.action.files.save` no **registro**. O handler executa os save participants, a extensão devolve um `WorkspaceEdit`, o documento o aplica atomicamente após checar a versão, o undo registra a edição e cada view remapeia suas seleções. (Comandos + Model/View + fronteira)
-3. **Uma extensão registra `myExt.fix`:** o registro aceita; paleta, menus e keybindings usam o mesmo `when`/chaves de contexto; um `executeCommand` vindo do LSP resolve para o mesmo registro. (Comandos + fronteira)
+`execute_custom_command` em `crates/graphite-app/src/app/commands.rs` despacha por um `match` extenso e altera a aplicação diretamente. O handler de keybindings monta valores de contexto localmente; `crates/graphite-app/src/keybindings/when.rs` fornece o parser de expressões para resolução de keybindings. O código de quick fix trata `CodeActionOrCommand` em `crates/graphite-app/src/app/editor_commands.rs`, mas esses caminhos não estabelecem um registro unificado nem um contrato geral assíncrono de comandos.
 
-Se qualquer um dos três contratos for informal, esse fluxo quebra em algum ponto, e a falha normalmente aparece tarde.
+### Contrato alvo
+
+- Um registro associa um ID estável a metadados, enablement opcional e um handler. Usar IDs compatíveis com VS Code quando houver comando correspondente com semântica compatível. Argumentos e resultados que cruzam processos são serializáveis; handlers recebem um contexto explícito de serviços em vez de propriedade irrestrita da aplicação.
+- Um único ponto de execução recebe ID, argumentos, contexto alvo e token de cancelamento e retorna assincronamente um resultado ou erro tipado. O cancelamento é cooperativo e não implica desfazer efeitos já confirmados. Comandos desconhecidos, desabilitados, com falha ou cancelados são informados sem derrubar ou bloquear a interface.
+- Um contexto global fornece chaves compartilhadas; cada view ou widget alvo tem um contexto próprio. Uma chave é resolvida primeiro no escopo alvo e depois no global. Foco e alvos explícitos determinam o escopo avaliado; chamadas sem alvo usam o escopo global.
+- Expressões `when` de keybindings controlam a elegibilidade do atalho; condições de menu controlam visibilidade; enablement controla se o comando pode ser executado. Elas compartilham a avaliação de contexto, mas continuam sendo condições distintas. O registro verifica enablement centralmente, inclusive em chamadas programáticas.
+- Keybindings, menus, paleta, extensões e testes entram pelo registro. Comandos LSP são adaptados ao protocolo: comandos destinados a um servidor de linguagem usam sua requisição `workspace/executeCommand`; apenas comandos do cliente são encaminhados ao registro local quando apropriado. Alterações de texto usam transações de documento e undo.
+
+### Critérios de aceitação
+
+1. Um comando chamado por keybinding e programaticamente chega ao mesmo handler e observa o escopo alvo pretendido; uma chave local prevalece sobre a global.
+2. Um item de menu oculto ou atalho inelegível não desabilita o comando por si só; um comando desabilitado é rejeitado mesmo em chamada direta.
+3. IDs desconhecidos, erros de handler e cancelamento são informados, e um handler assíncrono pendente não congela a interface. Comandos LSP destinados ao servidor continuam sendo enviados ao servidor.
+4. Um comando que edita texto produz o mesmo comportamento de versão, remapeamento de views e undo que outra transação de documento.
+
+### Migração incremental
+
+Adicionar o registro e o serviço de contexto com escopos, extrair um pequeno conjunto de comandos existentes para handlers e encaminhar chamadas pelo registro com fallback legado temporário. Migrar os comandos restantes e remover o fallback; usar os metadados do registro em uma futura paleta de comandos.
+
+## 3. Fronteira de extensões e protocolos
+
+### Estado atual
+
+`docs/en/architecture/extension-compat.md` descreve um extension host Code OSS planejado em processo Node separado e compatibilidade em camadas. O cliente LSP em `crates/graphite-app/src/lsp.rs` e sua integração com a interface já usam mensagens de worker e notificações ao event loop. É um exemplo útil de concorrência, mas não estabelece um protocolo de extensão versionado compartilhado nem um dispatcher reutilizável para o extension host.
+
+### Contrato alvo
+
+- Definir serviços internos reutilizáveis de documento, comandos, workspace/configuração e janela, além de mensagens, identidade, versões, cancelamento e ciclo de vida explícitos. Fixar o release ou commit do Code OSS visado pelo bridge de extensões; adicionar outros serviços conforme as camadas de compatibilidade exigirem.
+- Manter adaptadores de protocolo distintos: LSP e extension host têm semânticas, direções, transportes e ciclos de vida diferentes. Eles podem chamar os mesmos serviços internos, mas não precisam compartilhar transporte ou dispatcher. Um crate de protocolo e um crate supervisor do plugin host são fronteiras propostas, sujeitas ao protocolo real do host escolhido.
+- Extensões e workers nunca alteram o estado da interface diretamente. Entregar resultados ao event loop responsável; não bloquear a interface esperando RPC. Acompanhar requisições, cancelamento, prazos, controle de fluxo, encerramento e reinício do host, liberando registros e requisições pendentes associados a ele quando terminar.
+- Definir abstrações de URI e sistema de arquivos, começando por arquivos locais. Alterações de documento versionadas e edições de texto passam pelo contrato de documento; converter posições e garantias específicas de cada protocolo em sua fronteira. Operações sobre recursos e persistência em disco ficam fora da garantia inicial de atomicidade de texto multidocumento.
+- Participantes de salvamento executam assincronamente em sequência limitada por tempo. Associar as edições retornadas por cada participante à versão de documento que ele observou e rejeitá-las se essa versão estiver obsoleta. Em caso de falha, timeout ou edições obsoletas, informar a falha do participante e continuar salvando o conteúdo atual, sem bloquear a interface. Um salvamento bem-sucedido atualiza o estado salvo de referência para o conteúdo efetivamente gravado: edições feitas enquanto a gravação estiver pendente permanecem *dirty*. Emitir eventos de antes e depois de salvar apropriados ao protocolo, incluindo `willSave`, `willSaveWaitUntil` e `didSave` quando suportados.
+
+### Critérios de aceitação
+
+1. Alterações LSP versionadas e edições de extensão chegam às mesmas invariantes de documento por seus respectivos adaptadores; uma edição obsoleta é rejeitada sem modificar o texto.
+2. Um participante de salvamento que responde após nova digitação não pode sobrescrevê-la; timeout e falha são informados, o conteúdo atual ainda pode ser salvo e a interface permanece responsiva.
+3. Digitar durante um salvamento pendente deixa o conteúdo mais recente *dirty* após a gravação do snapshot anterior; uma falha de gravação preserva o estado salvo de referência anterior.
+4. O encerramento do host falha as requisições pendentes e libera seus registros sem encerrar o editor; os ciclos de vida de LSP e host permanecem independentes.
+
+### Migração incremental
+
+Especificar primeiro as interfaces dos serviços de documento, comandos, workspace/configuração e janela. Adaptar fluxos LSP existentes como casos de aceitação dos serviços compartilhados, mantendo despacho e comportamento de protocolo específicos do LSP. Introduzir separadamente o supervisor do host e seu bridge versionado, depois acrescentar camadas de compatibilidade gradualmente.
+
+O host Code OSS real continua sendo uma etapa posterior obrigatória: fixar um release ou commit, integrar o host Node real e validá-lo com uma extensão real antes de declarar compatibilidade.
+
+## Como os contratos interagem
+
+A digitação envia uma transação para a view em foco, avança a versão do documento e envia a alteração LSP correspondente. Salvar é resolvido pelo registro, executa participantes com prazo e aplica somente edições cujas versões esperadas ainda coincidam; grava um snapshot e atualiza o estado salvo de referência apenas em caso de sucesso. Cada view afetada é remapeada. Um comando de extensão usa o registro e o contexto com escopo, enquanto um comando de servidor de linguagem é enviado ao servidor quando o contrato LSP exigir.
 
 ## Ordem recomendada
 
-1. **Model/View primeiro**, porque comandos e plugins dependem de identidade, versões e ciclo de vida de documento.
-2. **Registro de comandos e chaves de contexto depois**, porque essa é a API interna consumida pela paleta, menus, LSP e extensões.
-3. **Protocolo e fronteira de plugins por último**, desenhados sobre os dois anteriores e validados com o LSP como ensaio.
+1. Identidade de documento, transações e propriedade de estado das views.
+2. Registro de comandos e contexto com escopos, migrados gradualmente.
+3. Contratos de serviços compartilhados e adaptadores separados para LSP e extension host, seguidos das camadas de compatibilidade.
 
-Formalizar significa escrever esses tipos, invariantes e testes — não implementar a arquitetura inteira do VS Code. As implementações podem permanecer simples e migrar por baixo dos contratos, com o build sempre verde.
+Cada etapa deve acrescentar testes para suas invariantes e manter a aplicação utilizável durante a migração.
