@@ -16,7 +16,7 @@ pub(super) fn tab_width(
     char_width: f32,
     translator: &graphite_i18n::Translator,
 ) -> f32 {
-    tab_label(tab, translator).chars().count() as f32 * char_width * 1.8
+    tab_label(tab, translator).chars().count() as f32 * char_width * 1.8 + char_width * 2.6
 }
 
 impl App {
@@ -105,9 +105,22 @@ impl App {
                     Theme::color(Theme::SIDEBAR, 0xf3f3f3)
                 };
                 r.draw_rect(x, rect.y, width, lh * 1.5, rgb(color));
+                let icon = tab
+                    .buffer
+                    .path()
+                    .map(crate::file_icons::for_path)
+                    .unwrap_or(crate::file_icons::FILE);
+                let icon_size = (lh * 0.8).round();
+                r.draw_icon(
+                    icon.glyph,
+                    x + PAD,
+                    rect.y + (lh * 1.5 - icon_size) * 0.5,
+                    icon_size,
+                    rgb(icon.color),
+                );
                 r.draw_text(
                     &tab_label(tab, &self.translator),
-                    x + PAD,
+                    x + PAD + lh,
                     rect.y + lh * 0.25,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );

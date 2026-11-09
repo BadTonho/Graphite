@@ -15,6 +15,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [v0.2 — Editing and customization](features/v0.2-editor.md)
   - [v0.3 — Language servers and integrated terminal](features/v0.3-lsp-terminal.md)
   - [v0.4 — Git, advanced layout and tools](features/v0.4-git-layout.md)
+  - [File icons](features/file-icons.md)
   - [Localization](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)

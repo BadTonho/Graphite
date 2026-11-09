@@ -1,5 +1,6 @@
 //! Flattened, expandable file tree built on top of `graphite-workspace`.
 
+use crate::file_icons::FileIcon;
 use graphite_workspace::{Entry, Workspace};
 use std::{collections::HashSet, path::PathBuf};
 
@@ -7,6 +8,7 @@ pub struct TreeRow {
     pub entry: Entry,
     pub depth: usize,
     pub expanded: bool,
+    pub icon: FileIcon,
 }
 
 #[cfg(test)]
@@ -104,10 +106,12 @@ impl FileTree {
         for entry in self.workspace.list_dir(dir) {
             let expanded = entry.is_dir && self.expanded.contains(&entry.path);
             let path = entry.path.clone();
+            let icon = crate::file_icons::for_entry(&entry.name, entry.is_dir, expanded);
             out.push(TreeRow {
                 entry,
                 depth,
                 expanded,
+                icon,
             });
             if expanded {
                 self.collect(&path, depth + 1, out);

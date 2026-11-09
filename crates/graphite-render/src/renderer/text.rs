@@ -51,6 +51,89 @@ impl Renderer {
         }
     }
 
+    /// Draws an icon glyph centered inside a `size` by `size` box.
+    ///
+    /// The glyph comes from the embedded file-icon font. Unlike [`Self::draw_text`],
+    /// the visible ink is centered in the box, so icons with different bearings
+    /// line up on the same baseline.
+    pub fn draw_icon(&mut self, icon: char, x: f32, y: f32, size: f32, color: Color) {
+        if !size.is_finite() || size <= 0.0 {
+            return;
+        }
+        let key = (icon, size.to_bits());
+        if self.icon_cache.len() > 512 {
+            self.icon_cache.clear();
+        }
+        let metrics = Metrics::new(size, size);
+        let buffer = self.icon_cache.entry(key).or_insert_with(|| {
+            let mut buffer = Buffer::new(&mut self.font_system, metrics);
+            buffer.set_size(None, None);
+            buffer.set_text(
+                &icon.to_string(),
+                &Attrs::new().family(Family::Name(crate::icons::FAMILY)),
+                Shaping::Advanced,
+                None,
+            );
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            buffer
+        });
+
+        let physical = buffer
+            .layout_runs()
+            .flat_map(|run| {
+                run.glyphs
+                    .iter()
+                    .map(move |glyph| (glyph.physical((0.0, 0.0), 1.0), run.line_y))
+            })
+            .collect::<Vec<_>>();
+        let mut glyphs = Vec::with_capacity(physical.len());
+        for (pg, line_y) in physical {
+            if let Some(entry) = self.glyph_entry(pg.cache_key) {
+                glyphs.push((pg, line_y, entry));
+            }
+        }
+        let Some((first, first_line_y, first_entry)) = glyphs.first() else {
+            return;
+        };
+
+        // Center the union of the rasterized ink boxes, not the font bearings.
+        let first_x = first.x as f32 + first_entry.left as f32;
+        let first_y = *first_line_y + first.y as f32 - first_entry.top as f32;
+        let mut min_x = first_x;
+        let mut min_y = first_y;
+        let mut max_x = first_x + first_entry.slot.w as f32;
+        let mut max_y = first_y + first_entry.slot.h as f32;
+        for (pg, line_y, entry) in &glyphs {
+            let gx = pg.x as f32 + entry.left as f32;
+            let gy = *line_y + pg.y as f32 - entry.top as f32;
+            min_x = min_x.min(gx);
+            min_y = min_y.min(gy);
+            max_x = max_x.max(gx + entry.slot.w as f32);
+            max_y = max_y.max(gy + entry.slot.h as f32);
+        }
+        let dx = x + (size - (max_x - min_x)) * 0.5 - min_x;
+        let dy = y + (size - (max_y - min_y)) * 0.5 - min_y;
+
+        for (pg, line_y, entry) in glyphs {
+            let gx = dx + pg.x as f32 + entry.left as f32;
+            let gy = dy + line_y + pg.y as f32 - entry.top as f32;
+            let slot = entry.slot;
+            let atlas = ATLAS_SIZE as f32;
+            self.push_quad(
+                gx,
+                gy,
+                gx + slot.w as f32,
+                gy + slot.h as f32,
+                [slot.x as f32 / atlas, slot.y as f32 / atlas],
+                [
+                    (slot.x + slot.w) as f32 / atlas,
+                    (slot.y + slot.h) as f32 / atlas,
+                ],
+                color,
+            );
+        }
+    }
+
     fn glyph_entry(&mut self, key: CacheKey) -> Option<GlyphEntry> {
         if let Some(entry) = self.glyphs.get(&key) {
             return *entry;
