@@ -26,7 +26,7 @@ impl App {
             rgb(0x252526),
         );
         renderer.draw_text(
-            "TERMINAL",
+            self.t("terminal.title"),
             SIDEBAR_WIDTH + PAD,
             top,
             rgb(if !self.terminal_problems {
@@ -36,7 +36,7 @@ impl App {
             }),
         );
         renderer.draw_text(
-            "PROBLEMS",
+            self.t("terminal.problems"),
             SIDEBAR_WIDTH + cell_width * 9.0,
             top,
             rgb(if self.terminal_problems {
@@ -49,11 +49,11 @@ impl App {
             .terminal_profiles
             .get(self.selected_terminal_profile)
             .map(|profile| profile.name.as_str())
-            .unwrap_or("No profile");
+            .unwrap_or_else(|| self.t("terminal.no_profile"));
         renderer.draw_text(
-            &format!(
-                "Shell: {}",
-                profile_label.chars().take(9).collect::<String>()
+            &self.tf(
+                "terminal.shell",
+                &[("name", &profile_label.chars().take(9).collect::<String>())],
             ),
             SIDEBAR_WIDTH + cell_width * 19.0,
             top,
@@ -61,13 +61,13 @@ impl App {
         );
         renderer.draw_text("+", SIDEBAR_WIDTH + cell_width * 34.0, top, rgb(0xd4d4d4));
         renderer.draw_text(
-            "Split",
+            self.t("terminal.split"),
             SIDEBAR_WIDTH + cell_width * 38.0,
             top,
             rgb(0xd4d4d4),
         );
         renderer.draw_text(
-            "Close",
+            self.t("common.close"),
             SIDEBAR_WIDTH + cell_width * 45.0,
             top,
             rgb(0xd4d4d4),
@@ -102,7 +102,7 @@ impl App {
             let diagnostics = self.diagnostic_entries();
             if diagnostics.is_empty() {
                 renderer.draw_text(
-                    "No diagnostics",
+                    self.t("terminal.no_diagnostics"),
                     SIDEBAR_WIDTH + PAD,
                     top + line_height * 1.5,
                     rgb(0x858585),
@@ -114,10 +114,16 @@ impl App {
                 .enumerate()
             {
                 let severity = match diagnostic.severity {
-                    Some(lsp_types::DiagnosticSeverity::ERROR) => "error",
-                    Some(lsp_types::DiagnosticSeverity::WARNING) => "warning",
-                    Some(lsp_types::DiagnosticSeverity::INFORMATION) => "info",
-                    _ => "hint",
+                    Some(lsp_types::DiagnosticSeverity::ERROR) => {
+                        self.t("diagnostic.severity.error")
+                    }
+                    Some(lsp_types::DiagnosticSeverity::WARNING) => {
+                        self.t("diagnostic.severity.warning")
+                    }
+                    Some(lsp_types::DiagnosticSeverity::INFORMATION) => {
+                        self.t("diagnostic.severity.info")
+                    }
+                    _ => self.t("diagnostic.severity.hint"),
                 };
                 let text = format!(
                     "{}:{}:{}  [{}] {}",
@@ -126,7 +132,7 @@ impl App {
                         .path()
                         .and_then(Path::file_name)
                         .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "Untitled".into()),
+                        .unwrap_or_else(|| self.t("common.untitled").into()),
                     diagnostic.range.start.line + 1,
                     diagnostic.range.start.character + 1,
                     severity,
@@ -164,6 +170,7 @@ impl App {
                         body_height,
                         line_height,
                         cell_width,
+                        self.translator,
                     );
                 }
                 if let Some(second) = self.terminals.get(second) {
@@ -176,6 +183,7 @@ impl App {
                         body_height,
                         line_height,
                         cell_width,
+                        self.translator,
                     );
                 }
                 renderer.draw_rect(split_x, body_top, 1.0, body_height, rgb(0x454545));
@@ -189,6 +197,7 @@ impl App {
                     body_height,
                     line_height,
                     cell_width,
+                    self.translator,
                 );
             }
         }
@@ -204,6 +213,7 @@ fn draw_terminal_snapshot(
     height: f32,
     line_height: f32,
     cell_width: f32,
+    translator: graphite_i18n::Translator,
 ) {
     for (row_index, row) in snapshot.rows.iter().enumerate() {
         let y = top + line_height * row_index as f32;
@@ -236,7 +246,8 @@ fn draw_terminal_snapshot(
             renderer.draw_rect(x, y, 2.0, line_height, rgb(0xd4d4d4));
         }
     }
-    if let Some(exited) = snapshot.exited.as_deref() {
-        renderer.draw_text(exited, left, top, rgb(0x858585));
+    if let Some(code) = snapshot.exit_code {
+        let exited = translator.format("terminal.shell_exited", &[("code", &code)]);
+        renderer.draw_text(&exited, left, top, rgb(0x858585));
     }
 }

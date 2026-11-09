@@ -479,6 +479,7 @@ impl App {
             manager: &mut self.lsp_manager,
             root: self.tree.root(),
             sender: self.lsp_sender.clone(),
+            translator: self.translator,
         }
     }
     pub(crate) fn activate_editor_document(&mut self, document: DocumentId) {

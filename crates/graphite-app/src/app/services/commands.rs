@@ -5,8 +5,8 @@ impl CommandService for App {
             .iter()
             .map(|c| CommandMetadata {
                 id: c.id.into(),
-                title: c.title.into(),
-                category: c.category.into(),
+                title: self.command_title(c),
+                category: self.command_category(c.category),
                 targets: c.targets.to_vec(),
                 enablement: c.enablement.into(),
             })

@@ -11,6 +11,7 @@ use protocol::{change_params, hover_to_string, text_sync_kind};
 pub use protocol::{diagnostics_are_current, path_to_uri, position_at_char, uri_to_path};
 use worker::run_server;
 
+use graphite_i18n::Translator;
 use lsp_server::{Message, Notification, Request, RequestId};
 use lsp_types::{
     CodeActionOrCommand, CompletionItem, Diagnostic, DidChangeTextDocumentParams, Hover, InlayHint,
@@ -218,7 +219,7 @@ pub struct LspManager {
 }
 
 impl LspManager {
-    pub fn load_config(path: &Path) -> Result<Vec<ServerConfig>, String> {
+    pub fn load_config(path: &Path, translator: &Translator) -> Result<Vec<ServerConfig>, String> {
         let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let config: ServerConfigFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
         let mut servers = HashMap::new();
@@ -231,10 +232,10 @@ impl LspManager {
                 || server.language_id.is_empty()
                 || server.command.is_empty()
             {
-                return Err("Each server needs extension, languageId, and command".into());
+                return Err(translator.text("lsp.error.server_fields").into());
             }
             if servers.insert(server.extension.clone(), server).is_some() {
-                return Err("Each file extension can have only one configured server".into());
+                return Err(translator.text("lsp.error.duplicate_extension").into());
             }
         }
         Ok(servers.into_values().collect())
@@ -280,6 +281,7 @@ impl LspManager {
         config: &ServerConfig,
         root: &Path,
         event_tx: Sender<LspUiEvent>,
+        translator: Translator,
     ) -> Sender<WorkerMessage> {
         if let Some(server) = self.servers.get(&config.extension) {
             return server.sender.clone();
@@ -308,7 +310,7 @@ impl LspManager {
         });
         let worker = thread::Builder::new()
             .name(format!("lsp-{}", config.language_id))
-            .spawn(move || run_server(config, root, receiver, worker_events))
+            .spawn(move || run_server(config, root, receiver, worker_events, translator))
             .expect("failed to create LSP worker thread");
         self.servers.insert(
             extension,
@@ -328,18 +330,18 @@ impl LspManager {
         text: String,
         version: i32,
         event_tx: Sender<LspUiEvent>,
+        translator: Translator,
     ) {
         let Some(config) = self.config_for(path).cloned() else {
             return;
         };
         let Some(uri) = path_to_uri(path) else {
-            let _ = event_tx.send(LspUiEvent::Status(format!(
-                "Cannot create file URI for {}",
-                path.display()
-            )));
+            let _ = event_tx.send(LspUiEvent::Status(
+                translator.format("lsp.error.file_uri", &[("path", &path.display())]),
+            ));
             return;
         };
-        let sender = self.ensure_server(&config, root, event_tx);
+        let sender = self.ensure_server(&config, root, event_tx, translator);
         let _ = sender.send(WorkerMessage::Command(LspCommand::Open {
             uri: uri.clone(),
             language_id: config.language_id,
@@ -706,6 +708,7 @@ mod tests {
             }),
             &mut pending,
             &event_tx,
+            &Translator::english(),
         );
         assert!(
             matches!(event_rx.recv().unwrap(), LspUiEvent::Status(message) if message.contains("failure"))
@@ -750,10 +753,11 @@ mod tests {
             r#"{"servers":[{"extension":".rs","languageId":"rust","command":"rust-analyzer"}]}"#,
         )
         .unwrap();
-        let config = LspManager::load_config(&path).unwrap();
+        let translator = Translator::english();
+        let config = LspManager::load_config(&path, &translator).unwrap();
         assert_eq!(config[0].extension, "rs");
         std::fs::write(&path, r#"{"servers":[{"extension":"rs","languageId":"rust","command":"rust-analyzer"},{"extension":".rs","languageId":"rust","command":"other"}]}"#).unwrap();
-        assert!(LspManager::load_config(&path).is_err());
+        assert!(LspManager::load_config(&path, &translator).is_err());
     }
 
     #[test]
@@ -818,6 +822,7 @@ mod tests {
             }),
             &mut pending,
             &event_tx,
+            &Translator::english(),
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::Diagnostics {
@@ -845,6 +850,7 @@ mod tests {
             }),
             &mut pending,
             &event_tx,
+            &Translator::english(),
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::Completion { request_id, items } => {
@@ -874,6 +880,7 @@ mod tests {
             }),
             &mut pending,
             &event_tx,
+            &Translator::english(),
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::CodeActions {
@@ -910,6 +917,7 @@ mod tests {
             }),
             &mut pending,
             &event_tx,
+            &Translator::english(),
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::CodeActions {
@@ -935,7 +943,13 @@ mod tests {
         };
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        run_server(config, std::env::temp_dir(), command_rx, event_tx);
+        run_server(
+            config,
+            std::env::temp_dir(),
+            command_rx,
+            event_tx,
+            Translator::english(),
+        );
         assert!(command_tx
             .send(WorkerMessage::Command(LspCommand::Shutdown))
             .is_err());

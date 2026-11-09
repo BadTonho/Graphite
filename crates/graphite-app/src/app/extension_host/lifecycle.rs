@@ -3,7 +3,7 @@ impl App {
     pub(crate) fn restart_extension_host(&mut self) -> Result<(), CommandError> {
         if !self.extension_host.enabled {
             return Err(CommandError::Disabled(
-                "Simulated host is not enabled".into(),
+                self.t("plugins.extension_host.disabled").into(),
             ));
         }
         if let Some(mut old) = self.extension_host.supervisor.take() {
@@ -28,7 +28,7 @@ impl App {
                 })
             })
             .ok_or_else(|| {
-                CommandError::Failed("Cannot locate simulated host executable".into())
+                CommandError::Failed(self.t("plugins.extension_host.missing_executable").into())
             })?;
         let proxy = self.event_proxy.clone();
         let wake = self.extension_host.wake.clone().unwrap_or_else(|| {
@@ -41,7 +41,7 @@ impl App {
         self.extension_host.supervisor = Some(
             Supervisor::spawn(&executable, session, Instant::now(), wake).map_err(command_error)?,
         );
-        self.status = "Simulated extension host starting".into();
+        self.status = self.t("plugins.extension_host.starting").into();
         Ok(())
     }
     pub(crate) fn clear_host_session(&mut self) {
@@ -115,10 +115,12 @@ impl App {
             .collect();
         for event in events {
             match event {
-                HostEvent::Ready { .. } => self.status = "Simulated extension host ready".into(),
+                HostEvent::Ready { .. } => {
+                    self.status = self.t("plugins.extension_host.ready").into()
+                }
                 HostEvent::Stopped { error, .. } => {
                     self.clear_host_session();
-                    self.status = format!("Simulated extension host stopped: {error}");
+                    self.status = self.tf("plugins.extension_host.stopped", &[("error", &error)]);
                 }
                 HostEvent::Completed { id, result, .. } => {
                     if let Some(sender) = self.extension_host.save_replies.remove(&id) {

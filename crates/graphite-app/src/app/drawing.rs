@@ -105,10 +105,12 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &format!(
-                    "Open file: {}{}",
-                    quick.query,
-                    self.editor_groups.active_view_mut().ime_preedit
+                &self.tf(
+                    "overlay.quick_open.prompt",
+                    &[
+                        ("query", &quick.query),
+                        ("preedit", &self.editor_groups.active_view().ime_preedit),
+                    ],
                 ),
                 SIDEBAR_WIDTH + PAD,
                 y + PAD,
@@ -155,19 +157,22 @@ impl App {
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
+            let preedit = if search.edit_replacement {
+                ""
+            } else {
+                &self.editor_groups.active_view().ime_preedit
+            };
             let label = format!(
-                "{} Find: {}   {}",
+                "{} {}",
                 if search.edit_replacement { " " } else { ">" },
-                format!(
-                    "{}{}",
-                    search.query,
-                    if search.edit_replacement {
-                        ""
-                    } else {
-                        &self.editor_groups.active_view_mut().ime_preedit
-                    }
-                ),
-                search.message
+                self.tf(
+                    "overlay.find.prompt",
+                    &[
+                        ("query", &search.query),
+                        ("preedit", &preedit),
+                        ("message", &search.message),
+                    ],
+                )
             );
             r.draw_text(
                 &label,
@@ -176,17 +181,17 @@ impl App {
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
             if search.replace {
+                let preedit = if search.edit_replacement {
+                    &self.editor_groups.active_view().ime_preedit
+                } else {
+                    ""
+                };
                 let replacement = format!(
-                    "{} Replace: {}   (Document: field; Alt+Enter: one; Ctrl+Enter: all)",
+                    "{} {}",
                     if search.edit_replacement { ">" } else { " " },
-                    format!(
-                        "{}{}",
-                        search.replacement,
-                        if search.edit_replacement {
-                            &self.editor_groups.active_view_mut().ime_preedit
-                        } else {
-                            ""
-                        }
+                    self.tf(
+                        "overlay.find.replace",
+                        &[("replacement", &search.replacement), ("preedit", &preedit),],
                     )
                 );
                 r.draw_text(
@@ -196,7 +201,32 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }
-            let opts = format!("Alt+R regex:{}  Alt+C case:{}  Alt+W word:{}  Alt+P preserve:{}  Alt+S selection:{}", search.options.regex, search.options.case_sensitive, search.options.whole_word, search.options.preserve_case, search.scope.is_some());
+            let on = self.t("common.on");
+            let off = self.t("common.off");
+            let opts = self.tf(
+                "overlay.find.options",
+                &[
+                    ("regex", &if search.options.regex { on } else { off }),
+                    (
+                        "case",
+                        &if search.options.case_sensitive {
+                            on
+                        } else {
+                            off
+                        },
+                    ),
+                    ("word", &if search.options.whole_word { on } else { off }),
+                    (
+                        "preserve",
+                        &if search.options.preserve_case {
+                            on
+                        } else {
+                            off
+                        },
+                    ),
+                    ("selection", &if search.scope.is_some() { on } else { off }),
+                ],
+            );
             r.draw_text(
                 &opts,
                 SIDEBAR_WIDTH + PAD,
@@ -205,10 +235,13 @@ impl App {
             );
         }
         if let Some(query) = &self.search_query {
-            let label = format!(
-                "Search: {query}{}  ({} matches; Up/Down, Enter, Esc)",
-                self.editor_groups.active_view_mut().ime_preedit,
-                self.search_results.len()
+            let label = self.tf(
+                "overlay.project_search.prompt",
+                &[
+                    ("query", query),
+                    ("preedit", &self.editor_groups.active_view().ime_preedit),
+                    ("count", &self.search_results.len()),
+                ],
             );
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
             r.draw_rect(
@@ -276,9 +309,12 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &format!(
-                    "Snippet prefix: {query}{}",
-                    self.editor_groups.active_view_mut().ime_preedit
+                &self.tf(
+                    "overlay.snippet.prompt",
+                    &[
+                        ("query", query),
+                        ("preedit", &self.editor_groups.active_view().ime_preedit),
+                    ],
                 ),
                 SIDEBAR_WIDTH + PAD,
                 y,
@@ -374,14 +410,14 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                "Quick Fix  (Up/Down, Enter, Esc)",
+                self.t("overlay.quick_fix.title"),
                 x + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
             if items.is_empty() {
                 r.draw_text(
-                    "No quick fixes available",
+                    self.t("overlay.quick_fix.empty"),
                     x + PAD,
                     y + lh,
                     rgb(Theme::color(Theme::DIM, 0x858585)),

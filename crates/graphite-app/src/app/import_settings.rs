@@ -31,18 +31,21 @@ impl App {
         self.snippet_load_warnings = warnings;
         self.keymap = keymap;
         self.status = if let Some(warning) = self.snippet_load_warnings.first() {
-            format!(
-                "Imported {} items; snippet warning: {warning}",
-                report.imported
+            self.tf(
+                "import.complete_with_snippet_warning",
+                &[("count", &report.imported), ("warning", warning)],
             )
         } else if let Some(warning) = report.warnings.first() {
-            format!(
-                "Imported {} items; {} warning(s): {warning}",
-                report.imported,
-                report.warnings.len()
+            self.tf(
+                "import.complete_with_warnings",
+                &[
+                    ("count", &report.imported),
+                    ("warnings", &report.warnings.len()),
+                    ("warning", warning),
+                ],
             )
         } else {
-            format!("Imported {} VS Code items", report.imported)
+            self.tf("import.complete", &[("count", &report.imported)])
         };
     }
 }

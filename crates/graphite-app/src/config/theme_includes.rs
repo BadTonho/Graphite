@@ -2,42 +2,70 @@
 use super::*;
 use std::collections::HashSet;
 
-pub(super) fn load(path: &Path, root: &Path) -> Result<Value, String> {
-    let root = fs::canonicalize(root).map_err(|e| format!("Cannot open theme directory: {e}"))?;
-    load_inner(path, &root, &mut HashSet::new())
+pub(super) fn load(path: &Path, root: &Path, translator: &Translator) -> Result<Value, String> {
+    let root = fs::canonicalize(root)
+        .map_err(|e| translator.format("config.theme.cannot_open_directory", &[("error", &e)]))?;
+    load_inner(path, &root, &mut HashSet::new(), translator)
 }
 
-fn load_inner(path: &Path, root: &Path, active: &mut HashSet<PathBuf>) -> Result<Value, String> {
-    let path =
-        fs::canonicalize(path).map_err(|e| format!("Cannot open theme {}: {e}", path.display()))?;
+fn load_inner(
+    path: &Path,
+    root: &Path,
+    active: &mut HashSet<PathBuf>,
+    translator: &Translator,
+) -> Result<Value, String> {
+    let path = fs::canonicalize(path).map_err(|e| {
+        translator.format(
+            "config.theme.cannot_open",
+            &[("path", &path.display()), ("error", &e)],
+        )
+    })?;
     if !path.starts_with(root) {
-        return Err(format!(
-            "Theme include is outside theme directory: {}",
-            path.display()
+        return Err(translator.format(
+            "config.theme.include_outside_directory",
+            &[("path", &path.display())],
         ));
     }
     if !active.insert(path.clone()) {
-        return Err(format!("Circular theme include: {}", path.display()));
+        return Err(translator.format(
+            "config.theme.circular_include",
+            &[("path", &path.display())],
+        ));
     }
-    let raw = fs::read_to_string(&path)
-        .map_err(|e| format!("Cannot read theme {}: {e}", path.display()))?;
-    let mut child =
-        parse_jsonc(&raw).map_err(|e| format!("Invalid theme {}: {e}", path.display()))?;
+    let raw = fs::read_to_string(&path).map_err(|e| {
+        translator.format(
+            "config.theme.cannot_read",
+            &[("path", &path.display()), ("error", &e)],
+        )
+    })?;
+    let mut child = parse_jsonc(&raw).map_err(|e| {
+        translator.format(
+            "config.theme.invalid_file",
+            &[("path", &path.display()), ("error", &e)],
+        )
+    })?;
     if !child.is_object() {
-        return Err(format!("Theme must be an object: {}", path.display()));
+        return Err(translator.format("config.theme.not_object", &[("path", &path.display())]));
     }
     let include = match child.get("include") {
         Some(Value::String(value)) => Some(value.clone()),
-        Some(_) => return Err(format!("Invalid theme include: {}", path.display())),
+        Some(_) => {
+            return Err(
+                translator.format("config.theme.invalid_include", &[("path", &path.display())])
+            )
+        }
         None => None,
     };
     if let Some(include) = include {
         let parent_path = path.parent().unwrap_or(root).join(include);
-        let base = load_inner(&parent_path, root, active)?;
+        let base = load_inner(&parent_path, root, active, translator)?;
         merge_theme(&mut child, &base);
     }
     if child.get("tokenColors").is_some_and(|v| !v.is_array()) {
-        return Err(format!("Unsupported tokenColors in {}", path.display()));
+        return Err(translator.format(
+            "config.theme.unsupported_token_colors",
+            &[("path", &path.display())],
+        ));
     }
     active.remove(&path);
     Ok(child)

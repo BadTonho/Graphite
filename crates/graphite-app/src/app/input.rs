@@ -74,7 +74,7 @@ impl App {
         if self.diff_view.is_some() {
             if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
                 self.run_ui_command("graphite.action.closeDiffEditor");
-                self.status = "Diff view closed".into();
+                self.status = self.t("diff.closed").into();
                 self.check_cli_waiters();
             } else if matches!(event.logical_key, Key::Named(NamedKey::Tab)) {
                 self.run_ui_command("graphite.diff.toggleLayout");

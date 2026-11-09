@@ -1,18 +1,22 @@
 use super::editor_groups::GroupRect;
 use super::*;
 
-pub(super) fn tab_label(tab: &Document) -> String {
+pub(super) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) -> String {
     let name = tab
         .buffer
         .path()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Untitled".into());
+        .unwrap_or_else(|| translator.text("common.untitled").to_owned());
     format!(" {}{} ", name, if tab.is_dirty() { " ●" } else { "" })
 }
 
-pub(super) fn tab_width(tab: &Document, char_width: f32) -> f32 {
-    tab_label(tab).chars().count() as f32 * char_width * 1.8
+pub(super) fn tab_width(
+    tab: &Document,
+    char_width: f32,
+    translator: &graphite_i18n::Translator,
+) -> f32 {
+    tab_label(tab, translator).chars().count() as f32 * char_width * 1.8
 }
 
 impl App {
@@ -94,7 +98,7 @@ impl App {
                 let tab = &self.documents[self
                     .resolve_document(view.document)
                     .expect("view document exists")];
-                let width = tab_width(tab, cw);
+                let width = tab_width(tab, cw, &self.translator);
                 let color = if index == active {
                     Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
                 } else {
@@ -102,7 +106,7 @@ impl App {
                 };
                 r.draw_rect(x, rect.y, width, lh * 1.5, rgb(color));
                 r.draw_text(
-                    &tab_label(tab),
+                    &tab_label(tab, &self.translator),
                     x + PAD,
                     rect.y + lh * 0.25,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),

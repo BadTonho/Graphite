@@ -57,7 +57,7 @@ impl App {
             self.status = path.display().to_string();
             return;
         }
-        match crate::file_format::read(&path) {
+        match crate::file_format::read(&path, &self.translator) {
             Ok(decoded) => {
                 let mut buffer = Buffer::from_text(&path, &decoded.text);
                 if std::fs::metadata(&path).is_ok_and(|metadata| metadata.permissions().readonly())
@@ -131,7 +131,12 @@ impl App {
                 self.push_navigation_location();
                 self.status = path.display().to_string();
             }
-            Err(e) => self.status = format!("Cannot open {}: {e}", path.display()),
+            Err(e) => {
+                self.status = self.tf(
+                    "document.open_failed",
+                    &[("path", &path.display()), ("error", &e)],
+                );
+            }
         }
     }
 
@@ -161,9 +166,9 @@ impl App {
             let decoded = match decoded {
                 Ok(decoded) => decoded,
                 Err(error) => {
-                    self.status = format!(
-                        "Branch changed, but could not reload {}: {error}",
-                        path.display()
+                    self.status = self.tf(
+                        "document.reload_failed",
+                        &[("path", &path.display()), ("error", &error)],
                     );
                     continue;
                 }

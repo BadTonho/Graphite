@@ -53,7 +53,14 @@ pub(super) fn line_content(text: &str) -> &str {
 pub(crate) struct AccessibilityActivation;
 impl ActivationHandler for AccessibilityActivation {
     fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
-        Some(accessibility_tree(&[], "Graphite editor", None, false))
+        let translator = graphite_i18n::Translator::new(graphite_i18n::Language::detect());
+        Some(accessibility_tree(
+            &[],
+            translator.text("accessibility.editor_initial"),
+            None,
+            false,
+            translator,
+        ))
     }
 }
 #[derive(Debug)]
@@ -125,6 +132,7 @@ pub(crate) fn accessibility_tree(
     value: &str,
     panel: Option<&str>,
     read_only: bool,
+    translator: graphite_i18n::Translator,
 ) -> TreeUpdate {
     let root = NodeId(0);
     let tablist = NodeId(1);
@@ -136,15 +144,15 @@ pub(crate) fn accessibility_tree(
         root_children.push(NodeId(5));
     }
     root_node.set_children(root_children);
-    root_node.set_label("Graphite");
+    root_node.set_label(translator.text("accessibility.app_name"));
     let mut tabs_node = Node::new(Role::TabList);
     tabs_node.set_children(tab_ids.clone());
     let mut nodes = vec![(root, root_node), (tablist, tabs_node)];
     let mut terminal_button = Node::new(Role::Button);
-    terminal_button.set_label("Toggle integrated terminal");
+    terminal_button.set_label(translator.text("accessibility.toggle_terminal"));
     nodes.push((NodeId(3), terminal_button));
     let mut problems_button = Node::new(Role::Button);
-    problems_button.set_label("Show diagnostics");
+    problems_button.set_label(translator.text("accessibility.show_diagnostics"));
     nodes.push((NodeId(4), problems_button));
     for (id, title) in tab_ids.iter().zip(titles) {
         let mut tab = Node::new(Role::Document);
@@ -196,7 +204,7 @@ impl App {
         let panel_focus = panel.is_some() && self.terminal_focused;
         let root = NodeId(0);
         let mut root_node = Node::new(Role::Window);
-        root_node.set_label("Graphite");
+        root_node.set_label(self.t("accessibility.app_name"));
         let mut children: Vec<_> = rects.iter().map(|rect| group_node(rect.id)).collect();
         children.extend([NodeId(3), NodeId(4)]);
         if panel.is_some() {
@@ -217,7 +225,7 @@ impl App {
             let editor_id = editor_node(rect.id);
             let tab_list_id = node_id(TAB_LIST, rect.id, 0);
             let mut group = Node::new(Role::Group);
-            group.set_label(format!("Editor group {}", index + 1));
+            group.set_label(self.tf("accessibility.editor_group", &[("index", &(index + 1))]));
             group.set_bounds(accesskit::Rect {
                 x0: rect.x as f64,
                 y0: rect.y as f64,
@@ -239,14 +247,14 @@ impl App {
                     .resolve_document(item.document)
                     .expect("view document exists")];
                 let mut node = Node::new(Role::Document);
-                node.set_label(super::group_drawing::tab_label(tab).trim());
+                node.set_label(super::group_drawing::tab_label(tab, &self.translator).trim());
                 node.set_selected(i == active);
                 node.add_action(Action::Click);
                 node.add_action(Action::Focus);
                 nodes.push((ids[i], node));
             }
             let mut editor = Node::new(Role::TextInput);
-            editor.set_label("Editor");
+            editor.set_label(self.t("accessibility.editor"));
             editor.set_value(buffer.text());
             if buffer.is_read_only() {
                 editor.set_read_only();
@@ -300,11 +308,11 @@ impl App {
             }
         }
         let mut terminal = Node::new(Role::Button);
-        terminal.set_label("Toggle integrated terminal");
+        terminal.set_label(self.t("accessibility.toggle_terminal"));
         terminal.add_action(Action::Click);
         nodes.push((NodeId(3), terminal));
         let mut problems = Node::new(Role::Button);
-        problems.set_label("Show diagnostics");
+        problems.set_label(self.t("accessibility.show_diagnostics"));
         problems.add_action(Action::Click);
         nodes.push((NodeId(4), problems));
         if let Some(panel) = panel {

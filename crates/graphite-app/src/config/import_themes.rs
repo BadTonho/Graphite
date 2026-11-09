@@ -7,6 +7,7 @@ pub(super) fn import_directory(
     package: &Path,
     destination: &Path,
     report: &mut ImportReport,
+    translator: &Translator,
 ) {
     let Ok(package) = fs::canonicalize(package) else {
         return;
@@ -22,12 +23,18 @@ pub(super) fn import_directory(
             &mut seen,
             &mut HashSet::new(),
             report,
+            translator,
         );
     }
 }
 
 /// Preserve extension theme labels even when the referenced JSON has no `name` field.
-pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut ImportReport) {
+pub(super) fn import_extension(
+    package: &Path,
+    destination: &Path,
+    report: &mut ImportReport,
+    translator: &Translator,
+) {
     let Ok(root) = fs::canonicalize(package) else {
         return;
     };
@@ -43,6 +50,7 @@ pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut 
             &mut seen,
             &mut HashSet::new(),
             report,
+            translator,
         );
     }
     let manifest_path = root.join("package.json");
@@ -50,18 +58,18 @@ pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut 
         Ok(raw) => match parse_jsonc(&raw) {
             Ok(value) => Some(value),
             Err(error) => {
-                report.warnings.push(format!(
-                    "Invalid extension manifest {}: {error}",
-                    manifest_path.display()
+                report.warnings.push(translator.format(
+                    "config.theme.invalid_manifest",
+                    &[("path", &manifest_path.display()), ("error", &error)],
                 ));
                 None
             }
         },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => {
-            report.warnings.push(format!(
-                "Cannot read extension manifest {}: {error}",
-                manifest_path.display()
+            report.warnings.push(translator.format(
+                "config.theme.cannot_read_manifest",
+                &[("path", &manifest_path.display()), ("error", &error)],
             ));
             None
         }
@@ -76,18 +84,19 @@ pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut 
     let mut catalog = Map::new();
     for entry in entries {
         let Some(relative) = entry.get("path").and_then(Value::as_str) else {
-            report
-                .warnings
-                .push(format!("Invalid theme path in {}", manifest_path.display()));
+            report.warnings.push(translator.format(
+                "config.theme.invalid_path",
+                &[("path", &manifest_path.display())],
+            ));
             continue;
         };
         let source = root.join(relative);
         let path = match fs::canonicalize(&source) {
             Ok(path) if path.starts_with(&root) => path,
             _ => {
-                report.warnings.push(format!(
-                    "Invalid theme path in {}: {relative}",
-                    manifest_path.display()
+                report.warnings.push(translator.format(
+                    "config.theme.invalid_path_relative",
+                    &[("path", &manifest_path.display()), ("relative", &relative)],
                 ));
                 continue;
             }
@@ -99,6 +108,7 @@ pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut 
             &mut seen,
             &mut HashSet::new(),
             report,
+            translator,
         );
         let relative = path
             .strip_prefix(&root)
@@ -121,7 +131,7 @@ pub(super) fn import_extension(package: &Path, destination: &Path, report: &mut 
         if let Err(error) = result {
             report
                 .warnings
-                .push(format!("Cannot write theme catalog: {error}"));
+                .push(translator.format("config.theme.cannot_write_catalog", &[("error", &error)]));
         }
     }
 }
@@ -154,27 +164,30 @@ fn copy_with_dependencies(
     seen: &mut HashSet<PathBuf>,
     active: &mut HashSet<PathBuf>,
     report: &mut ImportReport,
+    translator: &Translator,
 ) {
     let path = match fs::canonicalize(path) {
         Ok(path) if path.starts_with(root) => path,
         Ok(path) => {
-            report.warnings.push(format!(
-                "Theme include is outside package: {}",
-                path.display()
+            report.warnings.push(translator.format(
+                "config.theme.include_outside_package",
+                &[("path", &path.display())],
             ));
             return;
         }
         Err(error) => {
-            report
-                .warnings
-                .push(format!("Cannot read theme {}: {error}", path.display()));
+            report.warnings.push(translator.format(
+                "config.theme.cannot_read",
+                &[("path", &path.display()), ("error", &error)],
+            ));
             return;
         }
     };
     if active.contains(&path) {
-        report
-            .warnings
-            .push(format!("Circular theme include: {}", path.display()));
+        report.warnings.push(translator.format(
+            "config.theme.circular_include",
+            &[("path", &path.display())],
+        ));
         return;
     }
     if !seen.insert(path.clone()) {
@@ -183,18 +196,20 @@ fn copy_with_dependencies(
     let raw = match fs::read_to_string(&path) {
         Ok(raw) => raw,
         Err(error) => {
-            report
-                .warnings
-                .push(format!("Cannot read theme {}: {error}", path.display()));
+            report.warnings.push(translator.format(
+                "config.theme.cannot_read",
+                &[("path", &path.display()), ("error", &error)],
+            ));
             return;
         }
     };
     let value = match parse_jsonc(&raw) {
         Ok(value) => value,
         Err(error) => {
-            report
-                .warnings
-                .push(format!("Invalid theme file {}: {error}", path.display()));
+            report.warnings.push(translator.format(
+                "config.theme.invalid_file",
+                &[("path", &path.display()), ("error", &error)],
+            ));
             return;
         }
     };
@@ -207,9 +222,10 @@ fn copy_with_dependencies(
     match result {
         Ok(_) => report.imported += 1,
         Err(error) => {
-            report
-                .warnings
-                .push(format!("Cannot import theme {}: {error}", path.display()));
+            report.warnings.push(translator.format(
+                "config.theme.cannot_import",
+                &[("path", &path.display()), ("error", &error)],
+            ));
             return;
         }
     }
@@ -223,10 +239,11 @@ fn copy_with_dependencies(
                 seen,
                 active,
                 report,
+                translator,
             ),
-            None => report
-                .warnings
-                .push(format!("Invalid theme include: {}", path.display())),
+            None => report.warnings.push(
+                translator.format("config.theme.invalid_include", &[("path", &path.display())]),
+            ),
         }
         active.remove(&path);
     }

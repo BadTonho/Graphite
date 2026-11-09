@@ -14,6 +14,7 @@ pub(crate) struct EditorSession<'a> {
     pub(super) manager: &'a mut super::LspManager,
     pub(super) root: &'a std::path::Path,
     pub(super) sender: std::sync::mpsc::Sender<super::LspUiEvent>,
+    pub(super) translator: graphite_i18n::Translator,
 }
 impl<'a> std::ops::Deref for EditorSession<'a> {
     type Target = graphite_text::Editor<'a>;
@@ -97,6 +98,7 @@ impl Drop for EditorSession<'_> {
             &workspace,
             self.sender.clone(),
             self.lsp_revision.is_some(),
+            self.translator,
         )
         .is_err()
         {

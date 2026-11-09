@@ -15,6 +15,7 @@ mod editor_commands;
 #[allow(dead_code)]
 pub(super) mod editor_groups;
 mod group_drawing;
+mod i18n;
 mod ime;
 mod import_settings;
 mod input;

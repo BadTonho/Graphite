@@ -119,11 +119,14 @@ impl App {
                             .path()
                             .and_then(Path::file_name)
                             .map(|name| name.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| "Untitled".into());
-                        format!(
-                            "{name}, line {}: {}",
-                            diagnostic.range.start.line + 1,
-                            diagnostic.message
+                            .unwrap_or_else(|| self.t("common.untitled").into());
+                        self.tf(
+                            "accessibility.diagnostic",
+                            &[
+                                ("name", &name),
+                                ("line", &(diagnostic.range.start.line + 1)),
+                                ("message", &diagnostic.message),
+                            ],
                         )
                     })
                     .collect::<Vec<_>>()

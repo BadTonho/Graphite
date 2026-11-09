@@ -4,7 +4,7 @@ impl App {
         if let Some(settings) = &self.service_configuration_override {
             return Ok(settings.clone());
         }
-        crate::config::workspace_configuration(self.tree.root())
+        crate::config::workspace_configuration(self.tree.root(), &self.translator)
     }
 }
 impl WorkspaceService for App {
@@ -24,7 +24,7 @@ impl WorkspaceService for App {
         });
         settings
             .as_object_mut()
-            .ok_or_else(|| ServiceError::Failed("Invalid settings object".into()))?
+            .ok_or_else(|| ServiceError::Failed(self.t("config.settings.invalid_object").into()))?
             .extend(effective.as_object().unwrap().clone());
         Ok(settings)
     }

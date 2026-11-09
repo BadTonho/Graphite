@@ -71,6 +71,7 @@ pub(in crate::app) fn publish_document(
     workspace: &WorkspaceSnapshot,
     sender: std::sync::mpsc::Sender<LspUiEvent>,
     opened: bool,
+    translator: graphite_i18n::Translator,
 ) -> ServiceResult<()> {
     if document.uri.is_untitled() {
         return Ok(());
@@ -82,7 +83,14 @@ pub(in crate::app) fn publish_document(
     if opened {
         manager.change(&path, document.text.clone(), version)
     } else {
-        manager.open(&path, &root, document.text.clone(), version, sender)
+        manager.open(
+            &path,
+            &root,
+            document.text.clone(),
+            version,
+            sender,
+            translator,
+        )
     };
     Ok(())
 }

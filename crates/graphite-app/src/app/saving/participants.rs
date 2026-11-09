@@ -106,7 +106,7 @@ impl App {
                 active.writing = true;
                 let _ = self.saving.sender.send(writer::Written {
                     document,
-                    result: Err("Save cancelled".into()),
+                    result: Err(self.t("save.cancelled").into()),
                 });
                 self.saving.active.insert(document, active);
                 continue;
@@ -163,13 +163,13 @@ impl App {
                     if self.refresh_save_base(document, &mut active) {
                         active
                             .warnings
-                            .push("Save participant edits discarded: document changed".into());
+                            .push(self.t("save.participant_edits_discarded").into());
                     } else {
                         match result.and_then(|edits| apply_edits(&active.snapshot.text, edits)) {
                             Ok(text) => active.snapshot.text = text,
                             Err(error) => active
                                 .warnings
-                                .push(format!("Save participant skipped: {error}")),
+                                .push(self.tf("save.participant_skipped", &[("error", &error)])),
                         }
                     }
                 } else {
@@ -259,7 +259,7 @@ impl App {
                     Ok(waiting) => active.participants.waiting = Some(waiting),
                     Err(error) => active
                         .warnings
-                        .push(format!("Save participant skipped: {error}")),
+                        .push(self.tf("save.participant_skipped", &[("error", &error)])),
                 }
             } else {
                 if self.trim_trailing_whitespace {

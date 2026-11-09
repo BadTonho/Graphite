@@ -159,14 +159,14 @@ impl App {
             for request in requests {
                 self.saving
                     .completed
-                    .insert(request.id, Err("Document closed".into()));
+                    .insert(request.id, Err(self.t("save.document_closed").into()));
             }
             return;
         };
         let error = if doc.buffer.is_read_only() {
-            Some("Document is read-only")
+            Some(self.t("save.read_only"))
         } else if doc.buffer.path().is_none() {
-            Some("No file to save")
+            Some(self.t("save.no_file"))
         } else {
             None
         };
@@ -181,7 +181,7 @@ impl App {
                         .to_owned()
                 });
             let error = format!("{label}: {error}");
-            self.status = format!("Save failed: {error}");
+            self.status = self.tf("save.failed", &[("error", &error)]);
             for request in requests {
                 self.saving.completed.insert(request.id, Err(error.clone()));
             }
@@ -215,7 +215,7 @@ impl App {
                 reason,
             },
         );
-        self.status = "Saving…".into();
+        self.status = self.t("save.saving").into();
     }
     pub(super) fn save_batch(&mut self, documents: Vec<DocumentId>, action: AfterSave) {
         let expected = match &action {

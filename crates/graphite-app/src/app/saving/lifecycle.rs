@@ -32,7 +32,7 @@ impl App {
         acknowledge: Option<mpsc::Sender<()>>,
     ) {
         if self.saving.workspace.is_some() || self.close_window_confirm {
-            self.status = "A window or workspace decision is already pending".into();
+            self.status = self.t("workspace.decision_pending").into();
             if let Some(acknowledge) = acknowledge {
                 let _ = acknowledge.send(());
             }
@@ -46,7 +46,7 @@ impl App {
                         prepared.insert(path.clone(), workspace);
                     }
                     Err(error) => {
-                        self.status = format!("Cannot open workspace: {error}");
+                        self.status = self.tf("workspace.cannot_open", &[("error", &error)]);
                         if let Some(acknowledge) = acknowledge {
                             let _ = acknowledge.send(());
                         }
@@ -61,7 +61,7 @@ impl App {
             prepared,
         });
         self.close_window_confirm = true;
-        self.status = "Switch workspace: S save all, D discard, Esc cancel".into();
+        self.status = self.t("workspace.switch_prompt").into();
     }
     pub(crate) fn workspace_decision_pending(&self) -> bool {
         self.saving.workspace.is_some()
@@ -69,7 +69,7 @@ impl App {
     pub(crate) fn resolve_workspace_save(&mut self, save: bool, cancel: bool) {
         self.close_window_confirm = false;
         if cancel {
-            self.abort_workspace_transition("Workspace switch cancelled");
+            self.abort_workspace_transition(self.t("workspace.switch_cancelled"));
         } else if save {
             let documents = self
                 .documents
@@ -124,7 +124,7 @@ impl App {
                 for request in queued {
                     self.saving
                         .completed
-                        .insert(request.id, Err("Save cancelled by discard".into()));
+                        .insert(request.id, Err(self.t("save.cancelled_by_discard").into()));
                 }
             }
         }
@@ -161,7 +161,7 @@ impl App {
                 Ok(serde_json::Value::Null)
             } else {
                 Err(CommandError::Failed(
-                    "Documents changed while waiting; operation cancelled".into(),
+                    self.t("workspace.changed_waiting").into(),
                 ))
             };
             match barrier.action {
@@ -198,7 +198,7 @@ impl App {
     }
     fn discard_workspace_documents(&mut self) -> Result<(), String> {
         if self.saving.workspace.is_none() {
-            return Err("No workspace transition".into());
+            return Err(self.t("workspace.no_transition").into());
         }
         // Read every file before discarding any buffer; a failed read leaves all text intact.
         let mut reloads = Vec::new();
@@ -207,7 +207,8 @@ impl App {
             if let Some(path) = doc.buffer.path() {
                 reloads.push((
                     path.to_path_buf(),
-                    Ok(crate::file_format::read(path).map_err(|e| e.to_string())?),
+                    Ok(crate::file_format::read(path, &self.translator)
+                        .map_err(|e| e.to_string())?),
                 ));
             } else {
                 untitled.push(doc.id);

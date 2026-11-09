@@ -14,18 +14,20 @@ impl App {
         let tab = &self.documents[self.active_document()];
         let dirty = if tab.is_dirty() { " ●" } else { "" };
         let read_only = if tab.buffer.is_read_only() {
-            " 🔒 Read-only"
+            format!(" 🔒 {}", self.t("common.read_only"))
         } else {
-            ""
+            String::new()
         };
         let (line, column) = self.editor().cursor_line_col();
-        format!(
-            " {}{}{}   Ln {}, Col {}",
-            self.status,
-            dirty,
-            read_only,
-            line + 1,
-            column + 1
+        self.tf(
+            "status.bar_prefix",
+            &[
+                ("status", &self.status),
+                ("dirty", &dirty),
+                ("read_only", &read_only),
+                ("line", &(line + 1)),
+                ("column", &(column + 1)),
+            ],
         )
     }
 
@@ -37,8 +39,8 @@ impl App {
                 self.scm_snapshot
                     .branch
                     .as_deref()
-                    .unwrap_or("Git: —")
-                    .to_owned(),
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| self.t("status.git_none").to_owned()),
             ),
             (StatusSegment::Encoding, tab.encoding.label().to_owned()),
             (
@@ -48,19 +50,30 @@ impl App {
             (
                 StatusSegment::Indentation,
                 if tab.indentation.insert_spaces {
-                    format!("Spaces: {}", tab.indentation.tab_size)
+                    self.tf(
+                        "status.indent.spaces",
+                        &[("count", &tab.indentation.tab_size)],
+                    )
                 } else {
-                    format!("Tabs: {}", tab.indentation.tab_size)
+                    self.tf(
+                        "status.indent.tabs",
+                        &[("count", &tab.indentation.tab_size)],
+                    )
                 },
             ),
             (
                 StatusSegment::Screencast,
-                if self.screencast_mode {
-                    "Screencast: On"
-                } else {
-                    "Screencast: Off"
-                }
-                .to_owned(),
+                self.tf(
+                    "status.screencast",
+                    &[(
+                        "state",
+                        &if self.screencast_mode {
+                            self.t("common.on")
+                        } else {
+                            self.t("common.off")
+                        },
+                    )],
+                ),
             ),
         ]
     }
@@ -85,9 +98,9 @@ impl App {
             gpu.window.set_fullscreen(fullscreen);
         }
         self.status = if self.zen_mode {
-            "Zen Mode"
+            self.t("status.zen.enabled")
         } else {
-            "Zen Mode closed"
+            self.t("status.zen.disabled")
         }
         .into();
     }
@@ -95,9 +108,9 @@ impl App {
     pub(crate) fn toggle_centered_editor(&mut self) {
         self.centered_editor = !self.centered_editor;
         self.status = if self.centered_editor {
-            "Centered editor enabled"
+            self.t("status.centered.enabled")
         } else {
-            "Centered editor disabled"
+            self.t("status.centered.disabled")
         }
         .into();
     }
@@ -105,9 +118,9 @@ impl App {
     pub(crate) fn toggle_outline(&mut self) {
         self.outline_visible = !self.outline_visible;
         self.status = if self.outline_visible {
-            "Outline visible"
+            self.t("status.outline.visible")
         } else {
-            "Outline hidden"
+            self.t("status.outline.hidden")
         }
         .into();
     }
@@ -167,9 +180,9 @@ impl App {
                 .ok();
         }
         self.status = if self.screencast_mode {
-            "Screencast Mode enabled"
+            self.t("status.screencast.enabled")
         } else {
-            "Screencast Mode disabled"
+            self.t("status.screencast.disabled")
         }
         .into();
     }

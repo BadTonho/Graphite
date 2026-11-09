@@ -47,17 +47,23 @@ impl ApplicationHandler<UserEvent> for App {
                 )
                 .expect("failed to create window"),
         );
-        self.startup_metrics.push(format!(
-            "Native window creation: {:.1} ms",
-            window_started.elapsed().as_secs_f64() * 1000.0
+        self.startup_metrics.push(self.tf(
+            "startup.window_creation",
+            &[(
+                "duration",
+                &format!("{:.1}", window_started.elapsed().as_secs_f64() * 1000.0),
+            )],
         ));
         let scale = window.scale_factor() as f32;
         let renderer_started = std::time::Instant::now();
         let renderer =
             Renderer::new(window.clone(), self.font_size * scale).expect("failed to init renderer");
-        self.startup_metrics.push(format!(
-            "GPU renderer initialization: {:.1} ms",
-            renderer_started.elapsed().as_secs_f64() * 1000.0
+        self.startup_metrics.push(self.tf(
+            "startup.renderer_init",
+            &[(
+                "duration",
+                &format!("{:.1}", renderer_started.elapsed().as_secs_f64() * 1000.0),
+            )],
         ));
         let accessibility_actions = Arc::new(std::sync::Mutex::new(Vec::new()));
         let accessibility = accesskit_winit::Adapter::with_direct_handlers(
@@ -246,7 +252,7 @@ impl App {
                     .snippet_load_warnings
                     .first()
                     .cloned()
-                    .unwrap_or_else(|| "Snippet: type prefix, Enter inserts, Esc closes".into());
+                    .unwrap_or_else(|| self.t("snippet.status").into());
             }
             UserEvent::LspCommandEvent(event) => self.apply_lsp_ui_event(*event, true),
             UserEvent::CommandCompleted {
@@ -317,7 +323,7 @@ impl App {
             UserEvent::DiffReady(diff) => {
                 self.diff_view = Some(diff);
                 self.diff_loading = false;
-                self.status = "Diff view opened".into();
+                self.status = self.t("diff.opened").into();
                 self.check_cli_waiters();
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();

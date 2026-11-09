@@ -29,15 +29,15 @@ impl App {
         self.search_generation = self.search_generation.wrapping_add(1);
         self.search_cancel
             .store(self.search_generation, Ordering::Relaxed);
-        self.status =
-            "Find: Enter next; Alt+R regex, Alt+C case, Alt+W word, Alt+S selection".into();
+        self.status = self.t("search.prompt").into();
     }
 
     pub(crate) fn local_search_next(&mut self, search: &mut LocalSearch, backwards: bool) {
+        let translator = self.translator;
         let mut buffer = self.editor_mut();
         match buffer.find_matches(&search.query, search.options, search.scope.clone()) {
             Ok(matches) if matches.is_empty() => {
-                search.message = "No matches".into();
+                search.message = translator.text("search.no_matches").into();
             }
             Ok(matches) => {
                 let current = buffer
@@ -61,14 +61,17 @@ impl App {
                 search.index = index;
                 search.message = format!("{} / {}", index + 1, matches.len());
             }
-            Err(error) => search.message = format!("Invalid regex: {error}"),
+            Err(error) => {
+                search.message = translator.format("search.invalid_regex", &[("error", &error)]);
+            }
         }
     }
 
     pub(crate) fn local_replace_all(&mut self, search: &mut LocalSearch) {
+        let translator = self.translator;
         let mut buffer = self.editor_mut();
         if buffer.is_read_only() {
-            search.message = "Read-only document".into();
+            search.message = translator.text("search.read_only").into();
             return;
         }
         match buffer.replace_matches(
@@ -78,17 +81,20 @@ impl App {
             search.scope.clone(),
         ) {
             Ok(n) => {
-                search.message = format!("Replaced {n} matches");
+                search.message = translator.format("search.replaced_many", &[("count", &n)]);
                 search.scope = None;
             }
-            Err(error) => search.message = format!("Invalid regex: {error}"),
+            Err(error) => {
+                search.message = translator.format("search.invalid_regex", &[("error", &error)]);
+            }
         }
     }
 
     pub(crate) fn local_replace_selected(&mut self, search: &mut LocalSearch) {
+        let translator = self.translator;
         let mut buffer = self.editor_mut();
         if buffer.is_read_only() {
-            search.message = "Read-only document".into();
+            search.message = translator.text("search.read_only").into();
             return;
         }
         let before = buffer.len_chars();
@@ -104,10 +110,12 @@ impl App {
                         .end
                         .saturating_add_signed(buffer.len_chars() as isize - before as isize);
                 }
-                search.message = "Replaced one match".into();
+                search.message = translator.text("search.replaced_one").into();
             }
-            Ok(false) => search.message = "Select a match first".into(),
-            Err(error) => search.message = format!("Invalid regex: {error}"),
+            Ok(false) => search.message = translator.text("search.select_match").into(),
+            Err(error) => {
+                search.message = translator.format("search.invalid_regex", &[("error", &error)]);
+            }
         }
     }
 
@@ -137,7 +145,7 @@ impl App {
         };
         match command {
             "closeFindWidget" => {
-                self.status = "Find closed".into();
+                self.status = self.t("search.closed").into();
                 return;
             }
             "find.toggleField" if search.replace => {

@@ -4,6 +4,7 @@ pub(super) fn dispatch_server_message(
     message: Message,
     pending: &mut HashMap<i32, (u64, &'static str)>,
     event_tx: &Sender<LspUiEvent>,
+    translator: &Translator,
 ) {
     match message {
         Message::Notification(notification)
@@ -42,7 +43,7 @@ pub(super) fn dispatch_server_message(
             if response_error.is_none() && !valid_response(kind, &result) {
                 let _ = event_tx.send(LspUiEvent::RequestFailed {
                     request_id,
-                    message: format!("Invalid {kind} response"),
+                    message: translator.format("lsp.error.invalid_response", &[("kind", &kind)]),
                 });
                 return;
             }
@@ -67,9 +68,10 @@ pub(super) fn dispatch_server_message(
                             result: outcome,
                         });
                     }
-                    let message = response_error
-                        .map(|error| format!("Server command failed: {error}"))
-                        .unwrap_or_else(|| "Server command completed".into());
+                    let message = response_error.map_or_else(
+                        || translator.text("lsp.command.completed").to_owned(),
+                        |error| translator.format("lsp.command.failed", &[("error", &error)]),
+                    );
                     if request_id == 0 {
                         let _ = event_tx.send(LspUiEvent::Status(message));
                     }

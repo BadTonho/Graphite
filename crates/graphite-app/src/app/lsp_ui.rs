@@ -30,6 +30,7 @@ impl App {
             &workspace,
             self.lsp_sender.clone(),
             opened.is_some(),
+            self.translator,
         )
         .is_ok()
         {
@@ -47,6 +48,7 @@ impl App {
     }
 
     pub(crate) fn process_lsp_events(&mut self) {
+        let translator = self.translator;
         let replaced: Vec<_> = self
             .command_runtime
             .lsp_jobs
@@ -61,7 +63,7 @@ impl App {
             self.finish_command(
                 id,
                 Err(super::command_execution::CommandError::Failed(
-                    "Language server instance changed".into(),
+                    translator.text("lsp.instance_changed").into(),
                 )),
             );
         }
@@ -129,7 +131,7 @@ impl App {
                     self.finish_command(
                         execution,
                         Err(super::command_execution::CommandError::Failed(
-                            "Language server stopped".into(),
+                            translator.text("lsp.server_stopped").into(),
                         )),
                     );
                 }
@@ -198,6 +200,7 @@ impl App {
         }
     }
     pub(crate) fn apply_lsp_ui_event(&mut self, event: LspUiEvent, tracked: bool) {
+        let translator = self.translator;
         match event {
             LspUiEvent::ServiceRequest {
                 id,
@@ -232,8 +235,8 @@ impl App {
             LspUiEvent::RequestFailed { message, .. } => self.status = message,
             LspUiEvent::ServerCommandCompleted { result, .. } => {
                 self.status = result
-                    .map(|_| "Server command completed".to_string())
-                    .unwrap_or_else(|e| format!("Server command failed: {e}"));
+                    .map(|_| translator.text("lsp.command.completed").to_string())
+                    .unwrap_or_else(|e| translator.format("lsp.command.failed", &[("error", &e)]));
             }
             LspUiEvent::Status(status) => {
                 use graphite_core_api::WindowService;
@@ -276,10 +279,9 @@ impl App {
                         }
                         tab.diagnostics = diagnostics;
                         if index == active {
-                            self.status = format!(
-                                "{} diagnostic(s)",
-                                tab.diagnostics.len() + tab.schema_diagnostics.len()
-                            );
+                            let count = tab.diagnostics.len() + tab.schema_diagnostics.len();
+                            self.status =
+                                translator.format("lsp.diagnostics.count", &[("count", &count)]);
                         }
                     }
                 }
@@ -304,10 +306,10 @@ impl App {
                         );
                         self.editor_mut().set_cursor_line_col(line, col);
                         self.push_navigation_location();
-                        self.status = "Definition opened".into();
+                        self.status = translator.text("lsp.definition.opened").into();
                     }
                 } else {
-                    self.status = "No definition found".into();
+                    self.status = translator.text("lsp.definition.none").into();
                 }
             }
             LspUiEvent::Hover { request_id, text }
@@ -333,11 +335,11 @@ impl App {
                 self.quick_fix_visible = true;
                 self.status = if let Some(error) = error {
                     self.quick_fix_visible = false;
-                    format!("Quick fix request failed: {error}")
+                    translator.format("lsp.quick_fix.request_failed", &[("error", &error)])
                 } else if self.quick_fix_actions.is_empty() {
-                    "No quick fixes available".into()
+                    translator.text("lsp.quick_fix.none").into()
                 } else {
-                    "Quick Fix: Up/Down to choose, Enter to apply, Esc to close".into()
+                    translator.text("lsp.quick_fix.prompt").into()
                 };
             }
             LspUiEvent::JsonDiagnostics {
@@ -364,7 +366,7 @@ impl App {
                 self.completion_items = items;
                 self.completion_index = 0;
                 if self.completion_items.is_empty() {
-                    self.status = "No schema completions available".into();
+                    self.status = translator.text("lsp.completion.none").into();
                 }
             }
             _ => {}
@@ -465,7 +467,7 @@ impl App {
             .cloned()
         else {
             self.quick_fix_visible = false;
-            self.status = "Place the cursor on a diagnostic to see quick fixes".into();
+            self.status = self.t("lsp.quick_fix.place_cursor").into();
             return;
         };
         self.request_quick_fixes_for(diagnostic);
@@ -478,7 +480,7 @@ impl App {
             .map(PathBuf::from)
         else {
             self.quick_fix_visible = false;
-            self.status = "Save this file to use quick fixes".into();
+            self.status = self.t("lsp.quick_fix.save_file").into();
             return;
         };
         self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
@@ -487,7 +489,7 @@ impl App {
         self.quick_fix_actions.clear();
         self.quick_fix_index = 0;
         self.quick_fix_visible = true;
-        self.status = "Loading quick fixes…".into();
+        self.status = self.t("lsp.quick_fix.loading").into();
         self.track_lsp_command(self.lsp_request_id, &path);
         let sent = self.lsp_manager.request_code_actions(
             &path,
@@ -497,14 +499,14 @@ impl App {
         );
         if !sent {
             self.fail_current_command(super::command_execution::CommandError::Failed(
-                "Language server unavailable".into(),
+                self.t("lsp.unavailable").into(),
             ));
         }
     }
 
     pub(crate) fn request_lsp(&mut self, kind: &str) {
         let Some((path, position)) = self.active_lsp_position() else {
-            self.status = "Save this file to use language features".into();
+            self.status = self.t("lsp.save_for_features").into();
             return;
         };
         if kind == "completion"
@@ -523,7 +525,7 @@ impl App {
             }
         }
         if !self.lsp_manager.supports_path(&path) {
-            self.status = "No language server configured for this file type".into();
+            self.status = self.t("lsp.not_configured").into();
             self.fail_current_command(super::command_execution::CommandError::Failed(
                 self.status.clone(),
             ));
@@ -547,7 +549,7 @@ impl App {
         };
         if !sent {
             self.fail_current_command(super::command_execution::CommandError::Failed(
-                "Language server unavailable".into(),
+                self.t("lsp.unavailable").into(),
             ));
         }
     }

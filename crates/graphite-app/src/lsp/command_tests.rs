@@ -52,6 +52,7 @@ fn respond(app: &mut crate::App, ui_id: u64, kind: &'static str, value: Value) {
         Message::Response(lsp_server::Response::new_ok(RequestId::from(9), value)),
         &mut pending,
         &sender,
+        &Translator::english(),
     );
     assert!(pending.is_empty());
     app.lsp_queue

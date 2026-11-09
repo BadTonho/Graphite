@@ -11,7 +11,7 @@ impl App {
                 self.search_generation = self.search_generation.wrapping_add(1);
                 self.search_cancel
                     .store(self.search_generation, Ordering::Relaxed);
-                self.status = "Search closed".into();
+                self.status = self.t("search.closed").into();
             }
             "projectSearch.deleteLeft" => {
                 if let Some(query) = &mut self.search_query {
@@ -40,7 +40,7 @@ impl App {
                     self.search_cancel
                         .store(self.search_generation, Ordering::Relaxed);
                 } else {
-                    self.status = "No matches".into();
+                    self.status = self.t("search.no_matches").into();
                 }
             }
             _ => {}

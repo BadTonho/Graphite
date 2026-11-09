@@ -79,7 +79,7 @@ impl App {
             .and_then(|rx| match rx.try_recv() {
                 Ok(result) => Some(result),
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("Plugin worker stopped unexpectedly".into()))
+                    Some(Err(self.t("plugins.worker_stopped").into()))
                 }
                 Err(mpsc::TryRecvError::Empty) => None,
             })
@@ -150,12 +150,14 @@ impl App {
             {
                 self.plugins.message = match host.supervisor.as_ref().map(|s| s.state) {
                     Some(graphite_extension_host::HostState::Ready) if host.native_active => {
-                        format!("{id}: running")
+                        self.tf("plugins.runtime.running", &[("id", &id)])
                     }
-                    Some(graphite_extension_host::HostState::Ready) => format!("{id}: activating"),
-                    _ => format!(
-                        "{id}: stopped. {}",
-                        self.status.replace("Simulated extension host", "Plugin")
+                    Some(graphite_extension_host::HostState::Ready) => {
+                        self.tf("plugins.runtime.activating", &[("id", &id)])
+                    }
+                    _ => self.tf(
+                        "plugins.runtime.stopped",
+                        &[("id", &id), ("status", &self.status)],
                     ),
                 };
                 if host

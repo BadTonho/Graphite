@@ -94,12 +94,15 @@ impl App {
                 self.stage_saved_conflict(&snapshot.path);
                 self.refresh_scm_async();
                 self.status = if active.warnings.is_empty() {
-                    "Saved".into()
+                    self.t("save.saved").into()
                 } else {
-                    format!("Saved; {}", active.warnings.join("; "))
+                    self.tf(
+                        "save.saved_with_warnings",
+                        &[("warnings", &active.warnings.join("; "))],
+                    )
                 };
             } else {
-                self.status = format!("Save failed: {}", result.as_ref().unwrap_err());
+                self.status = self.tf("save.failed", &[("error", result.as_ref().unwrap_err())]);
             }
             for request in active.requests {
                 if result.is_ok() {
@@ -209,7 +212,7 @@ impl App {
                 )
             {
                 result = Err(CommandError::Failed(
-                    "Documents changed during save; kept open".into(),
+                    self.t("save.changed_kept_open").into(),
                 ));
             }
             match batch.action {
@@ -217,9 +220,7 @@ impl App {
                     if result.is_ok() && !self.documents.iter().any(|d| d.is_dirty()) {
                         self.complete_workspace_transition();
                     } else {
-                        self.abort_workspace_transition(
-                            "Cannot switch workspace: save failed or documents changed",
-                        );
+                        self.abort_workspace_transition(self.t("workspace.switch_failed"));
                     }
                 }
                 AfterSave::Command(job) => {
@@ -239,7 +240,7 @@ impl App {
                     if let Some(target) = self.editor_groups.view(view) {
                         if result.is_ok() && self.documents[target.document].is_dirty() {
                             result = Err(CommandError::Failed(
-                                "Document changed during save; kept open".into(),
+                                self.t("save.document_changed_kept_open").into(),
                             ));
                         }
                         if result.is_ok() {
@@ -255,14 +256,14 @@ impl App {
                 AfterSave::Window { execution } => {
                     if result.is_ok() && self.documents.iter().any(|d| d.is_dirty()) {
                         result = Err(CommandError::Failed(
-                            "Documents changed during save; kept open".into(),
+                            self.t("save.changed_kept_open").into(),
                         ));
                     }
                     if execution.is_none_or(|id| self.command_runtime.pending.contains_key(&id)) {
                         self.exit_requested = result.is_ok();
                     }
                     if let Err(error) = &result {
-                        self.status = format!("Cannot close: {error}");
+                        self.status = self.tf("save.cannot_close", &[("error", error)]);
                     }
                     self.close_window_confirm = false;
                     if let Some(execution) = execution {

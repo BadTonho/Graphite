@@ -4,7 +4,7 @@ impl App {
         let root = NodeId(0);
         let content = NodeId(0x6000000000000000);
         let mut window = Node::new(Role::Window);
-        window.set_label("Graphite — Plugins");
+        window.set_label(self.t("plugins.window_title"));
         window.set_children(vec![content]);
         let mut panel = Node::new(Role::Label);
         let selected = if self.plugins.github {
@@ -12,50 +12,68 @@ impl App {
                 assets.get(self.plugins.index).map(|a| a.name.clone())
             } else {
                 self.plugins.repositories.get(self.plugins.index).map(|r| {
-                    format!(
-                        "{}: {}",
-                        r.full_name,
-                        r.description.as_deref().unwrap_or("")
+                    self.tf(
+                        "plugins.accessibility.repository",
+                        &[
+                            ("name", &r.full_name),
+                            ("description", &r.description.as_deref().unwrap_or("")),
+                        ],
                     )
                 })
             }
         } else {
             self.plugins.installed.get(self.plugins.index).map(|r| {
-                format!(
-                    "{} v{}, {}",
-                    r.metadata.id(),
-                    r.metadata.version(),
-                    if r.enabled { "enabled" } else { "disabled" }
+                self.tf(
+                    "plugins.accessibility.installed",
+                    &[
+                        ("id", &r.metadata.id()),
+                        ("version", &r.metadata.version()),
+                        (
+                            "state",
+                            &self.t(if r.enabled {
+                                "plugins.accessibility.enabled"
+                            } else {
+                                "plugins.accessibility.disabled"
+                            }),
+                        ),
+                    ],
                 )
             })
         };
         let prompt = if let Some((_, m)) = &self.plugins.preview {
-            format!(
-                "Install {} v{}? Y confirms, Escape cancels",
-                m.id(),
-                m.version()
+            self.tf(
+                "plugins.accessibility.install_prompt",
+                &[("id", &m.id()), ("version", &m.version())],
             )
         } else if let Some(m) = &self.plugins.inspecting {
-            format!(
-                "Details: {}. Escape returns",
-                serde_json::to_string(m).unwrap_or_default()
+            self.tf(
+                "plugins.accessibility.details",
+                &[("details", &serde_json::to_string(m).unwrap_or_default())],
             )
         } else if let Some(id) = &self.plugins.trust {
-            format!("Trust {id} to run local code? Y confirms, Escape cancels")
+            self.tf("plugins.accessibility.trust", &[("id", id)])
         } else if self.plugins.editing {
-            format!(
-                "{}: {}",
-                if self.plugins.path_input {
-                    "Package path"
-                } else {
-                    "Search"
-                },
-                self.plugins.query
+            self.tf(
+                "plugins.accessibility.input",
+                &[
+                    (
+                        "label",
+                        &self.t(if self.plugins.path_input {
+                            "plugins.package_path"
+                        } else {
+                            "plugins.github_search"
+                        }),
+                    ),
+                    ("query", &self.plugins.query),
+                ],
             )
         } else {
-            selected.unwrap_or_else(|| "No plugins found".into())
+            selected.unwrap_or_else(|| self.t("plugins.none").into())
         };
-        panel.set_label(format!("Plugins. I installed, G GitHub, L install local file, slash search, arrows select, Enter release assets, E enable, D disable, R restart, X remove, C run first command, Escape back. {prompt}. {}", self.plugins.message));
+        panel.set_label(self.tf(
+            "plugins.accessibility.panel",
+            &[("prompt", &prompt), ("message", &self.plugins.message)],
+        ));
         TreeUpdate {
             nodes: vec![(root, window), (content, panel)],
             tree: Some(Tree::new(root)),

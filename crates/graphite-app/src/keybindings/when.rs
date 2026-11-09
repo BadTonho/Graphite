@@ -1,3 +1,4 @@
+use graphite_i18n::Translator;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,16 +47,24 @@ enum Token {
 }
 
 pub(super) fn parse(source: &str) -> Result<Expr, String> {
-    let tokens = tokenize(source)?;
-    let mut parser = Parser { tokens, index: 0 };
+    parse_with(source, &Translator::english())
+}
+
+pub(super) fn parse_with(source: &str, translator: &Translator) -> Result<Expr, String> {
+    let tokens = tokenize(source, translator)?;
+    let mut parser = Parser {
+        tokens,
+        index: 0,
+        translator,
+    };
     let expr = parser.or()?;
     if parser.index != parser.tokens.len() {
-        return Err("unexpected token in when clause".into());
+        return Err(translator.text("config.when.unexpected_token").into());
     }
     Ok(expr)
 }
 
-fn tokenize(source: &str) -> Result<Vec<Token>, String> {
+fn tokenize(source: &str, translator: &Translator) -> Result<Vec<Token>, String> {
     let chars: Vec<_> = source.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
@@ -108,7 +117,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                     i += 1;
                 }
                 if !closed {
-                    return Err("unterminated string in when clause".into());
+                    return Err(translator.text("config.when.unterminated_string").into());
                 }
                 out.push(Token::Atom(value));
             }
@@ -122,17 +131,23 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 }
                 out.push(Token::Atom(chars[start..i].iter().collect()));
             }
-            other => return Err(format!("unsupported character '{other}' in when clause")),
+            other => {
+                return Err(translator.format(
+                    "config.when.unsupported_character",
+                    &[("character", &other)],
+                ))
+            }
         }
     }
     Ok(out)
 }
 
-struct Parser {
+struct Parser<'a> {
     tokens: Vec<Token>,
     index: usize,
+    translator: &'a Translator,
 }
-impl Parser {
+impl Parser<'_> {
     fn or(&mut self) -> Result<Expr, String> {
         let mut value = self.and()?;
         while self.consume(&Token::Or) {
@@ -154,12 +169,12 @@ impl Parser {
         if self.consume(&Token::Left) {
             let value = self.or()?;
             if !self.consume(&Token::Right) {
-                return Err("missing ')' in when clause".into());
+                return Err(self.translator.text("config.when.missing_paren").into());
             }
             return Ok(value);
         }
         let Some(Token::Atom(key)) = self.tokens.get(self.index).cloned() else {
-            return Err("expected context key in when clause".into());
+            return Err(self.translator.text("config.when.expected_key").into());
         };
         self.index += 1;
         let equal = if self.consume(&Token::Eq) {
@@ -171,7 +186,7 @@ impl Parser {
         };
         if let Some(equal) = equal {
             let Some(Token::Atom(value)) = self.tokens.get(self.index).cloned() else {
-                return Err("expected comparison value in when clause".into());
+                return Err(self.translator.text("config.when.expected_value").into());
             };
             self.index += 1;
             Ok(Expr::Compare(key, value, equal))

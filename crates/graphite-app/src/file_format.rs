@@ -1,3 +1,4 @@
+use graphite_i18n::Translator;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
@@ -57,12 +58,12 @@ pub(crate) struct DecodedFile {
     pub line_ending: LineEnding,
 }
 
-pub(crate) fn read(path: &Path) -> Result<DecodedFile, String> {
+pub(crate) fn read(path: &Path, translator: &Translator) -> Result<DecodedFile, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    decode(&bytes)
+    decode(&bytes, translator)
 }
 
-pub(crate) fn decode(bytes: &[u8]) -> Result<DecodedFile, String> {
+pub(crate) fn decode(bytes: &[u8], translator: &Translator) -> Result<DecodedFile, String> {
     let (encoding, body) = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
         (Encoding::Utf8Bom, &bytes[3..])
     } else if bytes.starts_with(&[0xff, 0xfe]) {
@@ -75,10 +76,10 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<DecodedFile, String> {
     let mut text = match encoding {
         Encoding::Utf8 | Encoding::Utf8Bom => std::str::from_utf8(body)
             .map(str::to_owned)
-            .map_err(|_| "File is not valid UTF-8 or UTF-16")?,
+            .map_err(|_| translator.text("file.error.not_utf8"))?,
         Encoding::Utf16Le | Encoding::Utf16Be => {
             if body.len() % 2 != 0 {
-                return Err("File contains an incomplete UTF-16 code unit".into());
+                return Err(translator.text("file.error.incomplete_utf16").into());
             }
             let units = body
                 .chunks_exact(2)
@@ -91,7 +92,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<DecodedFile, String> {
                     }
                 })
                 .collect::<Vec<_>>();
-            String::from_utf16(&units).map_err(|_| "File contains invalid UTF-16 sequences")?
+            String::from_utf16(&units).map_err(|_| translator.text("file.error.invalid_utf16"))?
         }
     };
     let crlf = text.matches("\r\n").count();
@@ -153,7 +154,7 @@ mod tests {
         ] {
             for eol in [LineEnding::Lf, LineEnding::Crlf] {
                 let bytes = encode(text, encoding, eol);
-                let decoded = decode(&bytes).unwrap();
+                let decoded = decode(&bytes, &Translator::english()).unwrap();
                 assert_eq!(
                     decoded.text, text,
                     "encoding {encoding:?}, EOL {eol:?}, bytes {bytes:?}"
@@ -166,7 +167,8 @@ mod tests {
 
     #[test]
     fn rejects_malformed_utf8_and_odd_utf16() {
-        assert!(decode(&[0xff]).is_err());
-        assert!(decode(&[0xff, 0xfe, 0x61]).is_err());
+        let translator = Translator::english();
+        assert!(decode(&[0xff], &translator).is_err());
+        assert!(decode(&[0xff, 0xfe, 0x61], &translator).is_err());
     }
 }

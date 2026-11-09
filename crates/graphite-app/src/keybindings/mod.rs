@@ -3,6 +3,7 @@ mod defaults;
 mod when;
 pub(crate) use when::Expr as Condition;
 
+use graphite_i18n::Translator;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -55,35 +56,42 @@ impl Default for Keymap {
 
 impl Keymap {
     /// Replace all user bindings only after the complete file validates.
-    pub(crate) fn reload(&mut self, json: &str) -> Result<(), String> {
+    pub(crate) fn reload(&mut self, json: &str, translator: &Translator) -> Result<(), String> {
         let value = crate::config::parse_jsonc(json).map_err(|e| e.to_string())?;
-        let entries = value.as_array().ok_or("keybindings must be an array")?;
+        let entries = value
+            .as_array()
+            .ok_or_else(|| translator.text("config.keybinding.array"))?;
         let mut bindings = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
             let parse = || -> Result<Binding, String> {
-                let object = entry.as_object().ok_or("entry must be an object")?;
+                let object = entry
+                    .as_object()
+                    .ok_or_else(|| translator.text("config.keybinding.entry_object"))?;
                 let key = object
                     .get("key")
                     .and_then(|v| v.as_str())
-                    .ok_or("missing key")?;
+                    .ok_or_else(|| translator.text("config.keybinding.missing_key"))?;
                 let command = object
                     .get("command")
                     .and_then(|v| v.as_str())
-                    .ok_or("missing command")?;
+                    .ok_or_else(|| translator.text("config.keybinding.missing_command"))?;
                 if command.trim().is_empty() {
-                    return Err("empty command".into());
+                    return Err(translator.text("config.keybinding.empty_command").into());
                 }
                 let keys = key
                     .split_whitespace()
-                    .map(normalize_stroke)
+                    .map(|stroke| normalize_stroke_with(stroke, translator))
                     .collect::<Result<Vec<_>, _>>()?;
                 if keys.is_empty() {
-                    return Err("empty key".into());
+                    return Err(translator.text("config.keybinding.empty_key").into());
                 }
                 let condition = match object.get("when") {
-                    Some(value) => {
-                        Some(when::parse(value.as_str().ok_or("when must be a string")?)?)
-                    }
+                    Some(value) => Some(when::parse_with(
+                        value
+                            .as_str()
+                            .ok_or_else(|| translator.text("config.keybinding.when_string"))?,
+                        translator,
+                    )?),
                     None => None,
                 };
                 Ok(Binding {
@@ -93,7 +101,12 @@ impl Keymap {
                     condition,
                 })
             };
-            bindings.push(parse().map_err(|error| format!("keybinding {}: {error}", index + 1))?);
+            bindings.push(parse().map_err(|error| {
+                translator.format(
+                    "config.keybinding.entry",
+                    &[("index", &(index + 1)), ("error", &error)],
+                )
+            })?);
         }
         self.bindings = bindings;
         self.pending.clear();
@@ -162,6 +175,10 @@ impl Keymap {
 }
 
 pub(crate) fn normalize_stroke(stroke: &str) -> Result<String, String> {
+    normalize_stroke_with(stroke, &Translator::english())
+}
+
+fn normalize_stroke_with(stroke: &str, translator: &Translator) -> Result<String, String> {
     let mut modifiers = [false; 4];
     let mut key = None;
     for part in stroke.split('+') {
@@ -171,7 +188,7 @@ pub(crate) fn normalize_stroke(stroke: &str) -> Result<String, String> {
             "shift" => modifiers[1] = true,
             "alt" | "option" => modifiers[2] = true,
             "meta" | "cmd" | "win" | "super" => modifiers[3] = true,
-            "" => return Err("empty key component".into()),
+            "" => return Err(translator.text("config.keybinding.empty_component").into()),
             _ if key.is_none() => {
                 key = Some(match part.as_str() {
                     "up" => "arrowup".into(),
@@ -182,10 +199,10 @@ pub(crate) fn normalize_stroke(stroke: &str) -> Result<String, String> {
                     _ => part,
                 })
             }
-            _ => return Err("more than one key in a stroke".into()),
+            _ => return Err(translator.text("config.keybinding.multiple_keys").into()),
         }
     }
-    let key = key.ok_or("missing key in stroke")?;
+    let key = key.ok_or_else(|| translator.text("config.keybinding.missing_stroke_key"))?;
     let mut result = String::new();
     for (enabled, name) in modifiers
         .into_iter()
@@ -203,6 +220,10 @@ pub(crate) fn normalize_stroke(stroke: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    fn translator() -> Translator {
+        Translator::english()
+    }
+
     #[test]
     fn chords_context_precedence_and_removal() {
         let mut map = Keymap::default();
@@ -212,6 +233,7 @@ mod tests {
             {"key":"ctrl+k ctrl+x", "command":"second", "when":"editorFocus && !readonly"},
             {"key":"alt+up", "command":"-old"}
         ]"#,
+            &translator(),
         )
         .unwrap();
         let context = HashMap::from([("editorFocus".into(), "true".into())]);
@@ -231,10 +253,13 @@ mod tests {
     #[test]
     fn invalid_reload_keeps_previous_bindings() {
         let mut map = Keymap::default();
-        map.reload(r#"[{"key":"ctrl+p","command":"open"}]"#)
+        map.reload(r#"[{"key":"ctrl+p","command":"open"}]"#, &translator())
             .unwrap();
         assert!(map
-            .reload(r#"[{"key":"ctrl+x","command":"cut","when":"("}]"#)
+            .reload(
+                r#"[{"key":"ctrl+x","command":"cut","when":"("}]"#,
+                &translator(),
+            )
             .is_err());
         assert_eq!(
             map.resolve("ctrl+p", &HashMap::new()),
@@ -270,6 +295,7 @@ mod tests {
           {"key":"ctrl+s","command":"other", "when":"editorReadonly"},
           {"key":"ctrl+q","command":"workbench.action.files.save"}
         ]"#,
+            &translator(),
         )
         .unwrap();
         assert_eq!(map.resolve("ctrl+s", &editor), Resolution::Unbound);
@@ -296,8 +322,11 @@ mod tests {
     #[test]
     fn removing_an_unrelated_command_does_not_mask_the_default() {
         let mut map = Keymap::default();
-        map.reload(r#"[{"key":"ctrl+s","command":"-unrelated"}]"#)
-            .unwrap();
+        map.reload(
+            r#"[{"key":"ctrl+s","command":"-unrelated"}]"#,
+            &translator(),
+        )
+        .unwrap();
         let editor = HashMap::from([("editorTextFocus".into(), "true".into())]);
         assert_eq!(
             map.resolve("ctrl+s", &editor),

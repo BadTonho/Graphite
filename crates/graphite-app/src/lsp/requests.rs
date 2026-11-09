@@ -4,13 +4,15 @@ pub(super) struct PendingClientRequests {
     entries: HashMap<i32, (u64, &'static str)>,
     deadlines: HashMap<i32, std::time::Instant>,
     events: Sender<LspUiEvent>,
+    translator: Translator,
 }
 impl PendingClientRequests {
-    pub(super) fn new(events: Sender<LspUiEvent>) -> Self {
+    pub(super) fn new(events: Sender<LspUiEvent>, translator: Translator) -> Self {
         Self {
             events,
             entries: HashMap::new(),
             deadlines: HashMap::new(),
+            translator,
         }
     }
     pub(super) fn insert(&mut self, id: i32, value: (u64, &'static str)) {
@@ -62,7 +64,7 @@ impl Drop for PendingClientRequests {
             if request_id != 0 {
                 let _ = self.events.send(LspUiEvent::RequestFailed {
                     request_id,
-                    message: "Language server stopped".into(),
+                    message: self.translator.text("lsp.server_stopped").into(),
                 });
             }
         }
@@ -283,6 +285,7 @@ mod lifecycle_tests {
             entries: HashMap::new(),
             deadlines: HashMap::new(),
             events: tx,
+            translator: Translator::english(),
         };
         let now = std::time::Instant::now();
         pending.insert_at(5, (42, "completion"), now);
@@ -309,6 +312,7 @@ mod lifecycle_tests {
                 entries: HashMap::new(),
                 deadlines: HashMap::new(),
                 events: tx,
+                translator: Translator::english(),
             };
             pending.insert(1, (7, "hover"));
             pending.insert(2, (8, "executeCommand"));

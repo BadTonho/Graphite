@@ -41,19 +41,24 @@ pub(super) fn expand_snippet(body: &str) -> String {
     }
     out
 }
-pub fn load_snippets_for_workspace(workspace: &Path) -> (Vec<Snippet>, Vec<String>) {
+pub fn load_snippets_for_workspace(
+    workspace: &Path,
+    translator: &Translator,
+) -> (Vec<Snippet>, Vec<String>) {
     load_snippets_from_dirs(
         &app_config_dir().join("imported/snippets"),
         &workspace.join(".vscode"),
+        translator,
     )
 }
 
 pub(super) fn load_snippets_from_dirs(
     global_dir: &Path,
     project_dir: &Path,
+    translator: &Translator,
 ) -> (Vec<Snippet>, Vec<String>) {
-    let (mut snippets, mut warnings) = read_snippet_files(global_dir, false);
-    let (project, project_warnings) = read_snippet_files(project_dir, true);
+    let (mut snippets, mut warnings) = read_snippet_files(global_dir, false, translator);
+    let (project, project_warnings) = read_snippet_files(project_dir, true, translator);
     warnings.extend(project_warnings);
     let project_keys = project
         .iter()
@@ -66,16 +71,20 @@ pub(super) fn load_snippets_from_dirs(
     (snippets, warnings)
 }
 
-fn read_snippet_files(dir: &Path, code_snippets_only: bool) -> (Vec<Snippet>, Vec<String>) {
+fn read_snippet_files(
+    dir: &Path,
+    code_snippets_only: bool,
+    translator: &Translator,
+) -> (Vec<Snippet>, Vec<String>) {
     let mut found = Vec::new();
     let mut warnings = Vec::new();
     let files = match fs::read_dir(dir) {
         Ok(files) => files,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return (found, warnings),
         Err(error) => {
-            warnings.push(format!(
-                "Cannot read snippets in {}: {error}",
-                dir.display()
+            warnings.push(translator.format(
+                "config.snippets.cannot_read_dir",
+                &[("path", &dir.display()), ("error", &error)],
             ));
             return (found, warnings);
         }
@@ -102,9 +111,9 @@ fn read_snippet_files(dir: &Path, code_snippets_only: bool) -> (Vec<Snippet>, Ve
         let data = match fs::read(&path) {
             Ok(data) => data,
             Err(error) => {
-                warnings.push(format!(
-                    "Cannot read snippet file {}: {error}",
-                    path.display()
+                warnings.push(translator.format(
+                    "config.snippets.cannot_read_file",
+                    &[("path", &path.display()), ("error", &error)],
                 ));
                 continue;
             }
@@ -112,22 +121,24 @@ fn read_snippet_files(dir: &Path, code_snippets_only: bool) -> (Vec<Snippet>, Ve
         let value = match serde_json::from_slice::<Value>(&data) {
             Ok(value) => value,
             Err(error) => {
-                warnings.push(format!("Invalid snippets {}: {error}", path.display()));
+                warnings.push(translator.format(
+                    "config.snippets.invalid",
+                    &[("path", &path.display()), ("error", &error)],
+                ));
                 continue;
             }
         };
         let Some(entries) = value.as_object() else {
-            warnings.push(format!(
-                "Invalid snippets {}: expected an object",
-                path.display()
-            ));
+            warnings.push(
+                translator.format("config.snippets.not_object", &[("path", &path.display())]),
+            );
             continue;
         };
         for (name, item) in entries {
             let Some(prefix) = item.get("prefix") else {
-                warnings.push(format!(
-                    "Snippet '{name}' in {} has no prefix",
-                    path.display()
+                warnings.push(translator.format(
+                    "config.snippets.missing_prefix",
+                    &[("name", name), ("path", &path.display())],
                 ));
                 continue;
             };
@@ -165,9 +176,9 @@ fn read_snippet_files(dir: &Path, code_snippets_only: bool) -> (Vec<Snippet>, Ve
                 })
                 .unwrap_or_default();
             if prefixes.is_empty() || body.is_empty() {
-                warnings.push(format!(
-                    "Snippet '{name}' in {} needs a prefix and body",
-                    path.display()
+                warnings.push(translator.format(
+                    "config.snippets.missing_body",
+                    &[("name", name), ("path", &path.display())],
                 ));
                 continue;
             }

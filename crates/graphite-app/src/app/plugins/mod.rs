@@ -100,7 +100,7 @@ impl App {
         };
         let (tx, rx) = mpsc::channel();
         let proxy = self.event_proxy.clone();
-        self.plugins.message = "Loading…".into();
+        self.plugins.message = self.t("plugins.loading").into();
         self.plugins.worker = Some(rx);
         std::thread::spawn(move || {
             let result = job(store);
@@ -121,8 +121,11 @@ impl App {
             .clone()
             .unwrap_or_else(|| Arc::new(Mutex::new(None)));
         self.plugins.catalog = Some(catalog.clone());
+        let translator = self.translator;
         self.plugin_job(move |_| {
-            let mut guard = catalog.lock().map_err(|_| "Catalog worker failed")?;
+            let mut guard = catalog
+                .lock()
+                .map_err(|_| translator.text("plugins.catalog_worker_failed"))?;
             if guard.is_none() {
                 *guard = Some(Catalog::new()?);
             }

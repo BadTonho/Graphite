@@ -7,6 +7,7 @@ pub(super) fn run_server(
     root: PathBuf,
     receiver: Receiver<WorkerMessage>,
     event_tx: Sender<LspUiEvent>,
+    translator: Translator,
 ) {
     let _lifetime = ServerLifetime {
         events: event_tx.clone(),
@@ -22,9 +23,9 @@ pub(super) fn run_server(
     {
         Ok(child) => child,
         Err(error) => {
-            let _ = event_tx.send(LspUiEvent::Status(format!(
-                "Could not start {}: {error}",
-                config.command
+            let _ = event_tx.send(LspUiEvent::Status(translator.format(
+                "lsp.status.start_failed",
+                &[("command", &config.command), ("error", &error)],
             )));
             return;
         }
@@ -57,7 +58,7 @@ pub(super) fn run_server(
                 }
                 Ok(None) => {
                     let _ = reader_tx.send(WorkerMessage::IoError(
-                        "Language server closed stdout".into(),
+                        translator.text("lsp.error.stdout_closed").into(),
                     ));
                     break;
                 }
@@ -107,7 +108,7 @@ pub(super) fn run_server(
     };
     if write_message(&mut writer, Message::Request(init)).is_err() {
         let _ = event_tx.send(LspUiEvent::Status(
-            "Could not initialize language server".into(),
+            translator.text("lsp.status.initialize_failed").into(),
         ));
         stop_child(&mut child);
         return;
@@ -115,7 +116,9 @@ pub(super) fn run_server(
     let initialize_deadline = std::time::Instant::now() + Duration::from_secs(20);
     let (sync_kind, save_capabilities) = loop {
         if std::time::Instant::now() >= initialize_deadline {
-            let _ = event_tx.send(LspUiEvent::Status("LSP initialization timed out".into()));
+            let _ = event_tx.send(LspUiEvent::Status(
+                translator.text("lsp.status.initialize_timeout").into(),
+            ));
             stop_child(&mut child);
             return;
         }
@@ -128,9 +131,9 @@ pub(super) fn run_server(
                 if response.id == RequestId::from(1) =>
             {
                 if let Some(error) = response.error {
-                    let _ = event_tx.send(LspUiEvent::Status(format!(
-                        "{} LSP initialization failed: {}",
-                        config.language_id, error.message
+                    let _ = event_tx.send(LspUiEvent::Status(translator.format(
+                        "lsp.status.initialize_failed_detail",
+                        &[("language", &config.language_id), ("error", &error.message)],
                     )));
                     stop_child(&mut child);
                     return;
@@ -145,17 +148,16 @@ pub(super) fn run_server(
                         params: json!({}),
                     }),
                 );
-                let _ = event_tx.send(LspUiEvent::Status(format!(
-                    "{} language server ready",
-                    config.language_id
-                )));
+                let _ = event_tx.send(LspUiEvent::Status(
+                    translator.format("lsp.status.ready", &[("language", &config.language_id)]),
+                ));
                 break (kind, protocol::SaveCapabilities::from_sync(sync));
             }
             Ok(WorkerMessage::Incoming(_)) => {}
             Ok(WorkerMessage::IoError(error)) => {
-                let _ = event_tx.send(LspUiEvent::Status(format!(
-                    "{} LSP: {error}",
-                    config.language_id
+                let _ = event_tx.send(LspUiEvent::Status(translator.format(
+                    "lsp.status.io_error",
+                    &[("language", &config.language_id), ("error", &error)],
                 )));
                 stop_child(&mut child);
                 return;
@@ -184,9 +186,9 @@ pub(super) fn run_server(
                 continue
             }
             Err(RecvTimeoutError::Timeout) => {
-                let _ = event_tx.send(LspUiEvent::Status(format!(
-                    "{} LSP initialization timed out",
-                    config.language_id
+                let _ = event_tx.send(LspUiEvent::Status(translator.format(
+                    "lsp.status.initialize_timeout_detail",
+                    &[("language", &config.language_id)],
                 )));
                 stop_child(&mut child);
                 return;
@@ -197,7 +199,7 @@ pub(super) fn run_server(
         let _ = signal_tx.send(message);
     }
     let mut text_cache = HashMap::<String, String>::new();
-    let mut pending = PendingClientRequests::new(event_tx.clone());
+    let mut pending = PendingClientRequests::new(event_tx.clone(), translator);
     let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
     let mut save_replies = HashMap::<
@@ -554,12 +556,12 @@ pub(super) fn run_server(
                         continue;
                     }
                 }
-                dispatch_server_message(message, &mut pending, &event_tx);
+                dispatch_server_message(message, &mut pending, &event_tx, &translator);
             }
             Ok(WorkerMessage::IoError(error)) => {
-                let _ = event_tx.send(LspUiEvent::Status(format!(
-                    "{} LSP stopped: {error}",
-                    config.language_id
+                let _ = event_tx.send(LspUiEvent::Status(translator.format(
+                    "lsp.status.stopped",
+                    &[("language", &config.language_id), ("error", &error)],
                 )));
                 break;
             }
@@ -568,9 +570,9 @@ pub(super) fn run_server(
         }
     }
     stop_child(&mut child);
-    let _ = event_tx.send(LspUiEvent::Status(format!(
-        "{} language server stopped",
-        config.language_id
+    let _ = event_tx.send(LspUiEvent::Status(translator.format(
+        "lsp.status.server_stopped",
+        &[("language", &config.language_id)],
     )));
 }
 

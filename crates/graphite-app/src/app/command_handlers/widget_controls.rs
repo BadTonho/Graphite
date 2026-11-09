@@ -157,7 +157,7 @@ fn conflict_close(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErr
 }
 fn commit_cancel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.scm_commit_prompt = false;
-    app.status = "Commit cancelled".into();
+    app.status = app.t("status.commit_cancelled").into();
     Ok(())
 }
 fn commit_delete(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
