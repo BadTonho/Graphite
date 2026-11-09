@@ -50,12 +50,13 @@ pub(super) fn editor_action_toggle_indentation(
         match result {
             Ok(_) => {
                 app.documents[document].indentation = target;
-                app.status = if target.insert_spaces {
-                    "Indentation converted to spaces"
-                } else {
-                    "Indentation converted to tabs"
-                }
-                .into();
+                app.status = app
+                    .t(if target.insert_spaces {
+                        "editor.indentation.spaces"
+                    } else {
+                        "editor.indentation.tabs"
+                    })
+                    .into();
             }
             Err(error) => return Err(CommandError::Failed(error.to_string())),
         }
@@ -201,7 +202,9 @@ pub(super) fn editor_action_clipboard_copy_action(
             command == "editor.action.clipboardCutAction",
         );
         if !copied {
-            return Err(CommandError::Failed("Clipboard write failed".into()));
+            return Err(CommandError::Failed(
+                app.t("editor.clipboard.write_failed").into(),
+            ));
         }
     };
     Ok(())
@@ -214,7 +217,9 @@ pub(super) fn editor_action_clipboard_paste_action(
     {
         let mut clipboard = crate::app::clipboard::SystemClipboard;
         if !crate::app::clipboard::paste(&mut app.editor_mut(), &mut clipboard) {
-            return Err(CommandError::Failed("Clipboard read failed".into()));
+            return Err(CommandError::Failed(
+                app.t("editor.clipboard.read_failed").into(),
+            ));
         }
     };
     Ok(())

@@ -115,7 +115,7 @@ pub(super) fn workbench_action_find_in_files(
             .store(app.search_generation, Ordering::Relaxed);
         app.search_results.clear();
         app.search_index = 0;
-        app.status = "Search: type query; Up/Down select, Enter opens result".into();
+        app.status = app.t("status.project_search.prompt").into();
     };
     Ok(())
 }
@@ -234,7 +234,7 @@ pub(super) fn workbench_action_close_active_editor(
             if let Some(pending) = app.command_runtime.pending.get_mut(&invocation.execution) {
                 pending.deferred = true;
             }
-            app.status = "Unsaved tab: S save, D discard, Esc cancel".into();
+            app.status = app.t("status.unsaved_tab_prompt").into();
         } else if app.saving.document_pending(app.command_document()) {
             app.command_job(false);
             app.save_batch(

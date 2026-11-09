@@ -1,0 +1,20 @@
+{
+  "diagnostic.severity.error": "erro",
+  "diagnostic.severity.hint": "dica",
+  "diagnostic.severity.info": "informação",
+  "diagnostic.severity.warning": "aviso",
+  "terminal.no_diagnostics": "Nenhum diagnóstico",
+  "terminal.no_profile": "Nenhum perfil",
+  "terminal.no_profiles": "Nenhum perfil de terminal está configurado",
+  "terminal.profile.command_prompt": "Prompt de Comando",
+  "terminal.profile.default": "Padrão",
+  "terminal.profile.default_shell": "Shell padrão",
+  "terminal.profile.environment": "Shell do ambiente",
+  "terminal.problems": "PROBLEMAS",
+  "terminal.shell": "Terminal: {name}",
+  "terminal.shell_exited": "Shell encerrado ({code})",
+  "terminal.start_failed": "Não foi possível iniciar o shell '{name}' ({path}): {error}",
+  "terminal.split": "Dividir",
+  "terminal.title": "TERMINAL",
+  "terminal.unavailable": "Terminal indisponível neste contexto do aplicativo"
+}

@@ -112,7 +112,7 @@ impl App {
         })
     }
     pub(super) fn fail_current_command(&mut self, error: CommandError) {
-        self.status = error.to_string();
+        self.status = self.command_error_text(&error);
         if let Some(id) = self.command_runtime.current {
             self.finish_command(id, Err(error));
         }
@@ -215,11 +215,15 @@ impl App {
                 if !matches!(request.target, CommandTarget::Widget(id) if self.context_keys.widget(id).is_some_and(|scope| scope.kind == kind))
                 {
                     return Err(CommandError::InvalidTarget(
-                        "Command requires its own widget instance".into(),
+                        self.t("command.error.widget_instance").into(),
                     ));
                 }
             }
-            validate_arguments(entry.arguments, &request.arguments)?;
+            validate_arguments(
+                entry.arguments,
+                &request.arguments,
+                &self.t("command.error.invalid_arguments"),
+            )?;
             if matches!(entry.arguments, ArgumentKind::Index) {
                 let index = request.arguments["index"].as_u64().unwrap();
                 let valid = match request.id.as_str() {
@@ -235,7 +239,9 @@ impl App {
                     _ => usize::try_from(index).is_ok(),
                 };
                 if !valid {
-                    return Err(CommandError::InvalidArguments("Index out of range".into()));
+                    return Err(CommandError::InvalidArguments(
+                        self.t("error.index_out_of_range").into(),
+                    ));
                 }
             }
             let context = self.context_keys.resolve_target(request.target);
@@ -335,7 +341,7 @@ impl App {
                 result
             };
             if let Err(error) = &result {
-                self.status = error.to_string();
+                self.status = self.command_error_text(error);
             }
             let _ = pending.sender.send(result);
         }
@@ -359,7 +365,7 @@ impl App {
             target: CommandTarget::View(view.0),
         });
         if let Some(Err(error)) = ticket.try_result() {
-            self.status = error.to_string();
+            self.status = self.command_error_text(&error);
         }
     }
     pub(crate) fn run_ui_command_args(&mut self, id: &str, arguments: Value) {
@@ -371,7 +377,7 @@ impl App {
             target,
         });
         if let Some(Err(error)) = ticket.try_result() {
-            self.status = error.to_string();
+            self.status = self.command_error_text(&error);
         }
     }
     pub(crate) fn run_ui_command(&mut self, id: &str) {
@@ -383,7 +389,7 @@ impl App {
             target,
         });
         if let Some(Err(error)) = ticket.try_result() {
-            self.status = error.to_string();
+            self.status = self.command_error_text(&error);
         }
     }
     pub(crate) fn reap_commands(&mut self) {
@@ -411,7 +417,11 @@ impl App {
         }
     }
 }
-fn validate_arguments(kind: ArgumentKind, value: &Value) -> Result<(), CommandError> {
+fn validate_arguments(
+    kind: ArgumentKind,
+    value: &Value,
+    invalid_message: &str,
+) -> Result<(), CommandError> {
     let valid = match kind {
         ArgumentKind::None => value.is_null(),
         ArgumentKind::Text => value
@@ -434,8 +444,6 @@ fn validate_arguments(kind: ArgumentKind, value: &Value) -> Result<(), CommandEr
     if valid {
         Ok(())
     } else {
-        Err(CommandError::InvalidArguments(
-            "Invalid command arguments".into(),
-        ))
+        Err(CommandError::InvalidArguments(invalid_message.into()))
     }
 }

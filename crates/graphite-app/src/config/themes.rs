@@ -2,9 +2,15 @@ use super::*;
 
 pub fn imported_theme_colors(
     workspace: &Path,
+    translator: &Translator,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let settings = super::settings::merge_settings(&super::settings::settings_paths(workspace))?;
-    let mut colors = resolve_theme_colors(&settings, &app_config_dir().join("imported/themes"))?;
+    let settings =
+        super::settings::merge_settings(&super::settings::settings_paths(workspace), translator)?;
+    let mut colors = resolve_theme_colors(
+        &settings,
+        &app_config_dir().join("imported/themes"),
+        translator,
+    )?;
     if let Some(custom) = settings
         .get("workbench.colorCustomizations")
         .and_then(Value::as_object)
@@ -22,19 +28,21 @@ pub fn imported_theme_colors(
 pub(super) fn theme_colors_from(
     settings: &Value,
     theme_dir: &Path,
+    translator: &Translator,
 ) -> std::collections::HashMap<String, String> {
-    resolve_theme_colors(settings, theme_dir).unwrap_or_default()
+    resolve_theme_colors(settings, theme_dir, translator).unwrap_or_default()
 }
 
 pub(super) fn resolve_theme_colors(
     settings: &Value,
     theme_dir: &Path,
+    translator: &Translator,
 ) -> Result<std::collections::HashMap<String, String>, String> {
     let mut colors = std::collections::HashMap::new();
     let mut found = false;
     let selected = match settings.get("workbench.colorTheme") {
         Some(Value::String(name)) => Some(name.as_str()),
-        Some(_) => return Err("Invalid workbench.colorTheme".into()),
+        Some(_) => return Err(translator.text("config.theme.invalid_selection").into()),
         None => None,
     };
     if let Some(selected) = selected {
@@ -59,7 +67,7 @@ pub(super) fn resolve_theme_colors(
             };
             if let Some(path) = path {
                 found = true;
-                let theme = super::theme_includes::load(&path, theme_dir)?;
+                let theme = super::theme_includes::load(&path, theme_dir, translator)?;
                 if let Some(values) = theme.get("colors").and_then(Value::as_object) {
                     colors.extend(
                         values
@@ -118,7 +126,7 @@ pub(super) fn resolve_theme_colors(
     }
     if let Some(selected) = selected {
         if !found {
-            return Err(format!("Theme not found: {selected}"));
+            return Err(translator.format("config.theme.not_found", &[("name", &selected)]));
         }
     }
     Ok(colors)

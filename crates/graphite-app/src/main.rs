@@ -92,6 +92,7 @@ struct App {
     plugins: app::plugins::Plugins,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
+    translator: graphite_i18n::Translator,
     saving: app::saving::SaveRuntime,
     document_events: app::services::DocumentEventHub,
     selecting: bool,
@@ -208,14 +209,25 @@ impl App {
                 })
                 .expect("failed to create LSP event thread");
         }
+        let language_selection = (!isolated).then(|| config::language_selection(&root));
+        let translator = graphite_i18n::Translator::new(
+            language_selection
+                .as_ref()
+                .map(|selection| selection.language)
+                .unwrap_or_else(graphite_i18n::Language::fallback),
+        );
+        let language_warning = language_selection
+            .and_then(|selection| selection.warning)
+            .map(|warning| warning.localized(&translator));
         let lsp_manager = if isolated {
             LspManager::default()
         } else {
-            match LspManager::load_config(&config::lsp_config_path()) {
+            match LspManager::load_config(&config::lsp_config_path(), &translator) {
                 Ok(config) => LspManager::from_config(config),
                 Err(error) if config::lsp_config_path().exists() => {
-                    let _ =
-                        lsp_sender.send(LspUiEvent::Status(format!("LSP config error: {error}")));
+                    let _ = lsp_sender.send(LspUiEvent::Status(
+                        translator.format("lsp.config_error", &[("error", &error)]),
+                    ));
                     LspManager::default()
                 }
                 Err(_) => LspManager::default(),
@@ -224,7 +236,7 @@ impl App {
         let mut settings_error = None;
         if !isolated {
             DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-            match config::imported_theme_colors(&root) {
+            match config::imported_theme_colors(&root, &translator) {
                 Ok(colors) => Theme::set_imported_colors(colors),
                 Err(error) => settings_error = Some(error),
             }
@@ -242,7 +254,7 @@ impl App {
                 wrapping_indent: config::WrapIndent::Same,
             }
         } else {
-            config::editor_prefs_for_workspace(&root).unwrap_or_else(|error| {
+            config::editor_prefs_for_workspace(&root, &translator).unwrap_or_else(|error| {
                 settings_error = Some(error);
                 config::EditorPrefs {
                     font_size: 15.0,
@@ -260,12 +272,12 @@ impl App {
         let (snippets, snippet_load_warnings) = if isolated {
             (Vec::new(), Vec::new())
         } else {
-            config::load_snippets_for_workspace(&root)
+            config::load_snippets_for_workspace(&root, &translator)
         };
         let (terminal_profiles, selected_terminal_profile, terminal_config_error) = if isolated {
             (Vec::new(), 0, None)
         } else {
-            match config::terminal_settings() {
+            match config::terminal_settings(&translator) {
                 Ok(settings) => (settings.profiles, settings.default_profile, None),
                 Err(error) => (Vec::new(), 0, Some(error)),
             }
@@ -275,12 +287,14 @@ impl App {
             let path = config::app_config_dir().join("keybindings.json");
             match std::fs::read_to_string(&path) {
                 Ok(source) => {
-                    if let Err(error) = keymap.reload(&source) {
-                        settings_error = Some(format!("Keybindings: {error}"));
+                    if let Err(error) = keymap.reload(&source, &translator) {
+                        settings_error =
+                            Some(translator.format("config.keybindings", &[("error", &error)]));
                     }
                 }
                 Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                    settings_error = Some(format!("Keybindings: {error}"));
+                    settings_error =
+                        Some(translator.format("config.keybindings", &[("error", &error)]));
                 }
                 Err(_) => {}
             }
@@ -335,14 +349,16 @@ impl App {
             extension_host: Default::default(),
             plugins: Default::default(),
             service_configuration_override: isolated.then(|| serde_json::json!({})),
+            translator,
             saving: Default::default(),
             document_events: Default::default(),
             selecting: false,
             reveal_cursor: true,
-            status: settings_error
+            status: language_warning
+                .or(settings_error)
                 .or_else(|| terminal_config_error.clone())
                 .or_else(|| snippet_load_warnings.first().cloned())
-                .unwrap_or_else(|| String::from("Ctrl+S to save")),
+                .unwrap_or_else(|| translator.text("status.save_hint").to_owned()),
             close_confirm: false,
             close_window_confirm: false,
             exit_requested: false,
@@ -371,6 +387,7 @@ impl App {
                 json_schema::JsonSchemaManager::new(
                     lsp_sender.clone(),
                     config::app_config_dir().join("schema-cache"),
+                    translator,
                 )
             }),
             lsp_sender,
@@ -423,8 +440,9 @@ impl App {
             screencast_mode: false,
             screencast_cancel: Arc::new(AtomicBool::new(true)),
             screencast_shortcut: None,
-            startup_metrics: vec![format!(
-                "App and service initialization: {initialization_ms:.1} ms"
+            startup_metrics: vec![translator.format(
+                "startup.app_init",
+                &[("duration", &format!("{initialization_ms:.1}"))],
             )],
             cli_waiters: Vec::new(),
             initial_cli_request: None,
@@ -454,6 +472,7 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 
 fn main() {
     let cwd = std::env::current_dir().expect("no current directory");
+    let cli_translator = graphite_i18n::Translator::new(config::language_selection(&cwd).language);
     let mut args = std::env::args_os()
         .skip(1)
         .map(|arg| arg.to_string_lossy().into_owned())
@@ -462,13 +481,13 @@ fn main() {
         let result = match args.as_slice() {
             [_, action, directory] if action == "create" => {
                 graphite_plugins::sdk::create(&cwd.join(directory))
-                    .map(|_| "Plugin project created".to_owned())
+                    .map(|_| cli_translator.text("cli.plugin_created").to_owned())
             }
             [_, action, directory] if action == "pack" => {
                 graphite_plugins::package::pack(&cwd.join(directory))
                     .map(|path| path.display().to_string())
             }
-            _ => Err("Usage: graphite plugin <create|pack> <directory>".into()),
+            _ => Err(cli_translator.text("cli.plugin_usage").into()),
         };
         match result {
             Ok(message) => println!("{message}"),
@@ -481,7 +500,7 @@ fn main() {
     }
     let simulate_host = args.iter().any(|arg| arg == "--simulate-extension-host");
     args.retain(|arg| arg != "--simulate-extension-host");
-    let request = match cli::parse_args(args, cwd.clone()) {
+    let request = match cli::parse_args(args, cwd.clone(), &cli_translator) {
         Ok(request) => request,
         Err(error) => {
             eprintln!("{error}");
@@ -490,10 +509,13 @@ fn main() {
     };
     let ipc_server_child = std::env::var_os("GRAPHITE_IPC_SERVER_CHILD").is_some();
     if !ipc_server_child && !simulate_host {
-        match cli::send_to_existing(&request) {
+        match cli::send_to_existing(&request, &cli_translator) {
             Ok(true) => return,
             Ok(false) => {}
-            Err(error) => eprintln!("Could not forward CLI request: {error}"),
+            Err(error) => eprintln!(
+                "{}",
+                cli_translator.format("cli.forward_failed", &[("error", &error)])
+            ),
         }
         if request.wait {
             let executable = std::env::current_exe().expect("could not locate current executable");
@@ -504,7 +526,7 @@ fn main() {
                 .expect("could not start the editor window for --wait");
             let mut forwarded = false;
             for _ in 0..100 {
-                match cli::send_to_existing(&request) {
+                match cli::send_to_existing(&request, &cli_translator) {
                     Ok(true) => {
                         forwarded = true;
                         break;
@@ -514,7 +536,7 @@ fn main() {
             }
             if !forwarded {
                 let _ = child.kill();
-                eprintln!("The editor window did not become available for --wait");
+                eprintln!("{}", cli_translator.text("cli.wait_unavailable"));
                 std::process::exit(1);
             }
             return;
@@ -1030,7 +1052,11 @@ mod tests {
         app.test_editor_mut(0).set_cursor_line_col(0, 8);
         app.test_editor_mut(0).insert(" 🌎");
         app.save();
-        let decoded = file_format::decode(&fs::read(file).unwrap()).unwrap();
+        let decoded = file_format::decode(
+            &fs::read(file).unwrap(),
+            &graphite_i18n::Translator::english(),
+        )
+        .unwrap();
         assert_eq!(decoded.text, "primeira 🌎\nsegunda\n");
         assert_eq!(decoded.encoding, file_format::Encoding::Utf16Le);
         assert_eq!(decoded.line_ending, file_format::LineEnding::Crlf);

@@ -2532,6 +2532,7 @@ dependencies = [
  "globset",
  "graphite-core-api",
  "graphite-extension-host",
+ "graphite-i18n",
  "graphite-plugins",
  "graphite-render",
  "graphite-syntax",
@@ -2568,6 +2569,14 @@ version = "0.1.0"
 dependencies = [
  "graphite-core-api",
  "serde_json",
+]
+
+[[package]]
+name = "graphite-i18n"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sys-locale",
 ]
 
 [[package]]

@@ -55,7 +55,8 @@ impl App {
             cancellation.check()?;
             if self.extension_host.native_manifest.is_some() && !self.extension_host.native_active {
                 return Err(CommandError::Disabled(
-                    "Plugin activation is incomplete".into(),
+                    self.t("plugins.extension_host.activation_incomplete")
+                        .into(),
                 ));
             }
             let descriptor = self

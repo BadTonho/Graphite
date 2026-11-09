@@ -86,7 +86,10 @@ fn duplicate_or_invalid_registration_preserves_existing_catalog() {
 fn keybinding_arguments_reach_the_same_handler_as_programmatic_execution() {
     let dir = crate::test_support::TempDir::new();
     let mut app = App::new_with_options(dir.path().into(), None, true);
-    app.keymap.reload(r#"[{"key":"ctrl+alt+x","command":"type","args":{"text":"é🌎"},"when":"editorTextFocus"}]"#).unwrap();
+    app.keymap.reload(
+        r#"[{"key":"ctrl+alt+x","command":"type","args":{"text":"é🌎"},"when":"editorTextFocus"}]"#,
+        &graphite_i18n::Translator::english(),
+    ).unwrap();
     assert!(app.handle_keybinding_stroke("ctrl+alt+x"));
     let result = app
         .execute_command(request("type", target(&app), json!({"text":"!"})))
@@ -233,7 +236,10 @@ fn enablement_is_distinct_from_shortcut_when_and_menu_visibility() {
     let dir = crate::test_support::TempDir::new();
     let mut app = App::new_with_options(dir.path().into(), None, true);
     app.keymap
-        .reload(r#"[{"key":"ctrl+alt+x","command":"type","args":{"text":"x"},"when":"false"}]"#)
+        .reload(
+            r#"[{"key":"ctrl+alt+x","command":"type","args":{"text":"x"},"when":"false"}]"#,
+            &graphite_i18n::Translator::english(),
+        )
         .unwrap();
     assert!(!app.handle_keybinding_stroke("ctrl+alt+x"));
     assert_eq!(

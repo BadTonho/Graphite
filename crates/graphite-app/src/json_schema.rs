@@ -1,4 +1,5 @@
 use crate::lsp::LspUiEvent;
+use graphite_i18n::Translator;
 use jsonschema::{Retrieve, Uri};
 use lsp_types::{
     CompletionItem, CompletionItemKind, Diagnostic, DiagnosticSeverity, Position, Range,
@@ -32,7 +33,11 @@ pub struct JsonSchemaManager {
 }
 
 impl JsonSchemaManager {
-    pub fn new(event_sender: Sender<LspUiEvent>, cache_dir: PathBuf) -> Self {
+    pub fn new(
+        event_sender: Sender<LspUiEvent>,
+        cache_dir: PathBuf,
+        translator: Translator,
+    ) -> Self {
         let (sender, receiver) = mpsc::channel();
         thread::Builder::new()
             .name("graphite-json-schema".into())
@@ -44,7 +49,8 @@ impl JsonSchemaManager {
                             text,
                             revision,
                         } => {
-                            let diagnostics = validate_document(&path, &text, &cache_dir);
+                            let diagnostics =
+                                validate_document(&path, &text, &cache_dir, &translator);
                             if let Some(uri) = crate::lsp::path_to_uri(&path) {
                                 let _ = event_sender.send(LspUiEvent::JsonDiagnostics {
                                     uri,
@@ -59,7 +65,8 @@ impl JsonSchemaManager {
                             position,
                             request_id,
                         } => {
-                            let items = schema_completions(&path, &text, position, &cache_dir);
+                            let items =
+                                schema_completions(&path, &text, position, &cache_dir, &translator);
                             let _ =
                                 event_sender.send(LspUiEvent::JsonCompletion { request_id, items });
                         }
@@ -92,15 +99,20 @@ impl JsonSchemaManager {
 struct CachedRetriever {
     cache_dir: PathBuf,
     client: reqwest::blocking::Client,
+    translator: Translator,
 }
 
 impl CachedRetriever {
-    fn new(cache_dir: PathBuf) -> Result<Self, String> {
+    fn new(cache_dir: PathBuf, translator: Translator) -> Result<Self, String> {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(8))
             .build()
             .map_err(|error| error.to_string())?;
-        Ok(Self { cache_dir, client })
+        Ok(Self {
+            cache_dir,
+            client,
+            translator,
+        })
     }
 
     fn cache_path(&self, uri: &str) -> PathBuf {
@@ -121,38 +133,49 @@ impl CachedRetriever {
                     }
                     let _ = fs::remove_file(&cache_path);
                 }
-                let response = self
-                    .client
-                    .get(parsed)
-                    .send()
-                    .map_err(|error| format!("Schema download failed: {error}"))?;
+                let response = self.client.get(parsed).send().map_err(|error| {
+                    self.translator
+                        .format("json.error.download_failed", &[("error", &error)])
+                })?;
                 if response.url().scheme() != "https" {
-                    return Err("Schema redirects must remain on HTTPS".into());
+                    return Err(self.translator.text("json.error.redirect_https").into());
                 }
                 if !response.status().is_success() {
-                    return Err(format!("Schema server returned {}", response.status()));
+                    return Err(self.translator.format(
+                        "json.error.server_status",
+                        &[("status", &response.status())],
+                    ));
                 }
-                let bytes = response
-                    .bytes()
-                    .map_err(|error| format!("Cannot read schema response: {error}"))?;
+                let bytes = response.bytes().map_err(|error| {
+                    self.translator
+                        .format("json.error.read_response", &[("error", &error)])
+                })?;
                 if bytes.len() > 8 * 1024 * 1024 {
-                    return Err("Schema exceeds the 8 MiB size limit".into());
+                    return Err(self.translator.text("json.error.size_limit").into());
                 }
-                let text = String::from_utf8(bytes.to_vec())
-                    .map_err(|error| format!("Schema is not UTF-8: {error}"))?;
-                serde_json::from_str::<Value>(&text)
-                    .map_err(|error| format!("Invalid schema JSON: {error}"))?;
+                let text = String::from_utf8(bytes.to_vec()).map_err(|error| {
+                    self.translator
+                        .format("json.error.not_utf8", &[("error", &error)])
+                })?;
+                serde_json::from_str::<Value>(&text).map_err(|error| {
+                    self.translator
+                        .format("json.error.invalid_json", &[("error", &error)])
+                })?;
                 fs::create_dir_all(&self.cache_dir).map_err(|error| error.to_string())?;
                 fs::write(cache_path, &text).map_err(|error| error.to_string())?;
                 Ok(text)
             }
             "file" => {
-                let path = parsed
-                    .to_file_path()
-                    .map_err(|_| "Invalid local schema path".to_owned())?;
+                let path = parsed.to_file_path().map_err(|_| {
+                    self.translator
+                        .text("json.error.invalid_local_path")
+                        .to_owned()
+                })?;
                 fs::read_to_string(path).map_err(|error| error.to_string())
             }
-            scheme => Err(format!("Unsupported schema URI scheme: {scheme}")),
+            scheme => Err(self
+                .translator
+                .format("json.error.scheme", &[("scheme", &scheme)])),
         }
     }
 }
@@ -170,11 +193,12 @@ fn schema_for_document(
     path: &Path,
     document: &Value,
     cache_dir: &Path,
+    translator: &Translator,
 ) -> Result<Option<(Value, String, CachedRetriever)>, String> {
     let Some(schema_uri) = document.get("$schema").and_then(Value::as_str) else {
         return Ok(None);
     };
-    let retriever = CachedRetriever::new(cache_dir.to_path_buf())?;
+    let retriever = CachedRetriever::new(cache_dir.to_path_buf(), *translator)?;
     let (schema_text, base_uri) = if schema_uri.starts_with("https://") {
         let text = retriever.retrieve_text(schema_uri)?;
         (text, schema_uri.to_owned())
@@ -182,7 +206,7 @@ fn schema_for_document(
         let text = retriever.retrieve_text(schema_uri)?;
         (text, schema_uri.to_owned())
     } else if schema_uri.contains("://") {
-        return Err("Only HTTPS and local file schemas are supported".into());
+        return Err(translator.text("json.error.only_https_file").into());
     } else {
         let schema_path = path
             .parent()
@@ -190,18 +214,27 @@ fn schema_for_document(
             .join(schema_uri);
         let schema_path = schema_path.canonicalize().unwrap_or(schema_path);
         let base_uri = reqwest::Url::from_file_path(&schema_path)
-            .map_err(|_| "Cannot convert local schema path to a file URI".to_owned())?
+            .map_err(|_| translator.text("json.error.local_path_uri").to_owned())?
             .to_string();
-        let text = fs::read_to_string(&schema_path)
-            .map_err(|error| format!("Cannot read schema {}: {error}", schema_path.display()))?;
+        let text = fs::read_to_string(&schema_path).map_err(|error| {
+            translator.format(
+                "json.error.cannot_read_schema",
+                &[("path", &schema_path.display()), ("error", &error)],
+            )
+        })?;
         (text, base_uri)
     };
     let schema = serde_json::from_str(&schema_text)
-        .map_err(|error| format!("Invalid schema JSON: {error}"))?;
+        .map_err(|error| translator.format("json.error.invalid_json", &[("error", &error)]))?;
     Ok(Some((schema, base_uri, retriever)))
 }
 
-fn validate_document(path: &Path, text: &str, cache_dir: &Path) -> Vec<Diagnostic> {
+fn validate_document(
+    path: &Path,
+    text: &str,
+    cache_dir: &Path,
+    translator: &Translator,
+) -> Vec<Diagnostic> {
     let document = match crate::config::parse_jsonc(text) {
         Ok(value) => value,
         Err(error) => {
@@ -210,21 +243,28 @@ fn validate_document(path: &Path, text: &str, cache_dir: &Path) -> Vec<Diagnosti
                 &error.to_string(),
                 error.line(),
                 error.column(),
+                translator,
             )]
         }
     };
-    let (schema, base_uri, retriever) = match schema_for_document(path, &document, cache_dir) {
-        Ok(Some(schema)) => schema,
-        Ok(None) => return Vec::new(),
-        Err(error) => return vec![schema_error_diagnostic(&error)],
-    };
+    let (schema, base_uri, retriever) =
+        match schema_for_document(path, &document, cache_dir, translator) {
+            Ok(Some(schema)) => schema,
+            Ok(None) => return Vec::new(),
+            Err(error) => return vec![schema_error_diagnostic(&error, translator)],
+        };
     let validator = match jsonschema::options()
         .with_base_uri(base_uri)
         .with_retriever(retriever)
         .build(&schema)
     {
         Ok(validator) => validator,
-        Err(error) => return vec![schema_error_diagnostic(&format!("Invalid schema: {error}"))],
+        Err(error) => {
+            return vec![schema_error_diagnostic(
+                &translator.format("json.error.invalid_schema", &[("error", &error)]),
+                translator,
+            )]
+        }
     };
     let mut instance = document.clone();
     if let Value::Object(properties) = &mut instance {
@@ -250,11 +290,13 @@ fn schema_completions(
     text: &str,
     position: Position,
     cache_dir: &Path,
+    translator: &Translator,
 ) -> Vec<CompletionItem> {
     let Ok(document) = crate::config::parse_jsonc(text) else {
         return Vec::new();
     };
-    let Ok(Some((schema, base_uri, retriever))) = schema_for_document(path, &document, cache_dir)
+    let Ok(Some((schema, base_uri, retriever))) =
+        schema_for_document(path, &document, cache_dir, translator)
     else {
         return Vec::new();
     };
@@ -291,7 +333,9 @@ fn schema_completions(
                         value.to_string()
                     },
                     kind: Some(CompletionItemKind::VALUE),
-                    detail: Some(format!("Allowed value for {key}")),
+                    detail: Some(
+                        translator.format("json.completion.allowed_value", &[("key", &key)]),
+                    ),
                     insert_text: Some(insertion),
                     ..CompletionItem::default()
                 }
@@ -527,14 +571,20 @@ fn make_diagnostic(range: Range, message: String) -> Diagnostic {
     }
 }
 
-fn schema_error_diagnostic(message: &str) -> Diagnostic {
+fn schema_error_diagnostic(message: &str, translator: &Translator) -> Diagnostic {
     make_diagnostic(
         Range::new(Position::new(0, 0), Position::new(0, 1)),
-        format!("JSON Schema: {message}"),
+        translator.format("json.schema_diagnostic", &[("message", &message)]),
     )
 }
 
-fn parse_error_diagnostic(text: &str, message: &str, line: usize, column: usize) -> Diagnostic {
+fn parse_error_diagnostic(
+    text: &str,
+    message: &str,
+    line: usize,
+    column: usize,
+    translator: &Translator,
+) -> Diagnostic {
     let line = line.saturating_sub(1);
     let line_text = text.lines().nth(line).unwrap_or_default();
     let column = line_text
@@ -547,7 +597,7 @@ fn parse_error_diagnostic(text: &str, message: &str, line: usize, column: usize)
             Position::new(line as u32, column),
             Position::new(line as u32, column.saturating_add(1)),
         ),
-        format!("Invalid JSON: {message}"),
+        translator.format("json.error.invalid_document", &[("error", &message)]),
     )
 }
 
@@ -575,6 +625,10 @@ fn locate_instance_path(text: &str, pointer: &str) -> (usize, usize) {
 mod tests {
     use super::*;
 
+    fn translator() -> Translator {
+        Translator::english()
+    }
+
     #[test]
     fn local_schema_reports_property_and_type_errors() {
         let dir = crate::test_support::TempDir::new();
@@ -587,7 +641,12 @@ mod tests {
         let document_path = dir.path().join("settings.json");
         let uri = schema_path.file_name().unwrap().to_string_lossy();
         let text = format!(r#"{{"$schema":"{uri}","name":4}}"#);
-        let diagnostics = validate_document(&document_path, &text, &dir.path().join("cache"));
+        let diagnostics = validate_document(
+            &document_path,
+            &text,
+            &dir.path().join("cache"),
+            &translator(),
+        );
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("string"));
     }
@@ -604,7 +663,8 @@ mod tests {
         assert!(validate_document(
             &dir.path().join("settings.json"),
             text,
-            &dir.path().join("cache")
+            &dir.path().join("cache"),
+            &translator(),
         )
         .is_empty());
     }
@@ -616,6 +676,7 @@ mod tests {
             &dir.path().join("settings.json"),
             "{\n  \"name\": }",
             &dir.path().join("cache"),
+            &translator(),
         );
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, Some(DiagnosticSeverity::ERROR));
@@ -625,7 +686,7 @@ mod tests {
     #[test]
     fn cached_https_schema_is_available_without_network() {
         let dir = crate::test_support::TempDir::new();
-        let retriever = CachedRetriever::new(dir.path().join("cache")).unwrap();
+        let retriever = CachedRetriever::new(dir.path().join("cache"), translator()).unwrap();
         fs::create_dir_all(&retriever.cache_dir).unwrap();
         let uri = "https://schemas.example/config.json";
         fs::write(retriever.cache_path(uri), r#"{"type":"object"}"#).unwrap();
@@ -649,6 +710,7 @@ mod tests {
             text,
             Position::new(0, 0),
             &dir.path().join("cache"),
+            &translator(),
         );
         assert_eq!(completions.len(), 1);
         assert_eq!(completions[0].label, "two");
@@ -666,8 +728,13 @@ mod tests {
         let text = r#"{"$schema":"schema.json","title":"🙂","mode":"s"}"#;
         let byte_position = text.find("s\"}").unwrap();
         let position = Position::new(0, text[..byte_position].encode_utf16().count() as u32);
-        let completions =
-            schema_completions(&document_path, text, position, &dir.path().join("cache"));
+        let completions = schema_completions(
+            &document_path,
+            text,
+            position,
+            &dir.path().join("cache"),
+            &translator(),
+        );
         assert_eq!(
             completions
                 .iter()
@@ -688,8 +755,13 @@ mod tests {
         let document_path = dir.path().join("settings.json");
         let text = r#"{"$schema":"schema.json","enabled":true}"#;
         let position = Position::new(0, text.find("true").unwrap() as u32);
-        let completions =
-            schema_completions(&document_path, text, position, &dir.path().join("cache"));
+        let completions = schema_completions(
+            &document_path,
+            text,
+            position,
+            &dir.path().join("cache"),
+            &translator(),
+        );
         assert_eq!(
             completions
                 .iter()
@@ -717,6 +789,7 @@ mod tests {
             r#"{"$schema":"schema.json"}"#,
             Position::new(0, 0),
             &dir.path().join("cache"),
+            &translator(),
         );
         assert_eq!(completions.len(), 1);
         assert_eq!(completions[0].label, "fromRef");
@@ -730,6 +803,7 @@ mod tests {
             &dir.path().join("settings.json"),
             r#"{"$schema":"schema.json"}"#,
             &dir.path().join("cache"),
+            &translator(),
         );
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("Invalid schema JSON"));

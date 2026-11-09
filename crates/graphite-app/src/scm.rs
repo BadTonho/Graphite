@@ -2,6 +2,7 @@
 //! a worker thread so a large repository cannot stall the window event loop.
 
 use gix::{bstr::ByteSlice, status::Item as StatusItem};
+use graphite_i18n::Translator;
 use similar::TextDiff;
 use std::{
     collections::BTreeMap,
@@ -187,46 +188,47 @@ fn diff_line_changes(base: &str, changed: &str) -> Vec<(usize, LineChange)> {
     result.into_iter().collect()
 }
 
-pub(crate) fn checkout_branch(root: &Path, branch: &str) -> Result<(), String> {
+pub(crate) fn checkout_branch(
+    root: &Path,
+    branch: &str,
+    translator: &Translator,
+) -> Result<(), String> {
     let snapshot = snapshot_inner(root)?;
     if !snapshot.files.is_empty() {
-        return Err(
-            "Checkout refused because the worktree or index has changes; stage or save them first"
-                .into(),
-        );
+        return Err(translator.text("scm.error.checkout_dirty").into());
     }
     if !snapshot
         .branches
         .iter()
         .any(|candidate| candidate == branch)
     {
-        return Err(format!("Unknown local branch: {branch}"));
+        return Err(translator.format("scm.error.unknown_branch", &[("branch", &branch)]));
     }
     let output = std::process::Command::new("git")
         .current_dir(root)
         .args(["switch", "--", branch])
         .output()
-        .map_err(|error| format!("Cannot start Git checkout: {error}"))?;
+        .map_err(|error| translator.format("scm.error.checkout_start", &[("error", &error)]))?;
     if output.status.success() {
         Ok(())
     } else {
         let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         Err(if message.is_empty() {
-            format!("Git checkout failed with {}", output.status)
+            translator.format("scm.error.checkout_failed", &[("status", &output.status)])
         } else {
             message
         })
     }
 }
 
-pub(crate) fn stage_file(root: &Path, path: &Path) -> Result<(), String> {
+pub(crate) fn stage_file(root: &Path, path: &Path, translator: &Translator) -> Result<(), String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
     let absolute = repo
         .workdir()
-        .ok_or("Bare repositories cannot stage worktree files")?
+        .ok_or_else(|| translator.text("scm.error.bare_stage").to_owned())?
         .join(&relative);
     let mut index = open_or_default_index(&repo)?;
     // Re-staging a resolved conflict removes all non-zero index stages.
@@ -250,9 +252,13 @@ pub(crate) fn stage_file(root: &Path, path: &Path) -> Result<(), String> {
         .map_err(display_error)
 }
 
-pub(crate) fn unstage_file(root: &Path, path: &Path) -> Result<(), String> {
+pub(crate) fn unstage_file(
+    root: &Path,
+    path: &Path,
+    translator: &Translator,
+) -> Result<(), String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
     let mut index = open_or_default_index(&repo)?;
@@ -284,9 +290,13 @@ pub(crate) fn unstage_file(root: &Path, path: &Path) -> Result<(), String> {
         .map_err(display_error)
 }
 
-pub(crate) fn commit(root: &Path, message: &str) -> Result<String, String> {
+pub(crate) fn commit(
+    root: &Path,
+    message: &str,
+    translator: &Translator,
+) -> Result<String, String> {
     if message.trim().is_empty() {
-        return Err("Commit message cannot be empty".into());
+        return Err(translator.text("scm.error.empty_commit").into());
     }
     let repo = gix::discover(root).map_err(display_error)?;
     let index = open_or_default_index(&repo)?;
@@ -295,7 +305,7 @@ pub(crate) fn commit(root: &Path, message: &str) -> Result<String, String> {
         .iter()
         .any(|entry| entry.stage() != gix::index::entry::Stage::Unconflicted)
     {
-        return Err("Resolve all merge conflicts before committing".into());
+        return Err(translator.text("scm.error.unresolved_conflicts").into());
     }
     let mut editor = repo
         .edit_tree(gix::hash::ObjectId::empty_tree(repo.object_hash()))
@@ -304,7 +314,7 @@ pub(crate) fn commit(root: &Path, message: &str) -> Result<String, String> {
         let path = entry
             .path(&index)
             .to_str()
-            .map_err(|_| "Git paths must be valid UTF-8 to commit from this UI")?;
+            .map_err(|_| translator.text("scm.error.non_utf8_paths"))?;
         let kind = match entry.mode.bits() {
             0o100755 => gix::object::tree::EntryKind::BlobExecutable,
             0o120000 => gix::object::tree::EntryKind::Link,
@@ -330,9 +340,13 @@ pub(crate) fn diff_text(left: &str, right: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn head_file_text(root: &Path, path: &Path) -> Result<String, String> {
+pub(crate) fn head_file_text(
+    root: &Path,
+    path: &Path,
+    translator: &Translator,
+) -> Result<String, String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
     let index = repo
@@ -342,35 +356,56 @@ pub(crate) fn head_file_text(root: &Path, path: &Path) -> Result<String, String>
         .entries()
         .iter()
         .find(|entry| entry.path(&index) == relative_bstr)
-        .ok_or("File is not present in HEAD")?;
+        .ok_or_else(|| translator.text("scm.error.file_not_in_head"))?;
     let blob = repo.find_blob(entry.id).map_err(display_error)?;
-    String::from_utf8(blob.data.to_vec()).map_err(|_| "HEAD file is not UTF-8".into())
+    String::from_utf8(blob.data.to_vec())
+        .map_err(|_| translator.text("scm.error.head_not_utf8").into())
 }
 
-pub(crate) fn stage_hunk(root: &Path, path: &Path, hunk: usize) -> Result<(), String> {
-    update_selected_hunk(root, path, hunk, true)
+pub(crate) fn stage_hunk(
+    root: &Path,
+    path: &Path,
+    hunk: usize,
+    translator: &Translator,
+) -> Result<(), String> {
+    update_selected_hunk(root, path, hunk, true, translator)
 }
 
-pub(crate) fn stage_line(root: &Path, path: &Path, line: usize) -> Result<(), String> {
-    let (base, work) = index_and_worktree(root, path)?;
-    let staged =
-        apply_line_selection(&base, &work, line, true).ok_or("No unstaged change on that line")?;
-    write_index_blob(root, path, staged.as_bytes())
+pub(crate) fn stage_line(
+    root: &Path,
+    path: &Path,
+    line: usize,
+    translator: &Translator,
+) -> Result<(), String> {
+    let (base, work) = index_and_worktree(root, path, translator)?;
+    let staged = apply_line_selection(&base, &work, line, true)
+        .ok_or_else(|| translator.text("scm.error.no_unstaged_line"))?;
+    write_index_blob(root, path, staged.as_bytes(), translator)
 }
 
-pub(crate) fn revert_hunk(root: &Path, path: &Path, hunk: usize) -> Result<(), String> {
-    update_selected_hunk(root, path, hunk, false)
+pub(crate) fn revert_hunk(
+    root: &Path,
+    path: &Path,
+    hunk: usize,
+    translator: &Translator,
+) -> Result<(), String> {
+    update_selected_hunk(root, path, hunk, false, translator)
 }
 
-pub(crate) fn revert_line(root: &Path, path: &Path, line: usize) -> Result<(), String> {
-    let (index, work) = index_and_worktree(root, path)?;
+pub(crate) fn revert_line(
+    root: &Path,
+    path: &Path,
+    line: usize,
+    translator: &Translator,
+) -> Result<(), String> {
+    let (index, work) = index_and_worktree(root, path, translator)?;
     let reverted = apply_line_selection(&work, &index, line, false)
-        .ok_or("No unstaged change on that line")?;
+        .ok_or_else(|| translator.text("scm.error.no_unstaged_line"))?;
     let repo = gix::discover(root).map_err(display_error)?;
     let absolute = repo
         .workdir()
-        .ok_or("Bare repositories cannot revert worktree files")?
-        .join(relative_path(&repo, path)?);
+        .ok_or_else(|| translator.text("scm.error.bare_revert").to_owned())?
+        .join(relative_path(&repo, path, translator)?);
     fs::write(absolute, reverted).map_err(display_error)
 }
 
@@ -474,30 +509,40 @@ fn apply_line_selection(
     found.then_some(output)
 }
 
-fn update_selected_hunk(root: &Path, path: &Path, hunk: usize, stage: bool) -> Result<(), String> {
-    let (index_text, work_text) = index_and_worktree(root, path)?;
+fn update_selected_hunk(
+    root: &Path,
+    path: &Path,
+    hunk: usize,
+    stage: bool,
+    translator: &Translator,
+) -> Result<(), String> {
+    let (index_text, work_text) = index_and_worktree(root, path, translator)?;
     let (base, changed) = if stage {
         (&index_text, &work_text)
     } else {
         (&work_text, &index_text)
     };
     let merged = apply_hunk_selection(base, changed, hunk)
-        .ok_or("Hunk does not exist or file is not valid UTF-8")?;
+        .ok_or_else(|| translator.text("scm.error.no_hunk"))?;
     if stage {
-        write_index_blob(root, path, merged.as_bytes())
+        write_index_blob(root, path, merged.as_bytes(), translator)
     } else {
         let repo = gix::discover(root).map_err(display_error)?;
         let absolute = repo
             .workdir()
-            .ok_or("Bare repositories cannot revert worktree files")?
-            .join(relative_path(&repo, path)?);
+            .ok_or_else(|| translator.text("scm.error.bare_revert").to_owned())?
+            .join(relative_path(&repo, path, translator)?);
         fs::write(absolute, merged).map_err(display_error)
     }
 }
 
-pub(crate) fn merge_conflict(root: &Path, path: &Path) -> Result<[Option<String>; 3], String> {
+pub(crate) fn merge_conflict(
+    root: &Path,
+    path: &Path,
+    translator: &Translator,
+) -> Result<[Option<String>; 3], String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
     let index = repo.open_index().map_err(display_error)?;
@@ -511,30 +556,41 @@ pub(crate) fn merge_conflict(root: &Path, path: &Path) -> Result<[Option<String>
         if (1..=3).contains(&stage) {
             let blob = repo.find_blob(entry.id).map_err(display_error)?;
             sides[stage - 1] = Some(
-                String::from_utf8(blob.data.to_vec()).map_err(|_| "Conflict side is not UTF-8")?,
+                String::from_utf8(blob.data.to_vec())
+                    .map_err(|_| translator.text("scm.error.conflict_not_utf8"))?,
             );
         }
     }
     if sides.iter().all(Option::is_none) {
-        return Err("No merge conflict for this file".into());
+        return Err(translator.text("scm.error.no_conflict").into());
     }
     Ok(sides)
 }
 
-pub(crate) fn resolve_conflict(root: &Path, path: &Path, contents: &str) -> Result<(), String> {
+pub(crate) fn resolve_conflict(
+    root: &Path,
+    path: &Path,
+    contents: &str,
+    translator: &Translator,
+) -> Result<(), String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let absolute = repo
         .workdir()
-        .ok_or("Bare repositories cannot resolve conflicts")?
+        .ok_or_else(|| translator.text("scm.error.bare_conflict").to_owned())?
         .join(&relative);
     fs::write(&absolute, contents).map_err(display_error)?;
-    stage_file(root, path)
+    stage_file(root, path, translator)
 }
 
-fn write_index_blob(root: &Path, path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_index_blob(
+    root: &Path,
+    path: &Path,
+    bytes: &[u8],
+    translator: &Translator,
+) -> Result<(), String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
     let mut index = open_or_default_index(&repo)?;
@@ -544,7 +600,7 @@ fn write_index_blob(root: &Path, path: &Path, bytes: &[u8]) -> Result<(), String
     let blob = repo.write_blob(bytes).map_err(display_error)?.detach();
     let absolute = repo
         .workdir()
-        .ok_or("Bare repositories cannot stage worktree files")?
+        .ok_or_else(|| translator.text("scm.error.bare_stage").to_owned())?
         .join(&relative);
     index.dangerously_push_entry(
         Default::default(),
@@ -560,12 +616,19 @@ fn write_index_blob(root: &Path, path: &Path, bytes: &[u8]) -> Result<(), String
         .map_err(display_error)
 }
 
-fn index_and_worktree(root: &Path, path: &Path) -> Result<(String, String), String> {
+fn index_and_worktree(
+    root: &Path,
+    path: &Path,
+    translator: &Translator,
+) -> Result<(String, String), String> {
     let repo = gix::discover(root).map_err(display_error)?;
-    let relative = relative_path(&repo, path)?;
+    let relative = relative_path(&repo, path, translator)?;
     let relative_text = relative.to_string_lossy().replace('\\', "/");
     let relative_bstr = relative_text.as_bytes().as_bstr();
-    let absolute = repo.workdir().ok_or("Bare repository")?.join(&relative);
+    let absolute = repo
+        .workdir()
+        .ok_or_else(|| translator.text("scm.error.bare_repository").to_owned())?
+        .join(&relative);
     let work = fs::read_to_string(&absolute).map_err(display_error)?;
     let index = open_or_default_index(&repo)?;
     let entry = index.entries().iter().find(|entry| {
@@ -574,15 +637,22 @@ fn index_and_worktree(root: &Path, path: &Path) -> Result<(String, String), Stri
     });
     let base = if let Some(entry) = entry {
         let blob = repo.find_blob(entry.id).map_err(display_error)?;
-        String::from_utf8(blob.data.to_vec()).map_err(|_| "Index blob is not UTF-8")?
+        String::from_utf8(blob.data.to_vec())
+            .map_err(|_| translator.text("scm.error.index_not_utf8"))?
     } else {
         String::new()
     };
     Ok((base, work))
 }
 
-fn relative_path(repo: &gix::Repository, path: &Path) -> Result<PathBuf, String> {
-    let workdir = repo.workdir().ok_or("Bare repository")?;
+fn relative_path(
+    repo: &gix::Repository,
+    path: &Path,
+    translator: &Translator,
+) -> Result<PathBuf, String> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| translator.text("scm.error.bare_repository"))?;
     let path = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -590,12 +660,12 @@ fn relative_path(repo: &gix::Repository, path: &Path) -> Result<PathBuf, String>
     };
     let relative = path
         .strip_prefix(workdir)
-        .map_err(|_| "Path is outside the Git worktree")?;
+        .map_err(|_| translator.text("scm.error.path_outside"))?;
     if relative
         .components()
         .any(|component| component == std::path::Component::ParentDir)
     {
-        return Err("Path escapes Git worktree".into());
+        return Err(translator.text("scm.error.path_escapes").into());
     }
     Ok(PathBuf::from(relative.to_string_lossy().replace('\\', "/")))
 }
@@ -720,6 +790,10 @@ mod tests {
     use super::*;
     use crate::test_support::TempDir;
 
+    fn translator() -> Translator {
+        Translator::english()
+    }
+
     fn repo() -> (TempDir, PathBuf) {
         let dir = TempDir::new();
         gix::init(dir.path()).unwrap();
@@ -740,7 +814,7 @@ mod tests {
             initial.line_changes.get(Path::new("note.txt")),
             Some(&vec![(0, LineChange::Added)])
         );
-        stage_file(dir.path(), &file).unwrap();
+        stage_file(dir.path(), &file, &translator()).unwrap();
         let status = snapshot(dir.path());
         assert!(status
             .files
@@ -752,13 +826,13 @@ mod tests {
     fn partial_stage_and_revert_keep_unselected_changes_and_unstage_restores_new_file() {
         let (dir, file) = repo();
         fs::write(&file, "first\nstable\nlast\n").unwrap();
-        stage_file(dir.path(), &file).unwrap();
+        stage_file(dir.path(), &file, &translator()).unwrap();
         fs::write(&file, "first changed 🌎\nstable\nlast changed\n").unwrap();
-        stage_hunk(dir.path(), &file, 0).unwrap();
-        let (staged, worktree) = index_and_worktree(dir.path(), &file).unwrap();
+        stage_hunk(dir.path(), &file, 0, &translator()).unwrap();
+        let (staged, worktree) = index_and_worktree(dir.path(), &file, &translator()).unwrap();
         assert_eq!(staged, "first changed 🌎\nstable\nlast\n");
         assert_eq!(worktree, "first changed 🌎\nstable\nlast changed\n");
-        revert_hunk(dir.path(), &file, 0).unwrap();
+        revert_hunk(dir.path(), &file, 0, &translator()).unwrap();
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
             "first changed 🌎\nstable\nlast\n"
@@ -767,7 +841,7 @@ mod tests {
             .files
             .iter()
             .any(|item| item.staged && !item.unstaged));
-        unstage_file(dir.path(), &file).unwrap();
+        unstage_file(dir.path(), &file, &translator()).unwrap();
         assert!(snapshot(dir.path()).files.iter().any(|item| item.untracked));
     }
 
@@ -787,8 +861,8 @@ mod tests {
             .unwrap();
         config.commit().unwrap();
         drop(repository);
-        stage_file(dir.path(), &file).unwrap();
-        let id = commit(dir.path(), "initial content").unwrap();
+        stage_file(dir.path(), &file, &translator()).unwrap();
+        let id = commit(dir.path(), "initial content", &translator()).unwrap();
         assert_eq!(id.len(), 40);
         let repository = gix::discover(dir.path()).unwrap();
         assert_eq!(
@@ -801,7 +875,9 @@ mod tests {
                 .to_string(),
             "initial content"
         );
-        assert!(head_file_text(dir.path(), &file).unwrap().contains("one"));
+        assert!(head_file_text(dir.path(), &file, &translator())
+            .unwrap()
+            .contains("one"));
         assert!(snapshot(dir.path()).files.is_empty());
     }
 
@@ -830,7 +906,7 @@ mod tests {
         drop(index);
         drop(repository);
         assert_eq!(
-            merge_conflict(dir.path(), &file).unwrap(),
+            merge_conflict(dir.path(), &file, &translator()).unwrap(),
             [
                 Some("base\n".into()),
                 Some("ours\n".into()),
@@ -841,10 +917,10 @@ mod tests {
             .files
             .iter()
             .any(|item| item.conflicted));
-        resolve_conflict(dir.path(), &file, "resolved 🌎\n").unwrap();
-        assert!(merge_conflict(dir.path(), &file).is_err());
+        resolve_conflict(dir.path(), &file, "resolved 🌎\n", &translator()).unwrap();
+        assert!(merge_conflict(dir.path(), &file, &translator()).is_err());
         assert_eq!(
-            index_and_worktree(dir.path(), &file).unwrap(),
+            index_and_worktree(dir.path(), &file, &translator()).unwrap(),
             ("resolved 🌎\n".into(), "resolved 🌎\n".into())
         );
     }
@@ -863,17 +939,17 @@ mod tests {
     fn stage_and_revert_select_one_line_inside_a_multiline_change() {
         let (dir, file) = repo();
         fs::write(&file, "first\nsecond\nthird\n").unwrap();
-        stage_file(dir.path(), &file).unwrap();
+        stage_file(dir.path(), &file, &translator()).unwrap();
         fs::write(&file, "first 🌎\nsecond 🌎\nthird\n").unwrap();
-        stage_line(dir.path(), &file, 0).unwrap();
+        stage_line(dir.path(), &file, 0, &translator()).unwrap();
         assert_eq!(
-            index_and_worktree(dir.path(), &file).unwrap(),
+            index_and_worktree(dir.path(), &file, &translator()).unwrap(),
             (
                 "first 🌎\nsecond\nthird\n".into(),
                 "first 🌎\nsecond 🌎\nthird\n".into(),
             )
         );
-        revert_line(dir.path(), &file, 1).unwrap();
+        revert_line(dir.path(), &file, 1, &translator()).unwrap();
         assert_eq!(
             fs::read_to_string(file).unwrap(),
             "first 🌎\nsecond\nthird\n"
@@ -897,7 +973,7 @@ mod tests {
             .files
             .iter()
             .any(|item| item.path == PathBuf::from("ignored.txt")));
-        let error = checkout_branch(dir.path(), "main").unwrap_err();
+        let error = checkout_branch(dir.path(), "main", &translator()).unwrap_err();
         assert!(error.contains("worktree"));
         assert_eq!(fs::read_to_string(file).unwrap(), "one\n");
     }

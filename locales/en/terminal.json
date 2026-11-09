@@ -1,0 +1,20 @@
+{
+  "diagnostic.severity.error": "error",
+  "diagnostic.severity.hint": "hint",
+  "diagnostic.severity.info": "info",
+  "diagnostic.severity.warning": "warning",
+  "terminal.no_diagnostics": "No diagnostics",
+  "terminal.no_profile": "No profile",
+  "terminal.no_profiles": "No terminal profiles are configured",
+  "terminal.profile.command_prompt": "Command Prompt",
+  "terminal.profile.default": "Default",
+  "terminal.profile.default_shell": "Default Shell",
+  "terminal.profile.environment": "Environment Shell",
+  "terminal.problems": "PROBLEMS",
+  "terminal.shell": "Shell: {name}",
+  "terminal.shell_exited": "Shell exited ({code})",
+  "terminal.start_failed": "Could not start shell '{name}' ({path}): {error}",
+  "terminal.split": "Split",
+  "terminal.title": "TERMINAL",
+  "terminal.unavailable": "Terminal unavailable in this app context"
+}

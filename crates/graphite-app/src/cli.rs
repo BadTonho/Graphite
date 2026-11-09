@@ -1,3 +1,4 @@
+use graphite_i18n::Translator;
 use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
@@ -22,11 +23,18 @@ pub(crate) struct CliRequest {
     pub wait: bool,
 }
 
-pub(crate) fn send_to_existing(request: &CliRequest) -> Result<bool, String> {
-    send_to_socket(&socket_name(), request)
+pub(crate) fn send_to_existing(
+    request: &CliRequest,
+    translator: &Translator,
+) -> Result<bool, String> {
+    send_to_socket(&socket_name(), request, translator)
 }
 
-fn send_to_socket(name: &str, request: &CliRequest) -> Result<bool, String> {
+fn send_to_socket(
+    name: &str,
+    request: &CliRequest,
+    translator: &Translator,
+) -> Result<bool, String> {
     let name = name
         .to_owned()
         .to_ns_name::<GenericNamespaced>()
@@ -46,7 +54,7 @@ fn send_to_socket(name: &str, request: &CliRequest) -> Result<bool, String> {
     if response.trim() == "done" {
         Ok(true)
     } else {
-        Err("The existing editor rejected the CLI request".into())
+        Err(translator.text("cli.rejected").into())
     }
 }
 
@@ -107,6 +115,7 @@ fn socket_name() -> String {
 pub(crate) fn parse_args(
     args: impl IntoIterator<Item = String>,
     cwd: PathBuf,
+    translator: &Translator,
 ) -> Result<CliRequest, String> {
     let mut args = args.into_iter().peekable();
     let mut wait = false;
@@ -118,22 +127,21 @@ pub(crate) fn parse_args(
             "--wait" | "-w" => wait = true,
             "--diff" | "-d" => diff = true,
             "--goto" | "-g" => {
-                let spec = args.next().ok_or("Expected file:line:column after -g")?;
-                goto = Some(parse_location(&spec)?);
+                let spec = args
+                    .next()
+                    .ok_or_else(|| translator.text("cli.expected_location_after_goto"))?;
+                goto = Some(parse_location(&spec, translator)?);
             }
-            "--help" | "-h" => return Err(
-                "Usage: code [path...] | code -d left right | code -g file:line:column [--wait]"
-                    .into(),
-            ),
-            value if value.starts_with('-') => return Err(format!("Unknown option: {value}")),
+            "--help" | "-h" => return Err(translator.text("cli.usage").into()),
+            value if value.starts_with('-') => {
+                return Err(translator.format("cli.unknown_option", &[("option", &value)]))
+            }
             value => paths.push(PathBuf::from(value)),
         }
     }
     let action = if diff {
         if goto.is_some() || paths.len() != 2 {
-            return Err(
-                "Diff mode requires exactly two paths and cannot be combined with -g".into(),
-            );
+            return Err(translator.text("cli.diff_arguments").into());
         }
         CliAction::Diff {
             left: absolute(&cwd, paths.remove(0)),
@@ -160,19 +168,21 @@ fn absolute(cwd: &std::path::Path, path: PathBuf) -> PathBuf {
     }
 }
 
-pub(crate) fn parse_location(spec: &str) -> Result<(PathBuf, usize, usize), String> {
-    let (file_line, column) = spec.rsplit_once(':').ok_or("Expected file:line:column")?;
-    let (file, line) = file_line
-        .rsplit_once(':')
-        .ok_or("Expected file:line:column")?;
+pub(crate) fn parse_location(
+    spec: &str,
+    translator: &Translator,
+) -> Result<(PathBuf, usize, usize), String> {
+    let expected = || translator.text("cli.expected_location");
+    let (file_line, column) = spec.rsplit_once(':').ok_or_else(expected)?;
+    let (file, line) = file_line.rsplit_once(':').ok_or_else(expected)?;
     let line = line
         .parse::<usize>()
-        .map_err(|_| "Line must be a positive integer")?;
+        .map_err(|_| translator.text("cli.line_positive"))?;
     let column = column
         .parse::<usize>()
-        .map_err(|_| "Column must be a positive integer")?;
+        .map_err(|_| translator.text("cli.column_positive"))?;
     if file.is_empty() || line == 0 || column == 0 {
-        return Err("File, line and column must be non-empty and positive".into());
+        return Err(translator.text("cli.location_positive").into());
     }
     Ok((PathBuf::from(file), line, column))
 }
@@ -183,7 +193,8 @@ mod tests {
 
     #[test]
     fn parses_windows_drive_path_by_splitting_numeric_suffixes() {
-        let (file, line, column) = parse_location(r"C:\work\main.rs:12:5").unwrap();
+        let (file, line, column) =
+            parse_location(r"C:\work\main.rs:12:5", &Translator::english()).unwrap();
         assert_eq!(file, PathBuf::from(r"C:\work\main.rs"));
         assert_eq!((line, column), (12, 5));
     }
@@ -194,6 +205,7 @@ mod tests {
         let request = parse_args(
             ["-d", "left.rs", "right.rs"].into_iter().map(String::from),
             cwd.clone(),
+            &Translator::english(),
         )
         .unwrap();
         assert_eq!(
@@ -207,15 +219,18 @@ mod tests {
 
     #[test]
     fn rejects_missing_or_invalid_arguments() {
-        assert!(parse_location("file.rs:0:1").is_err());
+        let translator = Translator::english();
+        assert!(parse_location("file.rs:0:1", &translator).is_err());
         assert!(parse_args(
             ["-d", "one"].into_iter().map(String::from),
-            PathBuf::from(".")
+            PathBuf::from("."),
+            &translator
         )
         .is_err());
         assert!(parse_args(
             ["--unknown"].into_iter().map(String::from),
-            PathBuf::from(".")
+            PathBuf::from("."),
+            &translator
         )
         .is_err());
     }
@@ -264,7 +279,7 @@ mod tests {
             },
             wait: true,
         };
-        assert!(send_to_socket(&name, &request).unwrap());
+        assert!(send_to_socket(&name, &request, &Translator::english()).unwrap());
         server.join().unwrap();
     }
 }

@@ -66,7 +66,8 @@ impl DocumentService for App {
             return Err(ServiceError::NotFound);
         }
         let bytes = LocalFileSystem.read(uri)?;
-        let decoded = crate::file_format::decode(&bytes).map_err(ServiceError::Failed)?;
+        let decoded =
+            crate::file_format::decode(&bytes, &self.translator).map_err(ServiceError::Failed)?;
         let path = uri.to_path()?;
         let relative = path.strip_prefix(self.tree.root()).unwrap_or(&path);
         let configured = self

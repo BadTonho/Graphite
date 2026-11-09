@@ -1,20 +1,26 @@
 use super::*;
 
-pub fn import_vscode() -> ImportReport {
+pub fn import_vscode(translator: &Translator) -> ImportReport {
     let Some(user_dir) = vscode_user_dir() else {
         return ImportReport {
             imported: 0,
-            warnings: vec!["VS Code user directory was not found".into()],
+            warnings: vec![translator.text("config.import.user_dir_missing").into()],
         };
     };
-    import_from(&user_dir, &app_config_dir().join("imported"))
+    import_from(&user_dir, &app_config_dir().join("imported"), translator)
 }
 
-pub fn import_from(user_dir: &Path, target: &Path) -> ImportReport {
+pub fn import_from(user_dir: &Path, target: &Path, translator: &Translator) -> ImportReport {
     let extensions = std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(|home| PathBuf::from(home).join(".vscode/extensions"));
-    import_from_with(user_dir, target, extensions.as_deref(), save_dark_theme)
+    import_from_with(
+        user_dir,
+        target,
+        extensions.as_deref(),
+        save_dark_theme,
+        translator,
+    )
 }
 
 pub(super) fn import_from_with(
@@ -22,19 +28,20 @@ pub(super) fn import_from_with(
     target: &Path,
     extensions: Option<&Path>,
     set_theme: impl Fn(bool),
+    translator: &Translator,
 ) -> ImportReport {
     let mut report = ImportReport::default();
     if let Err(e) = fs::create_dir_all(&target) {
         report
             .warnings
-            .push(format!("Cannot create import directory: {e}"));
+            .push(translator.format("config.import.create_directory", &[("error", &e)]));
         return report;
     }
     let settings = user_dir.join("settings.json");
     match fs::read_to_string(settings) {
         Ok(text) => match parse_jsonc(&text) {
             Ok(value) => {
-                let (supported, warnings) = project_settings(&value);
+                let (supported, warnings) = project_settings(&value, translator);
                 report.warnings.extend(warnings);
                 if let Some(name) = value.get("workbench.colorTheme").and_then(Value::as_str) {
                     set_theme(!name.to_ascii_lowercase().contains("light"));
@@ -50,11 +57,11 @@ pub(super) fn import_from_with(
             }
             Err(e) => report
                 .warnings
-                .push(format!("Invalid VS Code settings.json: {e}")),
+                .push(translator.format("config.import.invalid_settings", &[("error", &e)])),
         },
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => report
             .warnings
-            .push(format!("Cannot read VS Code settings.json: {e}")),
+            .push(translator.format("config.import.cannot_read_settings", &[("error", &e)])),
         _ => {}
     }
     for folder in ["snippets", "themes"] {
@@ -64,13 +71,20 @@ pub(super) fn import_from_with(
         }
         let dest = target.join(folder);
         if let Err(e) = fs::create_dir_all(&dest) {
-            report
-                .warnings
-                .push(format!("Cannot create {folder} import folder: {e}"));
+            report.warnings.push(translator.format(
+                "config.import.create_folder",
+                &[("folder", &folder), ("error", &e)],
+            ));
             continue;
         }
         if folder == "themes" {
-            super::import_themes::import_directory(&source, &source, &dest, &mut report);
+            super::import_themes::import_directory(
+                &source,
+                &source,
+                &dest,
+                &mut report,
+                translator,
+            );
             continue;
         }
         match fs::read_dir(source) {
@@ -84,25 +98,32 @@ pub(super) fn import_from_with(
                             .map_err(|e| e.to_string())
                             .and_then(|raw| parse_jsonc(&raw).map_err(|e| e.to_string()))
                         {
-                            report.warnings.push(format!(
-                                "Invalid {} file {}: {e}",
-                                folder,
-                                path.display()
+                            report.warnings.push(translator.format(
+                                "config.import.invalid_file",
+                                &[
+                                    ("folder", &folder),
+                                    ("path", &path.display()),
+                                    ("error", &e),
+                                ],
                             ));
                             continue;
                         }
                         if let Some(name) = path.file_name() {
                             match fs::copy(&path, dest.join(name)) {
                                 Ok(_) => report.imported += 1,
-                                Err(e) => report
-                                    .warnings
-                                    .push(format!("Cannot import {}: {e}", path.display())),
+                                Err(e) => report.warnings.push(translator.format(
+                                    "config.import.cannot_copy",
+                                    &[("path", &path.display()), ("error", &e)],
+                                )),
                             }
                         }
                     }
                 }
             }
-            Err(e) => report.warnings.push(format!("Cannot read {folder}: {e}")),
+            Err(e) => report.warnings.push(translator.format(
+                "config.import.cannot_read_folder",
+                &[("folder", &folder), ("error", &e)],
+            )),
         }
     }
     if let Some(extensions) = extensions {
@@ -112,7 +133,12 @@ pub(super) fn import_from_with(
                 let themes = package.join("themes");
                 let destination = target.join("themes").join(ext.file_name());
                 if themes.is_dir() {
-                    super::import_themes::import_extension(&package, &destination, &mut report);
+                    super::import_themes::import_extension(
+                        &package,
+                        &destination,
+                        &mut report,
+                        translator,
+                    );
                 }
             }
         }

@@ -32,7 +32,7 @@ impl Server {
         let (sender, events) = mpsc::channel();
         let root = dir.path().to_owned();
         let worker = Some(thread::spawn(move || {
-            run_server(config, root, receiver, sender)
+            run_server(config, root, receiver, sender, Translator::english())
         }));
         let server = Self {
             commands,

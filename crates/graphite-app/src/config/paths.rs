@@ -36,23 +36,29 @@ enum TerminalProfileConfig {
 }
 
 impl TerminalProfileConfig {
-    fn into_profile(self, name: String) -> Result<TerminalProfile, String> {
+    fn into_profile(
+        self,
+        name: String,
+        translator: &Translator,
+    ) -> Result<TerminalProfile, String> {
         let (path, args) = match self {
             Self::Path(path) => (path, Vec::new()),
             Self::Detailed { path, args } => (path, args),
         };
         if path.trim().is_empty() {
-            return Err(format!("Terminal profile '{name}' needs a non-empty path"));
+            return Err(
+                translator.format("config.terminal.profile_path_required", &[("name", &name)])
+            );
         }
         Ok(TerminalProfile { name, path, args })
     }
 }
 
-pub fn terminal_settings() -> Result<TerminalSettings, String> {
+pub fn terminal_settings(translator: &Translator) -> Result<TerminalSettings, String> {
     if let Some(shell) = shell_override(std::env::var("GRAPHITE_SHELL").ok()) {
         return Ok(TerminalSettings {
             profiles: vec![TerminalProfile {
-                name: "Environment Shell".into(),
+                name: translator.text("terminal.profile.environment").into(),
                 path: shell,
                 args: Vec::new(),
             }],
@@ -63,33 +69,39 @@ pub fn terminal_settings() -> Result<TerminalSettings, String> {
     let raw = match fs::read_to_string(&config_path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(default_terminal_settings())
+            return Ok(default_terminal_settings(translator))
         }
         Err(error) => {
-            return Err(format!(
-                "Cannot read terminal config {}: {error}",
-                config_path.display()
+            return Err(translator.format(
+                "config.terminal.cannot_read",
+                &[("path", &config_path.display()), ("error", &error)],
             ))
         }
     };
-    parse_terminal_settings(&raw)
-        .map_err(|error| format!("Invalid terminal config {}: {error}", config_path.display()))
+    parse_terminal_settings(&raw, translator).map_err(|error| {
+        translator.format(
+            "config.terminal.invalid_file",
+            &[("path", &config_path.display()), ("error", &error)],
+        )
+    })
 }
 
-fn parse_terminal_settings(raw: &str) -> Result<TerminalSettings, String> {
+fn parse_terminal_settings(raw: &str, translator: &Translator) -> Result<TerminalSettings, String> {
     let config = serde_json::from_str::<TerminalConfigFile>(raw)
-        .map_err(|error| format!("Invalid terminal JSON: {error}"))?;
+        .map_err(|error| translator.format("config.terminal.invalid_json", &[("error", &error)]))?;
     if !config.profiles.is_empty() {
         let profiles = config
             .profiles
             .into_iter()
-            .map(|(name, profile)| profile.into_profile(name))
+            .map(|(name, profile)| profile.into_profile(name, translator))
             .collect::<Result<Vec<_>, _>>()?;
         let default_profile = if let Some(name) = config.default_profile {
             profiles
                 .iter()
                 .position(|profile| profile.name == name)
-                .ok_or_else(|| format!("Unknown default terminal profile '{name}'"))?
+                .ok_or_else(|| {
+                    translator.format("config.terminal.unknown_default", &[("name", &name)])
+                })?
         } else {
             0
         };
@@ -99,22 +111,24 @@ fn parse_terminal_settings(raw: &str) -> Result<TerminalSettings, String> {
         });
     }
     if config.default_profile.is_some() {
-        return Err("defaultProfile must name an entry in profiles".into());
+        return Err(translator
+            .text("config.terminal.default_without_profiles")
+            .into());
     }
     if let Some(shell) = config.shell.filter(|shell| !shell.trim().is_empty()) {
         return Ok(TerminalSettings {
             profiles: vec![TerminalProfile {
-                name: "Default".into(),
+                name: translator.text("terminal.profile.default").into(),
                 path: shell,
                 args: Vec::new(),
             }],
             default_profile: 0,
         });
     }
-    Ok(default_terminal_settings())
+    Ok(default_terminal_settings(translator))
 }
 
-fn default_terminal_settings() -> TerminalSettings {
+fn default_terminal_settings(translator: &Translator) -> TerminalSettings {
     #[cfg(windows)]
     let profiles = vec![
         TerminalProfile {
@@ -123,7 +137,7 @@ fn default_terminal_settings() -> TerminalSettings {
             args: vec!["-NoLogo".into()],
         },
         TerminalProfile {
-            name: "Command Prompt".into(),
+            name: translator.text("terminal.profile.command_prompt").into(),
             path: "cmd.exe".into(),
             args: Vec::new(),
         },
@@ -138,7 +152,7 @@ fn default_terminal_settings() -> TerminalSettings {
         let default = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
         vec![
             TerminalProfile {
-                name: "Default Shell".into(),
+                name: translator.text("terminal.profile.default_shell").into(),
                 path: default,
                 args: Vec::new(),
             },
@@ -233,11 +247,13 @@ mod tests {
 
     #[test]
     fn terminal_profiles_accept_legacy_shell_and_named_arguments() {
-        let legacy = parse_terminal_settings(r#"{"shell":"custom-shell"}"#).unwrap();
+        let legacy =
+            parse_terminal_settings(r#"{"shell":"custom-shell"}"#, &Translator::english()).unwrap();
         assert_eq!(legacy.profiles[0].path, "custom-shell");
 
         let configured = parse_terminal_settings(
             r#"{"defaultProfile":"PowerShell","profiles":{"PowerShell":{"path":"pwsh","args":["-NoLogo"]},"cmd":"cmd.exe"}}"#,
+            &Translator::english(),
         )
         .unwrap();
         let selected = &configured.profiles[configured.default_profile];
@@ -247,13 +263,15 @@ mod tests {
 
     #[test]
     fn invalid_terminal_settings_report_config_errors() {
-        assert!(parse_terminal_settings("{").is_err());
-        assert!(
-            parse_terminal_settings(r#"{"defaultProfile":"missing","profiles":{"sh":"sh"}}"#)
-                .unwrap_err()
-                .contains("Unknown default")
-        );
-        assert!(parse_terminal_settings(r#"{"defaultProfile":"missing"}"#).is_err());
-        assert!(parse_terminal_settings(r#"{"profiles":{"empty":" "}}"#).is_err());
+        let translator = Translator::english();
+        assert!(parse_terminal_settings("{", &translator).is_err());
+        assert!(parse_terminal_settings(
+            r#"{"defaultProfile":"missing","profiles":{"sh":"sh"}}"#,
+            &translator
+        )
+        .unwrap_err()
+        .contains("Unknown default"));
+        assert!(parse_terminal_settings(r#"{"defaultProfile":"missing"}"#, &translator).is_err());
+        assert!(parse_terminal_settings(r#"{"profiles":{"empty":" "}}"#, &translator).is_err());
     }
 }

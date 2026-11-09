@@ -14,6 +14,8 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [v0.1 — Editor base](features/v0.1-editor.md)
   - [v0.2 — Edição e personalização](features/v0.2-editor.md)
   - [v0.3 — Servidores de linguagem e terminal integrado](features/v0.3-lsp-terminal.md)
+  - [v0.4 — Git, layout avançado e ferramentas](features/v0.4-git-layout.md)
+  - [Localização](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
 - **Contribuição**

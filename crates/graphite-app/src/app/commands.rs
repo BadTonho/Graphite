@@ -60,7 +60,7 @@ impl App {
         match self.keymap.resolve(stroke, &context) {
             Resolution::Unmatched => false,
             Resolution::Pending => {
-                self.status = "Waiting for next key in chord".into();
+                self.status = self.t("status.waiting_chord").into();
                 true
             }
             Resolution::Unbound => true,
@@ -72,7 +72,7 @@ impl App {
                     target,
                 });
                 if let Some(Err(error)) = ticket.try_result() {
-                    self.status = error.to_string();
+                    self.status = self.command_error_text(&error);
                 }
                 true
             }
@@ -155,6 +155,7 @@ mod tests {
             {"key":"ctrl+a", "command":"-editor.action.selectAll"},
             {"key":"ctrl+q", "command":"editor.action.selectAll", "when":"editorTextFocus"}
         ]"#,
+                &graphite_i18n::Translator::english(),
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("ctrl+a"));
@@ -226,6 +227,7 @@ mod tests {
             {"key":"enter","command":"-snippet.accept","when":"snippetVisible"},
             {"key":"ctrl+j","command":"snippet.accept","when":"snippetVisible"}
         ]"#,
+                &graphite_i18n::Translator::english(),
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("enter"));
@@ -252,6 +254,7 @@ mod tests {
           {"key":"alt+r","command":"-find.toggleRegex","when":"findWidgetVisible"},
           {"key":"ctrl+r","command":"find.toggleRegex","when":"findWidgetVisible"}
         ]"#,
+                &graphite_i18n::Translator::english(),
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("alt+r"));
@@ -307,6 +310,7 @@ mod tests {
           {"key":"backspace", "command":"-projectSearch.deleteLeft"},
           {"key":"ctrl+j", "command":"projectSearch.deleteLeft", "when":"projectSearchVisible"}
         ]"#,
+                &graphite_i18n::Translator::english(),
             )
             .unwrap();
         assert!(app.handle_keybinding_stroke("backspace"));

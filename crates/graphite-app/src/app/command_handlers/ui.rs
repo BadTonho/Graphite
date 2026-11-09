@@ -402,7 +402,7 @@ fn select_terminal(app: &mut App, invocation: &CommandInvocation) -> Result<(), 
     let index = invocation.request.arguments["index"].as_u64().unwrap() as usize;
     if index >= app.terminals.len() {
         return Err(CommandError::InvalidArguments(
-            "Terminal index out of range".into(),
+            app.t("error.terminal_index").into(),
         ));
     }
     app.select_terminal(index);
@@ -412,7 +412,7 @@ fn resolve_conflict(app: &mut App, invocation: &CommandInvocation) -> Result<(),
     let index = invocation.request.arguments["index"].as_u64().unwrap() as usize;
     if index > 3 || app.conflict_view.is_none() {
         return Err(CommandError::InvalidArguments(
-            "Conflict choice out of range".into(),
+            app.t("error.conflict_choice").into(),
         ));
     }
     app.resolve_conflict_choice(index);

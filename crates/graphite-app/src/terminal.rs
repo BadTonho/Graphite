@@ -24,7 +24,7 @@ pub struct TerminalCell {
 pub struct TerminalSnapshot {
     pub rows: Vec<Vec<TerminalCell>>,
     pub cursor: Option<(usize, usize)>,
-    pub exited: Option<String>,
+    pub exit_code: Option<u32>,
 }
 
 enum WorkerMessage {
@@ -80,6 +80,7 @@ impl TerminalSession {
         root: &Path,
         shell_override: Option<&str>,
         wake: Arc<dyn Fn() + Send + Sync>,
+        translator: graphite_i18n::Translator,
     ) -> Result<Self, String> {
         let shell = shell_override
             .map(str::to_owned)
@@ -92,11 +93,12 @@ impl TerminalSession {
         Self::start_profile(
             root,
             &crate::config::TerminalProfile {
-                name: "Default".into(),
+                name: translator.text("terminal.profile.default").into(),
                 path: shell,
                 args: Vec::new(),
             },
             wake,
+            translator,
         )
     }
 
@@ -104,6 +106,7 @@ impl TerminalSession {
         root: &Path,
         profile: &crate::config::TerminalProfile,
         wake: Arc<dyn Fn() + Send + Sync>,
+        translator: graphite_i18n::Translator,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -130,9 +133,13 @@ impl TerminalSession {
             command.arg("-NoLogo");
         }
         let mut child = pair.slave.spawn_command(command).map_err(|e| {
-            format!(
-                "Could not start shell '{}' ({}): {e}",
-                profile.name, profile.path
+            translator.format(
+                "terminal.start_failed",
+                &[
+                    ("name", &profile.name),
+                    ("path", &profile.path),
+                    ("error", &e),
+                ],
             )
         })?;
         let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -238,7 +245,7 @@ fn run_terminal_worker(
     loop {
         if let Ok(Some(status)) = child.try_wait() {
             if let Ok(mut state) = snapshot.lock() {
-                state.exited = Some(format!("Shell exited ({})", status.exit_code()));
+                state.exit_code = Some(status.exit_code());
             }
             wake();
             break;
@@ -482,8 +489,13 @@ mod tests {
             path: "/bin/sh".into(),
             args: vec!["-c".into(), "printf GRAPHITE_PROFILE_ARGS".into()],
         };
-        let session =
-            TerminalSession::start_profile(temp.path(), &profile, Arc::new(|| {})).unwrap();
+        let session = TerminalSession::start_profile(
+            temp.path(),
+            &profile,
+            Arc::new(|| {}),
+            graphite_i18n::Translator::english(),
+        )
+        .unwrap();
         let mut output_seen = false;
         for _ in 0..100 {
             let text = session
@@ -512,7 +524,12 @@ mod tests {
             path: "graphite-no-such-shell-84729".into(),
             args: Vec::new(),
         };
-        let result = TerminalSession::start_profile(temp.path(), &profile, Arc::new(|| {}));
+        let result = TerminalSession::start_profile(
+            temp.path(),
+            &profile,
+            Arc::new(|| {}),
+            graphite_i18n::Translator::english(),
+        );
         let error = match result {
             Ok(_) => panic!("missing terminal unexpectedly started"),
             Err(error) => error,
@@ -529,7 +546,13 @@ mod tests {
         let shell = "cmd.exe";
         #[cfg(not(windows))]
         let shell = "/bin/sh";
-        let session = TerminalSession::start(&root, Some(shell), Arc::new(|| {})).unwrap();
+        let session = TerminalSession::start(
+            &root,
+            Some(shell),
+            Arc::new(|| {}),
+            graphite_i18n::Translator::english(),
+        )
+        .unwrap();
         #[cfg(windows)]
         session.input(b"echo GRAPHITE_V03_READY\r".to_vec());
         #[cfg(not(windows))]
@@ -567,7 +590,7 @@ mod tests {
         session.input(b"exit\r".to_vec());
         let mut exited = false;
         for _ in 0..100 {
-            if session.snapshot().exited.is_some() {
+            if session.snapshot().exit_code.is_some() {
                 exited = true;
                 break;
             }

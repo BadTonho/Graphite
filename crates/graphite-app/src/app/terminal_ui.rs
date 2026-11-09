@@ -24,15 +24,16 @@ impl App {
             return Err(self
                 .terminal_status
                 .clone()
-                .unwrap_or_else(|| "No terminal profiles are configured".into()));
+                .unwrap_or_else(|| self.t("terminal.no_profiles").to_owned()));
         };
         let Some(proxy) = self.event_proxy.clone() else {
-            return Err("Terminal unavailable in this app context".into());
+            return Err(self.t("terminal.unavailable").to_owned());
         };
         let wake = Arc::new(move || {
             let _ = proxy.send_event(UserEvent::TerminalWake);
         });
-        let session = TerminalSession::start_profile(self.tree.root(), &profile, wake)?;
+        let session =
+            TerminalSession::start_profile(self.tree.root(), &profile, wake, self.translator)?;
         let count = self
             .terminal_names
             .iter()

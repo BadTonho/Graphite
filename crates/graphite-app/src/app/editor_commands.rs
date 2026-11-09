@@ -17,7 +17,7 @@ impl App {
 
     pub(crate) fn navigate_history(&mut self, direction: isize) {
         let Some(mut index) = self.navigation_history_index else {
-            self.status = "No cursor navigation history".into();
+            self.status = self.t("editor.navigation.no_history").into();
             return;
         };
         loop {
@@ -29,7 +29,7 @@ impl App {
                 None
             };
             let Some(next) = candidate else {
-                self.status = "No more cursor history".into();
+                self.status = self.t("editor.navigation.no_more").into();
                 return;
             };
             index = next;
@@ -39,7 +39,7 @@ impl App {
                 self.activate_editor_document(document);
                 self.editor_mut().set_selection(position, position);
                 self.reveal_cursor = true;
-                self.status = "Cursor history".into();
+                self.status = self.t("editor.navigation.moved").into();
                 return;
             }
         }
@@ -60,7 +60,7 @@ impl App {
         .and_then(|id| self.documents.resolve(*id));
         if let Some(document) = target {
             self.activate_editor_document(document);
-            self.status = "Switched to recent tab".into();
+            self.status = self.t("editor.tabs.switched_recent").into();
         }
     }
 
@@ -95,7 +95,7 @@ impl App {
 
     pub(crate) fn reopen_closed_tab(&mut self) {
         let Some(closed) = self.closed_tabs.pop() else {
-            self.status = "No closed tab to reopen".into();
+            self.status = self.t("editor.tabs.no_closed").into();
             return;
         };
         let existing = if let Some(document) = &closed.document {
@@ -109,7 +109,7 @@ impl App {
         };
         if let Some(id) = existing {
             self.activate_editor_document(id);
-            self.status = "Reopened closed tab".into();
+            self.status = self.t("editor.tabs.reopened").into();
             return;
         }
         let replace_empty = self.documents.len() == 1
@@ -135,7 +135,7 @@ impl App {
         self.editor_groups.restore_closed_view(closed.view);
         self.register_lsp_active();
         self.push_navigation_location();
-        self.status = "Reopened closed tab".into();
+        self.status = self.t("editor.tabs.reopened").into();
     }
 
     /// Detach closed documents only after their pending operations release them.
@@ -182,7 +182,7 @@ impl App {
     pub(crate) fn request_window_close(&mut self) {
         if self.documents.iter().any(|tab| tab.is_dirty()) {
             self.close_window_confirm = true;
-            self.status = "Unsaved documents: S save all, D discard, Esc cancel".into();
+            self.status = self.t("editor.close.unsaved_prompt").into();
         } else {
             self.exit_requested = true;
         }
@@ -210,7 +210,7 @@ impl App {
         let text = item.insert_text.unwrap_or_else(|| item.label.clone());
         if self.editor().is_read_only() {
             self.completion_items.clear();
-            self.status = "Read-only document".into();
+            self.status = self.t("editor.read_only").into();
             return;
         }
         self.editor_mut().complete_word(&text);
@@ -221,7 +221,7 @@ impl App {
     pub(crate) fn navigate_diagnostic(&mut self, direction: isize) {
         let diagnostics = self.diagnostic_entries();
         if diagnostics.is_empty() {
-            self.status = "No diagnostics in open documents".into();
+            self.status = self.t("editor.diagnostics.none").into();
             return;
         }
         let previous_index =
@@ -340,14 +340,14 @@ impl App {
         if edit.is_none() && command.is_none() {
             self.quick_fix_visible = false;
             self.fail_current_command(super::command_execution::CommandError::Failed(
-                "Quick fix has no workspace edit or command".into(),
+                self.t("lsp.quick_fix.no_action").into(),
             ));
             return;
         };
         if let Some(edit) = edit {
             if let Err(error) = self.apply_workspace_edit(edit) {
                 self.quick_fix_visible = false;
-                self.status = format!("Cannot apply quick fix: {error}");
+                self.status = self.tf("lsp.quick_fix.apply_failed", &[("error", &error)]);
                 self.fail_current_command(super::command_execution::CommandError::Failed(error));
                 return;
             }
@@ -378,17 +378,17 @@ impl App {
                 }
             } else {
                 self.fail_current_command(super::command_execution::CommandError::Failed(
-                    "Server command unavailable".into(),
+                    self.t("lsp.command.unavailable").into(),
                 ));
             }
             self.status = if sent {
-                "Server command requested"
+                self.t("lsp.command.requested")
             } else {
-                "Server command unavailable"
+                self.t("lsp.command.unavailable")
             }
             .into();
         } else {
-            self.status = "Quick fix applied".into();
+            self.status = self.t("lsp.quick_fix.applied").into();
         }
     }
 
@@ -426,7 +426,7 @@ impl App {
         if last_view {
             self.remember_closed_view(view);
         }
-        self.status = "Tab closed".into();
+        self.status = self.t("editor.tabs.closed").into();
         self.check_cli_waiters();
     }
 }

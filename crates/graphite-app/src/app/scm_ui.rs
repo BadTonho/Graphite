@@ -61,14 +61,12 @@ impl App {
             .iter()
             .position(|branch| Some(branch) == self.scm_snapshot.branch.as_ref())
             .unwrap_or(0);
-        self.status = "Select a local branch; checkout requires a clean worktree".into();
+        self.status = self.t("scm.branch.select_hint").into();
     }
 
     pub(crate) fn checkout_selected_branch(&mut self) {
         if self.documents.iter().any(|tab| tab.is_dirty()) {
-            self.fail_current_command(CommandError::Failed(
-                "Checkout refused because an open document has unsaved changes".into(),
-            ));
+            self.fail_current_command(CommandError::Failed(self.t("scm.checkout.unsaved").into()));
             return;
         }
         let Some(branch) = self
@@ -87,9 +85,12 @@ impl App {
             .filter_map(|tab| tab.buffer.path().map(PathBuf::from))
             .collect::<Vec<_>>();
         let Some(proxy) = self.event_proxy.clone() else {
-            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
+            self.fail_current_command(CommandError::Failed(
+                self.t("scm.error.no_event_loop").into(),
+            ));
             return;
         };
+        let translator = self.translator;
         let job = self.command_job(false);
         let spawned = std::thread::Builder::new()
             .name("graphite-git-checkout".into())
@@ -100,7 +101,7 @@ impl App {
                 {
                     return;
                 }
-                let result = crate::scm::checkout_branch(&root, &branch);
+                let result = crate::scm::checkout_branch(&root, &branch, &translator);
                 let outcome = result
                     .as_ref()
                     .map(|_| serde_json::Value::Null)
@@ -109,7 +110,7 @@ impl App {
                     open_paths
                         .into_iter()
                         .map(|path| {
-                            let decoded = crate::file_format::read(&path);
+                            let decoded = crate::file_format::read(&path, &translator);
                             (path, decoded)
                         })
                         .collect()
@@ -117,8 +118,10 @@ impl App {
                     Vec::new()
                 };
                 let message = result
-                    .map(|_| format!("Checked out {branch}"))
-                    .unwrap_or_else(|error| format!("Checkout failed: {error}"));
+                    .map(|_| translator.format("scm.checkout.success", &[("branch", &branch)]))
+                    .unwrap_or_else(|error| {
+                        translator.format("scm.checkout.failed", &[("error", &error)])
+                    });
                 deliver_command_event(
                     &proxy,
                     job.as_ref(),
@@ -138,7 +141,7 @@ impl App {
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
-            self.status = "SCM actions require the native event loop".into();
+            self.status = self.t("scm.error.actions_need_loop").into();
             self.fail_current_command(CommandError::Failed(self.status.clone()));
             return;
         };
@@ -156,7 +159,8 @@ impl App {
         };
         let message = self.scm_commit_message.clone();
         let line = self.editor().cursor_line_col().0;
-        self.status = "Git operation running…".into();
+        self.status = self.t("scm.status.running").into();
+        let translator = self.translator;
         let job = self.command_job(false);
         let spawned = std::thread::Builder::new()
             .name("graphite-scm-operation".into())
@@ -169,40 +173,49 @@ impl App {
                 }
                 let result = match action {
                     ScmAction::Stage => selected
-                        .ok_or_else(|| "Select a changed file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
-                            crate::scm::stage_file(&root, &path).map(|_| "File staged".into())
+                            crate::scm::stage_file(&root, &path, &translator)
+                                .map(|_| translator.text("scm.status.file_staged").to_owned())
                         }),
                     ScmAction::Unstage => selected
-                        .ok_or_else(|| "Select a staged file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_staged").to_owned())
                         .and_then(|path| {
-                            crate::scm::unstage_file(&root, &path).map(|_| "File unstaged".into())
+                            crate::scm::unstage_file(&root, &path, &translator)
+                                .map(|_| translator.text("scm.status.file_unstaged").to_owned())
                         }),
-                    ScmAction::Commit => crate::scm::commit(&root, &message)
-                        .map(|id| format!("Commit {} created", &id[..id.len().min(8)])),
+                    ScmAction::Commit => {
+                        crate::scm::commit(&root, &message, &translator).map(|id| {
+                            translator.format(
+                                "scm.status.commit_created",
+                                &[("id", &&id[..id.len().min(8)])],
+                            )
+                        })
+                    }
                     ScmAction::StageCursorLine => selected
-                        .ok_or_else(|| "Select a changed file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
-                            crate::scm::stage_line(&root, &path, line)
-                                .map(|_| "Selected line staged".into())
+                            crate::scm::stage_line(&root, &path, line, &translator)
+                                .map(|_| translator.text("scm.status.line_staged").to_owned())
                         }),
                     ScmAction::RevertCursorLine => selected
-                        .ok_or_else(|| "Select a changed file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
-                            crate::scm::revert_line(&root, &path, line)
-                                .map(|_| "Selected line reverted".into())
+                            crate::scm::revert_line(&root, &path, line, &translator)
+                                .map(|_| translator.text("scm.status.line_reverted").to_owned())
                         }),
                     ScmAction::StageHunk(index) => selected
-                        .ok_or_else(|| "Select a changed file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
-                            crate::scm::stage_hunk(&root, &path, index)
-                                .map(|_| "Hunk staged".into())
+                            crate::scm::stage_hunk(&root, &path, index, &translator)
+                                .map(|_| translator.text("scm.status.hunk_staged").to_owned())
                         }),
                     ScmAction::RevertFirstHunk => selected
-                        .ok_or_else(|| "Select a changed file first".to_owned())
+                        .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
-                            crate::scm::revert_hunk(&root, &path, 0)
-                                .map(|_| "First hunk reverted".into())
+                            crate::scm::revert_hunk(&root, &path, 0, &translator).map(|_| {
+                                translator.text("scm.status.first_hunk_reverted").to_owned()
+                            })
                         }),
                 };
                 let outcome = result
@@ -210,8 +223,9 @@ impl App {
                     .map(|_| serde_json::Value::Null)
                     .map_err(|error| CommandError::Failed(error.clone()));
                 let snapshot = crate::scm::snapshot(&root);
-                let message =
-                    result.unwrap_or_else(|error| format!("Git operation failed: {error}"));
+                let message = result.unwrap_or_else(|error| {
+                    translator.format("scm.error.operation_failed", &[("error", &error)])
+                });
                 deliver_command_event(
                     &proxy,
                     job.as_ref(),
@@ -229,21 +243,26 @@ impl App {
 
     pub(crate) fn open_diff_paths(&mut self, left: PathBuf, right: PathBuf) {
         let Some(proxy) = self.event_proxy.clone() else {
-            self.status = "Diff view requires the native event loop".into();
+            self.status = self.t("scm.error.diff_needs_loop").into();
             return;
         };
+        let translator = self.translator;
         self.diff_loading = true;
         std::thread::Builder::new()
             .name("graphite-diff-load".into())
             .spawn(move || {
                 let read = |path: &PathBuf| {
-                    std::fs::read_to_string(path)
-                        .map_err(|error| format!("Cannot read {}: {error}", path.display()))
+                    std::fs::read_to_string(path).map_err(|error| {
+                        translator.format(
+                            "scm.error.cannot_read",
+                            &[("path", &path.display()), ("error", &error)],
+                        )
+                    })
                 };
                 match (read(&left), read(&right)) {
                     (Ok(left_text), Ok(right_text)) => {
                         let _ = proxy.send_event(UserEvent::DiffReady(DiffView {
-                            title: "File comparison".into(),
+                            title: translator.text("scm.diff.file_comparison").to_owned(),
                             left_name: left.display().to_string(),
                             right_name: right.display().to_string(),
                             left: left_text,
@@ -255,7 +274,7 @@ impl App {
                         let message = left_result
                             .err()
                             .or_else(|| right_result.err())
-                            .unwrap_or_else(|| "Could not load diff".into());
+                            .unwrap_or_else(|| translator.text("scm.diff.load_failed").to_owned());
                         let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
                             message,
                             snapshot: None,
@@ -272,14 +291,17 @@ impl App {
             .path()
             .map(PathBuf::from)
         else {
-            self.status = "Save the current file before comparing it".into();
+            self.status = self.t("scm.diff.save_first").into();
             return;
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
-            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
+            self.fail_current_command(CommandError::Failed(
+                self.t("scm.error.no_event_loop").into(),
+            ));
             return;
         };
+        let translator = self.translator;
         self.diff_loading = true;
         let current = self.documents[self.command_document()].buffer.text();
         let job = self.command_job(true);
@@ -293,11 +315,13 @@ impl App {
                     return;
                 }
                 let result = (|| {
-                    let previous = crate::scm::head_file_text(&root, &path)?;
+                    let previous = crate::scm::head_file_text(&root, &path, &translator)?;
                     Ok::<_, String>(DiffView {
-                        title: "Working tree ↔ HEAD".into(),
-                        left_name: format!("HEAD — {}", path.display()),
-                        right_name: format!("Working tree — {}", path.display()),
+                        title: translator.text("scm.diff.working_tree_head").to_owned(),
+                        left_name: translator
+                            .format("scm.diff.head_label", &[("path", &path.display())]),
+                        right_name: translator
+                            .format("scm.diff.working_tree_label", &[("path", &path.display())]),
                         left: previous,
                         right: current,
                         inline: false,
@@ -317,7 +341,8 @@ impl App {
                             &proxy,
                             job.as_ref(),
                             UserEvent::ScmOperationCompleted {
-                                message: format!("Cannot compare with HEAD: {error}"),
+                                message: translator
+                                    .format("scm.error.compare_head", &[("error", &error)]),
                                 snapshot: None,
                             },
                             Err(CommandError::Failed(error)),
@@ -344,14 +369,15 @@ impl App {
         let Some(proxy) = self.event_proxy.clone() else {
             return;
         };
+        let translator = self.translator;
         std::thread::Builder::new()
             .name("graphite-conflict-save".into())
             .spawn(move || {
-                let result = crate::scm::stage_file(&root, &path);
+                let result = crate::scm::stage_file(&root, &path, &translator);
                 let message = result
-                    .map(|_| "Saved conflict resolution and staged it".to_owned())
+                    .map(|_| translator.text("scm.conflict.saved_staged").to_owned())
                     .unwrap_or_else(|error| {
-                        format!("Saved file, but could not stage conflict resolution: {error}")
+                        translator.format("scm.conflict.save_stage_failed", &[("error", &error)])
                     });
                 let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
                     message,
@@ -367,9 +393,12 @@ impl App {
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
-            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
+            self.fail_current_command(CommandError::Failed(
+                self.t("scm.error.no_event_loop").into(),
+            ));
             return;
         };
+        let translator = self.translator;
         let job = self.command_job(false);
         let spawned = std::thread::Builder::new()
             .name("graphite-conflict-load".into())
@@ -380,7 +409,7 @@ impl App {
                 {
                     return;
                 }
-                match crate::scm::merge_conflict(&root, &path) {
+                match crate::scm::merge_conflict(&root, &path, &translator) {
                     Ok(sides) => {
                         deliver_command_event(
                             &proxy,
@@ -394,7 +423,8 @@ impl App {
                             &proxy,
                             job.as_ref(),
                             UserEvent::ScmOperationCompleted {
-                                message: format!("Cannot open conflict: {error}"),
+                                message: translator
+                                    .format("scm.error.open_conflict", &[("error", &error)]),
                                 snapshot: None,
                             },
                             Err(CommandError::Failed(error)),
@@ -413,19 +443,22 @@ impl App {
         };
         if side == 3 {
             self.open_file(conflict.path);
-            self.status = "Edit the conflict resolution and save to update the Git index".into();
+            self.status = self.t("scm.conflict.edit_hint").into();
             return;
         }
         let Some(contents) = conflict.sides.get(side).cloned().flatten() else {
-            self.status = "That conflict side is unavailable".into();
+            self.status = self.t("scm.conflict.side_unavailable").into();
             self.conflict_view = Some(conflict);
             return;
         };
         let root = self.tree.root().to_path_buf();
         let Some(proxy) = self.event_proxy.clone() else {
-            self.fail_current_command(CommandError::Failed("Native event loop unavailable".into()));
+            self.fail_current_command(CommandError::Failed(
+                self.t("scm.error.no_event_loop").into(),
+            ));
             return;
         };
+        let translator = self.translator;
         let path = conflict.path;
         let job = self.command_job(false);
         let spawned = std::thread::Builder::new()
@@ -437,14 +470,16 @@ impl App {
                 {
                     return;
                 }
-                let result = crate::scm::resolve_conflict(&root, &path, &contents);
+                let result = crate::scm::resolve_conflict(&root, &path, &contents, &translator);
                 let outcome = result
                     .as_ref()
                     .map(|_| serde_json::Value::Null)
                     .map_err(|error| CommandError::Failed(error.clone()));
                 let message = result
-                    .map(|_| "Conflict resolution written and staged".into())
-                    .unwrap_or_else(|error| format!("Conflict resolution failed: {error}"));
+                    .map(|_| translator.text("scm.conflict.resolved_staged").to_owned())
+                    .unwrap_or_else(|error| {
+                        translator.format("scm.error.conflict_failed", &[("error", &error)])
+                    });
                 deliver_command_event(
                     &proxy,
                     job.as_ref(),
@@ -475,7 +510,7 @@ impl App {
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
         renderer.draw_text(
-            "SOURCE CONTROL",
+            self.t("scm.sidebar.title"),
             PAD,
             line_height * 0.25,
             rgb(Theme::color(Theme::DIM, 0x616161)),
@@ -484,15 +519,15 @@ impl App {
             .scm_snapshot
             .branch
             .as_deref()
-            .unwrap_or("No Git repository");
+            .unwrap_or_else(|| self.t("scm.sidebar.no_repository"));
         renderer.draw_text(
-            &format!("Branch: {branch}"),
+            &self.tf("scm.sidebar.branch", &[("branch", &branch)]),
             PAD,
             line_height * 1.25,
             rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
         );
         renderer.draw_text(
-            "S stage  U unstage  H hunk  R resolve  C commit",
+            self.t("scm.sidebar.shortcuts"),
             PAD,
             line_height * 2.25,
             rgb(Theme::color(Theme::DIM, 0x616161)),
@@ -548,7 +583,10 @@ impl App {
                 rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
             );
             renderer.draw_text(
-                &format!("Commit: {}_", self.scm_commit_message),
+                &self.tf(
+                    "scm.sidebar.commit_prompt",
+                    &[("message", &self.scm_commit_message)],
+                ),
                 PAD,
                 height - line_height * 1.25,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -574,7 +612,7 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
-                "OUTLINE",
+                self.t("scm.outline.title"),
                 x + PAD,
                 PAD,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
@@ -601,7 +639,7 @@ impl App {
                 rgb(Theme::color(Theme::BG, 0xffffff)),
             );
             renderer.draw_text(
-                &format!("{}   Esc closes", diff.title),
+                &self.tf("scm.diff.escape_hint", &[("title", &diff.title)]),
                 PAD,
                 PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -692,7 +730,7 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
-                "PROCESS EXPLORER  (CPU / memory, wheel to scroll)",
+                self.t("scm.process.title"),
                 SIDEBAR_WIDTH + PAD,
                 line_height * 1.2,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -725,7 +763,7 @@ impl App {
             }
             let start = self.process_metrics.len().min(9) as f32 + 2.4;
             renderer.draw_text(
-                "STARTUP PERFORMANCE",
+                self.t("scm.process.startup"),
                 SIDEBAR_WIDTH + PAD,
                 line_height * start,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
@@ -752,7 +790,7 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
-                "Checkout local branch (Enter / Esc)",
+                self.t("scm.branch.prompt"),
                 x + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
@@ -785,16 +823,16 @@ impl App {
                 rgb(Theme::color(Theme::BG, 0xffffff)),
             );
             renderer.draw_text(
-                "Three-way merge   O ours  T theirs  B base  E edit  Esc close",
+                self.t("scm.conflict.shortcuts"),
                 PAD,
                 PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
             let pane_width = width / 3.0;
             for (index, (label, side)) in [
-                ("BASE", conflict.sides[0].as_deref()),
-                ("OURS", conflict.sides[1].as_deref()),
-                ("THEIRS", conflict.sides[2].as_deref()),
+                (self.t("scm.conflict.base"), conflict.sides[0].as_deref()),
+                (self.t("scm.conflict.ours"), conflict.sides[1].as_deref()),
+                (self.t("scm.conflict.theirs"), conflict.sides[2].as_deref()),
             ]
             .into_iter()
             .enumerate()
@@ -821,7 +859,7 @@ impl App {
                     }
                 } else {
                     renderer.draw_text(
-                        "No base version",
+                        self.t("scm.conflict.no_base"),
                         x + PAD,
                         line_height * 2.5,
                         rgb(Theme::color(Theme::DIM, 0x616161)),

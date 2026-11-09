@@ -20,18 +20,14 @@ impl App {
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
         };
-        text(
-            r,
-            0,
-            "PLUGINS    [I] Installed    [G] GitHub    [Esc] Close",
-        );
+        text(r, 0, self.t("plugins.header"));
         text(
             r,
             2,
             if self.plugins.github {
-                "[/] Search    [P] Previous    [N] Next    [Enter] Release / Download"
+                self.t("plugins.github_help")
             } else {
-                "[L] Local file [E] Enable    [D] Disable   [R] Restart   [X] Remove    [C] Run first command"
+                self.t("plugins.local_help")
             },
         );
         if let Some(metadata) = self
@@ -45,70 +41,77 @@ impl App {
                 r,
                 4,
                 &if self.plugins.preview.is_some() {
-                    format!(
-                        "Install {} v{}? [Y] Confirm  [Esc] Cancel",
-                        metadata.id(),
-                        metadata.version()
+                    self.tf(
+                        "plugins.install_confirm",
+                        &[("id", &metadata.id()), ("version", &metadata.version())],
                     )
                 } else {
-                    format!(
-                        "{} v{} — Details [Esc] Back",
-                        metadata.id(),
-                        metadata.version()
+                    self.tf(
+                        "plugins.details_title",
+                        &[("id", &metadata.id()), ("version", &metadata.version())],
                     )
                 },
             );
             let lines = match metadata {
                 Metadata::Native(m) => vec![
-                    format!("Description: {}", m.description),
-                    format!("API: {} | Entry: {}", m.api_version, m.main),
-                    format!(
-                        "Commands: {}",
-                        m.commands
-                            .iter()
-                            .map(|c| c.id.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                    self.tf("plugins.description", &[("description", &m.description)]),
+                    self.tf(
+                        "plugins.api_entry",
+                        &[("api", &m.api_version), ("entry", &m.main)],
+                    ),
+                    self.tf(
+                        "plugins.commands",
+                        &[(
+                            "commands",
+                            &m.commands
+                                .iter()
+                                .map(|c| c.id.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )],
                     ),
                 ],
                 Metadata::Vsix(m) => vec![
-                    format!("Description: {}", m.description),
-                    format!("Engines: {}", m.engines),
-                    format!("Entry: {}", m.main.as_deref().unwrap_or("none")),
-                    format!("Contributions: {}", m.contributions.join(", ")),
+                    self.tf("plugins.description", &[("description", &m.description)]),
+                    self.tf("plugins.engines", &[("engines", &m.engines)]),
+                    self.tf(
+                        "plugins.entry",
+                        &[("entry", &m.main.as_deref().unwrap_or(self.t("common.none")))],
+                    ),
+                    self.tf(
+                        "plugins.contributions",
+                        &[("contributions", &m.contributions.join(", "))],
+                    ),
                 ],
             };
             for (i, line) in lines.iter().enumerate() {
                 text(r, 6 + i * 2, line);
             }
-            text(
-                r,
-                15,
-                "Native plugins install disabled. VSIX packages are inspected only.",
-            );
+            text(r, 15, self.t("plugins.native_disabled"));
             return;
         }
         if let Some(id) = &self.plugins.trust {
-            text(
-                r,
-                4,
-                &format!("Trust and enable {id}? [Y] Enable  [Esc] Cancel"),
-            );
-            text(r, 6, "This plugin runs local code with your account's access. A separate process is not a security sandbox.");
+            text(r, 4, &self.tf("plugins.trust_confirm", &[("id", id)]));
+            text(r, 6, self.t("plugins.trust_warning"));
             return;
         }
         if self.plugins.editing {
             text(
                 r,
                 4,
-                &format!(
-                    "{}: {}_",
-                    if self.plugins.path_input {
-                        "Package path (Enter to inspect)"
-                    } else {
-                        "GitHub search (Enter to search)"
-                    },
-                    self.plugins.query
+                &self.tf(
+                    "plugins.input_prompt",
+                    &[
+                        (
+                            "label",
+                            &self.t(if self.plugins.path_input {
+                                "plugins.package_path"
+                            } else {
+                                "plugins.github_search"
+                            }),
+                        ),
+                        ("query", &self.plugins.query),
+                    ],
                 ),
             );
             return;
@@ -121,7 +124,7 @@ impl App {
                     .map(|a| {
                         (
                             a.name.clone(),
-                            format!("{} bytes", a.size),
+                            self.tf("plugins.bytes", &[("bytes", &a.size)]),
                             a.browser_download_url.clone(),
                         )
                     })
@@ -132,7 +135,10 @@ impl App {
                     .iter()
                     .map(|p| {
                         (
-                            format!("{}   Stars: {}", p.full_name, p.stargazers_count),
+                            self.tf(
+                                "plugins.repository",
+                                &[("name", &p.full_name), ("stars", &p.stargazers_count)],
+                            ),
                             p.description.clone().unwrap_or_default(),
                             p.html_url.clone(),
                         )
@@ -145,8 +151,8 @@ impl App {
                 .iter()
                 .map(|p| {
                     let status = match &p.metadata {
-                        Metadata::Vsix(_) => "Imported — VS Code execution unavailable",
-                        Metadata::Native(_) if !p.enabled => "Disabled",
+                        Metadata::Vsix(_) => self.t("plugins.status.vsix_imported"),
+                        Metadata::Native(_) if !p.enabled => self.t("plugins.status.disabled"),
                         Metadata::Native(_) => match self
                             .plugins
                             .hosts
@@ -161,53 +167,63 @@ impl App {
                                     .get(p.metadata.id())
                                     .is_some_and(|h| h.native_active) =>
                             {
-                                "Running"
+                                self.t("plugins.status.running")
                             }
-                            Some(graphite_extension_host::HostState::Ready) => "Activating",
-                            Some(graphite_extension_host::HostState::Starting) => "Starting",
-                            _ => "Stopped — restart to retry",
+                            Some(graphite_extension_host::HostState::Ready) => {
+                                self.t("plugins.status.activating")
+                            }
+                            Some(graphite_extension_host::HostState::Starting) => {
+                                self.t("plugins.status.starting")
+                            }
+                            _ => self.t("plugins.status.stopped"),
                         },
                     };
                     let details = match &p.metadata {
                         Metadata::Native(m) => m.description.clone(),
-                        Metadata::Vsix(m) => format!(
-                            "{} | engines: {} | entry: {:?} | contributions: {}",
-                            m.description,
-                            m.engines,
-                            m.main,
-                            m.contributions.join(", ")
+                        Metadata::Vsix(m) => self.tf(
+                            "plugins.details_vsix",
+                            &[
+                                ("description", &m.description),
+                                ("engines", &m.engines),
+                                ("entry", &format!("{:?}", m.main)),
+                                ("contributions", &m.contributions.join(", ")),
+                            ],
                         ),
                     };
                     (
-                        format!("{} v{} — {status}", p.metadata.id(), p.metadata.version()),
+                        self.tf(
+                            "plugins.row",
+                            &[
+                                ("id", &p.metadata.id()),
+                                ("version", &p.metadata.version()),
+                                ("status", &status),
+                            ],
+                        ),
                         details,
                         self.plugins
                             .errors
                             .get(p.metadata.id())
                             .cloned()
                             .unwrap_or_else(|| match &p.metadata {
-                                Metadata::Native(m) => format!(
-                                    "Commands: {}",
-                                    m.commands
-                                        .iter()
-                                        .map(|c| c.id.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
+                                Metadata::Native(m) => self.tf(
+                                    "plugins.commands",
+                                    &[(
+                                        "commands",
+                                        &m.commands
+                                            .iter()
+                                            .map(|c| c.id.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                    )],
                                 ),
-                                _ => {
-                                    "VSIX prototype: no code or contributions are activated".into()
-                                }
+                                _ => self.t("plugins.vsix_prototype").into(),
                             }),
                     )
                 })
                 .collect()
         };
         if rows.is_empty() {
-            text(
-                r,
-                5,
-                "No plugins found. Use G to browse GitHub or L to install a local package.",
-            );
+            text(r, 5, self.t("plugins.empty"));
         }
         let offset = self.plugins.index.saturating_sub(5);
         for (i, (title, detail, extra)) in rows.iter().enumerate().skip(offset) {

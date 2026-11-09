@@ -49,6 +49,10 @@ LSP servers are user-installed executables configured in `lsp.json` in the app c
 
 Graphite stores configuration in `%APPDATA%\Graphite` on Windows and `$XDG_CONFIG_HOME/Graphite` (or `~/.config/Graphite`) on Linux. `GRAPHITE_SHELL` selects the terminal shell. Existing settings kept elsewhere must be copied to the Graphite configuration directory to be used.
 
+## Localization
+
+Graphite detects the operating-system language and ships complete English and Portuguese (Brazil) catalogs. Override the choice with `"workbench.language": "pt-BR"` in `%APPDATA%\Graphite\settings.json` or with `GRAPHITE_LANG=pt-BR`. Translation sources live in [`locales/`](locales/README.md); see [Localization](docs/en/features/localization.md) for the full reference.
+
 ## Workspace layout
 
 | Crate | Responsibility |
@@ -57,6 +61,10 @@ Graphite stores configuration in `%APPDATA%\Graphite` on Windows and `$XDG_CONFI
 | `graphite-workspace` | Folder model, `.gitignore`-aware directory listing |
 | `graphite-syntax` | tree-sitter syntax highlighting |
 | `graphite-render` | `wgpu` renderer + `cosmic-text` glyph atlas |
+| `graphite-core-api` | UI-independent command, document and service contracts |
+| `graphite-plugins` | Native plugin manifests, catalogs, VSIX packaging |
+| `graphite-extension-host` | Out-of-process extension host protocol |
+| `graphite-i18n` | Embedded translation catalogs and runtime lookup |
 | `graphite-app` | `winit` window, file tree, editor UI |
 
 The app also includes a generic Language Server Protocol client and an ANSI terminal backed by a cross-platform PTY.

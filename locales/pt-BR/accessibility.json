@@ -1,0 +1,9 @@
+{
+  "accessibility.app_name": "Graphite",
+  "accessibility.diagnostic": "{name}, linha {line}: {message}",
+  "accessibility.editor": "Editor",
+  "accessibility.editor_group": "Grupo de editores {index}",
+  "accessibility.editor_initial": "Editor Graphite",
+  "accessibility.show_diagnostics": "Mostrar diagnósticos",
+  "accessibility.toggle_terminal": "Alternar terminal integrado"
+}

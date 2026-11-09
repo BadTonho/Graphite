@@ -53,7 +53,7 @@ pub(super) fn graphite_scm_commit_prompt(
     {
         app.scm_commit_prompt = true;
         app.scm_commit_message.clear();
-        app.status = "Type a commit message and press Enter".into();
+        app.status = app.t("status.commit_prompt").into();
     };
     Ok(())
 }

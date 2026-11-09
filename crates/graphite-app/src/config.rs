@@ -1,5 +1,6 @@
 mod import;
 mod import_themes;
+mod language;
 mod paths;
 mod settings;
 mod snippets;
@@ -8,6 +9,7 @@ mod themes;
 #[cfg(test)]
 use import::import_from_with;
 pub use import::import_vscode;
+pub(crate) use language::language_selection;
 pub(crate) use paths::terminal_settings;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, TerminalProfile};
@@ -21,6 +23,7 @@ pub use snippets::{load_snippets_for_workspace, Snippet};
 use themes::theme_colors_from;
 pub use themes::{imported_theme_colors, load_dark_theme, save_dark_theme};
 
+use graphite_i18n::Translator;
 use serde_json::{Map, Value};
 use std::{
     fs,
@@ -67,11 +70,12 @@ mod tests {
         )
         .unwrap();
         fs::write(&workspace, r#"{"editor.wrappingIndent":"deepIndent"}"#).unwrap();
-        let prefs = settings::read_editor_prefs(&[user, workspace.clone()]).unwrap();
+        let prefs = settings::read_editor_prefs(&[user, workspace.clone()], &Translator::english())
+            .unwrap();
         assert!(prefs.word_wrap);
         assert_eq!(prefs.wrapping_indent, WrapIndent::DeepIndent);
         fs::write(&workspace, r#"{"editor.wordWrap":"bounded"}"#).unwrap();
-        assert!(settings::read_editor_prefs(&[workspace]).is_err());
+        assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
     }
     #[test]
     fn expands_common_vscode_snippet_placeholders() {
@@ -96,7 +100,8 @@ mod tests {
         )
         .unwrap();
         fs::write(project.join("broken.code-snippets"), "{").unwrap();
-        let (snippets, warnings) = snippets::load_snippets_from_dirs(&global, &project);
+        let (snippets, warnings) =
+            snippets::load_snippets_from_dirs(&global, &project, &Translator::english());
         assert_eq!(snippets.iter().filter(|s| s.prefix == "dup").count(), 1);
         assert_eq!(
             snippets.iter().find(|s| s.prefix == "dup").unwrap().body,
@@ -114,7 +119,7 @@ mod tests {
     fn projects_supported_settings_and_reports_unknown_keys() {
         let source: Value =
             serde_json::from_str(r#"{"editor.fontSize":18,"other.setting":true}"#).unwrap();
-        let (result, warnings) = project_settings(&source);
+        let (result, warnings) = project_settings(&source, &Translator::english());
         assert_eq!(result["editor.fontSize"], 18);
         assert!(result.get("other.setting").is_none());
         assert_eq!(warnings.len(), 1);
@@ -146,7 +151,8 @@ mod tests {
         .unwrap();
         fs::write(&workspace, r#"{"editor.tabSize": 8, "editor.rulers": [100, {"column": 80}, 100], "files.readonlyInclude": {"generated/**": true, "src/**": false}}"#).unwrap();
         let paths = [imported, user, workspace.clone()];
-        let prefs = settings::read_editor_prefs(&paths).unwrap();
+        let translator = Translator::english();
+        let prefs = settings::read_editor_prefs(&paths, &translator).unwrap();
         assert_eq!(
             (prefs.font_size, prefs.tab_size, prefs.insert_spaces),
             (17.0, 8, true)
@@ -154,11 +160,11 @@ mod tests {
         assert_eq!(prefs.read_only_patterns, ["generated/**"]);
         assert_eq!(prefs.rulers, [80, 100]);
         fs::write(&workspace, r#"{"editor.tabSize": 0}"#).unwrap();
-        assert!(settings::read_editor_prefs(&paths)
+        assert!(settings::read_editor_prefs(&paths, &translator)
             .unwrap_err()
             .contains("editor.tabSize"));
         fs::write(&workspace, "{").unwrap();
-        assert!(settings::read_editor_prefs(&paths).is_err());
+        assert!(settings::read_editor_prefs(&paths, &translator).is_err());
     }
 
     #[test]
@@ -168,7 +174,7 @@ mod tests {
         let workspace = temp.path().join("workspace.json");
         fs::write(&user, r##"{"workbench.colorTheme":"A","workbench.colorCustomizations":{"editor.background":"#111111","editor.foreground":"#222222"}}"##).unwrap();
         fs::write(&workspace, r##"{"workbench.colorTheme":"B","workbench.colorCustomizations":{"editor.background":"#333333"}}"##).unwrap();
-        let merged = settings::merge_settings(&[user, workspace]).unwrap();
+        let merged = settings::merge_settings(&[user, workspace], &Translator::english()).unwrap();
         assert_eq!(merged["workbench.colorTheme"], "B");
         assert_eq!(
             merged["workbench.colorCustomizations"]["editor.background"],
@@ -200,7 +206,7 @@ mod tests {
             br#"{"name":"sample","type":"dark"}"#,
         )
         .unwrap();
-        let report = import_from_with(&source, &target, None, |_| {});
+        let report = import_from_with(&source, &target, None, |_| {}, &Translator::english());
         assert_eq!(fs::read(source.join("settings.json")).unwrap(), settings);
         assert_eq!(
             serde_json::from_slice::<Value>(&fs::read(target.join("settings.json")).unwrap())
@@ -225,7 +231,7 @@ mod tests {
         let dir = temp.path();
         fs::write(dir.join("theme.json"),r##"{"name":"Sample","colors":{"editor.background":"#101010"},"tokenColors":[{"scope":["keyword.control"],"settings":{"foreground":"#ff0000"}}]}"##).unwrap();
         let settings: Value = serde_json::from_str(r#"{"workbench.colorTheme":"Sample"}"#).unwrap();
-        let colors = theme_colors_from(&settings, &dir);
+        let colors = theme_colors_from(&settings, &dir, &Translator::english());
         assert_eq!(
             colors.get("editor.background").map(String::as_str),
             Some("#101010")
@@ -257,7 +263,8 @@ mod tests {
         )
         .unwrap();
         let settings = serde_json::json!({"workbench.colorTheme": "Custom"});
-        let colors = themes::resolve_theme_colors(&settings, temp.path()).unwrap();
+        let colors =
+            themes::resolve_theme_colors(&settings, temp.path(), &Translator::english()).unwrap();
         assert_eq!(
             colors.get("editor.background").map(String::as_str),
             Some("#202020")
@@ -278,13 +285,18 @@ mod tests {
         let child = temp.path().join("child.json");
         fs::write(&child, r#"{"name":"Loop","include":"base.json"}"#).unwrap();
         let settings = serde_json::json!({"workbench.colorTheme": "Loop"});
-        assert!(themes::resolve_theme_colors(&settings, temp.path())
-            .unwrap_err()
-            .contains("Cannot open theme"));
+        let translator = Translator::english();
+        assert!(
+            themes::resolve_theme_colors(&settings, temp.path(), &translator)
+                .unwrap_err()
+                .contains("Cannot open theme")
+        );
         fs::write(temp.path().join("base.json"), r#"{"include":"child.json"}"#).unwrap();
-        assert!(themes::resolve_theme_colors(&settings, temp.path())
-            .unwrap_err()
-            .contains("Circular"));
+        assert!(
+            themes::resolve_theme_colors(&settings, temp.path(), &translator)
+                .unwrap_err()
+                .contains("Circular")
+        );
     }
 
     #[test]
@@ -317,7 +329,13 @@ mod tests {
         }"##,
         )
         .unwrap();
-        let report = import_from_with(&source, &target, Some(&extensions), |_| {});
+        let report = import_from_with(
+            &source,
+            &target,
+            Some(&extensions),
+            |_| {},
+            &Translator::english(),
+        );
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
         assert_eq!(
             fs::read_to_string(package.join("themes/custom.json")).unwrap(),
@@ -327,7 +345,9 @@ mod tests {
             .join("themes/publisher.theme/shared/base.json")
             .exists());
         let settings = serde_json::json!({"workbench.colorTheme":"Custom"});
-        let colors = themes::resolve_theme_colors(&settings, &target.join("themes")).unwrap();
+        let colors =
+            themes::resolve_theme_colors(&settings, &target.join("themes"), &Translator::english())
+                .unwrap();
         assert_eq!(
             colors.get("editor.background").map(String::as_str),
             Some("#123456")
@@ -354,7 +374,7 @@ mod tests {
             r#"{"name":"missing","include":"no-such-file.json"}"#,
         )
         .unwrap();
-        let report = import_from_with(&source, &target, None, |_| {});
+        let report = import_from_with(&source, &target, None, |_| {}, &Translator::english());
         assert!(
             report
                 .warnings
@@ -383,9 +403,13 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         fs::write(source.join("settings.json"), "{").unwrap();
         fs::write(target.join("settings.json"), "original").unwrap();
-        let report = import_from_with(&source, &target, None, |_| {
-            panic!("unexpected theme change")
-        });
+        let report = import_from_with(
+            &source,
+            &target,
+            None,
+            |_| panic!("unexpected theme change"),
+            &Translator::english(),
+        );
         assert!(report
             .warnings
             .iter()

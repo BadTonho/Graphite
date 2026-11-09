@@ -281,7 +281,7 @@ impl App {
                 let bytes = LocalFileSystem
                     .read(&target.uri)
                     .map_err(|e| format!("cannot read target: {e}"))?;
-                let decoded = crate::file_format::decode(&bytes)?;
+                let decoded = crate::file_format::decode(&bytes, &self.translator)?;
                 source_bytes = Some(bytes);
                 let mut buffer =
                     Buffer::from_text(path.ok_or("missing document path")?, &decoded.text);

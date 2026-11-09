@@ -41,9 +41,9 @@ impl App {
                     if path.is_dir() || prepared.contains_key(&path) {
                         if path.canonicalize().ok() != self.tree.root().canonicalize().ok() {
                             if self.documents.iter().any(|tab| tab.is_dirty()) {
-                                self.status = format!(
-                                    "Cannot open {} while documents have unsaved changes",
-                                    path.display()
+                                self.status = self.tf(
+                                    "folder.cannot_open_with_unsaved",
+                                    &[("path", &path.display())],
                                 );
                             } else {
                                 match prepared
@@ -65,10 +65,12 @@ impl App {
                                         for document in documents {
                                             self.sync_lsp_document(document);
                                         }
-                                        self.status = format!("Opened folder {}", path.display());
+                                        self.status =
+                                            self.tf("folder.opened", &[("path", &path.display())]);
                                     }
                                     Err(error) => {
-                                        self.status = format!("Cannot open folder: {error}")
+                                        self.status =
+                                            self.tf("folder.open_failed", &[("error", &error)]);
                                     }
                                 }
                             }

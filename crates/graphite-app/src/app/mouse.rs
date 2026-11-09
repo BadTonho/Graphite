@@ -175,7 +175,11 @@ impl App {
                     let Some(document) = self.resolve_document(document) else {
                         continue;
                     };
-                    let width = super::group_drawing::tab_width(&self.documents[document], cw);
+                    let width = super::group_drawing::tab_width(
+                        &self.documents[document],
+                        cw,
+                        &self.translator,
+                    );
                     if mx >= x && mx < x + width {
                         self.activate_editor_document(document);
                         return;
