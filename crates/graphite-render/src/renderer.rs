@@ -5,6 +5,7 @@ mod text;
 use text::measure_char_width;
 
 use crate::atlas::{ShelfPacker, Slot, ATLAS_SIZE};
+use crate::icons;
 use cosmic_text::{
     Attrs, Buffer, CacheKey, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
 };
@@ -71,6 +72,7 @@ pub struct Renderer {
     font_system: FontSystem,
     swash: SwashCache,
     line_cache: HashMap<(String, u32), Buffer>,
+    icon_cache: HashMap<(char, u32), Buffer>,
     clear: Color,
     char_width: f32,
     metrics: Metrics,
@@ -257,6 +259,7 @@ impl Renderer {
         });
 
         let mut font_system = FontSystem::new();
+        font_system.db_mut().load_font_data(icons::FONT.to_vec());
         let metrics = Metrics::new(font_size, (font_size * 1.4).round());
         let char_width = measure_char_width(&mut font_system, metrics);
 
@@ -277,6 +280,7 @@ impl Renderer {
             font_system,
             swash: SwashCache::new(),
             line_cache: HashMap::new(),
+            icon_cache: HashMap::new(),
             clear: rgb(0x1e1e1e),
             char_width,
             metrics,
@@ -313,6 +317,7 @@ impl Renderer {
         self.metrics = Metrics::new(font_size, (font_size * 1.4).round());
         self.char_width = measure_char_width(&mut self.font_system, self.metrics);
         self.line_cache.clear();
+        self.icon_cache.clear();
     }
 
     pub fn set_clear_color(&mut self, color: Color) {

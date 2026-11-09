@@ -19,6 +19,8 @@ cargo test --workspace
 
 Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
+The Explorer, Quick Open list and editor tabs show colored file-type icons for programming languages, project files and common formats. See [File icons](docs/en/features/file-icons.md) for the mapping and how to add new icons.
+
 ## Controls (v0.3)
 
 | Action | Input |

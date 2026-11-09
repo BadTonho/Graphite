@@ -52,15 +52,36 @@ impl App {
                     rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                 );
             }
-            let marker = match (row.entry.is_dir, row.expanded) {
-                (true, true) => "v ",
-                (true, false) => "> ",
-                _ => "  ",
-            };
-            let label = format!("{marker}{}", row.entry.name);
+            let indent = PAD + row.depth as f32 * cw * 2.0;
+            let chevron_slot = cw * 1.8;
+            let icon_slot = lh;
+            let icon_size = (lh * 0.85).round();
+            let chevron_size = (lh * 0.72).round();
+            if row.entry.is_dir {
+                let chevron = if row.expanded {
+                    crate::file_icons::CHEVRON_DOWN
+                } else {
+                    crate::file_icons::CHEVRON_RIGHT
+                };
+                r.draw_icon(
+                    chevron,
+                    indent + (chevron_slot - chevron_size) * 0.5,
+                    y + (lh - chevron_size) * 0.5,
+                    chevron_size,
+                    rgb(Theme::color(Theme::DIM, 0x616161)),
+                );
+            }
+            let icon_x = indent + chevron_slot;
+            r.draw_icon(
+                row.icon.glyph,
+                icon_x + (icon_slot - icon_size) * 0.5,
+                y + (lh - icon_size) * 0.5,
+                icon_size,
+                rgb(row.icon.color),
+            );
             r.draw_text(
-                &label,
-                PAD + row.depth as f32 * cw * 2.0,
+                &row.entry.name,
+                icon_x + icon_slot + 4.0,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -139,9 +160,18 @@ impl App {
                     );
                 }
                 let relative = path.strip_prefix(self.tree.root()).unwrap_or(path);
+                let icon = crate::file_icons::for_path(path);
+                let icon_size = (lh * 0.85).round();
+                r.draw_icon(
+                    icon.glyph,
+                    SIDEBAR_WIDTH + PAD,
+                    item_y + (lh - icon_size) * 0.5,
+                    icon_size,
+                    rgb(icon.color),
+                );
                 r.draw_text(
                     &relative.display().to_string(),
-                    SIDEBAR_WIDTH + PAD,
+                    SIDEBAR_WIDTH + PAD + lh + 4.0,
                     item_y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );

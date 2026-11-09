@@ -14,6 +14,7 @@ mod document;
 mod document_store;
 use document::Document;
 mod file_format;
+mod file_icons;
 mod json_schema;
 mod keybindings;
 mod lsp;
