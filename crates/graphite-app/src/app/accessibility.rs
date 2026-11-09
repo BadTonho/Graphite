@@ -1,3 +1,4 @@
+use super::activity_bar::Activity;
 use super::*;
 
 const KIND_SHIFT: u32 = 60;
@@ -9,6 +10,8 @@ const TAB_LIST: u64 = 2;
 const EDITOR: u64 = 3;
 const TAB: u64 = 4;
 const LINE: u64 = 5;
+const ACTIVITY_TOOLBAR: u64 = 6;
+const ACTIVITY_BUTTON: u64 = 7;
 
 fn node_id(kind: u64, group: u64, value: u64) -> NodeId {
     NodeId((kind << KIND_SHIFT) | ((group & GROUP_MASK) << GROUP_SHIFT) | (value & VALUE_MASK))
@@ -43,6 +46,20 @@ pub(super) fn tab_target(id: NodeId) -> Option<(u64, DocumentId)> {
 pub(super) fn line_target(id: NodeId) -> Option<(u64, usize)> {
     let (kind, group, line) = node_target(id);
     (kind == LINE).then_some((group, line as usize))
+}
+pub(super) fn activity_toolbar_node() -> NodeId {
+    NodeId(ACTIVITY_TOOLBAR)
+}
+pub(super) fn activity_button_node(activity: Activity) -> NodeId {
+    let index = Activity::ALL
+        .iter()
+        .position(|candidate| *candidate == activity)
+        .expect("activity is part of the bar");
+    NodeId(ACTIVITY_BUTTON + index as u64)
+}
+pub(super) fn activity_target(id: NodeId) -> Option<Activity> {
+    let index = id.0.checked_sub(ACTIVITY_BUTTON)? as usize;
+    Activity::ALL.get(index).copied()
 }
 pub(super) fn line_content(text: &str) -> &str {
     text.strip_suffix("\r\n")
@@ -205,13 +222,38 @@ impl App {
         let root = NodeId(0);
         let mut root_node = Node::new(Role::Window);
         root_node.set_label(self.t("accessibility.app_name"));
-        let mut children: Vec<_> = rects.iter().map(|rect| group_node(rect.id)).collect();
+        let toolbar = (!self.zen_mode).then(activity_toolbar_node);
+        let mut children = Vec::new();
+        if let Some(toolbar) = toolbar {
+            children.push(toolbar);
+        }
+        children.extend(rects.iter().map(|rect| group_node(rect.id)));
         children.extend([NodeId(3), NodeId(4)]);
         if panel.is_some() {
             children.push(NodeId(5));
         }
         root_node.set_children(children);
         let mut nodes = vec![(root, root_node)];
+        if toolbar.is_some() {
+            let mut node = Node::new(Role::Toolbar);
+            node.set_label(self.t("activity.bar"));
+            node.set_children(
+                Activity::ALL
+                    .iter()
+                    .copied()
+                    .map(activity_button_node)
+                    .collect::<Vec<_>>(),
+            );
+            nodes.push((activity_toolbar_node(), node));
+            let active = self.active_activity();
+            for activity in Activity::ALL {
+                let mut button = Node::new(Role::Button);
+                button.set_label(self.t(activity.label_key()));
+                button.set_selected(activity == active);
+                button.add_action(Action::Click);
+                nodes.push((activity_button_node(activity), button));
+            }
+        }
         for (index, rect) in rects.iter().enumerate() {
             let (views, active) = self
                 .editor_groups

@@ -17,7 +17,7 @@ and draws each glyph through the existing glyph atlas, tinted with the color
 for that file type. This keeps the binary self-contained: no icon files are
 read from disk, and the same assets work on Windows and Linux.
 
-The subset contains 161 glyphs and is checked into
+The subset contains 165 glyphs and is checked into
 `crates/graphite-render/assets/graphite-icons.ttf`. Licensing and rebuild
 instructions are in
 [`crates/graphite-render/assets/README.md`](../../../crates/graphite-render/assets/README.md).

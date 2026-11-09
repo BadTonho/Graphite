@@ -21,15 +21,15 @@ impl App {
 
         // Sidebar
         r.draw_rect(
+            ACTIVITY_BAR_WIDTH,
             0.0,
-            0.0,
-            SIDEBAR_WIDTH,
+            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
             h,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
         r.draw_text(
             &self.tree.root_name().to_uppercase(),
-            PAD,
+            ACTIVITY_BAR_WIDTH + PAD,
             lh * 0.25,
             rgb(Theme::color(Theme::DIM, 0x616161)),
         );
@@ -45,14 +45,14 @@ impl App {
                     .unwrap_or(std::path::Path::new(""));
             if is_open {
                 r.draw_rect(
-                    0.0,
+                    ACTIVITY_BAR_WIDTH,
                     y,
-                    SIDEBAR_WIDTH,
+                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
                     lh,
                     rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                 );
             }
-            let indent = PAD + row.depth as f32 * cw * 2.0;
+            let indent = ACTIVITY_BAR_WIDTH + PAD + row.depth as f32 * cw * 2.0;
             let chevron_slot = cw * 1.8;
             let icon_slot = lh;
             let icon_size = (lh * 0.85).round();
@@ -88,8 +88,11 @@ impl App {
         }
         if self.zen_mode {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));
-        } else if self.scm_visible {
-            self.draw_scm_sidebar(r, h, lh, cw);
+        } else {
+            if self.scm_visible {
+                self.draw_scm_sidebar(r, h, lh, cw);
+            }
+            self.draw_activity_bar(r, h);
         }
 
         let rects = self.group_rectangles(w, h, lh);

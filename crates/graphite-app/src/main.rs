@@ -55,7 +55,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
-const SIDEBAR_WIDTH: f32 = 260.0;
+const ACTIVITY_BAR_WIDTH: f32 = 48.0;
+const SIDEBAR_WIDTH: f32 = ACTIVITY_BAR_WIDTH + 260.0;
 const PAD: f32 = 8.0;
 
 /// Cached highlight result for the currently open buffer revision.

@@ -1,12 +1,12 @@
 # Graphite
 
-A native **Rust** code editor aiming to recreate the VS Code experience — with a fraction of the RAM — and, long term, to run **VS Code extensions** (`.vsix`).
+A native **Rust** code editor built for speed and low memory usage, with long-term support for **existing `.vsix` extensions**.
 
 > Status: **v0.3 implementation in place** — workspace tests and the Windows build pass; full Windows/Linux UI verification has not been completed.
 
 ## Why
 
-VS Code runs on Electron (a full Chromium + Node.js per window). Graphite renders directly on the GPU with `wgpu` and `cosmic-text`, keeping the editor fast and light.
+Electron-based editors run a full Chromium + Node.js per window. Graphite renders directly on the GPU with `wgpu` and `cosmic-text`, keeping the editor fast and light.
 
 ## Quick start
 
@@ -21,11 +21,14 @@ Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
 The Explorer, Quick Open list and editor tabs show colored file-type icons for programming languages, project files and common formats. See [File icons](docs/en/features/file-icons.md) for the mapping and how to add new icons.
 
+The activity bar on the far left switches between Explorer, Search, Source Control and Plugins while keeping the Explorer at its original width. See [Activity bar](docs/en/features/activity-bar.md) for behavior and layout details.
+
 ## Controls (v0.3)
 
 | Action | Input |
 |---|---|
 | Open file / expand folder | Click in the sidebar |
+| Switch sidebar view | Click Explorer, Search, Source Control or Plugins in the activity bar |
 | Place cursor | Click in the editor |
 | Save | `Ctrl+S` |
 | Select all / extend selection | `Ctrl+A` / `Shift` + navigation keys |
@@ -40,7 +43,7 @@ The Explorer, Quick Open list and editor tabs show colored file-type icons for p
 | Convert indentation | `Ctrl+Shift+Alt+I` |
 | Switch / close tab | `Ctrl+Tab` / `Ctrl+W` |
 | Toggle light/dark theme | `Ctrl+Alt+T` |
-| Import VS Code user settings, snippets and themes | `Ctrl+Shift+I` |
+| Import user settings, snippets and themes | `Ctrl+Shift+I` |
 | Find and insert an imported snippet | `Ctrl+Shift+P`, type its prefix, `Enter` |
 | Completion / go to definition | `Ctrl+Space` / `F12` |
 | Hover / next or previous diagnostic | `Ctrl+K`, `Ctrl+I` / `F8` / `Shift+F8` |

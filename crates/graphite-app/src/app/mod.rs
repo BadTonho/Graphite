@@ -1,6 +1,7 @@
 use super::*;
 pub(super) mod accessibility;
 mod accessibility_actions;
+mod activity_bar;
 pub(crate) mod cli_ui;
 mod clipboard;
 pub(crate) mod command_execution;

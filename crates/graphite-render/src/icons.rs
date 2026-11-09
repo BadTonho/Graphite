@@ -16,6 +16,10 @@ pub const AVAILABLE_GLYPHS: &[char] = &[
     '\u{e5fe}', // custom-folder_open
     '\u{ea7b}', // cod-file
     '\u{ec5e}', // cod-file_text
+    '\u{eaf0}', // cod-files
+    '\u{ea6d}', // cod-search
+    '\u{ea68}', // cod-source_control
+    '\u{eae6}', // cod-extensions
     '\u{eab6}', // cod-chevron_right
     '\u{eab4}', // cod-chevron_down
     '\u{e7a8}', // dev-rust
@@ -156,7 +160,7 @@ pub const AVAILABLE_GLYPHS: &[char] = &[
     '\u{e7b8}', // dev-photoshop
     '\u{e7b4}', // dev-illustrator
     '\u{e766}', // dev-blender
-    '\u{e8da}', // dev-vscode
+    '\u{e8da}', // vsix file icon
     '\u{eae8}', // cod-file_binary
     '\u{e672}', // seti-lock
     '\u{e67d}', // seti-pdf
