@@ -503,15 +503,15 @@ impl App {
         cell_width: f32,
     ) {
         renderer.draw_rect(
+            ACTIVITY_BAR_WIDTH,
             0.0,
-            0.0,
-            SIDEBAR_WIDTH,
+            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
             height,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
         renderer.draw_text(
             self.t("scm.sidebar.title"),
-            PAD,
+            ACTIVITY_BAR_WIDTH + PAD,
             line_height * 0.25,
             rgb(Theme::color(Theme::DIM, 0x616161)),
         );
@@ -522,20 +522,20 @@ impl App {
             .unwrap_or_else(|| self.t("scm.sidebar.no_repository"));
         renderer.draw_text(
             &self.tf("scm.sidebar.branch", &[("branch", &branch)]),
-            PAD,
+            ACTIVITY_BAR_WIDTH + PAD,
             line_height * 1.25,
             rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
         );
         renderer.draw_text(
             self.t("scm.sidebar.shortcuts"),
-            PAD,
+            ACTIVITY_BAR_WIDTH + PAD,
             line_height * 2.25,
             rgb(Theme::color(Theme::DIM, 0x616161)),
         );
         if let Some(error) = &self.scm_snapshot.error {
             renderer.draw_text(
                 error,
-                PAD,
+                ACTIVITY_BAR_WIDTH + PAD,
                 line_height * 3.25,
                 rgb(Theme::color(Theme::TEXT, 0x9b2226)),
             );
@@ -548,9 +548,9 @@ impl App {
             }
             if index == self.scm_selected {
                 renderer.draw_rect(
-                    0.0,
+                    ACTIVITY_BAR_WIDTH,
                     y,
-                    SIDEBAR_WIDTH,
+                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
                     line_height,
                     rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                 );
@@ -569,16 +569,16 @@ impl App {
             let label = name.chars().take(max_chars).collect::<String>();
             renderer.draw_text(
                 &format!("{marker} {label}"),
-                PAD,
+                ACTIVITY_BAR_WIDTH + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
         }
         if self.scm_commit_prompt {
             renderer.draw_rect(
-                0.0,
+                ACTIVITY_BAR_WIDTH,
                 height - line_height * 2.0,
-                SIDEBAR_WIDTH,
+                SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
                 line_height * 2.0,
                 rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
             );
@@ -587,7 +587,7 @@ impl App {
                     "scm.sidebar.commit_prompt",
                     &[("message", &self.scm_commit_message)],
                 ),
-                PAD,
+                ACTIVITY_BAR_WIDTH + PAD,
                 height - line_height * 1.25,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );

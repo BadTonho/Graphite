@@ -5,6 +5,7 @@ pub(crate) static DARK_THEME: AtomicBool = AtomicBool::new(true);
 static THEME_OVERRIDES: OnceLock<RwLock<HashMap<u32, u32>>> = OnceLock::new();
 impl Theme {
     pub(crate) const BG: u32 = 0x1e1e1e;
+    pub(crate) const ACTIVITY_BAR: u32 = 0x333333;
     pub(crate) const SIDEBAR: u32 = 0x252526;
     pub(crate) const TEXT: u32 = 0xd4d4d4;
     pub(crate) const DIM: u32 = 0x858585;
@@ -44,6 +45,7 @@ impl Theme {
     pub(crate) fn set_imported_colors(colors: HashMap<String, String>) {
         let mappings = [
             ("editor.background", Self::BG, 0xffffff),
+            ("activityBar.background", Self::ACTIVITY_BAR, 0xe8e8e8),
             ("sideBar.background", Self::SIDEBAR, 0xf3f3f3),
             ("editor.foreground", Self::TEXT, 0x1e1e1e),
             ("editorLineNumber.foreground", Self::DIM, 0x616161),

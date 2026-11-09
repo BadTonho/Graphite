@@ -20,7 +20,7 @@ com a cor daquele tipo de arquivo. O binário continua autocontido: nenhum
 arquivo de ícone é lido do disco e os mesmos assets funcionam no Windows e no
 Linux.
 
-O subset contém 161 glifos e está versionado em
+O subset contém 165 glifos e está versionado em
 `crates/graphite-render/assets/graphite-icons.ttf`. Licenças e instruções de
 recompilação estão em
 [`crates/graphite-render/assets/README.md`](../../../crates/graphite-render/assets/README.md).

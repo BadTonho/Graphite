@@ -40,6 +40,11 @@ impl App {
             return;
         }
 
+        if !self.zen_mode && mx < ACTIVITY_BAR_WIDTH {
+            self.activity_bar_click(my);
+            return;
+        }
+
         if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {
             if let Some(language) = self.documents[self.active_document()].language {
                 let text = self.documents[self.active_document()].buffer.text();

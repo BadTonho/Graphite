@@ -107,16 +107,7 @@ pub(super) fn workbench_action_find_in_files(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.context_keys.close_widget(WidgetKind::ProjectSearch);
-        app.search_query = Some(String::new());
-        app.search_generation = app.search_generation.wrapping_add(1);
-        app.search_cancel
-            .store(app.search_generation, Ordering::Relaxed);
-        app.search_results.clear();
-        app.search_index = 0;
-        app.status = app.t("status.project_search.prompt").into();
-    };
+    app.open_project_search();
     Ok(())
 }
 

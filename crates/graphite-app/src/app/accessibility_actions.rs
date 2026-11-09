@@ -27,6 +27,12 @@ impl App {
             self.run_ui_command("workbench.actions.view.problems");
             return;
         }
+        if let Some(activity) = super::accessibility::activity_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_activity(activity);
+            }
+            return;
+        }
         if let Some((group, document_id)) = super::accessibility::tab_target(request.target_node) {
             if !matches!(request.action, Action::Click | Action::Focus) {
                 return;
@@ -164,6 +170,36 @@ mod tests {
             target_node: target,
             data,
         }
+    }
+
+    #[test]
+    fn accessible_activity_bar_switches_views() {
+        use crate::app::accessibility::{activity_button_node, activity_toolbar_node};
+        use crate::app::activity_bar::Activity;
+
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        let tree = app.grouped_accessibility_tree(1200.0, 800.0, 20.0);
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|(id, _)| *id == activity_toolbar_node()));
+        let button = &tree
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == activity_button_node(Activity::SourceControl))
+            .unwrap()
+            .1;
+        assert_eq!(button.label(), Some(app.t("activity.source_control")));
+        assert!(button.supports_action(Action::Click));
+
+        app.process_accessibility_action(request(
+            Action::Click,
+            activity_button_node(Activity::SourceControl),
+            None,
+        ));
+        assert!(app.scm_visible);
+        assert_eq!(app.active_activity(), Activity::SourceControl);
     }
 
     #[test]

@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(app.editor_groups.group_count(), 2);
         app.run_ui_command("workbench.action.splitEditorDown");
         assert_eq!(app.editor_groups.group_count(), 3);
-        let rects = app.group_rectangles(1260.0, 820.0, 20.0);
+        let rects = app.group_rectangles(SIDEBAR_WIDTH + 1000.0, 820.0, 20.0);
         assert_eq!(rects.len(), 3);
         assert_eq!(rects[0].width, 500.0);
         assert_eq!(rects[1].height, 400.0);

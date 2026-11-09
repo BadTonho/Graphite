@@ -413,7 +413,7 @@ mod tests {
         assert!(report
             .warnings
             .iter()
-            .any(|warning| warning.contains("Invalid VS Code settings")));
+            .any(|warning| warning.contains("Invalid settings.json")));
         assert_eq!(
             fs::read_to_string(target.join("settings.json")).unwrap(),
             "original"

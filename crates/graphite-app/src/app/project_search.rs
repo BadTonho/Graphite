@@ -1,16 +1,35 @@
 use super::*;
 
 impl App {
+    pub(crate) fn open_project_search(&mut self) {
+        self.context_keys
+            .close_widget(super::context_keys::WidgetKind::ProjectSearch);
+        self.search_query = Some(String::new());
+        self.search_generation = self.search_generation.wrapping_add(1);
+        self.search_cancel
+            .store(self.search_generation, Ordering::Relaxed);
+        self.search_results.clear();
+        self.search_index = 0;
+        self.status = self.t("status.project_search.prompt").into();
+    }
+
+    pub(crate) fn close_project_search(&mut self) {
+        if self.search_query.is_none() {
+            return;
+        }
+        self.search_query = None;
+        self.search_generation = self.search_generation.wrapping_add(1);
+        self.search_cancel
+            .store(self.search_generation, Ordering::Relaxed);
+    }
+
     pub(super) fn execute_project_search_command(&mut self, command: &str) {
         if self.search_query.is_none() {
             return;
         }
         match command {
             "projectSearch.close" => {
-                self.search_query = None;
-                self.search_generation = self.search_generation.wrapping_add(1);
-                self.search_cancel
-                    .store(self.search_generation, Ordering::Relaxed);
+                self.close_project_search();
                 self.status = self.t("search.closed").into();
             }
             "projectSearch.deleteLeft" => {
