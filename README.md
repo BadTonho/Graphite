@@ -10,7 +10,7 @@ Electron-based editors run a full Chromium + Node.js per window. Graphite render
 
 ## Quick start
 
-Native JavaScript/TypeScript plugins and metadata-only VSIX import are available through the **Plugins** panel (`Ctrl+Shift+X`). Native execution requires Node.js 24+. See [Creating and installing plugins](docs/en/contributing/plugins.md).
+Native JavaScript/TypeScript plugins and metadata-only VSIX import are available through the **Plugins** sidebar (`Ctrl+Shift+X`). Native execution requires Node.js 24+. See [Creating and installing plugins](docs/en/contributing/plugins.md).
 
 ```bash
 cargo run -p graphite-app -- <folder>   # omit <folder> to open the current directory

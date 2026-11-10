@@ -1,6 +1,6 @@
 # Native plugins and VSIX inspection
 
-Graphite API v1 plugins run as JavaScript in one system Node.js 24+ process per plugin. TypeScript is compiled before packaging. `graphite-plugins` owns manifests, ZIP validation, installation, scaffolding and GitHub discovery without depending on GPU/application types. The application owns panel state and session routing; its existing document and command services apply changes on the event loop.
+Graphite API v1 plugins run as JavaScript in one system Node.js 24+ process per plugin. TypeScript is compiled before packaging. `graphite-plugins` owns manifests, ZIP validation, installation, scaffolding and GitHub discovery without depending on GPU/application types. The application owns plugin sidebar state and session routing; its existing document and command services apply changes on the event loop.
 
 ## Runtime boundary
 
@@ -20,7 +20,7 @@ Packages/downloads are limited to 100 MiB; archives to 500 MiB expanded and 10,0
 
 ## Discovery and UI
 
-The Plugins panel opens with `Ctrl+Shift+X` or `graphite.plugins.open`. Filesystem, network and Node startup checks run on workers. The catalog searches public GitHub repositories using `topic:graphite-plugin`, paginates 30 results per page, caches searches for 60 seconds and honors rate-limit/retry headers. It uses no GitHub credentials.
+The Plugins sidebar opens with `Ctrl+Shift+X` or `graphite.plugins.open`. It reuses the 260 px workbench sidebar next to the activity bar, so the editor remains visible. The sidebar owns keyboard input only while focused; the editor, Quick Open, find, project search, Source Control, the terminal and confirmation surfaces keep precedence otherwise. Filesystem, network and Node startup checks run on workers. The catalog searches public GitHub repositories using `topic:graphite-plugin`, paginates 30 results per page, caches searches for 60 seconds and honors rate-limit/retry headers. It uses no GitHub credentials.
 
 Selecting a repository fetches its latest stable release, then lists `.graphite-plugin` and `.vsix` assets. Downloads use the local package validator/installer. The user reviews package identity/version before installation and separately grants trust before executing native code. Updates are manually selected from releases; there is no background update or repository cloning. Offline local installation remains available.
 

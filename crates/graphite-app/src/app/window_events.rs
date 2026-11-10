@@ -155,7 +155,11 @@ impl ApplicationHandler<UserEvent> for App {
                         self.mouse.y as f32 >= gpu.renderer.line_height()
                             && (self.mouse.y as f32) < height - gpu.renderer.line_height() * 2.0
                     });
-                if self.plugins.visible {
+                let over_plugins = self.plugins.visible
+                    && !self.zen_mode
+                    && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
+                    && (self.mouse.x as f32) < SIDEBAR_WIDTH;
+                if over_plugins {
                     self.scroll_plugins(lines as i32);
                 } else if over_process_panel {
                     let max_scroll = self.process_metrics.len().saturating_sub(9);

@@ -2,6 +2,7 @@ use super::*;
 
 impl App {
     pub(crate) fn open_project_search(&mut self) {
+        self.close_plugins();
         self.context_keys
             .close_widget(super::context_keys::WidgetKind::ProjectSearch);
         self.search_query = Some(String::new());

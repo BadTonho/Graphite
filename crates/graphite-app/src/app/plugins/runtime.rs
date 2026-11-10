@@ -107,11 +107,21 @@ impl App {
                         .plugins
                         .index
                         .min(self.plugins.installed.len().saturating_sub(1));
+                    let rows = self.plugin_visible_rows();
+                    self.plugins.scroll = self
+                        .plugins
+                        .scroll
+                        .min(self.plugins.installed.len().saturating_sub(rows));
                 }
-                Ok(Outcome::Repositories(repositories)) => self.plugins.repositories = repositories,
+                Ok(Outcome::Repositories(repositories)) => {
+                    self.plugins.repositories = repositories;
+                    self.plugins.index = 0;
+                    self.plugins.scroll = 0;
+                }
                 Ok(Outcome::Assets(assets)) => {
                     self.plugins.assets = Some(assets);
                     self.plugins.index = 0;
+                    self.plugins.scroll = 0;
                 }
                 Ok(Outcome::Preview(path, metadata)) => {
                     self.plugins.preview = Some((path, metadata))

@@ -42,7 +42,7 @@ Registre recursos em `context.subscriptions`; o descarte é idempotente. O encer
 
 ## Instalar e gerenciar
 
-Abra **Plugins** com `Ctrl+Shift+X`. As setas selecionam linhas; Escape retorna ou fecha. Ações do cabeçalho são clicáveis e têm equivalentes no teclado:
+Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados e GitHub, e a caixa de pesquisa aceita consultas no GitHub. As setas selecionam cartões; Esc retorna ou fecha. As mesmas ações estão disponíveis pelo teclado:
 
 | Tecla | Ação |
 |---|---|
@@ -56,7 +56,7 @@ Abra **Plugins** com `Ctrl+Shift+X`. As setas selecionam linhas; Escape retorna 
 | R / X | Reiniciar / remover o plugin selecionado |
 | C | Executar o primeiro comando registrado do plugin |
 
-O painel mostra os IDs declarados; associe outros comandos no `keybindings.json`, por exemplo `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Instalar e atualizar redefine habilitação e confiança. A confirmação permite executar código local daquela versão instalada. Node ausente e falhas de ativação aparecem no painel; use R para tentar novamente depois de corrigir a causa.
+A barra lateral mostra os IDs declarados; associe outros comandos no `keybindings.json`, por exemplo `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Instalar e atualizar redefine habilitação e confiança. A confirmação permite executar código local daquela versão instalada. Node ausente e falhas de ativação aparecem na barra lateral; use R para tentar novamente depois de corrigir a causa.
 
 Pacotes VSIX mostram identidade, versão, engines, entrada e categorias de contribuições. Seu estado é **Imported — VS Code execution unavailable** (Importado — execução VS Code indisponível). Eles não podem ser habilitados e seus temas, comandos e código não executam.
 

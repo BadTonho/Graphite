@@ -1,7 +1,65 @@
+use super::layout::{PluginsLayout, PluginsTab};
 use super::*;
 impl App {
+    /// Whether the sidebar should receive text and navigation keys.
+    ///
+    /// Focus is explicit because the editor stays visible next to the Plugins
+    /// sidebar. Transient overlays always win over the sidebar.
+    pub(crate) fn plugin_owns_keyboard(&self) -> bool {
+        self.plugins.visible
+            && self.plugins.focused
+            && !self.zen_mode
+            && !self.scm_visible
+            && !self.terminal_focused
+            && self.quick_open.is_none()
+            && self.local_search.is_none()
+            && self.search_query.is_none()
+            && self.snippet_query.is_none()
+            && self.completion_items.is_empty()
+            && !self.quick_fix_visible
+            && !self.scm_commit_prompt
+            && !self.branch_picker
+            && self.diff_view.is_none()
+            && self.conflict_view.is_none()
+            && !self.close_confirm
+            && !self.close_window_confirm
+    }
+
+    pub(super) fn plugin_row_count(&self) -> usize {
+        if self.plugins.github {
+            self.plugins
+                .assets
+                .as_ref()
+                .map(|assets| assets.len())
+                .unwrap_or(self.plugins.repositories.len())
+        } else {
+            self.plugins.installed.len()
+        }
+    }
+
+    pub(super) fn plugin_visible_rows(&self) -> usize {
+        self.gpu
+            .as_ref()
+            .map(|gpu| {
+                let (_, height) = gpu.renderer.size();
+                PluginsLayout::new(height, gpu.renderer.line_height()).visible_rows()
+            })
+            .unwrap_or(6)
+    }
+
+    fn ensure_plugin_visible(&mut self) {
+        let rows = self.plugin_visible_rows();
+        if self.plugins.index < self.plugins.scroll {
+            self.plugins.scroll = self.plugins.index;
+        } else if self.plugins.index >= self.plugins.scroll + rows {
+            self.plugins.scroll = self.plugins.index + 1 - rows;
+        }
+        let max = self.plugin_row_count().saturating_sub(rows);
+        self.plugins.scroll = self.plugins.scroll.min(max);
+    }
+
     pub(crate) fn plugin_commit_text(&mut self, text: &str) -> bool {
-        if !self.plugins.visible {
+        if !self.plugin_owns_keyboard() {
             return false;
         }
         if self.plugins.editing {
@@ -9,29 +67,24 @@ impl App {
         }
         true
     }
+
     pub(crate) fn scroll_plugins(&mut self, lines: i32) {
-        if self.plugins.worker.is_some()
-            || self.plugins.editing
+        if !self.plugins.visible
             || self.plugins.preview.is_some()
             || self.plugins.inspecting.is_some()
             || self.plugins.trust.is_some()
         {
             return;
         }
-        let count = if self.plugins.github {
-            self.plugins
-                .assets
-                .as_ref()
-                .map(|a| a.len())
-                .unwrap_or(self.plugins.repositories.len())
-        } else {
-            self.plugins.installed.len()
-        };
-        self.plugins.index = (self.plugins.index as i64 + lines as i64)
-            .clamp(0, count.saturating_sub(1) as i64) as usize;
+        let count = self.plugin_row_count();
+        let rows = self.plugin_visible_rows();
+        let max = count.saturating_sub(rows);
+        self.plugins.scroll =
+            (self.plugins.scroll as i64 + lines as i64).clamp(0, max as i64) as usize;
     }
+
     pub(crate) fn plugin_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        if !self.plugins.visible {
+        if !self.plugin_owns_keyboard() {
             return false;
         }
         if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
@@ -43,10 +96,31 @@ impl App {
                 self.plugins.editing = false;
             } else if self.plugins.assets.take().is_some() {
                 self.plugins.index = 0;
+                self.plugins.scroll = 0;
             } else {
-                self.plugins.visible = false;
+                self.close_plugins();
             }
             return true;
+        }
+        let ctrl = self.modifiers.control_key();
+        let alt = self.modifiers.alt_key();
+        if self.plugins.editing
+            && ctrl
+            && event
+                .logical_key
+                .to_text()
+                .is_some_and(|s| s.eq_ignore_ascii_case("v"))
+        {
+            use super::super::clipboard::ClipboardAccess;
+            if let Ok(text) = super::super::clipboard::SystemClipboard.get_text() {
+                self.plugins
+                    .query
+                    .extend(text.chars().filter(|c| !c.is_control()));
+            }
+            return true;
+        }
+        if ctrl || alt {
+            return false;
         }
         if self.plugins.worker.is_some() {
             return true;
@@ -76,6 +150,8 @@ impl App {
                 self.plugins.preview = None;
                 self.plugins.github = false;
                 self.plugins.assets = None;
+                self.plugins.index = 0;
+                self.plugins.scroll = 0;
                 self.plugin_job(move |store| {
                     let result = store
                         .install(&path)
@@ -90,20 +166,6 @@ impl App {
             return true;
         }
         if self.plugins.editing {
-            if self.modifiers.control_key()
-                && event
-                    .logical_key
-                    .to_text()
-                    .is_some_and(|s| s.eq_ignore_ascii_case("v"))
-            {
-                use super::super::clipboard::ClipboardAccess;
-                if let Ok(text) = super::super::clipboard::SystemClipboard.get_text() {
-                    self.plugins
-                        .query
-                        .extend(text.chars().filter(|c| !c.is_control()));
-                }
-                return true;
-            }
             match &event.logical_key {
                 Key::Named(NamedKey::Backspace) => {
                     self.plugins.query.pop();
@@ -136,21 +198,15 @@ impl App {
             }
             return true;
         }
-        let count = if self.plugins.github {
-            self.plugins
-                .assets
-                .as_ref()
-                .map(|a| a.len())
-                .unwrap_or(self.plugins.repositories.len())
-        } else {
-            self.plugins.installed.len()
-        };
+        let count = self.plugin_row_count();
         match event.logical_key {
             Key::Named(NamedKey::ArrowDown) => {
-                self.plugins.index = (self.plugins.index + 1).min(count.saturating_sub(1))
+                self.plugins.index = (self.plugins.index + 1).min(count.saturating_sub(1));
+                self.ensure_plugin_visible();
             }
             Key::Named(NamedKey::ArrowUp) => {
-                self.plugins.index = self.plugins.index.saturating_sub(1)
+                self.plugins.index = self.plugins.index.saturating_sub(1);
+                self.ensure_plugin_visible();
             }
             Key::Named(NamedKey::Enter) => self.plugin_action('\n'),
             _ => {
@@ -163,20 +219,52 @@ impl App {
         }
         true
     }
-    fn cleanup_plugin_download(&mut self) {
+
+    /// Leaves detail/confirmation state without hiding the sidebar.
+    pub(super) fn leave_plugin_details(&mut self) {
+        if self.plugins.preview.take().is_some() {
+            self.cleanup_plugin_download();
+        }
+        self.plugins.trust = None;
+        self.plugins.inspecting = None;
+        self.plugins.editing = false;
+    }
+
+    pub(super) fn cleanup_plugin_download(&mut self) {
         if let Some(path) = self.plugins.temporary.take() {
             let _ = std::fs::remove_file(path);
         }
     }
+
     pub(crate) fn plugin_click(&mut self) {
         let Some(gpu) = &self.gpu else {
             return;
         };
         let lh = gpu.renderer.line_height();
-        let cw = gpu.renderer.char_width();
+        let (_, height) = gpu.renderer.size();
+        let layout = PluginsLayout::new(height, lh);
         let x = self.mouse.x as f32;
         let y = self.mouse.y as f32;
+        if x < layout.sidebar_x || x >= layout.sidebar_x + layout.width || y >= height - lh {
+            return;
+        }
+        self.focus_plugins();
         if self.plugins.worker.is_some() {
+            return;
+        }
+        if let Some(tab) = layout.tab_at(x, y) {
+            self.leave_plugin_details();
+            self.plugin_action(match tab {
+                PluginsTab::Installed => 'i',
+                PluginsTab::Github => 'g',
+            });
+            return;
+        }
+        if layout.search_contains(x, y) {
+            if !self.plugins.editing {
+                self.leave_plugin_details();
+                self.plugin_action('/');
+            }
             return;
         }
         if self.plugins.preview.is_some()
@@ -185,49 +273,19 @@ impl App {
         {
             return;
         }
-        if y < lh * 2.0 {
-            if x < cw * 16.0 {
-                self.plugin_action('i');
-            } else if x < cw * 30.0 {
-                self.plugin_action('g');
-            } else {
-                self.plugins.visible = false;
-            }
-        } else if y < lh * 3.5 {
-            if self.plugins.preview.is_some() || self.plugins.trust.is_some() {
-                return;
-            }
-            let action = if self.plugins.github {
-                if x < cw * 14.0 {
-                    '/'
-                } else if x < cw * 30.0 {
-                    'p'
-                } else {
-                    'n'
-                }
-            } else {
-                match (x / (cw * 14.0)) as usize {
-                    0 => 'l',
-                    1 => 'e',
-                    2 => 'd',
-                    3 => 'r',
-                    4 => 'x',
-                    _ => 'c',
-                }
-            };
-            self.plugin_action(action);
-        } else if self.plugins.preview.is_none()
-            && self.plugins.trust.is_none()
-            && !self.plugins.editing
-        {
-            let row = (y / lh) as usize;
-            if row >= 5 {
-                let offset = self.plugins.index.saturating_sub(5);
-                self.plugins.index = offset + (row - 5) / 3;
-                if self.plugins.github {
-                    self.plugin_action('\n');
-                }
-            }
+        if self.plugins.path_input {
+            self.plugins.query.clear();
+            self.plugins.path_input = false;
+        }
+        self.plugins.editing = false;
+        let count = self.plugin_row_count();
+        let scroll = self
+            .plugins
+            .scroll
+            .min(count.saturating_sub(layout.visible_rows()));
+        if let Some(index) = layout.card_index(x, y, scroll, count) {
+            self.plugins.index = index;
+            self.plugin_action('\n');
         }
     }
 }

@@ -14,6 +14,7 @@ use std::{
 mod accessibility;
 mod actions;
 mod drawing;
+mod layout;
 mod panel;
 mod runtime;
 #[cfg(test)]
@@ -30,6 +31,7 @@ pub(crate) enum Outcome {
 pub(crate) struct Plugins {
     pub hosts: BTreeMap<String, super::extension_host::ExtensionRuntime>,
     pub visible: bool,
+    pub focused: bool,
     installed: Vec<Installed>,
     repositories: Vec<Repository>,
     assets: Option<Vec<Asset>>,
@@ -42,6 +44,7 @@ pub(crate) struct Plugins {
     editing: bool,
     page: u32,
     index: usize,
+    scroll: usize,
     message: String,
     worker: Option<mpsc::Receiver<Result<Outcome>>>,
     catalog: Option<Arc<Mutex<Option<Catalog>>>>,
@@ -82,11 +85,30 @@ impl App {
         self.plugins.store = Some(Store::new(config::app_config_dir().join("plugins")));
         self.plugin_job(|store| Ok(Outcome::Refreshed(store.list()?)));
     }
+    #[cfg(test)]
+    pub(crate) fn use_plugin_store(&mut self, path: PathBuf) {
+        self.plugins.store = Some(Store::new(path));
+    }
+    /// Focuses the sidebar and dismisses editor popups that would steal typing.
+    pub(crate) fn focus_plugins(&mut self) {
+        self.plugins.focused = true;
+        self.completion_items.clear();
+        self.quick_fix_visible = false;
+        self.snippet_query = None;
+    }
     pub(crate) fn open_plugins(&mut self) {
+        self.scm_visible = false;
+        self.close_project_search();
         self.plugins.visible = true;
+        self.focus_plugins();
         if self.plugins.store.is_none() {
             self.initialize_plugins();
         }
+    }
+    pub(crate) fn close_plugins(&mut self) {
+        self.leave_plugin_details();
+        self.plugins.visible = false;
+        self.plugins.focused = false;
     }
     pub(super) fn plugin_job(
         &mut self,
@@ -137,6 +159,7 @@ impl App {
         let page = self.plugins.page.max(1);
         self.plugins.assets = None;
         self.plugins.index = 0;
+        self.plugins.scroll = 0;
         self.catalog_job(move |catalog| Ok(Outcome::Repositories(catalog.search(&query, page)?)));
     }
 }

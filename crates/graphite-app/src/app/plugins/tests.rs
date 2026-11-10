@@ -215,6 +215,7 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
     let temp = crate::test_support::TempDir::new();
     let mut app = App::new_with_options(temp.path().into(), None, true);
     app.plugins.visible = true;
+    app.plugins.focused = true;
     app.plugins.editing = true;
     app.ime_commit("plugin path");
     assert_eq!(app.plugins.query, "plugin path");
@@ -239,4 +240,72 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
     assert!(matches!(app.plugins.inspecting, Some(Metadata::Vsix(_))));
     app.scroll_plugins(100);
     assert_eq!(app.plugins.index, 0);
+    assert_eq!(app.plugins.scroll, 0);
+}
+
+#[test]
+fn tab_switches_leave_details_and_clear_path_input() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.plugins.visible = true;
+    app.plugins.focused = true;
+    let metadata = Metadata::Vsix(graphite_plugins::manifest::Vsix {
+        id: "sample.vsix".into(),
+        version: "1.0.0".into(),
+        description: String::new(),
+        engines: Value::Null,
+        main: None,
+        contributions: vec![],
+    });
+    app.plugins.inspecting = Some(metadata.clone());
+    app.plugin_action('i');
+    assert!(app.plugins.inspecting.is_none());
+    app.plugins.path_input = true;
+    app.plugins.query = "plugin.vsix".into();
+    app.plugins.editing = true;
+    app.plugin_action('i');
+    assert!(!app.plugins.path_input);
+    assert!(app.plugins.query.is_empty());
+    assert!(!app.plugins.editing);
+    app.plugins.inspecting = Some(metadata);
+    app.plugin_action('l');
+    assert!(app.plugins.inspecting.is_none());
+    assert!(app.plugins.path_input);
+    assert!(app.plugins.editing);
+    assert!(app.plugins.query.is_empty());
+}
+
+#[test]
+fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    for index in 0..40 {
+        app.plugins.installed.push(Installed {
+            metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+                id: format!("sample.plugin{index}"),
+                version: "1.0.0".into(),
+                description: String::new(),
+                engines: Value::Null,
+                main: None,
+                contributions: vec![],
+            }),
+            enabled: false,
+            trusted_version: None,
+            directory: format!("sample.plugin{index}@1.0.0"),
+        });
+    }
+    app.plugins.visible = true;
+    app.plugins.focused = true;
+    assert!(app.plugin_owns_keyboard());
+    app.scroll_plugins(3);
+    assert_eq!(app.plugins.scroll, 3);
+    app.scroll_plugins(100);
+    assert_eq!(app.plugins.scroll, 40 - app.plugin_visible_rows());
+    app.scroll_plugins(-100);
+    assert_eq!(app.plugins.scroll, 0);
+    app.quick_open = Some(Default::default());
+    assert!(!app.plugin_owns_keyboard());
+    app.quick_open = None;
+    app.plugins.focused = false;
+    assert!(!app.plugin_owns_keyboard());
 }

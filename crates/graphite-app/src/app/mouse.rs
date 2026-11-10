@@ -2,10 +2,6 @@ use super::*;
 
 impl App {
     pub(crate) fn click(&mut self) {
-        if self.plugins.visible {
-            self.plugin_click();
-            return;
-        }
         let Some(gpu) = &self.gpu else { return };
         let lh = gpu.renderer.line_height();
         let cw = gpu.renderer.char_width();
@@ -43,6 +39,14 @@ impl App {
         if !self.zen_mode && mx < ACTIVITY_BAR_WIDTH {
             self.activity_bar_click(my);
             return;
+        }
+
+        if self.plugins.visible && !self.zen_mode && mx < SIDEBAR_WIDTH && my < window_height - lh {
+            self.plugin_click();
+            return;
+        }
+        if self.plugins.visible {
+            self.plugins.focused = false;
         }
 
         if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {

@@ -1,8 +1,8 @@
 //! Activity bar on the far left of the workbench.
 //!
-//! The bar owns a fixed-width column; the Explorer and Source Control panels
-//! start after it. Geometry is intentionally independent of the font metrics so
-//! hit testing and drawing share the same slots.
+//! The bar owns a fixed-width column; the Explorer, Source Control and Plugins
+//! panels start after it. Geometry is intentionally independent of the font
+//! metrics so hit testing and drawing share the same slots.
 
 use super::*;
 
@@ -76,10 +76,12 @@ impl App {
     pub(crate) fn activate_activity(&mut self, activity: Activity) {
         match activity {
             Activity::Explorer => {
+                self.close_plugins();
                 self.scm_visible = false;
                 self.close_project_search();
             }
             Activity::Search => {
+                self.close_plugins();
                 if self.search_query.is_some() {
                     self.close_project_search();
                 } else {
@@ -88,6 +90,7 @@ impl App {
                 }
             }
             Activity::SourceControl => {
+                self.close_plugins();
                 if self.scm_visible {
                     self.scm_visible = false;
                 } else {
@@ -96,7 +99,15 @@ impl App {
                     self.refresh_scm_async();
                 }
             }
-            Activity::Plugins => self.open_plugins(),
+            Activity::Plugins => {
+                if !self.plugins.visible {
+                    self.open_plugins();
+                } else if self.plugins.focused {
+                    self.close_plugins();
+                } else {
+                    self.focus_plugins();
+                }
+            }
         }
     }
 
@@ -216,6 +227,38 @@ mod tests {
         assert!(app.activity_bar_click(activity_top(0) + 1.0));
         assert!(!app.scm_visible);
         assert!(!app.activity_bar_click(activity_top(4)));
+    }
+
+    #[test]
+    fn plugins_item_toggles_focus_and_other_views_close_it() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.use_plugin_store(temp.path().join("plugins"));
+
+        assert!(app.activity_bar_click(activity_top(3) + 1.0));
+        assert!(app.plugins.visible);
+        assert!(app.plugins.focused);
+        assert_eq!(app.active_activity(), Activity::Plugins);
+
+        app.plugins.focused = false;
+        assert!(app.activity_bar_click(activity_top(3) + 1.0));
+        assert!(app.plugins.visible);
+        assert!(app.plugins.focused);
+
+        assert!(app.activity_bar_click(activity_top(3) + 1.0));
+        assert!(!app.plugins.visible);
+        assert!(!app.plugins.focused);
+        assert_eq!(app.active_activity(), Activity::Explorer);
+
+        assert!(app.activity_bar_click(activity_top(3) + 1.0));
+        assert!(app.activity_bar_click(activity_top(2) + 1.0));
+        assert!(!app.plugins.visible);
+        assert!(app.scm_visible);
+
+        assert!(app.activity_bar_click(activity_top(3) + 1.0));
+        assert!(app.activity_bar_click(activity_top(1) + 1.0));
+        assert!(!app.plugins.visible);
+        assert!(app.search_query.is_some());
     }
 
     #[test]

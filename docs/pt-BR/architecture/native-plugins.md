@@ -1,6 +1,6 @@
 # Plugins nativos e inspeção de VSIX
 
-Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação, geração de projetos e descoberta no GitHub sem depender da aplicação/GPU. A aplicação mantém o painel e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
+Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação, geração de projetos e descoberta no GitHub sem depender da aplicação/GPU. A aplicação mantém o estado da barra lateral de Plugins e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
 
 ## Limite do runtime
 
@@ -20,7 +20,7 @@ Pacotes/downloads têm limite de 100 MiB; arquivos ZIP, de 500 MiB expandidos e 
 
 ## Descoberta e interface
 
-O painel Plugins abre com `Ctrl+Shift+X` ou `graphite.plugins.open`. Sistema de arquivos, rede e verificação do Node executam em workers. O catálogo busca repositórios públicos com `topic:graphite-plugin`, pagina 30 resultados, mantém cache de 60 segundos e respeita cabeçalhos de limite de requisições. Não usa credenciais GitHub.
+A barra lateral de Plugins abre com `Ctrl+Shift+X` ou `graphite.plugins.open`. Ela reutiliza a barra lateral de 260 px ao lado da barra de atividades, mantendo o editor visível. A barra lateral só recebe entrada de teclado enquanto está focada; o editor, Quick Open, localizar, pesquisa do projeto, Controle de código, terminal e superfícies de confirmação têm precedência caso contrário. Sistema de arquivos, rede e verificação do Node executam em workers. O catálogo busca repositórios públicos com `topic:graphite-plugin`, pagina 30 resultados, mantém cache de 60 segundos e respeita cabeçalhos de limite de requisições. Não usa credenciais GitHub.
 
 Selecionar um repositório consulta sua última release estável e lista assets `.graphite-plugin` e `.vsix`. Downloads passam pelo mesmo validador/instalador local. O usuário revisa identidade/versão antes de instalar e concede confiança separadamente antes de executar código nativo. Atualizações são escolhidas manualmente nas releases; não há atualização em segundo plano nem clone de repositórios. A instalação local funciona offline.
 
