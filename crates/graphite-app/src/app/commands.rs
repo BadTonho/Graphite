@@ -133,7 +133,8 @@ mod tests {
         let rects = app.group_rectangles(SIDEBAR_WIDTH + 1000.0, 820.0, 20.0);
         assert_eq!(rects.len(), 3);
         assert_eq!(rects[0].width, 500.0);
-        assert_eq!(rects[1].height, 400.0);
+        let expected_half_height = (820.0 - 20.0 - app.activity_bar_vertical_offset()) / 2.0;
+        assert_eq!(rects[1].height, expected_half_height);
         app.run_ui_command("workbench.action.focusNextGroup");
         assert_eq!(app.editor_groups.focused(), rects[0].id);
         app.run_ui_command("workbench.action.focusNextGroup");

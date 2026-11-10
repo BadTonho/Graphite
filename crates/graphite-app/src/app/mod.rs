@@ -25,6 +25,7 @@ mod input;
 mod layout;
 pub(super) mod local_search;
 mod lsp_ui;
+pub(crate) mod menu_bar;
 mod mouse;
 mod phase4_tools;
 #[path = "../phase5.rs"]

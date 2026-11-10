@@ -5,7 +5,9 @@ pub(crate) fn window_attributes() -> winit::window::WindowAttributes {
         .expect("build-generated icon must contain 256x256 RGBA pixels");
     let attributes = winit::window::Window::default_attributes()
         .with_title("Graphite")
-        .with_window_icon(Some(icon));
+        .with_window_icon(Some(icon))
+        .with_decorations(false)
+        .with_min_inner_size(winit::dpi::LogicalSize::new(600.0, 420.0));
     #[cfg(target_os = "linux")]
     let attributes = {
         // Both Linux backends share this name field; it sets Wayland app_id / X11 WM_CLASS.

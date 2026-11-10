@@ -596,6 +596,8 @@ impl App {
             self.draw_activity_bar(r, h);
         }
 
+        self.draw_workbench_menu(r);
+
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();
         self.gpu = Some(gpu);

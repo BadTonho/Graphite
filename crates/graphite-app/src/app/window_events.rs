@@ -174,12 +174,26 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 let previous_x = self.mouse.x as f32;
                 self.mouse = position;
-                if let Some(gpu) = &self.gpu {
+                if let Some(window_width) = self.gpu.as_ref().map(|gpu| gpu.renderer.size().0) {
+                    self.workbench_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.activity_bar_menu_pointer_moved(
                         position.x as f32,
                         position.y as f32,
-                        gpu.renderer.size().0,
+                        window_width,
                     );
+                }
+                if self.titlebar_pointer_moved(position.x as f32, position.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
+                if let Some(cursor) = self.titlebar_cursor(position.x as f32, position.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(cursor);
+                        gpu.window.request_redraw();
+                    }
+                    return;
                 }
                 let pointer_x = position.x as f32;
                 if self.sidebar_resize_dragging {
@@ -220,6 +234,12 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                if self.titlebar_handle_press(self.mouse.x as f32, self.mouse.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 let separator_x = self.sidebar_width_px();
                 if !self.zen_mode && (self.mouse.x as f32 - separator_x).abs() <= 4.0 {
                     self.sidebar_resize_dragging = true;
@@ -259,6 +279,7 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Right,
                 ..
             } => {
+                self.dismiss_workbench_menu();
                 let opened =
                     self.activity_bar_right_click(self.mouse.x as f32, self.mouse.y as f32);
                 if opened || self.activity_bar_menu.is_none() {
@@ -272,7 +293,12 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
-                if self.sidebar_resize_dragging {
+                if self.titlebar_pointer_released() {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(winit::window::CursorIcon::Default);
+                        gpu.window.request_redraw();
+                    }
+                } else if self.sidebar_resize_dragging {
                     self.sidebar_resize_dragging = false;
                     self.sidebar_width = config::clamp_sidebar_width(self.sidebar_width);
                     if self.profiles.is_some() {

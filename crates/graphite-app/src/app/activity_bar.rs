@@ -24,10 +24,12 @@ pub(crate) enum ActivityBarSubmenu {
 pub(crate) struct ActivityBarMenu {
     pub x: f32,
     pub y: f32,
+    pub width: f32,
     pub selected: usize,
     pub submenu: Option<ActivityBarSubmenu>,
     pub submenu_selected: usize,
     pub extension_items: Vec<PluginActivityEntry>,
+    pub show_restore: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,7 +73,12 @@ struct ActivityBarLayout {
 }
 
 impl ActivityBarLayout {
-    fn new(preferences: &config::ActivityBarPreferences, width: f32, height: f32) -> Option<Self> {
+    fn new(
+        preferences: &config::ActivityBarPreferences,
+        width: f32,
+        height: f32,
+        menu_bar_height: f32,
+    ) -> Option<Self> {
         if preferences.position == ActivityBarPosition::Hidden {
             return None;
         }
@@ -90,7 +97,7 @@ impl ActivityBarLayout {
             y: if preferences.position == ActivityBarPosition::Bottom {
                 height - item_size - 20.0
             } else {
-                0.0
+                menu_bar_height
             },
             width: if horizontal {
                 width
@@ -99,7 +106,11 @@ impl ActivityBarLayout {
             } else {
                 ACTIVITY_BAR_WIDTH
             },
-            height: if horizontal { item_size } else { height },
+            height: if horizontal {
+                item_size
+            } else {
+                height - menu_bar_height
+            },
             item_size,
             compact,
             position: preferences.position,
@@ -116,7 +127,7 @@ impl ActivityBarLayout {
             },
             _ => MenuRect {
                 x: 0.0,
-                y: ACTIVITY_BAR_TOP + index as f32 * self.item_size,
+                y: self.y + ACTIVITY_BAR_TOP + index as f32 * self.item_size,
                 width: self.width,
                 height: self.item_size,
             },
@@ -128,26 +139,29 @@ impl ActivityBarLayout {
     }
 }
 
-fn menu_rows(extension_count: usize) -> Vec<f32> {
+pub(super) fn menu_rows(extension_count: usize, show_restore: bool) -> Vec<f32> {
     let top = MENU_PADDING;
     let setting_start = 4 + extension_count;
     let mut rows = (0..setting_start)
         .map(|index| top + MENU_ROW * index as f32)
         .collect::<Vec<_>>();
     rows.extend((0..3).map(|index| top + MENU_ROW * (setting_start + index) as f32 + 10.0));
+    if show_restore {
+        rows.push(top + MENU_ROW * (setting_start + 3) as f32 + 10.0);
+    }
     rows
 }
 
-fn menu_items_height(extension_count: usize) -> f32 {
-    MENU_PADDING * 2.0 + MENU_ROW * (7 + extension_count) as f32 + 10.0
+fn menu_items_height(extension_count: usize, show_restore: bool) -> f32 {
+    MENU_PADDING * 2.0 + MENU_ROW * (7 + extension_count + usize::from(show_restore)) as f32 + 10.0
 }
 
 fn main_menu_rect(menu: &ActivityBarMenu) -> MenuRect {
     MenuRect {
         x: menu.x,
         y: menu.y,
-        width: MENU_WIDTH,
-        height: menu_items_height(menu.extension_items.len()),
+        width: menu.width,
+        height: menu_items_height(menu.extension_items.len(), menu.show_restore),
     }
 }
 
@@ -158,8 +172,8 @@ fn submenu_rect(
     row_top: f32,
     rows: usize,
 ) -> MenuRect {
-    let x = if menu.x + MENU_WIDTH + 170.0 <= window_width {
-        menu.x + MENU_WIDTH - 1.0
+    let x = if menu.x + menu.width + 170.0 <= window_width {
+        menu.x + menu.width - 1.0
     } else {
         menu.x - 170.0 + 1.0
     };
@@ -295,17 +309,52 @@ impl App {
         window_width: f32,
         window_height: f32,
     ) {
+        self.open_activity_bar_menu_at(x, y, window_width, window_height);
+    }
+
+    pub(crate) fn open_activity_bar_menu_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        window_width: f32,
+        window_height: f32,
+    ) {
         let extension_items = self.plugin_activity_entries();
-        let menu_height = menu_items_height(extension_items.len());
-        let x = x.clamp(0.0, (window_width - MENU_WIDTH).max(0.0));
+        let show_restore = self.activity_bar_preferences.position == ActivityBarPosition::Hidden;
+        let menu_height = menu_items_height(extension_items.len(), show_restore);
+        let char_width = self
+            .gpu
+            .as_ref()
+            .map_or(self.font_size * 0.6, |gpu| gpu.renderer.char_width());
+        let longest_label = [
+            self.t("activity.position"),
+            self.t("activity.size"),
+            self.t("activity.move_sidebar_right"),
+            self.t("activity.position.default"),
+            self.t("activity.position.bottom"),
+            self.t("activity.position.hidden"),
+            self.t("activity.position.top"),
+            self.t("activity.size.compact"),
+            self.t("activity.size.default"),
+            self.t("activity.show"),
+        ]
+        .into_iter()
+        .chain(extension_items.iter().map(|entry| entry.title.as_str()))
+        .map(|label| label.chars().count())
+        .max()
+        .unwrap_or(0);
+        let menu_width = MENU_WIDTH.max(longest_label as f32 * char_width + 58.0);
+        let x = x.clamp(0.0, (window_width - menu_width).max(0.0));
         let y = y.clamp(0.0, (window_height - menu_height).max(0.0));
         self.activity_bar_menu = Some(ActivityBarMenu {
             x,
             y,
+            width: menu_width,
             selected: 0,
             submenu: None,
             submenu_selected: 0,
             extension_items,
+            show_restore,
         });
     }
 
@@ -323,7 +372,7 @@ impl App {
                 ActivityBarSubmenu::Position => 4,
                 ActivityBarSubmenu::Size => 2,
             };
-            let row_tops = menu_rows(menu.extension_items.len());
+            let row_tops = menu_rows(menu.extension_items.len(), menu.show_restore);
             let base = 4 + menu.extension_items.len();
             let row_top = row_tops[base
                 + match submenu {
@@ -368,7 +417,7 @@ impl App {
             return true;
         }
         let local_y = y - menu.y;
-        let rows = menu_rows(menu.extension_items.len());
+        let rows = menu_rows(menu.extension_items.len(), menu.show_restore);
         let selected = rows.iter().enumerate().find_map(|(index, top)| {
             (local_y >= *top && local_y < *top + MENU_ROW).then_some(index)
         });
@@ -403,6 +452,11 @@ impl App {
                 self.toggle_primary_sidebar_side();
                 self.activity_bar_menu = None;
             }
+            index if menu.show_restore && index == 7 + extension_count => {
+                self.set_activity_bar_position(ActivityBarPosition::Default);
+                self.activity_bar_menu = None;
+                self.workbench_menu = None;
+            }
             _ => {}
         }
         true
@@ -416,7 +470,7 @@ impl App {
             return;
         }
         let local_y = y - menu.y;
-        let selected = menu_rows(menu.extension_items.len())
+        let selected = menu_rows(menu.extension_items.len(), menu.show_restore)
             .iter()
             .enumerate()
             .find_map(|(index, top)| {
@@ -490,12 +544,13 @@ impl App {
             Key::Named(NamedKey::Escape) => self.activity_bar_menu = None,
             Key::Named(NamedKey::ArrowDown) => {
                 if let Some(menu) = &mut self.activity_bar_menu {
-                    menu.selected = (menu.selected + 1) % (7 + menu.extension_items.len());
+                    menu.selected = (menu.selected + 1)
+                        % (7 + menu.extension_items.len() + usize::from(menu.show_restore));
                 }
             }
             Key::Named(NamedKey::ArrowUp) => {
                 if let Some(menu) = &mut self.activity_bar_menu {
-                    let count = 7 + menu.extension_items.len();
+                    let count = 7 + menu.extension_items.len() + usize::from(menu.show_restore);
                     menu.selected = (menu.selected + count - 1) % count;
                 }
             }
@@ -537,6 +592,11 @@ impl App {
                     index if index == 6 + extension_count => {
                         self.toggle_primary_sidebar_side();
                         self.activity_bar_menu = None;
+                    }
+                    index if menu_snapshot.show_restore && index == 7 + extension_count => {
+                        self.set_activity_bar_position(ActivityBarPosition::Default);
+                        self.activity_bar_menu = None;
+                        self.workbench_menu = None;
                     }
                     _ => {}
                 }
@@ -799,8 +859,12 @@ impl App {
             return false;
         };
         let entries = self.visible_activity_items();
-        let Some(layout) = ActivityBarLayout::new(&self.activity_bar_preferences, width, height)
-        else {
+        let Some(layout) = ActivityBarLayout::new(
+            &self.activity_bar_preferences,
+            width,
+            height,
+            self.top_menu_height(),
+        ) else {
             return false;
         };
         let Some((_, selected)) = entries
@@ -823,6 +887,7 @@ impl App {
                 &self.activity_bar_preferences,
                 gpu.renderer.size().0,
                 gpu.renderer.size().1,
+                self.top_menu_height(),
             )
             .is_some_and(|layout| layout.contains(x, y))
         })
@@ -835,9 +900,15 @@ impl App {
             .map(|gpu| (gpu.renderer.size().0, gpu.renderer.size().1))
             .unwrap_or((1200.0, 760.0));
         if !self.zen_mode
-            && ActivityBarLayout::new(&self.activity_bar_preferences, width, height)
-                .is_some_and(|layout| layout.contains(x, y))
+            && ActivityBarLayout::new(
+                &self.activity_bar_preferences,
+                width,
+                height,
+                self.top_menu_height(),
+            )
+            .is_some_and(|layout| layout.contains(x, y))
         {
+            self.workbench_menu = None;
             self.open_activity_bar_menu(x, y, width, height);
             return true;
         }
@@ -847,9 +918,12 @@ impl App {
 
     pub(crate) fn draw_activity_bar(&self, renderer: &mut Renderer, height: f32) {
         let (window_width, _) = renderer.size();
-        let Some(layout) =
-            ActivityBarLayout::new(&self.activity_bar_preferences, window_width, height)
-        else {
+        let Some(layout) = ActivityBarLayout::new(
+            &self.activity_bar_preferences,
+            window_width,
+            height,
+            self.top_menu_height(),
+        ) else {
             self.draw_activity_bar_menu(renderer, height);
             return;
         };
@@ -948,7 +1022,7 @@ impl App {
         self.draw_activity_bar_menu(renderer, height);
     }
 
-    fn draw_activity_bar_menu(&self, renderer: &mut Renderer, window_height: f32) {
+    pub(super) fn draw_activity_bar_menu(&self, renderer: &mut Renderer, window_height: f32) {
         let Some(menu) = &self.activity_bar_menu else {
             return;
         };
@@ -965,7 +1039,7 @@ impl App {
             rect.height - 2.0,
             background,
         );
-        let rows = menu_rows(menu.extension_items.len());
+        let rows = menu_rows(menu.extension_items.len(), menu.show_restore);
         for (index, activity) in Activity::ALL.iter().copied().enumerate() {
             let row_y = rect.y + rows[index];
             if menu.selected == index {
@@ -1043,6 +1117,20 @@ impl App {
             } else if self.activity_bar_preferences.primary_sidebar_right {
                 renderer.draw_text("✓", rect.x + 10.0, row_y + 3.0, text);
             }
+        }
+        if menu.show_restore {
+            let index = settings_start + 3;
+            let row_y = rect.y + rows[index];
+            if menu.selected == index {
+                renderer.draw_rect(
+                    rect.x + 2.0,
+                    row_y,
+                    rect.width - 4.0,
+                    MENU_ROW,
+                    rgb(Theme::color(Theme::ACTIVE_ROW, 0x094771)),
+                );
+            }
+            renderer.draw_text(self.t("activity.show"), rect.x + 15.0, row_y + 3.0, text);
         }
         if let Some(submenu) = menu.submenu {
             let (anchor_index, values, active) = match submenu {
@@ -1219,26 +1307,26 @@ mod tests {
     #[test]
     fn activity_bar_layout_modes_share_clickable_item_bounds() {
         let mut preferences = config::ActivityBarPreferences::default();
-        let default = ActivityBarLayout::new(&preferences, 800.0, 600.0).unwrap();
+        let default = ActivityBarLayout::new(&preferences, 800.0, 600.0, 30.0).unwrap();
         assert_eq!(default.width, 48.0);
-        assert!(default.item_rect(0).contains(20.0, 10.0));
+        assert!(default.item_rect(0).contains(20.0, 40.0));
 
         preferences.size = ActivityBarSize::Compact;
-        let compact = ActivityBarLayout::new(&preferences, 800.0, 600.0).unwrap();
+        let compact = ActivityBarLayout::new(&preferences, 800.0, 600.0, 30.0).unwrap();
         assert_eq!(compact.width, 36.0);
         assert_eq!(compact.item_size, 40.0);
 
         preferences.position = ActivityBarPosition::Top;
-        let top = ActivityBarLayout::new(&preferences, 800.0, 600.0).unwrap();
-        assert!(top.item_rect(0).contains(10.0, 10.0));
-        assert!(!top.item_rect(0).contains(50.0, 10.0));
+        let top = ActivityBarLayout::new(&preferences, 800.0, 600.0, 30.0).unwrap();
+        assert!(top.item_rect(0).contains(10.0, 40.0));
+        assert!(!top.item_rect(0).contains(50.0, 40.0));
 
         preferences.position = ActivityBarPosition::Bottom;
-        let bottom = ActivityBarLayout::new(&preferences, 800.0, 600.0).unwrap();
+        let bottom = ActivityBarLayout::new(&preferences, 800.0, 600.0, 30.0).unwrap();
         assert!(bottom.item_rect(0).contains(10.0, 550.0));
 
         preferences.position = ActivityBarPosition::Hidden;
-        assert!(ActivityBarLayout::new(&preferences, 800.0, 600.0).is_none());
+        assert!(ActivityBarLayout::new(&preferences, 800.0, 600.0, 30.0).is_none());
     }
 
     #[test]
@@ -1247,7 +1335,7 @@ mod tests {
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.open_activity_bar_menu(0.0, 0.0, 800.0, 600.0);
 
-        let rows = menu_rows(0);
+        let rows = menu_rows(0, false);
         assert!(app.handle_activity_bar_menu_click(40.0, rows[1] + 1.0, 800.0));
         assert!(app.activity_bar_preferences.hidden_items.contains("search"));
 
@@ -1277,7 +1365,7 @@ mod tests {
         assert_eq!(app.activity_bar_preferences.size, ActivityBarSize::Compact);
 
         app.open_activity_bar_menu(0.0, 0.0, 800.0, 600.0);
-        app.handle_activity_bar_menu_click(40.0, menu_rows(0)[6] + 11.0, 800.0);
+        app.handle_activity_bar_menu_click(40.0, menu_rows(0, false)[6] + 11.0, 800.0);
         assert!(app.activity_bar_preferences.primary_sidebar_right);
     }
 
@@ -1344,7 +1432,7 @@ mod tests {
         assert_eq!(entries[0].title, "Tools");
 
         app.open_activity_bar_menu(0.0, 0.0, 800.0, 600.0);
-        let y = menu_rows(1)[4] + 1.0;
+        let y = menu_rows(1, false)[4] + 1.0;
         app.handle_activity_bar_menu_click(40.0, y, 800.0);
         assert!(app
             .activity_bar_preferences

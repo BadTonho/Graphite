@@ -2,6 +2,9 @@ use super::*;
 
 impl App {
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
+        if self.workbench_menu_key(&event.logical_key) {
+            return;
+        }
         if self.activity_bar_menu_key(&event.logical_key) {
             return;
         }

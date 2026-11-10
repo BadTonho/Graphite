@@ -17,6 +17,10 @@ impl App {
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
         let sidebar_width = self.sidebar_layout_width_px();
 
+        if self.workbench_menu_click(mx, my) {
+            return;
+        }
+
         if self.activity_bar_menu.is_some() {
             self.handle_activity_bar_menu_click(mx, my, window_width as f32);
             return;
