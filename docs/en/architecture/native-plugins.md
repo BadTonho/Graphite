@@ -12,7 +12,7 @@ Disabling, replacing or removing a plugin clears its registrations and pending w
 
 ## Packages and persistent state
 
-Native packages are ZIP files ending in `.graphite-plugin`, with `graphite-plugin.json` at their root. VSIX packages are read through `extension/package.json`. Installation never runs npm, lifecycle scripts or package code. VSIX remains metadata only: no entry point or contributions are activated, and it cannot be enabled.
+Native packages are ZIP files ending in `.graphite-plugin`, with `graphite-plugin.json` at their root. VSIX packages are read through `extension/package.json`. Installation never runs npm, lifecycle scripts or package code. VSIX remains metadata only: no entry point or contributions are activated, and it cannot be enabled. A separate Open VSX client API supports local-fixture-tested search and bounded VSIX download; the plugin UI and Code OSS host lifecycle are not connected to it yet.
 
 The user configuration directory contains `plugins/`, per-plugin JSON records and immutable version directories. Installation validates and extracts into a fresh staging directory, then atomically replaces the registry record. A failed publication retains the previous record and package. Previous directories remain available to live hosts until removal; removal matches an exact plugin identity boundary. Every successful installation starts disabled with no trusted version, including updates and reinstalls. Trust is recorded for the installed version.
 

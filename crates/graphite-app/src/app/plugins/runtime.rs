@@ -1,6 +1,14 @@
 use super::*;
 impl App {
     pub(super) fn start_plugin(&mut self, id: String) {
+        if self
+            .workspace_trust
+            .as_ref()
+            .is_some_and(|trust| !trust.is_trusted(self.tree.root()))
+        {
+            self.status = "Workspace is restricted; trust it before activating plugins".into();
+            return;
+        }
         let Some(record) = self
             .plugins
             .installed

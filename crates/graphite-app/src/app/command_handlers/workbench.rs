@@ -9,6 +9,45 @@ pub(super) fn workbench_action_quick_open(
     Ok(())
 }
 
+pub(super) fn workbench_action_show_commands(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.open_command_palette();
+    Ok(())
+}
+
+pub(super) fn graphite_security_trust_workspace(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let workspace = app.tree.root().to_path_buf();
+    let Some(trust) = app.workspace_trust.as_mut() else {
+        return Err(CommandError::Failed(
+            "Workspace trust storage is unavailable".into(),
+        ));
+    };
+    trust.trust(&workspace).map_err(CommandError::Failed)?;
+    app.status = "Workspace trusted. Plugin-specific trust is still required.".into();
+    Ok(())
+}
+
+pub(super) fn graphite_security_revoke_workspace_trust(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let workspace = app.tree.root().to_path_buf();
+    let Some(trust) = app.workspace_trust.as_mut() else {
+        return Err(CommandError::Failed(
+            "Workspace trust storage is unavailable".into(),
+        ));
+    };
+    trust.revoke(&workspace).map_err(CommandError::Failed)?;
+    app.plugins.hosts.clear();
+    app.status = "Workspace trust revoked; plugin hosts stopped.".into();
+    Ok(())
+}
+
 pub(super) fn workbench_view_scm(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -264,6 +303,36 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         },
     );
 
+    add(
+        registry,
+        "graphite.security.revokeWorkspaceTrust",
+        "Revoke Workspace Trust",
+        "Security",
+        ALL,
+        "true",
+        None,
+        graphite_security_revoke_workspace_trust,
+    );
+    add(
+        registry,
+        "graphite.security.trustWorkspace",
+        "Trust This Workspace",
+        "Security",
+        ALL,
+        "true",
+        None,
+        graphite_security_trust_workspace,
+    );
+    add(
+        registry,
+        "workbench.action.showCommands",
+        "Show All Commands",
+        "Workbench",
+        ALL,
+        "true",
+        None,
+        workbench_action_show_commands,
+    );
     add(
         registry,
         "workbench.action.quickOpen",

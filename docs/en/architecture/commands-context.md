@@ -22,7 +22,7 @@ Resolution proceeds from widget instance to its owning view and then global valu
 
 Values remain strings compatible with the existing expression evaluator. Keys describe focus, document availability, path, permissions, selections, undo/redo, widget visibility and contents, pending commands and diff loading. Editing enablement uses target document permissions independently of physical focus. Widget commands validate both the instance and its kind.
 
-Three conditions remain independent: shortcut `when` selects eligible bindings, `menu_when` controls menu visibility, and command enablement authorizes execution. The menu predicate is an API for consumers; this change does not add a command palette or menu UI. Hidden items and ineligible shortcuts do not prohibit an otherwise enabled programmatic call.
+Three conditions remain independent: shortcut `when` selects eligible bindings, `menu_when` controls menu visibility, and command enablement authorizes execution. The command palette is available on `Ctrl+Shift+P` and `F1`; it filters native and active-host command registrations and only dispatches entries enabled in the current view context. Hidden items and ineligible shortcuts do not prohibit an otherwise enabled programmatic call.
 
 ## Pending execution and workers
 

@@ -33,6 +33,7 @@ interprocess = "2.4"
 notify = "8.2"
 similar = "2.7"
 sysinfo = "0.40"
+regex = "1"
 
 [build-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }

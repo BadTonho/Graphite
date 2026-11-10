@@ -25,6 +25,9 @@ pub(super) fn type_newline(
 }
 
 pub(super) fn tab(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.expand_emmet_at_cursor() {
+        return Ok(());
+    }
     {
         let document = app.command_document();
         let tab = &mut app.documents[document];
@@ -36,6 +39,19 @@ pub(super) fn tab(app: &mut App, _invocation: &CommandInvocation) -> Result<(), 
         app.editor_mut().insert(&indentation);
     };
     Ok(())
+}
+
+pub(super) fn emmet_expand(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    if app.expand_emmet_at_cursor() {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(
+            "No supported Emmet abbreviation at the cursor".into(),
+        ))
+    }
 }
 
 pub(super) fn editor_action_toggle_indentation(
@@ -348,6 +364,16 @@ pub(super) fn cursor_end_select(app: &mut App, _: &CommandInvocation) -> Result<
 }
 
 pub(super) fn register(registry: &mut CommandRegistry) {
+    add(
+        registry,
+        "editor.emmet.action.expandAbbreviation",
+        "Emmet: Expand Abbreviation",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        emmet_expand,
+    );
     add(
         registry,
         "deleteLeft",

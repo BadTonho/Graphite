@@ -1,5 +1,7 @@
 //! Default command bindings; user entries are evaluated after these rules.
 pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
+    ("ctrl+shift+p", "workbench.action.showCommands", "true"),
+    ("f1", "workbench.action.showCommands", "true"),
     ("ctrl+shift+x", "graphite.plugins.open", "true"),
     (
         "left",

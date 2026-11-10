@@ -6,6 +6,7 @@ pub(crate) mod cli_ui;
 mod clipboard;
 pub(crate) mod command_execution;
 mod command_handlers;
+pub(crate) mod command_palette;
 pub(crate) mod command_registry;
 mod commands;
 pub(super) mod context_keys;
@@ -15,6 +16,7 @@ pub(super) mod drawing_helpers;
 mod editor_commands;
 #[allow(dead_code)]
 pub(super) mod editor_groups;
+pub(crate) mod emmet;
 mod group_drawing;
 mod i18n;
 mod ime;
@@ -25,6 +27,8 @@ pub(super) mod local_search;
 mod lsp_ui;
 mod mouse;
 mod phase4_tools;
+#[path = "../phase5.rs"]
+pub(crate) mod phase5;
 pub(crate) mod plugins;
 mod project_search;
 pub(super) mod quick_open;

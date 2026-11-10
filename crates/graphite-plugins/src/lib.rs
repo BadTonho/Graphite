@@ -1,6 +1,7 @@
 //! Native plugin packages and discovery, independent of the editor and GPU.
 pub mod catalog;
 pub mod manifest;
+pub mod open_vsx;
 pub mod package;
 pub mod sdk;
 pub mod store;

@@ -12,7 +12,7 @@ Desabilitar, substituir ou remover um plugin libera seus registros e trabalhos p
 
 ## Pacotes e persistência
 
-Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. VSIX fornece somente metadados: sua entrada e contribuições não são ativadas e ele não pode ser habilitado.
+Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. VSIX fornece somente metadados: sua entrada e contribuições não são ativadas e ele não pode ser habilitado. Uma API separada do cliente Open VSX oferece busca e download VSIX limitado, testados com fixture local; a interface de plugins e o ciclo de vida do host Code OSS ainda não estão conectados a ela.
 
 O diretório de configuração do usuário contém `plugins/`, registros JSON por plugin e diretórios imutáveis de versões. A instalação valida e extrai para um diretório temporário novo e substitui atomicamente o registro. Uma falha na publicação preserva o registro e pacote anteriores. Diretórios anteriores permanecem disponíveis aos hosts ativos até a remoção; esta respeita o limite exato da identidade do plugin. Toda instalação bem-sucedida começa desabilitada e sem versão confiável, inclusive atualizações e reinstalações. A confiança é registrada para a versão instalada.
 

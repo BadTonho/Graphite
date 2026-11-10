@@ -183,6 +183,60 @@ impl App {
                 );
             }
         }
+        if let Some(palette) = &self.command_palette {
+            let rows = self.command_palette_rows();
+            let height = lh * (rows.len().min(8) as f32 + 1.5);
+            let y = lh * 1.5;
+            let x = SIDEBAR_WIDTH;
+            let width = w - x;
+            r.draw_rect(
+                x,
+                y,
+                width,
+                height,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            r.draw_text(
+                &format!("> {}", palette.query),
+                x + PAD,
+                y + PAD,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            let selected = palette
+                .items
+                .iter()
+                .filter(|item| {
+                    let query = palette.query.to_lowercase();
+                    query.is_empty()
+                        || item.title.to_lowercase().contains(&query)
+                        || item.id.to_lowercase().contains(&query)
+                })
+                .nth(palette.selected)
+                .map(|item| item.id.as_str());
+            for (index, item) in rows.iter().enumerate() {
+                let row_y = y + lh * (index as f32 + 1.0);
+                if Some(item.id.as_str()) == selected {
+                    r.draw_rect(
+                        x,
+                        row_y,
+                        width,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                r.draw_text(
+                    &format!(
+                        "{}  [{}]{}",
+                        item.title,
+                        item.source,
+                        if item.enabled { "" } else { " (disabled)" }
+                    ),
+                    x + PAD,
+                    row_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
         if let Some(search) = &self.local_search {
             let height = if search.replace { lh * 3.5 } else { lh * 2.5 };
             let y = h - lh - height;
