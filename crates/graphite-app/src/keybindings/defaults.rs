@@ -3,6 +3,13 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+shift+p", "workbench.action.showCommands", "true"),
     ("f1", "workbench.action.showCommands", "true"),
     ("ctrl+shift+b", "workbench.action.tasks.build", "true"),
+    ("f5", "workbench.action.debug.start", "true"),
+    ("shift+f5", "workbench.action.debug.stop", "true"),
+    ("ctrl+shift+f5", "workbench.action.debug.restart", "true"),
+    ("f10", "workbench.action.debug.stepOver", "true"),
+    ("f11", "workbench.action.debug.stepInto", "true"),
+    ("shift+f11", "workbench.action.debug.stepOut", "true"),
+    ("f9", "graphite.debug.toggleBreakpoint", "true"),
     ("ctrl+shift+x", "graphite.plugins.open", "true"),
     (
         "left",

@@ -30,6 +30,8 @@ impl App {
     ) -> Vec<GroupRect> {
         let panel = if self.terminal_visible {
             terminal_panel_height(height)
+        } else if self.phase6_panel_visible() {
+            line_height * 9.0
         } else {
             0.0
         };

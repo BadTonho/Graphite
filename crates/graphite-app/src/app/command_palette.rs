@@ -27,7 +27,10 @@ impl App {
             .iter()
             .map(|entry| PaletteItem {
                 id: entry.id.into(),
-                title: entry.title.into(),
+                title: self
+                    .translator
+                    .text_or(&format!("command.{}", entry.id), entry.title)
+                    .into(),
                 source: "Graphite".into(),
                 enabled: super::command_registry::registry().enabled(entry.id, &context),
             })

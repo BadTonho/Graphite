@@ -40,6 +40,7 @@ fn add(
         .expect("unique built-in command");
 }
 pub(super) fn register(registry: &mut CommandRegistry) {
+    super::debugging::register(registry);
     add(
         registry,
         "graphite.plugins.open",

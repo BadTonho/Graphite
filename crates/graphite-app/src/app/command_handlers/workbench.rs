@@ -64,6 +64,11 @@ pub(super) fn graphite_security_revoke_workspace_trust(
     };
     trust.revoke(&workspace).map_err(CommandError::Failed)?;
     app.cancel_task();
+    let _ = app.debug.stop();
+    app.test_explorer.active_run = None;
+    app.debug_panel_visible = false;
+    app.tests_visible = false;
+    app.close_webview();
     app.stop_workspace_plugins();
     if let Some(host) = app.extension_host.supervisor.as_mut() {
         host.shutdown();
