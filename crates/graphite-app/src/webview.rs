@@ -94,6 +94,73 @@ impl WebviewHost {
         }
     }
 
+    /// Open a read-only document surface aligned over a native editor rectangle.
+    /// Windows hosts it as a child WebView2. Linux uses a borderless GTK/WebKitGTK
+    /// surface positioned over the editor area on window managers that support it.
+    pub(crate) fn open_overlay(
+        parent: &winit::window::Window,
+        html: &str,
+        bounds: [f64; 4],
+    ) -> Result<Self, String> {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let builder = WebViewBuilder::new()
+            .with_html(html.to_owned())
+            .with_background_color((13, 17, 23, 255))
+            .with_navigation_handler(|url| {
+                if url == "about:blank" {
+                    return true;
+                }
+                open_external_https(&url);
+                false
+            })
+            .with_new_window_req_handler(|url, _| {
+                open_external_https(&url);
+                wry::NewWindowResponse::Deny
+            })
+            .with_download_started_handler(|_, _| false)
+            .with_permission_handler(|_| wry::PermissionResponse::Deny);
+        #[cfg(windows)]
+        let view = builder
+            .build_as_child(parent)
+            .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "linux")]
+        let (view, window) = {
+            use wry::WebViewBuilderExtUnix;
+            gtk::init().map_err(|error| error.to_string())?;
+            let window = gtk::Window::new(gtk::WindowType::Toplevel);
+            window.set_title("Graphite README");
+            window.set_decorated(false);
+            window.set_resizable(false);
+            let container = gtk::Fixed::new();
+            window.add(&container);
+            let view = builder
+                .build_gtk(&container)
+                .map_err(|error| error.to_string())?;
+            (view, window)
+        };
+        #[cfg(not(any(windows, target_os = "linux")))]
+        let view = builder
+            .build_as_child(parent)
+            .map_err(|error| error.to_string())?;
+
+        #[cfg(windows)]
+        let host = Self { view, messages };
+        #[cfg(target_os = "linux")]
+        let host = Self {
+            view,
+            window,
+            messages,
+        };
+        #[cfg(not(any(windows, target_os = "linux")))]
+        let host = Self { view, messages };
+        host.set_overlay_bounds(parent, bounds)?;
+        #[cfg(target_os = "linux")]
+        if let Some(window) = host.overlay_window() {
+            window.show_all();
+        }
+        Ok(host)
+    }
+
     pub(crate) fn take_messages(&self) -> Vec<String> {
         self.messages
             .lock()
@@ -127,6 +194,57 @@ impl WebviewHost {
         Ok(())
     }
 
+    pub(crate) fn set_overlay_bounds(
+        &self,
+        parent: &winit::window::Window,
+        bounds: [f64; 4],
+    ) -> Result<(), String> {
+        let scale = parent.scale_factor();
+        let [x, y, width, height] = bounds;
+        #[cfg(windows)]
+        self.view
+            .set_bounds(wry::Rect {
+                position: wry::dpi::LogicalPosition::new(x / scale, y / scale).into(),
+                size: wry::dpi::LogicalSize::new(width / scale, height / scale).into(),
+            })
+            .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "linux")]
+        {
+            use wry::dpi::{LogicalPosition, LogicalSize};
+            self.view
+                .set_bounds(wry::Rect {
+                    position: LogicalPosition::new(0.0, 0.0).into(),
+                    size: LogicalSize::new(width / scale, height / scale).into(),
+                })
+                .map_err(|error| error.to_string())?;
+            if let Some(window) = self.overlay_window() {
+                window.resize(
+                    (width / scale).round() as i32,
+                    (height / scale).round() as i32,
+                );
+                if let Ok(origin) = parent.outer_position() {
+                    window.move_(
+                        (origin.x as f64 / scale + x / scale).round() as i32,
+                        (origin.y as f64 / scale + y / scale).round() as i32,
+                    );
+                }
+            }
+        }
+        #[cfg(not(any(windows, target_os = "linux")))]
+        self.view
+            .set_bounds(wry::Rect {
+                position: wry::dpi::LogicalPosition::new(x / scale, y / scale).into(),
+                size: wry::dpi::LogicalSize::new(width / scale, height / scale).into(),
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn overlay_window(&self) -> Option<&gtk::Window> {
+        Some(&self.window)
+    }
+
     pub(crate) fn pump(&self) {
         #[cfg(target_os = "linux")]
         while gtk::events_pending() {
@@ -136,6 +254,36 @@ impl WebviewHost {
         #[cfg(target_os = "linux")]
         let _ = &self.window;
     }
+}
+
+fn open_external_https(target: &str) {
+    let Some(target) = external_https_url(target) else {
+        return;
+    };
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = std::process::Command::new("explorer.exe");
+        command.arg(&target);
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(&target);
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = std::process::Command::new("open");
+        command.arg(&target);
+        command
+    };
+    let _ = command.spawn();
+}
+
+fn external_https_url(target: &str) -> Option<String> {
+    let url = reqwest::Url::parse(target).ok()?;
+    (url.scheme() == "https" && url.host_str().is_some()).then(|| url.to_string())
 }
 
 fn enforce_csp(html: &str) -> String {
@@ -159,5 +307,15 @@ mod tests {
         assert!(html.contains("default-src 'none'"));
         assert!(html.contains("connect-src 'none'"));
         assert!(html.contains("<title>ok</title>"));
+    }
+
+    #[test]
+    fn readme_external_navigation_only_accepts_https() {
+        assert_eq!(
+            external_https_url("https://github.com/owner/repo"),
+            Some("https://github.com/owner/repo".into())
+        );
+        assert!(external_https_url("http://github.com/owner/repo").is_none());
+        assert!(external_https_url("javascript:alert(1)").is_none());
     }
 }

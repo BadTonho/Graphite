@@ -50,6 +50,7 @@
   "plugins.sidebar.downloads": "downloads",
   "plugins.sidebar.readme": "README",
   "plugins.sidebar.no_readme": "This repository does not include a README.",
+  "plugins.sidebar.readme_render_error": "GitHub Markdown could not be rendered; showing the plain README instead.",
   "plugins.sidebar.loading_details": "Loading repository details…",
   "plugins.sidebar.install": "Install",
   "plugins.sidebar.choose_package": "Choose a package",

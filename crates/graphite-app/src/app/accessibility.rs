@@ -315,21 +315,24 @@ impl App {
             let mut editor = Node::new(Role::TextInput);
             if let Some(detail) = graphite_detail {
                 editor.set_label(format!("{} — README", detail.repository));
-                editor.set_value(
-                    detail
-                        .details
-                        .as_ref()
-                        .and_then(|details| details.readme.as_deref())
-                        .unwrap_or_else(|| {
-                            if detail.loading {
-                                self.t("plugins.sidebar.loading_details")
-                            } else if let Some(error) = &detail.error {
-                                error
-                            } else {
-                                self.t("plugins.sidebar.no_readme")
-                            }
-                        }),
-                );
+                let readme = detail
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.readme.as_deref())
+                    .unwrap_or_else(|| {
+                        if detail.loading {
+                            self.t("plugins.sidebar.loading_details")
+                        } else if let Some(error) = &detail.error {
+                            error
+                        } else {
+                            self.t("plugins.sidebar.no_readme")
+                        }
+                    });
+                editor.set_value(if let Some(error) = &detail.error {
+                    format!("{error}\n\n{readme}")
+                } else {
+                    readme.to_owned()
+                });
                 editor.set_read_only();
                 editor.add_action(Action::Focus);
                 nodes.push((editor_id, editor));

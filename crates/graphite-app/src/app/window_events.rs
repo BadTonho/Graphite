@@ -12,9 +12,13 @@ impl ApplicationHandler<UserEvent> for App {
         self.collect_closed_documents();
         self.poll_extension_host(std::time::Instant::now());
         self.poll_plugins();
+        self.sync_graphite_detail_webview();
         if let (Some(view), Some(gpu)) = (&self.webview, &self.gpu) {
             view.pump();
             let _ = view.set_bounds(&gpu.window);
+        }
+        if let Some(view) = &self.graphite_detail_webview {
+            view.pump();
         }
         if self.markdown_preview.is_some() && self.webview_handle.is_none() {
             if let Some(view) = &self.webview {
@@ -68,6 +72,8 @@ impl ApplicationHandler<UserEvent> for App {
                 || host_pending
                 || self.plugins.pending()
                 || self.task_cancel.is_some()
+                || self.webview.is_some()
+                || self.graphite_detail_webview.is_some()
             {
                 ControlFlow::WaitUntil(
                     std::time::Instant::now() + std::time::Duration::from_millis(10),

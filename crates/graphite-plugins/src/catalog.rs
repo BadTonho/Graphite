@@ -51,6 +51,7 @@ pub struct ReleaseInfo {
 pub struct RepositoryDetails {
     pub repository: Repository,
     pub readme: Option<String>,
+    pub readme_html: Option<String>,
     pub release: Option<ReleaseInfo>,
 }
 #[derive(Deserialize)]
@@ -70,6 +71,8 @@ struct Release {
 struct Readme {
     content: String,
     encoding: String,
+    #[serde(default)]
+    path: Option<String>,
 }
 pub struct Catalog {
     client: Client,
@@ -223,6 +226,7 @@ impl Catalog {
             .get(&format!("{base}/repos/{repository}"))?
             .json()
             .map_err(|error| error.to_string())?;
+        let mut readme_path = None;
         let readme = match self.get_raw(&format!("{base}/repos/{repository}/readme"))? {
             response if response.status() == reqwest::StatusCode::NOT_FOUND => None,
             response => {
@@ -233,8 +237,56 @@ impl Catalog {
                 if readme.encoding != "base64" {
                     return Err("GitHub returned an unsupported README encoding".into());
                 }
+                readme_path = readme.path;
                 Some(decode_base64(&readme.content)?)
             }
+        };
+        let readme_html = if let Some(readme) = &readme {
+            // The README endpoint's HTML media type uses GitHub's own Markup
+            // renderer and sanitizer, matching how README content is rendered
+            // on github.com more closely than the generic Markdown endpoint.
+            let rendered_readme = match self
+                .client
+                .get(format!("{base}/repos/{repository}/readme"))
+                .header("Accept", "application/vnd.github.html+json")
+                .send()
+            {
+                Ok(response) if response.status().is_success() => response
+                    .text()
+                    .ok()
+                    .map(decode_github_html_response)
+                    .filter(|html| {
+                        !html.trim().is_empty()
+                            && html.len() <= 1_500_000
+                            && rendered_html_matches_readme(html, readme)
+                    }),
+                _ => None,
+            };
+            rendered_readme.or_else(|| {
+                // Keep the general GFM endpoint as a fallback for API proxies
+                // that do not honor GitHub's custom README media type.
+                let branch = repository_info.default_branch.as_deref().unwrap_or("HEAD");
+                let readme_path = readme_path.as_deref().unwrap_or("README.md");
+                let markdown =
+                    rewrite_relative_markdown_images(readme, repository, branch, readme_path);
+                let markdown =
+                    rewrite_relative_markdown_links(&markdown, repository, branch, readme_path);
+                self.client
+                    .post(format!("{base}/markdown"))
+                    .header("Accept", "text/html")
+                    .json(&serde_json::json!({
+                        "text": markdown,
+                        "mode": "gfm",
+                        "context": repository,
+                    }))
+                    .send()
+                    .ok()
+                    .and_then(|response| response.error_for_status().ok())
+                    .and_then(|response| response.text().ok())
+                    .filter(|html| !html.is_empty() && html.len() <= 1_500_000)
+            })
+        } else {
+            None
         };
         let release = match self.get_raw(&format!("{base}/repos/{repository}/releases/latest"))? {
             response if response.status() == reqwest::StatusCode::NOT_FOUND => None,
@@ -270,6 +322,7 @@ impl Catalog {
         Ok(RepositoryDetails {
             repository: repository_info,
             readme,
+            readme_html,
             release,
         })
     }
@@ -352,6 +405,266 @@ fn decode_base64(encoded: &str) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| "GitHub README is not UTF-8".into())
 }
 
+fn decode_github_html_response(body: String) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return body;
+    };
+    if let Some(content) = value
+        .get("content")
+        .or_else(|| value.get("html"))
+        .and_then(serde_json::Value::as_str)
+    {
+        return content.to_owned();
+    }
+    if let Some(html) = value.as_str() {
+        return html.to_owned();
+    }
+    body
+}
+
+fn rendered_html_matches_readme(html: &str, markdown: &str) -> bool {
+    markdown
+        .split_whitespace()
+        .filter_map(|word| {
+            let word = word.trim_matches(|character: char| !character.is_alphanumeric());
+            (word.chars().count() >= 4 && !word.starts_with("http") && !word.starts_with("www"))
+                .then_some(word)
+        })
+        .take(8)
+        .any(|word| html.contains(word))
+}
+
+fn rewrite_relative_markdown_images(
+    markdown: &str,
+    repository: &str,
+    branch: &str,
+    readme_path: &str,
+) -> String {
+    let Some((owner, name)) = repository.split_once('/') else {
+        return markdown.to_owned();
+    };
+    let Ok(repo_root) = reqwest::Url::parse(&format!(
+        "https://raw.githubusercontent.com/{owner}/{name}/{branch}/"
+    )) else {
+        return markdown.to_owned();
+    };
+    let mut branch_root = repo_root.clone();
+    let directory = readme_path.rsplit_once('/').map_or("", |(path, _)| path);
+    if !directory.is_empty() {
+        let Ok(directory_url) = branch_root.join(&format!("{directory}/")) else {
+            return markdown.to_owned();
+        };
+        branch_root = directory_url;
+    }
+    let mut output = String::with_capacity(markdown.len());
+    let mut cursor = 0;
+    while let Some(relative_start) = markdown[cursor..].find("![") {
+        let start = cursor + relative_start;
+        let Some(alt_end) = matching_markdown_delimiter(markdown, start + 1, '[', ']') else {
+            break;
+        };
+        if markdown.as_bytes().get(alt_end + 1) != Some(&b'(') {
+            output.push_str(&markdown[cursor..start + 2]);
+            cursor = start + 2;
+            continue;
+        }
+        let mut target_start = alt_end + 2;
+        while markdown
+            .as_bytes()
+            .get(target_start)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            target_start += 1;
+        }
+        let angled = markdown.as_bytes().get(target_start) == Some(&b'<');
+        if angled {
+            target_start += 1;
+        }
+        let Some(target_end) = markdown_image_target_end(markdown, target_start, angled) else {
+            output.push_str(&markdown[cursor..start + 2]);
+            cursor = start + 2;
+            continue;
+        };
+        output.push_str(&markdown[cursor..target_start]);
+        let target = &markdown[target_start..target_end];
+        if let Some(resolved) = resolve_markdown_image_target(target, &branch_root, &repo_root) {
+            output.push_str(&resolved);
+        }
+        output.push_str(&markdown[target_end..]);
+        cursor = target_end;
+    }
+    output.push_str(&markdown[cursor..]);
+    output
+}
+
+fn rewrite_relative_markdown_links(
+    markdown: &str,
+    repository: &str,
+    branch: &str,
+    readme_path: &str,
+) -> String {
+    let Some((owner, name)) = repository.split_once('/') else {
+        return markdown.to_owned();
+    };
+    let Ok(repo_root) =
+        reqwest::Url::parse(&format!("https://github.com/{owner}/{name}/blob/{branch}/"))
+    else {
+        return markdown.to_owned();
+    };
+    let mut directory_base = repo_root.clone();
+    let directory = readme_path.rsplit_once('/').map_or("", |(path, _)| path);
+    if !directory.is_empty() {
+        let Ok(url) = directory_base.join(&format!("{directory}/")) else {
+            return markdown.to_owned();
+        };
+        directory_base = url;
+    }
+    let mut output = String::with_capacity(markdown.len());
+    let mut cursor = 0;
+    while let Some(relative_start) = markdown[cursor..].find('[') {
+        let start = cursor + relative_start;
+        if start > 0 && markdown.as_bytes()[start - 1] == b'!' {
+            output.push_str(&markdown[cursor..start + 1]);
+            cursor = start + 1;
+            continue;
+        }
+        let Some(label_end) = matching_markdown_delimiter(markdown, start, '[', ']') else {
+            break;
+        };
+        if markdown.as_bytes().get(label_end + 1) != Some(&b'(') {
+            output.push_str(&markdown[cursor..start + 1]);
+            cursor = start + 1;
+            continue;
+        }
+        let mut target_start = label_end + 2;
+        while markdown
+            .as_bytes()
+            .get(target_start)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            target_start += 1;
+        }
+        let angled = markdown.as_bytes().get(target_start) == Some(&b'<');
+        if angled {
+            target_start += 1;
+        }
+        let Some(target_end) = markdown_image_target_end(markdown, target_start, angled) else {
+            output.push_str(&markdown[cursor..start + 1]);
+            cursor = start + 1;
+            continue;
+        };
+        output.push_str(&markdown[cursor..target_start]);
+        if let Some(target) = resolve_markdown_link_target(
+            &markdown[target_start..target_end],
+            &directory_base,
+            &repo_root,
+        ) {
+            output.push_str(&target);
+        }
+        output.push_str(&markdown[target_end..]);
+        cursor = target_end;
+    }
+    output.push_str(&markdown[cursor..]);
+    output
+}
+
+fn matching_markdown_delimiter(
+    input: &str,
+    opening: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut escaped = false;
+    for (offset, character) in input[opening..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+        } else if character == open {
+            depth += 1;
+        } else if character == close {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(opening + offset);
+            }
+        }
+    }
+    None
+}
+
+fn markdown_image_target_end(input: &str, start: usize, angled: bool) -> Option<usize> {
+    let mut escaped = false;
+    let mut parentheses = 0usize;
+    for (offset, character) in input[start..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+        } else if angled && character == '>' {
+            return Some(start + offset);
+        } else if !angled && character == '(' {
+            parentheses += 1;
+        } else if !angled && character == ')' {
+            if parentheses == 0 {
+                return Some(start + offset);
+            }
+            parentheses -= 1;
+        } else if !angled && character.is_whitespace() {
+            return Some(start + offset);
+        }
+    }
+    None
+}
+
+fn resolve_markdown_image_target(
+    target: &str,
+    directory_base: &reqwest::Url,
+    repo_root: &reqwest::Url,
+) -> Option<String> {
+    if let Ok(url) = reqwest::Url::parse(target) {
+        return (url.scheme() == "https").then(|| url.to_string());
+    }
+    if target.is_empty() || target.starts_with("//") || target.starts_with('#') {
+        return None;
+    }
+    let (base, relative) = if target.starts_with('/') {
+        (repo_root, target.trim_start_matches('/'))
+    } else {
+        (directory_base, target)
+    };
+    let url = base.join(relative).ok()?;
+    (url.scheme() == "https" && url.host_str() == Some("raw.githubusercontent.com"))
+        .then(|| url.to_string())
+}
+
+fn resolve_markdown_link_target(
+    target: &str,
+    directory_base: &reqwest::Url,
+    repo_root: &reqwest::Url,
+) -> Option<String> {
+    if target.starts_with('#') {
+        return Some(target.to_owned());
+    }
+    if let Ok(url) = reqwest::Url::parse(target) {
+        return (url.scheme() == "https").then(|| url.to_string());
+    }
+    if target.is_empty() || target.starts_with("//") {
+        return None;
+    }
+    let (base, relative) = if target.starts_with('/') {
+        (repo_root, target.trim_start_matches('/'))
+    } else {
+        (directory_base, target)
+    };
+    let url = base.join(relative).ok()?;
+    (url.scheme() == "https" && url.host_str() == Some("github.com")).then(|| url.to_string())
+}
+
 fn validate_release_asset_final_url(url: &reqwest::Url) -> Result<()> {
     let Some(host) = url.host_str() else {
         return Err("GitHub redirected to a URL without a host".into());
@@ -406,5 +719,68 @@ mod redirect_tests {
         );
         assert_eq!(decode_base64("Y2Fmw6k=").unwrap(), "café");
         assert!(decode_base64("%%%=").is_err());
+    }
+
+    #[test]
+    fn decodes_html_representation_from_raw_or_json_github_response() {
+        let html = "<h1>Plugin</h1>";
+        assert_eq!(decode_github_html_response(html.into()), html);
+        assert_eq!(decode_github_html_response(format!("\"{html}\"")), html);
+        assert_eq!(
+            decode_github_html_response(format!("{{\"content\":\"{html}\"}}")),
+            html
+        );
+        assert_eq!(
+            decode_github_html_response(format!("{{\"html\":\"{html}\"}}")),
+            html
+        );
+    }
+
+    #[test]
+    fn rejects_empty_html_representations_that_do_not_contain_readme_content() {
+        assert!(rendered_html_matches_readme(
+            "<h1>⚡ Amarillo — Roblox Studio Bridge</h1>",
+            "# ⚡ Amarillo — Roblox Studio Bridge"
+        ));
+        assert!(!rendered_html_matches_readme(
+            "<!doctype html><html><body></body></html>",
+            "# ⚡ Amarillo — Roblox Studio Bridge"
+        ));
+    }
+
+    #[test]
+    fn relative_readme_images_resolve_from_the_readme_directory_over_https() {
+        let rendered_input = rewrite_relative_markdown_images(
+            "![logo](images/logo.svg) ![root](/assets/root.png) ![remote](https://img.example/logo.png) ![unsafe](http://bad.invalid/logo.png) [guide](docs/guide.md)",
+            "author/plugin",
+            "main",
+            "docs/README.md",
+        );
+        assert!(rendered_input.contains(
+            "![logo](https://raw.githubusercontent.com/author/plugin/main/docs/images/logo.svg)"
+        ));
+        assert!(rendered_input.contains(
+            "![root](https://raw.githubusercontent.com/author/plugin/main/assets/root.png)"
+        ));
+        assert!(rendered_input.contains("![remote](https://img.example/logo.png)"));
+        assert!(rendered_input.contains("![unsafe]()"));
+        assert!(rendered_input.contains("[guide](docs/guide.md)"));
+    }
+
+    #[test]
+    fn relative_readme_links_resolve_to_the_repository_and_reject_insecure_schemes() {
+        let links = rewrite_relative_markdown_links(
+            "[guide](guides/start.md) [root](/LICENSE) [anchor](#usage) [external](https://example.test) [unsafe](javascript:alert(1)) ![logo](img/logo.png)",
+            "author/plugin",
+            "main",
+            "docs/README.md",
+        );
+        assert!(links
+            .contains("[guide](https://github.com/author/plugin/blob/main/docs/guides/start.md)"));
+        assert!(links.contains("[root](https://github.com/author/plugin/blob/main/LICENSE)"));
+        assert!(links.contains("[anchor](#usage)"));
+        assert!(links.contains("[external](https://example.test/)"));
+        assert!(links.contains("[unsafe]()"));
+        assert!(links.contains("![logo](img/logo.png)"));
     }
 }
