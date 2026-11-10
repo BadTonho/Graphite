@@ -2,7 +2,7 @@ use super::*;
 
 impl App {
     pub(crate) fn ime_preedit(&mut self, text: String) {
-        if self.plugins.visible {
+        if self.plugin_owns_keyboard() {
             return;
         }
         self.editor_groups.active_view_mut().ime_composing = !text.is_empty();

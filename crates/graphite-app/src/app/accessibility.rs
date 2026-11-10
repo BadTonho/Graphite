@@ -213,7 +213,7 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> TreeUpdate {
-        if self.plugins.visible {
+        if self.plugin_owns_keyboard() {
             return self.plugin_accessibility();
         }
         let rects = self.group_rectangles(width, height, line_height);

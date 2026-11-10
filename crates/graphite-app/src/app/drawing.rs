@@ -20,75 +20,78 @@ impl App {
             .update_if_active(|| self.grouped_accessibility_tree(w, h, lh));
 
         // Sidebar
-        r.draw_rect(
-            ACTIVITY_BAR_WIDTH,
-            0.0,
-            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
-            h,
-            rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
-        );
-        r.draw_text(
-            &self.tree.root_name().to_uppercase(),
-            ACTIVITY_BAR_WIDTH + PAD,
-            lh * 0.25,
-            rgb(Theme::color(Theme::DIM, 0x616161)),
-        );
-        for (i, row) in self.tree.rows.iter().enumerate() {
-            let y = lh * 1.5 + i as f32 * lh;
-            if y > h {
-                break;
-            }
-            let is_open = row.entry.path.as_path()
-                == self.documents[self.active_document()]
-                    .buffer
-                    .path()
-                    .unwrap_or(std::path::Path::new(""));
-            if is_open {
-                r.draw_rect(
-                    ACTIVITY_BAR_WIDTH,
-                    y,
-                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
-                    lh,
-                    rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
-                );
-            }
-            let indent = ACTIVITY_BAR_WIDTH + PAD + row.depth as f32 * cw * 2.0;
-            let chevron_slot = cw * 1.8;
-            let icon_slot = lh;
-            let icon_size = (lh * 0.85).round();
-            let chevron_size = (lh * 0.72).round();
-            if row.entry.is_dir {
-                let chevron = if row.expanded {
-                    crate::file_icons::CHEVRON_DOWN
-                } else {
-                    crate::file_icons::CHEVRON_RIGHT
-                };
-                r.draw_icon(
-                    chevron,
-                    indent + (chevron_slot - chevron_size) * 0.5,
-                    y + (lh - chevron_size) * 0.5,
-                    chevron_size,
-                    rgb(Theme::color(Theme::DIM, 0x616161)),
-                );
-            }
-            let icon_x = indent + chevron_slot;
-            r.draw_icon(
-                row.icon.glyph,
-                icon_x + (icon_slot - icon_size) * 0.5,
-                y + (lh - icon_size) * 0.5,
-                icon_size,
-                rgb(row.icon.color),
+        if !self.plugins.visible {
+            r.draw_rect(
+                ACTIVITY_BAR_WIDTH,
+                0.0,
+                SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                h,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &row.entry.name,
-                icon_x + icon_slot + 4.0,
-                y,
-                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                &self.tree.root_name().to_uppercase(),
+                ACTIVITY_BAR_WIDTH + PAD,
+                lh * 0.25,
+                rgb(Theme::color(Theme::DIM, 0x616161)),
             );
+            for (i, row) in self.tree.rows.iter().enumerate() {
+                let y = lh * 1.5 + i as f32 * lh;
+                if y > h {
+                    break;
+                }
+                let is_open = row.entry.path.as_path()
+                    == self.documents[self.active_document()]
+                        .buffer
+                        .path()
+                        .unwrap_or(std::path::Path::new(""));
+                if is_open {
+                    r.draw_rect(
+                        ACTIVITY_BAR_WIDTH,
+                        y,
+                        SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                let indent = ACTIVITY_BAR_WIDTH + PAD + row.depth as f32 * cw * 2.0;
+                let chevron_slot = cw * 1.8;
+                let icon_slot = lh;
+                let icon_size = (lh * 0.85).round();
+                let chevron_size = (lh * 0.72).round();
+                if row.entry.is_dir {
+                    let chevron = if row.expanded {
+                        crate::file_icons::CHEVRON_DOWN
+                    } else {
+                        crate::file_icons::CHEVRON_RIGHT
+                    };
+                    r.draw_icon(
+                        chevron,
+                        indent + (chevron_slot - chevron_size) * 0.5,
+                        y + (lh - chevron_size) * 0.5,
+                        chevron_size,
+                        rgb(Theme::color(Theme::DIM, 0x616161)),
+                    );
+                }
+                let icon_x = indent + chevron_slot;
+                r.draw_icon(
+                    row.icon.glyph,
+                    icon_x + (icon_slot - icon_size) * 0.5,
+                    y + (lh - icon_size) * 0.5,
+                    icon_size,
+                    rgb(row.icon.color),
+                );
+                r.draw_text(
+                    &row.entry.name,
+                    icon_x + icon_slot + 4.0,
+                    y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
         }
         if self.zen_mode {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));
         } else {
+            self.draw_plugins_sidebar(r, h, lh, cw);
             if self.scm_visible {
                 self.draw_scm_sidebar(r, h, lh, cw);
             }
@@ -486,7 +489,6 @@ impl App {
             r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));
         }
         self.draw_phase4_overlays(r, w, h, lh);
-        self.draw_plugins(r, w, h, lh, cw);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();

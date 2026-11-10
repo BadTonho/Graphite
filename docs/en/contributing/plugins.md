@@ -42,7 +42,7 @@ Track disposables in `context.subscriptions`; disposal is idempotent. Host termi
 
 ## Install and manage
 
-Open **Plugins** with `Ctrl+Shift+X`. Arrow keys select rows; Escape returns or closes. Header actions are clickable and have keyboard equivalents:
+Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed and GitHub, and the search box accepts GitHub queries. Arrow keys select cards; Escape returns or closes. The same actions are available from the keyboard:
 
 | Key | Action |
 |---|---|
@@ -56,7 +56,7 @@ Open **Plugins** with `Ctrl+Shift+X`. Arrow keys select rows; Escape returns or 
 | R / X | Restart / remove the selected plugin |
 | C | Run the selected plugin's first registered command |
 
-The panel shows declared command IDs; assign additional commands in `keybindings.json`, for example `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Missing Node or activation failures appear in the panel; use R to retry after correcting the cause.
+The sidebar shows declared command IDs; assign additional commands in `keybindings.json`, for example `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Missing Node or activation failures appear in the sidebar; use R to retry after correcting the cause.
 
 VSIX packages show identity, version, engines, entry and contribution categories. Their status is **Imported — VS Code execution unavailable**. They cannot be enabled, and their themes, commands and code do not execute.
 

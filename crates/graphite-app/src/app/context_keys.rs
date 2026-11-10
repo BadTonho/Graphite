@@ -283,6 +283,8 @@ impl super::App {
             global.insert(key.into(), value.to_string());
         }
         global.insert("diffLoading".into(), self.diff_loading.to_string());
+        global.insert("pluginsVisible".into(), self.plugins.visible.to_string());
+        global.insert("pluginsFocus".into(), self.plugins.focused.to_string());
         global.insert(
             "findReplace".into(),
             self.local_search
@@ -317,6 +319,7 @@ impl super::App {
             || self.quick_open.is_some()
             || self.search_query.is_some()
             || self.snippet_query.is_some();
+        let plugin_keyboard = self.plugin_owns_keyboard();
         let focused = self.editor_groups.active_view().id;
         for view in self.editor_groups.all_views() {
             let document = &self.documents[view.document];
@@ -331,7 +334,11 @@ impl super::App {
                     ),
                     (
                         "editorTextFocus".into(),
-                        (view.id == focused && !self.terminal_focused && !overlays).to_string(),
+                        (view.id == focused
+                            && !self.terminal_focused
+                            && !overlays
+                            && !plugin_keyboard)
+                            .to_string(),
                     ),
                     ("editorReadonly".into(), editor.is_read_only().to_string()),
                     (

@@ -44,6 +44,7 @@ impl App {
                     .map(|view| view.id)
             });
             if let Some(view) = target {
+                self.plugins.focused = false;
                 self.run_view_command_args("graphite.view.focus", view, serde_json::Value::Null);
             }
             return;
@@ -55,6 +56,7 @@ impl App {
             let view = views[active].id;
             match (request.action, request.data) {
                 (Action::Focus, _) => {
+                    self.plugins.focused = false;
                     self.run_view_command_args(
                         "graphite.view.focus",
                         view,

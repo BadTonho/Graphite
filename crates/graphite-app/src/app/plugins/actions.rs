@@ -5,21 +5,23 @@ impl App {
             return;
         }
         if action == 'g' || action == 'i' {
+            self.leave_plugin_details();
             self.plugins.github = action == 'g';
             self.plugins.index = 0;
+            self.plugins.scroll = 0;
             self.plugins.assets = None;
-            self.plugins.editing = false;
+            if self.plugins.path_input {
+                self.plugins.query.clear();
+                self.plugins.path_input = false;
+            }
             if action == 'g' {
-                if self.plugins.path_input {
-                    self.plugins.query.clear();
-                    self.plugins.path_input = false;
-                }
                 self.plugins.page = 1;
                 self.search_plugins();
             }
             return;
         }
         if action == '/' || action == 'l' {
+            self.leave_plugin_details();
             self.plugins.path_input = action == 'l';
             self.plugins.query.clear();
             self.plugins.editing = true;

@@ -86,7 +86,7 @@ para manter os domínios pequenos e revisáveis:
 | `terminal.json` | Painel do terminal, perfis e diagnósticos |
 | `scm.json` | Status de controle de código-fonte, diffs e conflitos |
 | `lsp.json` | Status de servidores de linguagem e correções rápidas |
-| `plugins.json` | Painel de plugins, runtime e host de extensões |
+| `plugins.json` | Barra lateral de plugins, runtime e host de extensões |
 | `accessibility.json` | Rótulos para leitores de tela |
 
 Os arquivos são objetos JSON planos que mapeiam chaves estáveis para texto.

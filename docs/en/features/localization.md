@@ -85,7 +85,7 @@ domains stay small and reviewable:
 | `terminal.json` | Terminal panel, profiles and diagnostics |
 | `scm.json` | Source control statuses, diffs and conflicts |
 | `lsp.json` | Language server statuses and quick fixes |
-| `plugins.json` | Plugins panel, runtime and extension host |
+| `plugins.json` | Plugins sidebar, runtime and extension host |
 | `accessibility.json` | Screen-reader labels |
 
 Files are flat JSON objects mapping stable keys to text. Placeholders use named
