@@ -259,7 +259,7 @@ impl ApplicationHandler<UserEvent> for App {
                             4.0
                         };
                         let visible =
-                            (gpu.renderer.size().1 - line * (repo_rows + 2.35) - line * 1.2) / line;
+                            (gpu.renderer.size().1 - line * (repo_rows + 2.50) - line * 1.2) / line;
                         visible.max(1.0) as usize
                     });
                     let max = total_rows.saturating_sub(visible_rows);
