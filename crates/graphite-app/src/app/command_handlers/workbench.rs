@@ -47,6 +47,7 @@ pub(super) fn graphite_security_trust_workspace(
         ));
     };
     trust.trust(&workspace).map_err(CommandError::Failed)?;
+    app.start_workspace_trusted_plugins();
     app.status = "Workspace trusted. Plugin-specific trust is still required.".into();
     Ok(())
 }
@@ -62,8 +63,13 @@ pub(super) fn graphite_security_revoke_workspace_trust(
         ));
     };
     trust.revoke(&workspace).map_err(CommandError::Failed)?;
-    app.plugins.hosts.clear();
-    app.status = "Workspace trust revoked; plugin hosts stopped.".into();
+    app.cancel_task();
+    app.stop_workspace_plugins();
+    if let Some(host) = app.extension_host.supervisor.as_mut() {
+        host.shutdown();
+    }
+    app.clear_host_session();
+    app.status = "Workspace trust revoked; tasks and extension hosts stopped.".into();
     Ok(())
 }
 

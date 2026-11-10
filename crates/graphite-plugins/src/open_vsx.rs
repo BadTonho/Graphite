@@ -192,9 +192,18 @@ impl Registry {
             return Err(error.to_string());
         }
         file.sync_all().map_err(|e| e.to_string())?;
-        if let Err(error) = package::inspect(destination) {
+        let inspected = match package::inspect(destination) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let _ = std::fs::remove_file(destination);
+                return Err(error);
+            }
+        };
+        if inspected.id() != format!("{}.{}", namespace, name).to_ascii_lowercase()
+            || inspected.version() != metadata.version
+        {
             let _ = std::fs::remove_file(destination);
-            return Err(error);
+            return Err("Downloaded VSIX does not match Open VSX identity or version".into());
         }
         Ok(Extension {
             namespace: metadata.namespace,
@@ -363,18 +372,88 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let package_path = root.join("fixture.vsix");
+        let old_package = root.join("old.vsix");
+        {
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&old_package).unwrap());
+            zip.start_file(
+                "extension/package.json",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(br#"{"publisher":"publisher","name":"extension","version":"1.0.0"}"#)
+                .unwrap();
+            zip.finish().unwrap();
+        }
+        let store = crate::store::Store::new(root.join("store"));
+        let old = store.install(&old_package).unwrap();
+        assert_eq!(old.metadata.version(), "1.0.0");
         let registry = Registry::with_base(&format!("http://{address}")).unwrap();
-        let metadata = registry
-            .download_latest("publisher", "extension", &package_path)
+        let updated = registry
+            .install_latest("publisher", "extension", &store)
             .unwrap();
-        assert_eq!(metadata.version, "1.2.3");
-        let installed = crate::store::Store::new(root.join("store"))
-            .install(&package_path)
+        assert_eq!(updated.metadata.version(), "1.2.3");
+        assert_eq!(updated.metadata.id(), "publisher.extension");
+        assert!(!updated.enabled);
+        assert!(updated.trusted_version.is_none());
+        assert_eq!(store.list().unwrap().len(), 1);
+        assert!(root.join("store").join(old.directory).is_dir());
+        server.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn latest_download_rejects_a_package_that_disagrees_with_registry_metadata() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            thread,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut archive = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut archive));
+            zip.start_file(
+                "extension/package.json",
+                zip::write::SimpleFileOptions::default(),
+            )
             .unwrap();
-        assert_eq!(installed.metadata.id(), "publisher.extension");
-        assert!(!installed.enabled);
-        assert!(installed.trusted_version.is_none());
+            zip.write_all(br#"{"publisher":"publisher","name":"other","version":"1.2.3"}"#)
+                .unwrap();
+            zip.finish().unwrap();
+        }
+        let server = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 2048];
+                let count = stream.read(&mut request).unwrap();
+                let path = String::from_utf8_lossy(&request[..count]);
+                if path.starts_with("GET /publisher/extension/latest") {
+                    let body = format!(
+                        r#"{{"namespace":"publisher","name":"extension","version":"1.2.3","files":{{"download":"http://{address}/package.vsix"}}}}"#
+                    );
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                } else {
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", archive.len()).unwrap();
+                    stream.write_all(&archive).unwrap();
+                }
+            }
+        });
+        let root = std::env::temp_dir().join(format!(
+            "graphite-open-vsx-mismatch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let destination = root.join("mismatch.vsix");
+        let registry = Registry::with_base(&format!("http://{address}")).unwrap();
+        assert!(registry
+            .download_latest("publisher", "extension", &destination)
+            .is_err());
+        assert!(!destination.exists());
         server.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }

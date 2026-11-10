@@ -65,6 +65,40 @@ impl App {
         let id = record.metadata.id().to_owned();
         match action {
             '\n' => self.plugins.inspecting = Some(record.metadata.clone()),
+            'u' if matches!(record.metadata, Metadata::Vsix(_)) => {
+                let Some((namespace, name)) = id.split_once('.') else {
+                    self.plugins.message = "Invalid VSIX identity".into();
+                    return;
+                };
+                let (namespace, name) = (namespace.to_owned(), name.to_owned());
+                let installed_version = record.metadata.version().to_owned();
+                let root = self.plugins.store.as_ref().unwrap().root.clone();
+                let destination = root.join(format!(
+                    ".open-vsx-update-{}-{}.vsix",
+                    std::process::id(),
+                    self.plugins.next_session
+                ));
+                self.plugins.temporary = Some(destination.clone());
+                self.plugin_job(move |_| {
+                    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                    let result = (|| {
+                        let registry = graphite_plugins::open_vsx::Registry::new()?;
+                        let latest = registry.download_latest(&namespace, &name, &destination)?;
+                        if latest.version == installed_version {
+                            let _ = std::fs::remove_file(&destination);
+                            return Ok(Outcome::Notice(format!(
+                                "{namespace}.{name} is already up to date ({installed_version})"
+                            )));
+                        }
+                        let metadata = graphite_plugins::package::inspect(&destination)?;
+                        Ok(Outcome::Preview(destination.clone(), metadata))
+                    })();
+                    if result.is_err() {
+                        let _ = std::fs::remove_file(destination);
+                    }
+                    result
+                });
+            }
             'e' if matches!(record.metadata, Metadata::Native(_)) => {
                 if record.trusted_version.as_deref() != Some(record.metadata.version()) {
                     self.plugins.trust = Some(id);

@@ -20,7 +20,8 @@ pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),
     OpenVsx(Vec<Extension>),
     Preview(PathBuf, Metadata),
-    Started(String, super::extension_host::ExtensionRuntime),
+    Notice(String),
+    Started(String, u64, super::extension_host::ExtensionRuntime),
 }
 #[derive(Default)]
 pub(crate) struct Plugins {
@@ -44,6 +45,7 @@ pub(crate) struct Plugins {
     next_session: u64,
     startup: Vec<String>,
     starting: Option<String>,
+    trust_generation: u64,
     errors: BTreeMap<String, String>,
     temporary: Option<PathBuf>,
 }
@@ -82,6 +84,41 @@ impl App {
         self.plugins.worker = None;
         self.plugins.store = None;
         self.initialize_plugins();
+    }
+
+    pub(crate) fn start_workspace_trusted_plugins(&mut self) {
+        let mut startup = std::mem::take(&mut self.plugins.startup);
+        if let Some(starting) = &self.plugins.starting {
+            if !startup.contains(starting) {
+                startup.push(starting.clone());
+            }
+        }
+        let approved = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| {
+                record.enabled
+                    && record.trusted_version.as_deref() == Some(record.metadata.version())
+            })
+            .map(|record| record.metadata.id().to_owned())
+            .collect::<Vec<_>>();
+        for id in approved {
+            if !startup.contains(&id) {
+                startup.push(id);
+            }
+        }
+        self.plugins.startup = startup;
+    }
+
+    pub(crate) fn stop_workspace_plugins(&mut self) {
+        self.plugins.trust_generation = self.plugins.trust_generation.wrapping_add(1);
+        self.plugins.startup.clear();
+        self.plugins.starting = None;
+        let ids = self.plugins.hosts.keys().cloned().collect::<Vec<_>>();
+        for id in ids {
+            self.stop_plugin(&id);
+        }
     }
 
     pub(crate) fn initialize_plugins(&mut self) {
