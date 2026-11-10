@@ -208,6 +208,24 @@ mod tests {
     }
 
     #[test]
+    fn revoking_workspace_trust_cancels_tasks_and_persists_restricted_state() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.workspace_trust =
+            Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+        let task_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        app.task_cancel = Some(task_cancel.clone());
+        app.run_ui_command("graphite.security.trustWorkspace");
+        app.run_ui_command("graphite.security.revokeWorkspaceTrust");
+        assert!(task_cancel.load(std::sync::atomic::Ordering::Acquire));
+        assert!(!app
+            .workspace_trust
+            .as_ref()
+            .unwrap()
+            .is_trusted(app.tree.root()));
+    }
+
+    #[test]
     fn profile_commands_create_and_switch_isolated_profile_state() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);

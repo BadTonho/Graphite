@@ -49,16 +49,16 @@ Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra 
 | I / O | Plugins instalados / Open VSX |
 | L | Digitar caminho local `.graphite-plugin` ou `.vsix` |
 | / | Digitar pesquisa no Open VSX; Enter envia |
-| P / N | Página anterior / seguinte do catálogo |
-| Enter | Inspecionar plugin instalado ou mostrar assets da release e baixar o selecionado |
+| Enter | Inspecionar plugin instalado ou baixar e inspecionar o resultado Open VSX selecionado |
 | Y / Esc | Confirmar / cancelar instalação ou confiança |
 | E / D | Habilitar / desabilitar o plugin nativo selecionado |
-| R / X | Reiniciar / remover o plugin selecionado |
+| U | Baixar a versão Open VSX mais recente para um VSIX instalado; confirmar para substituir |
+| R / X | Reiniciar plugin nativo / remover o plugin selecionado |
 | C | Executar o primeiro comando registrado do plugin |
 
 A barra lateral mostra os IDs declarados; associe outros comandos no `keybindings.json`, por exemplo `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Instalar e atualizar redefine habilitação e confiança. A confirmação permite executar código local daquela versão instalada. Node ausente e falhas de ativação aparecem na barra lateral; use R para tentar novamente depois de corrigir a causa.
 
-Pacotes VSIX mostram identidade, versão, engines, entrada e categorias de contribuições. Seu estado é **Imported — VS Code execution unavailable** (Importado — execução VS Code indisponível). Eles não podem ser habilitados e seus temas, comandos e código não executam.
+Pacotes VSIX mostram identidade, versão, engines, entrada e categorias de contribuições. Seu estado é **Imported — VS Code execution unavailable** (Importado — execução VS Code indisponível). Eles não podem ser habilitados e seus temas, comandos e código não executam. Atualizações são instaladas desabilitadas e exigiriam nova autorização se a execução fosse adicionada depois.
 
 ## Publicar e testar
 

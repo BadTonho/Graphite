@@ -18,6 +18,11 @@ fn pump(app: &mut App, condition: impl Fn(&App) -> bool) {
     );
 }
 fn setup(app: &mut App, root: &Path, name: &str) -> String {
+    if app.workspace_trust.is_none() {
+        let mut trust = crate::app::phase5::WorkspaceTrust::open(root.join("trust.json")).unwrap();
+        trust.trust(root).unwrap();
+        app.workspace_trust = Some(trust);
+    }
     let project = root.join(name);
     graphite_plugins::sdk::create(&project).unwrap();
     let id = format!("local.{name}");
@@ -166,6 +171,55 @@ fn real_plugins_edit_dirty_documents_undo_dispose_cancel_and_isolate_crashes() {
     assert!(!app.plugins.hosts.contains_key(&one));
     assert!(!app.plugins.hosts[&two].commands.is_empty());
     app.stop_plugin(&two);
+}
+
+#[test]
+fn workspace_revocation_stops_plugins_and_retrust_restarts_approved_plugins() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.plugins.store = Some(Store::new(temp.path().join("plugins")));
+    let id = setup(&mut app, temp.path(), "trusted");
+    assert!(app.plugins.hosts.contains_key(&id));
+
+    app.run_ui_command("graphite.security.revokeWorkspaceTrust");
+    assert!(!app.plugins.hosts.contains_key(&id));
+    app.start_plugin(id.clone());
+    assert!(!app.plugins.hosts.contains_key(&id));
+
+    app.run_ui_command("graphite.security.trustWorkspace");
+    pump(&mut app, |a| {
+        a.plugins
+            .hosts
+            .get(&id)
+            .is_some_and(|host| host.native_active)
+    });
+    app.stop_plugin(&id);
+}
+
+#[test]
+fn activation_result_arriving_after_workspace_revocation_is_discarded() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let mut trust = crate::app::phase5::WorkspaceTrust::restricted(temp.path().join("trust.json"));
+    trust.trust(temp.path()).unwrap();
+    app.workspace_trust = Some(trust);
+    // This result belongs to the previous trust period, even though the workspace
+    // has since been trusted again.
+    app.plugins.trust_generation = 1;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    sender
+        .send(Ok(Outcome::Started(
+            "publisher.extension".into(),
+            0,
+            super::super::extension_host::ExtensionRuntime::default(),
+        )))
+        .unwrap();
+    app.plugins.worker = Some(receiver);
+    app.poll_plugins();
+    assert!(!app.plugins.hosts.contains_key("publisher.extension"));
+    assert!(app.status.contains("discarded"));
 }
 #[test]
 fn native_registration_cannot_escape_manifest_or_shadow_builtins() {

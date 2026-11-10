@@ -4,7 +4,7 @@ impl App {
         if self
             .workspace_trust
             .as_ref()
-            .is_some_and(|trust| !trust.is_trusted(self.tree.root()))
+            .is_none_or(|trust| !trust.is_trusted(self.tree.root()))
         {
             self.status = "Workspace is restricted; trust it before activating plugins".into();
             return;
@@ -29,6 +29,7 @@ impl App {
         self.plugins.starting = Some(id.clone());
         self.plugins.next_session += 1;
         let session = self.plugins.next_session;
+        let trust_generation = self.plugins.trust_generation;
         let configuration = self.service_configuration().unwrap_or_default();
         let node = configuration
             .get("graphite.plugins.nodePath")
@@ -66,7 +67,7 @@ impl App {
                 supervisor: Some(supervisor),
                 ..Default::default()
             };
-            Ok(Outcome::Started(id, runtime))
+            Ok(Outcome::Started(id, trust_generation, runtime))
         });
     }
     pub(crate) fn stop_plugin(&mut self, id: &str) {
@@ -126,11 +127,27 @@ impl App {
                     self.plugins.index = 0;
                     self.plugins.scroll = 0;
                 }
+                Ok(Outcome::Notice(message)) => {
+                    self.cleanup_plugin_download();
+                    self.plugins.message = message;
+                }
                 Ok(Outcome::Preview(path, metadata)) => {
                     self.plugins.preview = Some((path, metadata))
                 }
-                Ok(Outcome::Started(id, runtime)) => {
-                    self.plugins.hosts.insert(id, runtime);
+                Ok(Outcome::Started(id, trust_generation, runtime)) => {
+                    if trust_generation != self.plugins.trust_generation
+                        || self
+                            .workspace_trust
+                            .as_ref()
+                            .is_none_or(|trust| !trust.is_trusted(self.tree.root()))
+                    {
+                        if let Some(mut supervisor) = runtime.supervisor {
+                            supervisor.shutdown();
+                        }
+                        self.status = "Workspace trust changed before plugin activation completed; activation was discarded".into();
+                    } else {
+                        self.plugins.hosts.insert(id, runtime);
+                    }
                 }
             }
             if let Some(gpu) = &self.gpu {

@@ -49,16 +49,16 @@ Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar wit
 | I / O | Installed plugins / Open VSX |
 | L | Enter a local `.graphite-plugin` or `.vsix` path |
 | / | Enter Open VSX search text; Enter submits |
-| P / N | Previous / next catalog page |
-| Enter | Inspect an installed plugin, or show release assets and download the selected asset |
+| Enter | Inspect an installed plugin, or download and inspect the selected Open VSX result |
 | Y / Esc | Confirm / cancel installation or trust |
 | E / D | Enable / disable the selected native plugin |
-| R / X | Restart / remove the selected plugin |
+| U | Download the latest Open VSX version for an installed VSIX; confirm to replace it |
+| R / X | Restart a native plugin / remove the selected plugin |
 | C | Run the selected plugin's first registered command |
 
 The sidebar shows declared command IDs; assign additional commands in `keybindings.json`, for example `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Missing Node or activation failures appear in the sidebar; use R to retry after correcting the cause.
 
-VSIX packages show identity, version, engines, entry and contribution categories. Their status is **Imported — VS Code execution unavailable**. They cannot be enabled, and their themes, commands and code do not execute.
+VSIX packages show identity, version, engines, entry and contribution categories. Their status is **Imported — VS Code execution unavailable**. They cannot be enabled, and their themes, commands and code do not execute. Updates are installed disabled and require fresh trust if execution support is added later.
 
 ## Publish and test
 
