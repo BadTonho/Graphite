@@ -332,6 +332,65 @@ fn tab_switches_leave_details_and_clear_path_input() {
 }
 
 #[test]
+fn graphite_catalog_is_an_additive_tab_with_repository_and_asset_rows() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let open_vsx = graphite_plugins::open_vsx::Extension {
+        namespace: "publisher".into(),
+        name: "extension".into(),
+        display_name: "Open VSX extension".into(),
+        version: "1.0.0".into(),
+        description: "Still available".into(),
+    };
+    app.plugins.open_vsx.push(open_vsx);
+
+    app.plugin_action('g');
+    assert_eq!(app.plugins.tab, PluginsTab::Graphite);
+    assert_eq!(app.plugins.open_vsx.len(), 1);
+
+    let repository = graphite_plugins::catalog::Repository {
+        full_name: "author/plugin".into(),
+        description: Some("A Graphite plugin".into()),
+        stargazers_count: 12,
+        html_url: "https://github.com/author/plugin".into(),
+    };
+    app.plugins.graphite = vec![repository.clone()];
+    assert_eq!(app.plugin_row_count(), 1);
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    sender
+        .send(Ok(Outcome::GraphiteAssets(
+            repository.clone(),
+            vec![
+                graphite_plugins::catalog::Asset {
+                    name: "plugin.graphite-plugin".into(),
+                    browser_download_url: "https://github.com/author/plugin/releases/download/v1/plugin.graphite-plugin".into(),
+                    size: 10,
+                },
+                graphite_plugins::catalog::Asset {
+                    name: "plugin.vsix".into(),
+                    browser_download_url: "https://github.com/author/plugin/releases/download/v1/plugin.vsix".into(),
+                    size: 20,
+                },
+            ],
+        )))
+        .unwrap();
+    app.plugins.worker = Some(receiver);
+    app.poll_plugins();
+    assert_eq!(app.plugin_row_count(), 2);
+    assert_eq!(
+        app.plugins.graphite_assets.as_ref().unwrap().0.full_name,
+        repository.full_name
+    );
+
+    app.leave_plugin_details();
+    assert!(app.plugins.graphite_assets.is_none());
+    assert_eq!(app.plugin_row_count(), 1);
+    app.plugin_action('o');
+    assert_eq!(app.plugins.tab, PluginsTab::OpenVsx);
+}
+
+#[test]
 fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
     let temp = crate::test_support::TempDir::new();
     let mut app = App::new_with_options(temp.path().into(), None, true);

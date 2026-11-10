@@ -181,22 +181,20 @@ impl App {
     }
 
     fn draw_plugin_tabs(&self, renderer: &mut Renderer, layout: &PluginsLayout, line_height: f32) {
-        let active = if self.plugins.marketplace {
-            PluginsTab::OpenVsx
-        } else {
-            PluginsTab::Installed
-        };
-        let half = layout.width * 0.5;
-        for (index, tab) in [PluginsTab::Installed, PluginsTab::OpenVsx]
-            .into_iter()
-            .enumerate()
+        for tab in [
+            PluginsTab::Installed,
+            PluginsTab::OpenVsx,
+            PluginsTab::Graphite,
+        ]
+        .into_iter()
         {
-            let x = layout.sidebar_x + index as f32 * half;
+            let (x, tab_width) = layout.tab_bounds(tab);
             let label = match tab {
                 PluginsTab::Installed => self.t("plugins.sidebar.installed"),
                 PluginsTab::OpenVsx => self.t("plugins.sidebar.open_vsx"),
+                PluginsTab::Graphite => self.t("plugins.sidebar.graphite"),
             };
-            let color = if tab == active {
+            let color = if tab == self.plugins.tab {
                 Theme::color(Theme::TEXT, 0x1e1e1e)
             } else {
                 Theme::color(Theme::DIM, 0x616161)
@@ -207,11 +205,11 @@ impl App {
                 layout.tabs_y + (layout.tab_height - line_height) * 0.5,
                 rgb(color),
             );
-            if tab == active {
+            if tab == self.plugins.tab {
                 renderer.draw_rect(
                     x + PAD,
                     layout.tabs_y + layout.tab_height - 2.0,
-                    half - PAD * 2.0,
+                    tab_width - PAD * 2.0,
                     2.0,
                     rgb(Theme::color(Theme::STATUS, 0x005a9e)),
                 );
@@ -260,7 +258,11 @@ impl App {
         let placeholder = if self.plugins.path_input {
             self.t("plugins.sidebar.search_path")
         } else {
-            self.t("plugins.sidebar.search_open_vsx")
+            self.t(match self.plugins.tab {
+                PluginsTab::Installed => "plugins.sidebar.search_open_vsx",
+                PluginsTab::OpenVsx => "plugins.sidebar.search_open_vsx",
+                PluginsTab::Graphite => "plugins.sidebar.search_graphite",
+            })
         };
         let (label, color) = if self.plugins.editing {
             (
@@ -268,7 +270,7 @@ impl App {
                 Theme::color(Theme::TEXT, 0x1e1e1e),
             )
         } else if !self.plugins.query.is_empty()
-            && (self.plugins.marketplace || self.plugins.path_input)
+            && (self.plugins.tab != PluginsTab::Installed || self.plugins.path_input)
         {
             (
                 self.plugins.query.clone(),
@@ -286,22 +288,40 @@ impl App {
     }
 
     fn plugin_section(&self) -> (String, &'static str) {
-        if self.plugins.marketplace {
-            (
-                self.tf(
-                    "plugins.sidebar.section_open_vsx",
-                    &[("count", &self.plugins.open_vsx.len())],
-                ),
-                "plugins.sidebar.empty_open_vsx",
-            )
-        } else {
-            (
+        match self.plugins.tab {
+            PluginsTab::Installed => (
                 self.tf(
                     "plugins.sidebar.section_installed",
                     &[("count", &self.plugins.installed.len())],
                 ),
                 "plugins.sidebar.empty_installed",
-            )
+            ),
+            PluginsTab::OpenVsx => (
+                self.tf(
+                    "plugins.sidebar.section_open_vsx",
+                    &[("count", &self.plugins.open_vsx.len())],
+                ),
+                "plugins.sidebar.empty_open_vsx",
+            ),
+            PluginsTab::Graphite => {
+                if let Some((_, assets)) = &self.plugins.graphite_assets {
+                    (
+                        self.tf(
+                            "plugins.sidebar.section_assets",
+                            &[("count", &assets.len())],
+                        ),
+                        "plugins.sidebar.empty_assets",
+                    )
+                } else {
+                    (
+                        self.tf(
+                            "plugins.sidebar.section_graphite",
+                            &[("count", &self.plugins.graphite.len())],
+                        ),
+                        "plugins.sidebar.empty_graphite",
+                    )
+                }
+            }
         }
     }
 
@@ -452,7 +472,7 @@ impl App {
     fn plugin_card_data(&self, index: usize) -> Option<PluginCard> {
         let dim = Theme::color(Theme::DIM, 0x616161);
         let error = 0x9b2226;
-        if self.plugins.marketplace {
+        if self.plugins.tab == PluginsTab::OpenVsx {
             let extension = self.plugins.open_vsx.get(index)?;
             let id = format!("{}.{}", extension.namespace, extension.name);
             return Some(PluginCard {
@@ -463,6 +483,38 @@ impl App {
                 badges: Vec::new(),
                 avatar: initial(&extension.name),
                 avatar_color: avatar_color(&id),
+            });
+        } else if self.plugins.tab == PluginsTab::Graphite {
+            if let Some((repository, assets)) = &self.plugins.graphite_assets {
+                let asset = assets.get(index)?;
+                return Some(PluginCard {
+                    title: asset.name.clone(),
+                    subtitle: self.tf("plugins.bytes", &[("bytes", &asset.size)]),
+                    description: repository.full_name.clone(),
+                    description_color: dim,
+                    badges: Vec::new(),
+                    avatar: initial(&asset.name),
+                    avatar_color: avatar_color(&repository.full_name),
+                });
+            }
+            let repository = self.plugins.graphite.get(index)?;
+            return Some(PluginCard {
+                title: repository.full_name.clone(),
+                subtitle: self.tf(
+                    "plugins.sidebar.stars",
+                    &[("stars", &repository.stargazers_count)],
+                ),
+                description: repository.description.clone().unwrap_or_default(),
+                description_color: dim,
+                badges: Vec::new(),
+                avatar: initial(
+                    repository
+                        .full_name
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&repository.full_name),
+                ),
+                avatar_color: avatar_color(&repository.full_name),
             });
         }
         let record = self.plugins.installed.get(index)?;
@@ -701,10 +753,18 @@ impl App {
             "plugins.sidebar.hints_details"
         } else if self.plugins.editing {
             "plugins.sidebar.hints_editing"
-        } else if self.plugins.marketplace {
-            "plugins.sidebar.hints_open_vsx"
         } else {
-            "plugins.sidebar.hints_installed"
+            match self.plugins.tab {
+                PluginsTab::Installed => "plugins.sidebar.hints_installed",
+                PluginsTab::OpenVsx => "plugins.sidebar.hints_open_vsx",
+                PluginsTab::Graphite => {
+                    if self.plugins.graphite_assets.is_some() {
+                        "plugins.sidebar.hints_assets"
+                    } else {
+                        "plugins.sidebar.hints_graphite"
+                    }
+                }
+            }
         };
         let max = ((layout.width - PAD * 2.0) / cell_width).max(1.0) as usize;
         renderer.draw_rect(

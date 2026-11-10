@@ -1,6 +1,7 @@
 //! UI-thread plugin ownership. Blocking package/network/runtime work stays on workers.
 use super::*;
 use graphite_plugins::{
+    catalog::{Asset, Repository},
     manifest::Metadata,
     open_vsx::Extension,
     store::{Installed, Store},
@@ -16,11 +17,14 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 mod vsix;
+use layout::PluginsTab;
 pub(crate) use vsix::VsixLanguageFeature;
 
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),
     OpenVsx(Vec<Extension>),
+    Graphite(Vec<Repository>),
+    GraphiteAssets(Repository, Vec<Asset>),
     Preview(PathBuf, Metadata),
     Notice(String),
     Started(String, u64, super::extension_host::ExtensionRuntime),
@@ -32,10 +36,12 @@ pub(crate) struct Plugins {
     pub focused: bool,
     installed: Vec<Installed>,
     open_vsx: Vec<Extension>,
+    graphite: Vec<Repository>,
+    graphite_assets: Option<(Repository, Vec<Asset>)>,
     preview: Option<(PathBuf, Metadata)>,
     inspecting: Option<Metadata>,
     trust: Option<String>,
-    marketplace: bool,
+    tab: PluginsTab,
     query: String,
     path_input: bool,
     editing: bool,
@@ -188,12 +194,26 @@ impl App {
     }
     pub(super) fn search_plugins(&mut self) {
         let query = self.plugins.query.clone();
-        self.plugins.open_vsx.clear();
+        let tab = self.plugins.tab;
+        self.plugins.graphite_assets = None;
         self.plugins.index = 0;
         self.plugins.scroll = 0;
-        self.plugin_job(move |_| {
-            let registry = graphite_plugins::open_vsx::Registry::new()?;
-            Ok(Outcome::OpenVsx(registry.search(&query, 30)?))
-        });
+        match tab {
+            PluginsTab::OpenVsx => {
+                self.plugins.open_vsx.clear();
+                self.plugin_job(move |_| {
+                    let registry = graphite_plugins::open_vsx::Registry::new()?;
+                    Ok(Outcome::OpenVsx(registry.search(&query, 30)?))
+                });
+            }
+            PluginsTab::Graphite => {
+                self.plugins.graphite.clear();
+                self.plugin_job(move |_| {
+                    let mut catalog = graphite_plugins::catalog::Catalog::new()?;
+                    Ok(Outcome::Graphite(catalog.search(&query, 1)?))
+                });
+            }
+            PluginsTab::Installed => {}
+        }
     }
 }

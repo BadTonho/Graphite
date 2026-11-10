@@ -4,16 +4,20 @@ impl App {
         if self.plugins.worker.is_some() {
             return;
         }
-        if action == 'o' || action == 'i' {
+        if action == 'o' || action == 'i' || action == 'g' {
             self.leave_plugin_details();
-            self.plugins.marketplace = action == 'o';
+            self.plugins.tab = match action {
+                'o' => PluginsTab::OpenVsx,
+                'g' => PluginsTab::Graphite,
+                _ => PluginsTab::Installed,
+            };
             self.plugins.index = 0;
             self.plugins.scroll = 0;
             if self.plugins.path_input {
                 self.plugins.query.clear();
                 self.plugins.path_input = false;
             }
-            if action == 'o' {
+            if action == 'o' || action == 'g' {
                 self.search_plugins();
             }
             return;
@@ -25,7 +29,7 @@ impl App {
             self.plugins.editing = true;
             return;
         }
-        if self.plugins.marketplace {
+        if self.plugins.tab == PluginsTab::OpenVsx {
             match action {
                 '\n' => {
                     if let Some(extension) = self.plugins.open_vsx.get(self.plugins.index).cloned()
@@ -56,6 +60,39 @@ impl App {
                     }
                 }
                 _ => {}
+            }
+            return;
+        }
+        if self.plugins.tab == PluginsTab::Graphite {
+            if action != '\n' {
+                return;
+            }
+            if let Some((_, assets)) = &self.plugins.graphite_assets {
+                let Some(asset) = assets.get(self.plugins.index).cloned() else {
+                    return;
+                };
+                self.queue_graphite_asset_download(asset);
+            } else if let Some(repository) = self.plugins.graphite.get(self.plugins.index).cloned()
+            {
+                let root = self.plugins.store.as_ref().unwrap().root.clone();
+                let session = self.plugins.next_session;
+                self.plugins.next_session += 1;
+                self.plugin_job(move |_| {
+                    let mut catalog = graphite_plugins::catalog::Catalog::new()?;
+                    let assets = catalog.assets(&repository.full_name)?;
+                    if assets.is_empty() {
+                        return Err(format!(
+                            "The latest stable release for {} has no .graphite-plugin or .vsix assets",
+                            repository.full_name
+                        ));
+                    }
+                    if assets.len() == 1 {
+                        let destination = graphite_asset_destination(&root, session, &assets[0]);
+                        download_graphite_asset(&mut catalog, &assets[0], &destination)
+                    } else {
+                        Ok(Outcome::GraphiteAssets(repository, assets))
+                    }
+                });
             }
             return;
         }
@@ -159,4 +196,50 @@ impl App {
             Ok(Outcome::Refreshed(store.list()?))
         });
     }
+
+    fn queue_graphite_asset_download(&mut self, asset: graphite_plugins::catalog::Asset) {
+        let root = self.plugins.store.as_ref().unwrap().root.clone();
+        let destination = graphite_asset_destination(&root, self.plugins.next_session, &asset);
+        self.plugins.next_session += 1;
+        self.plugins.temporary = Some(destination.clone());
+        self.plugin_job(move |_| {
+            let mut catalog = graphite_plugins::catalog::Catalog::new()?;
+            download_graphite_asset(&mut catalog, &asset, &destination)
+        });
+    }
+}
+
+fn graphite_asset_destination(
+    root: &std::path::Path,
+    session: u64,
+    asset: &graphite_plugins::catalog::Asset,
+) -> std::path::PathBuf {
+    let extension = if asset.name.ends_with(".graphite-plugin") {
+        ".graphite-plugin"
+    } else {
+        ".vsix"
+    };
+    root.join(format!(
+        ".github-plugin-{}-{session}{extension}",
+        std::process::id()
+    ))
+}
+
+fn download_graphite_asset(
+    catalog: &mut graphite_plugins::catalog::Catalog,
+    asset: &graphite_plugins::catalog::Asset,
+    destination: &std::path::Path,
+) -> Result<Outcome> {
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let result = (|| {
+        catalog.download(asset, destination)?;
+        let metadata = graphite_plugins::package::inspect(destination)?;
+        Ok(Outcome::Preview(destination.to_path_buf(), metadata))
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(destination);
+    }
+    result
 }
