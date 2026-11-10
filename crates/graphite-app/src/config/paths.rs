@@ -55,6 +55,13 @@ impl TerminalProfileConfig {
 }
 
 pub fn terminal_settings(translator: &Translator) -> Result<TerminalSettings, String> {
+    terminal_settings_in(&app_config_dir(), translator)
+}
+
+pub fn terminal_settings_in(
+    config_root: &Path,
+    translator: &Translator,
+) -> Result<TerminalSettings, String> {
     if let Some(shell) = shell_override(std::env::var("GRAPHITE_SHELL").ok()) {
         return Ok(TerminalSettings {
             profiles: vec![TerminalProfile {
@@ -65,7 +72,7 @@ pub fn terminal_settings(translator: &Translator) -> Result<TerminalSettings, St
             default_profile: 0,
         });
     }
-    let config_path = app_config_dir().join("terminal.json");
+    let config_path = config_root.join("terminal.json");
     let raw = match fs::read_to_string(&config_path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

@@ -69,7 +69,7 @@ impl App {
             Ok(Outcome::Started(id, runtime))
         });
     }
-    pub(super) fn stop_plugin(&mut self, id: &str) {
+    pub(crate) fn stop_plugin(&mut self, id: &str) {
         if let Some(mut host) = self.plugins.hosts.remove(id) {
             if let Some(supervisor) = host.supervisor.as_mut() {
                 supervisor.shutdown();
@@ -121,13 +121,8 @@ impl App {
                         .scroll
                         .min(self.plugins.installed.len().saturating_sub(rows));
                 }
-                Ok(Outcome::Repositories(repositories)) => {
-                    self.plugins.repositories = repositories;
-                    self.plugins.index = 0;
-                    self.plugins.scroll = 0;
-                }
-                Ok(Outcome::Assets(assets)) => {
-                    self.plugins.assets = Some(assets);
+                Ok(Outcome::OpenVsx(extensions)) => {
+                    self.plugins.open_vsx = extensions;
                     self.plugins.index = 0;
                     self.plugins.scroll = 0;
                 }

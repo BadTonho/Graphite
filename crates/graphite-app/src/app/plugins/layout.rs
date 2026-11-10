@@ -8,7 +8,7 @@ use super::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum PluginsTab {
     Installed,
-    Github,
+    OpenVsx,
 }
 
 pub(super) struct PluginsLayout {
@@ -74,7 +74,7 @@ impl PluginsLayout {
         if x < self.sidebar_x + self.width * 0.5 {
             Some(PluginsTab::Installed)
         } else {
-            Some(PluginsTab::Github)
+            Some(PluginsTab::OpenVsx)
         }
     }
 
@@ -123,7 +123,7 @@ mod tests {
         );
         assert_eq!(
             layout.tab_at(SIDEBAR_WIDTH - 10.0, layout.tabs_y + 2.0),
-            Some(PluginsTab::Github)
+            Some(PluginsTab::OpenVsx)
         );
         assert!(layout.search_contains(ACTIVITY_BAR_WIDTH + PAD + 1.0, layout.search_y + 2.0));
         assert_eq!(

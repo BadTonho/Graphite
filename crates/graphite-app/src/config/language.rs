@@ -48,9 +48,13 @@ impl LanguageWarning {
 /// Resolves the interface language with this precedence:
 /// `GRAPHITE_LANG`, user `workbench.language`, operating-system locale, English.
 pub fn language_selection(workspace: &Path) -> LanguageSelection {
+    language_selection_in(&app_config_dir(), workspace)
+}
+
+pub fn language_selection_in(config_root: &Path, workspace: &Path) -> LanguageSelection {
     let detected = UiLanguage::detect();
     let environment = std::env::var("GRAPHITE_LANG").ok();
-    let setting = match user_language_setting(workspace) {
+    let setting = match user_language_setting(config_root, workspace) {
         Ok(setting) => setting,
         Err(settings_warning) => {
             let (language, warning) = resolve_language(environment.as_deref(), None, detected);
@@ -65,8 +69,11 @@ pub fn language_selection(workspace: &Path) -> LanguageSelection {
     LanguageSelection { language, warning }
 }
 
-fn user_language_setting(workspace: &Path) -> Result<Option<String>, LanguageWarning> {
-    let paths = settings::settings_paths(workspace);
+fn user_language_setting(
+    config_root: &Path,
+    workspace: &Path,
+) -> Result<Option<String>, LanguageWarning> {
+    let paths = settings::settings_paths_in(config_root, workspace);
     let mut language = None;
     for path in &paths[..2] {
         let raw = match fs::read_to_string(path) {

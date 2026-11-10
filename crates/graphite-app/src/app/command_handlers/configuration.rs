@@ -14,18 +14,21 @@ pub(crate) struct ImportedSettings {
 
 fn load_settings(
     root: &Path,
+    profile_root: &Path,
     cancellation: &super::super::command_execution::CancellationToken,
     translator: graphite_i18n::Translator,
 ) -> Result<ImportedSettings, CommandError> {
     cancellation.check()?;
-    let report = config::import_vscode(&translator);
+    let report = config::import_vscode_to(profile_root, &translator);
     cancellation.check()?;
-    let prefs =
-        config::editor_prefs_for_workspace(root, &translator).map_err(CommandError::Failed)?;
-    let colors = config::imported_theme_colors(root, &translator).map_err(CommandError::Failed)?;
-    let dark = config::load_dark_theme();
-    let (snippets, warnings) = config::load_snippets_for_workspace(root, &translator);
-    let path = config::app_config_dir().join("keybindings.json");
+    let prefs = config::editor_prefs_for_workspace_in(profile_root, root, &translator)
+        .map_err(CommandError::Failed)?;
+    let colors = config::imported_theme_colors_in(profile_root, root, &translator)
+        .map_err(CommandError::Failed)?;
+    let dark = config::load_dark_theme_from(profile_root);
+    let (snippets, warnings) =
+        config::load_snippets_for_workspace_in(profile_root, root, &translator);
+    let path = profile_root.join("keybindings.json");
     let source = match std::fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => "[]".into(),
@@ -57,6 +60,7 @@ pub(super) fn import(app: &mut App, _: &CommandInvocation) -> Result<(), Command
         .clone()
         .ok_or_else(|| CommandError::Failed(app.t("error.no_event_loop").into()))?;
     let root = app.tree.root().to_path_buf();
+    let profile_root = app.profile_root.clone();
     let translator = app.translator;
     let job = app
         .command_job(false)
@@ -64,7 +68,7 @@ pub(super) fn import(app: &mut App, _: &CommandInvocation) -> Result<(), Command
     std::thread::Builder::new()
         .name("graphite-import-settings".into())
         .spawn(
-            move || match load_settings(&root, &job.cancellation, translator) {
+            move || match load_settings(&root, &profile_root, &job.cancellation, translator) {
                 Ok(settings) => deliver_command_event(
                     &proxy,
                     Some(&job),
@@ -89,6 +93,7 @@ pub(super) fn snippets(app: &mut App, _: &CommandInvocation) -> Result<(), Comma
         .clone()
         .ok_or_else(|| CommandError::Failed(app.t("error.no_event_loop").into()))?;
     let root = app.tree.root().to_path_buf();
+    let profile_root = app.profile_root.clone();
     let translator = app.translator;
     let job = app
         .command_job(false)
@@ -105,7 +110,8 @@ pub(super) fn snippets(app: &mut App, _: &CommandInvocation) -> Result<(), Comma
                 });
                 return;
             }
-            let (snippets, warnings) = config::load_snippets_for_workspace(&root, &translator);
+            let (snippets, warnings) =
+                config::load_snippets_for_workspace_in(&profile_root, &root, &translator);
             deliver_command_event(
                 &proxy,
                 Some(&job),

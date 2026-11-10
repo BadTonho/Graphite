@@ -42,13 +42,13 @@ Registre recursos em `context.subscriptions`; o descarte é idempotente. O encer
 
 ## Instalar e gerenciar
 
-Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados e GitHub, e a caixa de pesquisa aceita consultas no GitHub. As setas selecionam cartões; Esc retorna ou fecha. As mesmas ações estão disponíveis pelo teclado:
+Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados e Open VSX. Resultados de busca baixam o VSIX mais recente para inspeção; a instalação exige confirmação. As setas selecionam cartões; Esc retorna ou fecha. As mesmas ações estão disponíveis pelo teclado:
 
 | Tecla | Ação |
 |---|---|
-| I / G | Plugins instalados / catálogo GitHub |
+| I / O | Plugins instalados / Open VSX |
 | L | Digitar caminho local `.graphite-plugin` ou `.vsix` |
-| / | Digitar pesquisa no GitHub; Enter envia |
+| / | Digitar pesquisa no Open VSX; Enter envia |
 | P / N | Página anterior / seguinte do catálogo |
 | Enter | Inspecionar plugin instalado ou mostrar assets da release e baixar o selecionado |
 | Y / Esc | Confirmar / cancelar instalação ou confiança |
@@ -62,8 +62,8 @@ Pacotes VSIX mostram identidade, versão, engines, entrada e categorias de contr
 
 ## Publicar e testar
 
-Adicione o tópico GitHub `graphite-plugin` e anexe assets `.graphite-plugin` ou `.vsix` a uma release estável. O Graphite lista todos os assets suportados para escolha. Ele nunca clona/compila o repositório. Atualizações são instaladas manualmente pelo catálogo ou arquivo local. A descoberta pública não usa token e informa falhas de rede/limite de requisições.
+Publique extensões VSIX no Open VSX para descoberta. O Graphite também aceita pacotes `.vsix` e `.graphite-plugin` locais. Pacotes VSIX podem ser inspecionados e instalados como metadados; a ativação aguarda a integração do host Code OSS. Plugins Graphite nativos só executam após conceder confiança à versão.
 
-Execute `cargo test -p graphite-plugins` para testes de pacotes, persistência e catálogo. Os testes da aplicação exigem Node.js 24+ e usam exemplos locais: `cargo test -p graphite-app app::plugins`. Finalize mudanças com `cargo test --workspace` e `cargo build --workspace`; testes não acessam a API GitHub real. A execução Linux e verificações interativas devem ser registradas separadamente quando indisponíveis.
+Execute `cargo test -p graphite-plugins` para testes de pacotes, persistência e catálogo. Os testes da aplicação para plugins e Emmet upstream exigem Node.js 24+ e usam fixtures locais: `cargo test -p graphite-app app::plugins`. Finalize mudanças com `cargo test --workspace` e `cargo build --workspace`; os testes de marketplace usam uma fixture HTTP local e nunca acessam o Open VSX. A execução Linux e verificações interativas devem ser registradas separadamente quando indisponíveis.
 
-A validação inicial no Windows passou nos testes e build do workspace, formatação Rust e verificação de sintaxe do host Node. A verificação interativa de UI/GPU no Windows não pôde executar porque o canal nativo do Computer Use estava indisponível (`os error 2`) nas duas tentativas de conexão. A execução Linux não foi realizada neste ambiente Windows. O catálogo foi validado com servidor HTTP local, sem acessar o serviço GitHub real.
+Nesta rodada, passaram no Windows `cargo test --workspace --offline`, `cargo build --workspace --offline` e `cargo fmt --all -- --check`. A verificação interativa da interface nativa/GPU não foi realizada. A execução Linux não foi realizada neste ambiente Windows. O comportamento do Open VSX foi validado com uma fixture HTTP local; os testes não acessaram o registro público.

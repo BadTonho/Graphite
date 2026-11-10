@@ -4,7 +4,11 @@ impl App {
         if let Some(settings) = &self.service_configuration_override {
             return Ok(settings.clone());
         }
-        crate::config::workspace_configuration(self.tree.root(), &self.translator)
+        crate::config::workspace_configuration_in(
+            &self.profile_root,
+            self.tree.root(),
+            &self.translator,
+        )
     }
 }
 impl WorkspaceService for App {

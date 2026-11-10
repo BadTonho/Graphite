@@ -307,4 +307,75 @@ mod tests {
         assert!(registry.latest("publisher", "extension").is_err());
         server.join().unwrap();
     }
+
+    #[test]
+    fn latest_download_is_inspected_and_installed_from_a_local_fixture() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            thread,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut archive = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut archive));
+            zip.start_file(
+                "extension/package.json",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(
+                br#"{"publisher":"publisher","name":"extension","version":"1.2.3","description":"Fixture","main":"./dist/main.js","engines":{"vscode":"^1.90.0"}}"#,
+            )
+            .unwrap();
+            zip.start_file(
+                "extension/dist/main.js",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(b"module.exports = {}; ").unwrap();
+            zip.finish().unwrap();
+        }
+        let server = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 2048];
+                let count = stream.read(&mut request).unwrap();
+                let path = String::from_utf8_lossy(&request[..count]);
+                if path.starts_with("GET /publisher/extension/latest") {
+                    let body = format!(
+                        r#"{{"namespace":"publisher","name":"extension","version":"1.2.3","description":"Fixture","files":{{"download":"http://{address}/package.vsix"}}}}"#
+                    );
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                } else {
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", archive.len()).unwrap();
+                    stream.write_all(&archive).unwrap();
+                }
+            }
+        });
+        let root = std::env::temp_dir().join(format!(
+            "graphite-open-vsx-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let package_path = root.join("fixture.vsix");
+        let registry = Registry::with_base(&format!("http://{address}")).unwrap();
+        let metadata = registry
+            .download_latest("publisher", "extension", &package_path)
+            .unwrap();
+        assert_eq!(metadata.version, "1.2.3");
+        let installed = crate::store::Store::new(root.join("store"))
+            .install(&package_path)
+            .unwrap();
+        assert_eq!(installed.metadata.id(), "publisher.extension");
+        assert!(!installed.enabled);
+        assert!(installed.trusted_version.is_none());
+        server.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

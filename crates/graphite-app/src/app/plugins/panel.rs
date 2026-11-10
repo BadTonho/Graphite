@@ -26,12 +26,8 @@ impl App {
     }
 
     pub(super) fn plugin_row_count(&self) -> usize {
-        if self.plugins.github {
-            self.plugins
-                .assets
-                .as_ref()
-                .map(|assets| assets.len())
-                .unwrap_or(self.plugins.repositories.len())
+        if self.plugins.marketplace {
+            self.plugins.open_vsx.len()
         } else {
             self.plugins.installed.len()
         }
@@ -94,9 +90,6 @@ impl App {
             } else if self.plugins.inspecting.take().is_some() {
             } else if self.plugins.editing {
                 self.plugins.editing = false;
-            } else if self.plugins.assets.take().is_some() {
-                self.plugins.index = 0;
-                self.plugins.scroll = 0;
             } else {
                 self.close_plugins();
             }
@@ -148,8 +141,7 @@ impl App {
                 self.stop_plugin(metadata.id());
                 let temporary = self.plugins.temporary.take();
                 self.plugins.preview = None;
-                self.plugins.github = false;
-                self.plugins.assets = None;
+                self.plugins.marketplace = false;
                 self.plugins.index = 0;
                 self.plugins.scroll = 0;
                 self.plugin_job(move |store| {
@@ -181,8 +173,7 @@ impl App {
                             ))
                         });
                     } else {
-                        self.plugins.github = true;
-                        self.plugins.page = 1;
+                        self.plugins.marketplace = true;
                         self.search_plugins();
                     }
                 }
@@ -256,7 +247,7 @@ impl App {
             self.leave_plugin_details();
             self.plugin_action(match tab {
                 PluginsTab::Installed => 'i',
-                PluginsTab::Github => 'g',
+                PluginsTab::OpenVsx => 'o',
             });
             return;
         }

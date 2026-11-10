@@ -120,11 +120,22 @@ pub fn editor_prefs_for_workspace(
     workspace: &Path,
     translator: &Translator,
 ) -> Result<EditorPrefs, String> {
-    read_editor_prefs(&settings_paths(workspace), translator)
+    editor_prefs_for_workspace_in(&app_config_dir(), workspace, translator)
+}
+
+pub fn editor_prefs_for_workspace_in(
+    config_root: &Path,
+    workspace: &Path,
+    translator: &Translator,
+) -> Result<EditorPrefs, String> {
+    read_editor_prefs(&settings_paths_in(config_root, workspace), translator)
 }
 
 pub(super) fn settings_paths(workspace: &Path) -> [PathBuf; 3] {
-    let config = app_config_dir();
+    settings_paths_in(&app_config_dir(), workspace)
+}
+
+pub(super) fn settings_paths_in(config: &Path, workspace: &Path) -> [PathBuf; 3] {
     [
         config.join("imported/settings.json"),
         config.join("settings.json"),
@@ -326,4 +337,12 @@ pub(super) fn read_editor_prefs(
 
 pub fn workspace_configuration(workspace: &Path, translator: &Translator) -> Result<Value, String> {
     merge_settings(&settings_paths(workspace), translator)
+}
+
+pub fn workspace_configuration_in(
+    config_root: &Path,
+    workspace: &Path,
+    translator: &Translator,
+) -> Result<Value, String> {
+    merge_settings(&settings_paths_in(config_root, workspace), translator)
 }

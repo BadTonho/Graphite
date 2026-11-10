@@ -1,13 +1,26 @@
 use super::*;
 
 pub fn import_vscode(translator: &Translator) -> ImportReport {
+    import_vscode_to(&app_config_dir(), translator)
+}
+
+pub fn import_vscode_to(config_root: &Path, translator: &Translator) -> ImportReport {
     let Some(user_dir) = vscode_user_dir() else {
         return ImportReport {
             imported: 0,
             warnings: vec![translator.text("config.import.user_dir_missing").into()],
         };
     };
-    import_from(&user_dir, &app_config_dir().join("imported"), translator)
+    import_from_with(
+        &user_dir,
+        &config_root.join("imported"),
+        std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(|home| PathBuf::from(home).join(".vscode/extensions"))
+            .as_deref(),
+        |dark| save_dark_theme_in(config_root, dark),
+        translator,
+    )
 }
 
 pub fn import_from(user_dir: &Path, target: &Path, translator: &Translator) -> ImportReport {

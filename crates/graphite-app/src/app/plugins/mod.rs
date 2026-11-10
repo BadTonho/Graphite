@@ -1,16 +1,12 @@
 //! UI-thread plugin ownership. Blocking package/network/runtime work stays on workers.
 use super::*;
 use graphite_plugins::{
-    catalog::{Asset, Catalog, Repository},
     manifest::Metadata,
+    open_vsx::Extension,
     store::{Installed, Store},
     Result,
 };
-use std::{
-    collections::BTreeMap,
-    sync::{mpsc, Mutex},
-    time::Instant,
-};
+use std::{collections::BTreeMap, sync::mpsc, time::Instant};
 mod accessibility;
 mod actions;
 mod drawing;
@@ -22,8 +18,7 @@ mod tests;
 
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),
-    Repositories(Vec<Repository>),
-    Assets(Vec<Asset>),
+    OpenVsx(Vec<Extension>),
     Preview(PathBuf, Metadata),
     Started(String, super::extension_host::ExtensionRuntime),
 }
@@ -33,21 +28,18 @@ pub(crate) struct Plugins {
     pub visible: bool,
     pub focused: bool,
     installed: Vec<Installed>,
-    repositories: Vec<Repository>,
-    assets: Option<Vec<Asset>>,
+    open_vsx: Vec<Extension>,
     preview: Option<(PathBuf, Metadata)>,
     inspecting: Option<Metadata>,
     trust: Option<String>,
-    github: bool,
+    marketplace: bool,
     query: String,
     path_input: bool,
     editing: bool,
-    page: u32,
     index: usize,
     scroll: usize,
     message: String,
     worker: Option<mpsc::Receiver<Result<Outcome>>>,
-    catalog: Option<Arc<Mutex<Option<Catalog>>>>,
     store: Option<Store>,
     next_session: u64,
     startup: Vec<String>,
@@ -81,13 +73,31 @@ impl Drop for Plugins {
     }
 }
 impl App {
+    pub(crate) fn refresh_plugins_for_profile(&mut self) {
+        for id in self.plugins.hosts.keys().cloned().collect::<Vec<_>>() {
+            self.stop_plugin(&id);
+        }
+        // Discard any in-flight UI result from the previous profile. Its worker
+        // owns a clone of the old profile's store and may safely finish there.
+        self.plugins.worker = None;
+        self.plugins.store = None;
+        self.initialize_plugins();
+    }
+
     pub(crate) fn initialize_plugins(&mut self) {
-        self.plugins.store = Some(Store::new(config::app_config_dir().join("plugins")));
+        self.plugins.store = Some(Store::new(self.profile_root.join("plugins")));
         self.plugin_job(|store| Ok(Outcome::Refreshed(store.list()?)));
     }
     #[cfg(test)]
     pub(crate) fn use_plugin_store(&mut self, path: PathBuf) {
         self.plugins.store = Some(Store::new(path));
+    }
+    #[cfg(test)]
+    pub(crate) fn plugin_store_root(&self) -> Option<&std::path::Path> {
+        self.plugins
+            .store
+            .as_ref()
+            .map(|store| store.root.as_path())
     }
     /// Focuses the sidebar and dismisses editor popups that would steal typing.
     pub(crate) fn focus_plugins(&mut self) {
@@ -132,34 +142,14 @@ impl App {
             }
         });
     }
-    pub(super) fn catalog_job(
-        &mut self,
-        job: impl FnOnce(&mut Catalog) -> Result<Outcome> + Send + 'static,
-    ) {
-        // Construct reqwest's blocking client on its worker, not the event loop.
-        let catalog = self
-            .plugins
-            .catalog
-            .clone()
-            .unwrap_or_else(|| Arc::new(Mutex::new(None)));
-        self.plugins.catalog = Some(catalog.clone());
-        let translator = self.translator;
-        self.plugin_job(move |_| {
-            let mut guard = catalog
-                .lock()
-                .map_err(|_| translator.text("plugins.catalog_worker_failed"))?;
-            if guard.is_none() {
-                *guard = Some(Catalog::new()?);
-            }
-            job(guard.as_mut().unwrap())
-        });
-    }
     pub(super) fn search_plugins(&mut self) {
         let query = self.plugins.query.clone();
-        let page = self.plugins.page.max(1);
-        self.plugins.assets = None;
+        self.plugins.open_vsx.clear();
         self.plugins.index = 0;
         self.plugins.scroll = 0;
-        self.catalog_job(move |catalog| Ok(Outcome::Repositories(catalog.search(&query, page)?)));
+        self.plugin_job(move |_| {
+            let registry = graphite_plugins::open_vsx::Registry::new()?;
+            Ok(Outcome::OpenVsx(registry.search(&query, 30)?))
+        });
     }
 }

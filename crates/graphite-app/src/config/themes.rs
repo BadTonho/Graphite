@@ -4,13 +4,20 @@ pub fn imported_theme_colors(
     workspace: &Path,
     translator: &Translator,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let settings =
-        super::settings::merge_settings(&super::settings::settings_paths(workspace), translator)?;
-    let mut colors = resolve_theme_colors(
-        &settings,
-        &app_config_dir().join("imported/themes"),
+    imported_theme_colors_in(&app_config_dir(), workspace, translator)
+}
+
+pub fn imported_theme_colors_in(
+    config_root: &Path,
+    workspace: &Path,
+    translator: &Translator,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let settings = super::settings::merge_settings(
+        &super::settings::settings_paths_in(config_root, workspace),
         translator,
     )?;
+    let mut colors =
+        resolve_theme_colors(&settings, &config_root.join("imported/themes"), translator)?;
     if let Some(custom) = settings
         .get("workbench.colorCustomizations")
         .and_then(Value::as_object)
@@ -154,14 +161,19 @@ fn collect_theme_files(dir: &Path, files: &mut Vec<PathBuf>) {
 }
 
 pub fn load_dark_theme() -> bool {
-    fs::read_to_string(app_config_dir().join("theme.json"))
+    load_dark_theme_from(&app_config_dir())
+}
+pub fn load_dark_theme_from(config_root: &Path) -> bool {
+    fs::read_to_string(config_root.join("theme.json"))
         .ok()
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
         .and_then(|v| v.get("dark").and_then(Value::as_bool))
         .unwrap_or(true)
 }
 pub fn save_dark_theme(dark: bool) {
-    let dir = app_config_dir();
+    save_dark_theme_in(&app_config_dir(), dark)
+}
+pub fn save_dark_theme_in(dir: &Path, dark: bool) {
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join("theme.json"), format!("{{\"dark\":{dark}}}"));
 }

@@ -7,20 +7,19 @@ impl App {
         window.set_label(self.t("plugins.window_title"));
         window.set_children(vec![content]);
         let mut panel = Node::new(Role::Label);
-        let selected = if self.plugins.github {
-            if let Some(assets) = &self.plugins.assets {
-                assets.get(self.plugins.index).map(|a| a.name.clone())
-            } else {
-                self.plugins.repositories.get(self.plugins.index).map(|r| {
+        let selected = if self.plugins.marketplace {
+            self.plugins
+                .open_vsx
+                .get(self.plugins.index)
+                .map(|extension| {
                     self.tf(
-                        "plugins.accessibility.repository",
+                        "plugins.accessibility.open_vsx",
                         &[
-                            ("name", &r.full_name),
-                            ("description", &r.description.as_deref().unwrap_or("")),
+                            ("name", &extension.display_name),
+                            ("version", &extension.version),
                         ],
                     )
                 })
-            }
         } else {
             self.plugins.installed.get(self.plugins.index).map(|r| {
                 self.tf(
@@ -61,7 +60,7 @@ impl App {
                         &self.t(if self.plugins.path_input {
                             "plugins.package_path"
                         } else {
-                            "plugins.github_search"
+                            "plugins.open_vsx_search"
                         }),
                     ),
                     ("query", &self.plugins.query),

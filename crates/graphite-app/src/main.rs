@@ -92,7 +92,10 @@ struct App {
     command_runtime: app::command_execution::CommandRuntime,
     extension_host: app::extension_host::ExtensionRuntime,
     plugins: app::plugins::Plugins,
+    emmet_runtime: Option<app::emmet::EmmetRuntime>,
     workspace_trust: Option<app::phase5::WorkspaceTrust>,
+    profiles: Option<app::phase5::Profiles>,
+    profile_root: PathBuf,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
     translator: graphite_i18n::Translator,
@@ -216,7 +219,18 @@ impl App {
                 })
                 .expect("failed to create LSP event thread");
         }
-        let language_selection = (!isolated).then(|| config::language_selection(&root));
+        let config_root = config::app_config_dir();
+        let profiles = if isolated {
+            None
+        } else {
+            app::phase5::Profiles::open(&config_root).ok()
+        };
+        let profile_root = profiles
+            .as_ref()
+            .and_then(|profiles| profiles.path(profiles.active()).ok())
+            .unwrap_or_else(|| config_root.clone());
+        let language_selection =
+            (!isolated).then(|| config::language_selection_in(&profile_root, &root));
         let translator = graphite_i18n::Translator::new(
             language_selection
                 .as_ref()
@@ -240,10 +254,17 @@ impl App {
                 Err(_) => LspManager::default(),
             }
         };
-        let mut settings_error = None;
+        let mut settings_error = if !isolated && profiles.is_none() {
+            Some("Unable to initialize configuration profiles".to_owned())
+        } else {
+            None
+        };
         if !isolated {
-            DARK_THEME.store(config::load_dark_theme(), Ordering::Relaxed);
-            match config::imported_theme_colors(&root, &translator) {
+            DARK_THEME.store(
+                config::load_dark_theme_from(&profile_root),
+                Ordering::Relaxed,
+            );
+            match config::imported_theme_colors_in(&profile_root, &root, &translator) {
                 Ok(colors) => Theme::set_imported_colors(colors),
                 Err(error) => settings_error = Some(error),
             }
@@ -261,37 +282,39 @@ impl App {
                 wrapping_indent: config::WrapIndent::Same,
             }
         } else {
-            config::editor_prefs_for_workspace(&root, &translator).unwrap_or_else(|error| {
-                settings_error = Some(error);
-                config::EditorPrefs {
-                    font_size: 15.0,
-                    tab_size: 4,
-                    insert_spaces: false,
-                    read_only_patterns: Vec::new(),
-                    detect_indentation: true,
-                    trim_trailing_whitespace: false,
-                    rulers: Vec::new(),
-                    word_wrap: false,
-                    wrapping_indent: config::WrapIndent::Same,
-                }
-            })
+            config::editor_prefs_for_workspace_in(&profile_root, &root, &translator).unwrap_or_else(
+                |error| {
+                    settings_error = Some(error);
+                    config::EditorPrefs {
+                        font_size: 15.0,
+                        tab_size: 4,
+                        insert_spaces: false,
+                        read_only_patterns: Vec::new(),
+                        detect_indentation: true,
+                        trim_trailing_whitespace: false,
+                        rulers: Vec::new(),
+                        word_wrap: false,
+                        wrapping_indent: config::WrapIndent::Same,
+                    }
+                },
+            )
         };
         let (snippets, snippet_load_warnings) = if isolated {
             (Vec::new(), Vec::new())
         } else {
-            config::load_snippets_for_workspace(&root, &translator)
+            config::load_snippets_for_workspace_in(&profile_root, &root, &translator)
         };
         let (terminal_profiles, selected_terminal_profile, terminal_config_error) = if isolated {
             (Vec::new(), 0, None)
         } else {
-            match config::terminal_settings(&translator) {
+            match config::terminal_settings_in(&profile_root, &translator) {
                 Ok(settings) => (settings.profiles, settings.default_profile, None),
                 Err(error) => (Vec::new(), 0, Some(error)),
             }
         };
         let mut keymap = keybindings::Keymap::default();
         if !isolated {
-            let path = config::app_config_dir().join("keybindings.json");
+            let path = profile_root.join("keybindings.json");
             match std::fs::read_to_string(&path) {
                 Ok(source) => {
                     if let Err(error) = keymap.reload(&source, &translator) {
@@ -355,6 +378,9 @@ impl App {
             command_runtime: Default::default(),
             extension_host: Default::default(),
             plugins: Default::default(),
+            emmet_runtime: None,
+            profiles,
+            profile_root,
             workspace_trust: if isolated {
                 None
             } else {

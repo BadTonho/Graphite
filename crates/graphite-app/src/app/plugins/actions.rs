@@ -4,18 +4,16 @@ impl App {
         if self.plugins.worker.is_some() {
             return;
         }
-        if action == 'g' || action == 'i' {
+        if action == 'o' || action == 'i' {
             self.leave_plugin_details();
-            self.plugins.github = action == 'g';
+            self.plugins.marketplace = action == 'o';
             self.plugins.index = 0;
             self.plugins.scroll = 0;
-            self.plugins.assets = None;
             if self.plugins.path_input {
                 self.plugins.query.clear();
                 self.plugins.path_input = false;
             }
-            if action == 'g' {
-                self.plugins.page = 1;
+            if action == 'o' {
                 self.search_plugins();
             }
             return;
@@ -27,48 +25,33 @@ impl App {
             self.plugins.editing = true;
             return;
         }
-        if self.plugins.github {
+        if self.plugins.marketplace {
             match action {
-                'n' => {
-                    self.plugins.page = self.plugins.page.max(1) + 1;
-                    self.search_plugins();
-                }
-                'p' => {
-                    self.plugins.page = self.plugins.page.saturating_sub(1).max(1);
-                    self.search_plugins();
-                }
                 '\n' => {
-                    if let Some(assets) = &self.plugins.assets {
-                        if let Some(asset) = assets.get(self.plugins.index).cloned() {
-                            let root = self.plugins.store.as_ref().unwrap().root.clone();
-                            let suffix = if asset.name.ends_with(".vsix") {
-                                "vsix"
-                            } else {
-                                "graphite-plugin"
-                            };
-                            let destination = root.join(format!(
-                                ".download-{}-{}.{}",
-                                std::process::id(),
-                                self.plugins.next_session,
-                                suffix
-                            ));
-                            self.plugins.temporary = Some(destination.clone());
-                            self.catalog_job(move |catalog| {
-                                std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-                                catalog.download(&asset, &destination)?;
-                                match graphite_plugins::package::inspect(&destination) {
-                                    Ok(metadata) => Ok(Outcome::Preview(destination, metadata)),
-                                    Err(error) => {
-                                        let _ = std::fs::remove_file(destination);
-                                        Err(error)
-                                    }
+                    if let Some(extension) = self.plugins.open_vsx.get(self.plugins.index).cloned()
+                    {
+                        let root = self.plugins.store.as_ref().unwrap().root.clone();
+                        let destination = root.join(format!(
+                            ".open-vsx-{}-{}.vsix",
+                            std::process::id(),
+                            self.plugins.next_session
+                        ));
+                        self.plugins.temporary = Some(destination.clone());
+                        self.plugin_job(move |_| {
+                            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                            let registry = graphite_plugins::open_vsx::Registry::new()?;
+                            registry.download_latest(
+                                &extension.namespace,
+                                &extension.name,
+                                &destination,
+                            )?;
+                            match graphite_plugins::package::inspect(&destination) {
+                                Ok(metadata) => Ok(Outcome::Preview(destination, metadata)),
+                                Err(error) => {
+                                    let _ = std::fs::remove_file(destination);
+                                    Err(error)
                                 }
-                            });
-                        }
-                    } else if let Some(repo) = self.plugins.repositories.get(self.plugins.index) {
-                        let repo = repo.full_name.clone();
-                        self.catalog_job(move |catalog| {
-                            Ok(Outcome::Assets(catalog.assets(&repo)?))
+                            }
                         });
                     }
                 }

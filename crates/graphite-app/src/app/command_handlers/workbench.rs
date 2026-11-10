@@ -170,13 +170,13 @@ pub(super) fn workbench_action_find_in_files(
 }
 
 pub(super) fn graphite_action_toggle_theme(
-    _app: &mut App,
+    app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
     {
         let dark = !DARK_THEME.load(Ordering::Relaxed);
         DARK_THEME.store(dark, Ordering::Relaxed);
-        config::save_dark_theme(dark);
+        config::save_dark_theme_in(&app.profile_root, dark);
     };
     Ok(())
 }
@@ -301,6 +301,43 @@ pub(super) fn workbench_action_close_active_editor(
 }
 
 pub(super) fn register(registry: &mut CommandRegistry) {
+    for (id, title, handler) in [
+        (
+            "graphite.profiles.create",
+            "Create Profile",
+            graphite_profile_create as Handler,
+        ),
+        (
+            "graphite.profiles.switch",
+            "Switch Profile",
+            graphite_profile_switch as Handler,
+        ),
+    ] {
+        registry
+            .register(CommandDescriptor {
+                id,
+                title,
+                category: "Profiles",
+                targets: ALL,
+                enablement: "true",
+                menu_when: None,
+                widget: None,
+                arguments: ArgumentKind::Text,
+                handler,
+            })
+            .expect("unique profile command");
+    }
+    add(
+        registry,
+        "graphite.profiles.list",
+        "List Profiles",
+        "Profiles",
+        ALL,
+        "true",
+        None,
+        graphite_profile_list,
+    );
+
     add(
         registry,
         "workbench.action.files.saveAll",
@@ -612,4 +649,36 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         workbench_action_close_active_editor,
     );
+}
+
+fn graphite_profile_create(
+    app: &mut App,
+    invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let name =
+        invocation.request.arguments["text"]
+            .as_str()
+            .ok_or(CommandError::InvalidArguments(
+                "Profile name required".into(),
+            ))?;
+    app.create_user_profile(name).map_err(CommandError::Failed)
+}
+
+fn graphite_profile_switch(
+    app: &mut App,
+    invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let name =
+        invocation.request.arguments["text"]
+            .as_str()
+            .ok_or(CommandError::InvalidArguments(
+                "Profile name required".into(),
+            ))?;
+    app.switch_user_profile(name).map_err(CommandError::Failed)
+}
+
+fn graphite_profile_list(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let profiles = app.user_profiles().map_err(CommandError::Failed)?;
+    app.status = format!("Profiles: {}", profiles.join(", "));
+    Ok(())
 }

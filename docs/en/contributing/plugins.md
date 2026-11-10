@@ -42,13 +42,13 @@ Track disposables in `context.subscriptions`; disposal is idempotent. Host termi
 
 ## Install and manage
 
-Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed and GitHub, and the search box accepts GitHub queries. Arrow keys select cards; Escape returns or closes. The same actions are available from the keyboard:
+Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed and Open VSX. Search results download the latest VSIX for inspection; installation requires confirmation. Arrow keys select cards; Escape returns or closes. The same actions are available from the keyboard:
 
 | Key | Action |
 |---|---|
-| I / G | Installed plugins / GitHub catalog |
+| I / O | Installed plugins / Open VSX |
 | L | Enter a local `.graphite-plugin` or `.vsix` path |
-| / | Enter GitHub search text; Enter submits |
+| / | Enter Open VSX search text; Enter submits |
 | P / N | Previous / next catalog page |
 | Enter | Inspect an installed plugin, or show release assets and download the selected asset |
 | Y / Esc | Confirm / cancel installation or trust |
@@ -62,8 +62,8 @@ VSIX packages show identity, version, engines, entry and contribution categories
 
 ## Publish and test
 
-Add the GitHub topic `graphite-plugin` and attach `.graphite-plugin` or `.vsix` assets to a stable release. Graphite lists all supported assets so users can choose. It never clones/builds the repository. Updates are installed manually through the catalog or a local file. Public discovery uses no token and reports network/rate-limit errors.
+Publish VSIX extensions on Open VSX for discovery. Graphite also accepts local `.vsix` and `.graphite-plugin` packages. VSIX packages can currently be inspected and installed as metadata; activation waits for the Code OSS host integration. Native Graphite plugins run only after version trust is granted.
 
-Run `cargo test -p graphite-plugins` for package/store/catalog tests. Application plugin tests require Node.js 24+ and use local fixtures: `cargo test -p graphite-app app::plugins`. Complete changes with `cargo test --workspace` and `cargo build --workspace`; tests do not call the real GitHub API. Linux execution and interactive UI checks must be recorded separately when unavailable.
+Run `cargo test -p graphite-plugins` for package/store/catalog tests. Application plugin and upstream Emmet integration tests require Node.js 24+ and use local fixtures: `cargo test -p graphite-app app::plugins`. Complete changes with `cargo test --workspace` and `cargo build --workspace`; marketplace tests use a local HTTP fixture and never call Open VSX. Linux execution and interactive UI checks must be recorded separately when unavailable.
 
-Initial validation on Windows passed workspace tests, workspace build, Rust formatting and Node host syntax checking. Interactive Windows UI/GPU verification could not run because the Computer Use native pipe was unavailable (`os error 2`) on both connection attempts. Linux execution was not performed in this Windows environment. Catalog behavior was verified against a local HTTP fixture, not the live GitHub service.
+Windows validation for this pass passed `cargo test --workspace --offline`, `cargo build --workspace --offline` and `cargo fmt --all -- --check`. Interactive native UI/GPU verification was not performed in this run. Linux execution was not performed in this Windows environment. Open VSX behavior was verified against a local HTTP fixture; the public registry was not contacted by tests.
