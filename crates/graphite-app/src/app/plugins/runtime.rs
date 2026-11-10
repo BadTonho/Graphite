@@ -71,6 +71,11 @@ impl App {
         });
     }
     pub(crate) fn stop_plugin(&mut self, id: &str) {
+        if self.plugins.installed.iter().any(|record| {
+            record.metadata.id() == id && matches!(record.metadata, Metadata::Vsix(_))
+        }) {
+            self.stop_vsix();
+        }
         if let Some(mut host) = self.plugins.hosts.remove(id) {
             if let Some(supervisor) = host.supervisor.as_mut() {
                 supervisor.shutdown();
@@ -107,7 +112,7 @@ impl App {
                     if self.plugins.installed.is_empty() {
                         self.plugins.startup = records
                             .iter()
-                            .filter(|r| r.enabled)
+                            .filter(|r| r.enabled && matches!(r.metadata, Metadata::Native(_)))
                             .map(|r| r.metadata.id().to_owned())
                             .collect();
                     }
@@ -205,5 +210,6 @@ impl App {
             }
             self.plugins.hosts.insert(id, host);
         }
+        self.poll_vsix();
     }
 }

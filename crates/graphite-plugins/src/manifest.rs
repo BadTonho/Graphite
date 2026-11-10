@@ -73,6 +73,34 @@ pub struct Vsix {
     pub engines: Value,
     pub main: Option<String>,
     pub contributions: Vec<String>,
+    #[serde(default)]
+    pub commands: Vec<Command>,
+}
+
+pub(crate) fn vsix_commands(manifest: &Value) -> Vec<Command> {
+    let mut ids = std::collections::HashSet::new();
+    manifest
+        .pointer("/contributes/commands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.get("command")?.as_str()?;
+            let title = entry.get("title")?;
+            let title = title.as_str().or_else(|| title.get("value")?.as_str())?;
+            if id.trim().is_empty() || title.trim().is_empty() || !ids.insert(id) {
+                return None;
+            }
+            let title = match entry.get("category").and_then(Value::as_str) {
+                Some(category) if !category.is_empty() => format!("{category}: {title}"),
+                _ => title.to_owned(),
+            };
+            Some(Command {
+                id: id.into(),
+                title,
+            })
+        })
+        .collect()
 }
 impl Metadata {
     pub fn id(&self) -> &str {

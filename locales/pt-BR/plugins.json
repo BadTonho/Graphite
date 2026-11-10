@@ -62,9 +62,9 @@
   "plugins.sidebar.stars": "{stars} estrelas",
   "plugins.sidebar.title": "PLUGINS",
   "plugins.sidebar.version": "v{version}",
-  "plugins.trust_confirm": "Confiar e ativar {id}? [Y] Ativar  [Esc] Cancelar",
+  "plugins.trust_confirm": "Confiar e ativar {id} v{version}? [Y] Ativar  [Esc] Cancelar",
   "plugins.trust_warning": "Este plugin executa código local com o acesso da sua conta. Um processo separado não é um sandbox de segurança.",
-  "plugins.vsix_prototype": "Protótipo VSIX: nenhum código ou contribuição é ativado",
+  "plugins.vsix_enable_hint": "Ative esta versão, confie no workspace e execute os comandos pela paleta.",
   "plugins.window_title": "Graphite — Plugins",
   "plugins.worker_stopped": "O worker de plugins parou inesperadamente"
 }

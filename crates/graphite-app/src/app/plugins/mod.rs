@@ -15,6 +15,8 @@ mod panel;
 mod runtime;
 #[cfg(test)]
 mod tests;
+mod vsix;
+pub(crate) use vsix::VsixLanguageFeature;
 
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),
@@ -48,10 +50,13 @@ pub(crate) struct Plugins {
     trust_generation: u64,
     errors: BTreeMap<String, String>,
     temporary: Option<PathBuf>,
+    vsix: Option<vsix::Runtime>,
+    vsix_generation: u64,
 }
 impl Plugins {
     pub fn pending(&self) -> bool {
         self.worker.is_some()
+            || self.vsix.as_ref().is_some_and(vsix::Runtime::pending)
             || self.hosts.values().any(|h| {
                 h.activation_deadline.is_some()
                     || h.supervisor.as_ref().is_some_and(|s| {
@@ -76,13 +81,13 @@ impl Drop for Plugins {
 }
 impl App {
     pub(crate) fn refresh_plugins_for_profile(&mut self) {
-        for id in self.plugins.hosts.keys().cloned().collect::<Vec<_>>() {
-            self.stop_plugin(&id);
-        }
+        self.stop_workspace_plugins();
         // Discard any in-flight UI result from the previous profile. Its worker
         // owns a clone of the old profile's store and may safely finish there.
         self.plugins.worker = None;
         self.plugins.store = None;
+        self.plugins.installed.clear();
+        self.leave_plugin_details();
         self.initialize_plugins();
     }
 
@@ -98,7 +103,8 @@ impl App {
             .installed
             .iter()
             .filter(|record| {
-                record.enabled
+                matches!(record.metadata, Metadata::Native(_))
+                    && record.enabled
                     && record.trusted_version.as_deref() == Some(record.metadata.version())
             })
             .map(|record| record.metadata.id().to_owned())
@@ -112,6 +118,7 @@ impl App {
     }
 
     pub(crate) fn stop_workspace_plugins(&mut self) {
+        self.stop_vsix();
         self.plugins.trust_generation = self.plugins.trust_generation.wrapping_add(1);
         self.plugins.startup.clear();
         self.plugins.starting = None;

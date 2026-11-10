@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::{io::Read, path::Path, time::Duration};
 
-const DEFAULT_REGISTRY: &str = "https://open-vsx.org";
+const DEFAULT_REGISTRY: &str = "https://open-vsx.org/api";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

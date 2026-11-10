@@ -47,6 +47,7 @@
   "command.editor.action.selectAll": "Select all",
   "command.editor.action.selectHighlights": "Select highlights",
   "command.editor.action.showHover": "Show hover",
+  "command.editor.action.formatDocument": "Format document",
   "command.editor.action.smartSelect.expand": "Expand",
   "command.editor.action.smartSelect.shrink": "Shrink",
   "command.editor.action.sortLinesAscending": "Sort lines ascending",

@@ -153,7 +153,7 @@ fn invalid_manifests_and_archive_paths_are_rejected_without_writes() {
     assert!(m.validate().is_err());
 }
 #[test]
-fn vsix_is_metadata_only_and_cannot_be_enabled() {
+fn vsix_installation_and_version_approval_do_not_run_code() {
     let temp = Temp::new();
     let path = temp.0.join("sample.vsix");
     let sentinel = temp.0.join("should-not-exist");
@@ -161,7 +161,7 @@ fn vsix_is_metadata_only_and_cannot_be_enabled() {
         "require('node:fs').writeFileSync({}, 'bad')",
         serde_json::to_string(&sentinel).unwrap()
     );
-    zip(&path, &[("extension/package.json", br#"{"publisher":"Example","name":"vsix","version":"1.0.0","engines":{"vscode":"^1.90.0"},"main":"main.js","contributes":{"commands":[]}}"#), ("extension/main.js", entry.as_bytes())]);
+    zip(&path, &[("extension/package.json", br#"{"publisher":"Example","name":"vsix","version":"1.0.0","engines":{"vscode":"^1.90.0"},"main":"main.js","contributes":{"commands":[{"command":"example.run","title":"Run"}]}}"#), ("extension/main.js", entry.as_bytes())]);
     let store = Store::new(temp.0.join("store"));
     let record = store.install(&path).unwrap();
     let Metadata::Vsix(m) = record.metadata else {
@@ -169,7 +169,20 @@ fn vsix_is_metadata_only_and_cannot_be_enabled() {
     };
     assert_eq!(m.contributions, vec!["commands"]);
     assert_eq!(m.main.as_deref(), Some("main.js"));
-    assert!(store.enable("example.vsix", true).is_err());
+    assert_eq!(m.commands[0].id, "example.run");
+    assert!(store.enable("example.vsix", false).is_err());
+    store.enable("example.vsix", true).unwrap();
+    let approved = store.get("example.vsix").unwrap();
+    assert!(approved.enabled);
+    assert_eq!(approved.trusted_version.as_deref(), Some("1.0.0"));
+    // Reinstalling even the same version replaces the archive and approval.
+    store.install(&path).unwrap();
+    let replacement = store.get("example.vsix").unwrap();
+    assert!(!replacement.enabled);
+    assert_eq!(replacement.trusted_version, None);
+    assert!(store
+        .enable_installation("example.vsix", &approved.directory, true)
+        .is_err());
     assert!(!temp.0.join("should-not-exist").exists());
     zip(&path, &[("extension/package.json", b"{}")]);
     assert!(package::inspect(&path).is_err());

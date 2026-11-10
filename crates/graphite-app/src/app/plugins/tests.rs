@@ -285,6 +285,7 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
             engines: Value::Null,
             main: None,
             contributions: vec![],
+            commands: vec![],
         }),
         enabled: false,
         trusted_version: None,
@@ -310,6 +311,7 @@ fn tab_switches_leave_details_and_clear_path_input() {
         engines: Value::Null,
         main: None,
         contributions: vec![],
+        commands: vec![],
     });
     app.plugins.inspecting = Some(metadata.clone());
     app.plugin_action('i');
@@ -342,6 +344,7 @@ fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
                 engines: Value::Null,
                 main: None,
                 contributions: vec![],
+                commands: vec![],
             }),
             enabled: false,
             trusted_version: None,

@@ -52,6 +52,7 @@ impl App {
                                     .unwrap_or_else(|| Workspace::open(&path))
                                 {
                                     Ok(workspace) => {
+                                        self.stop_workspace_plugins();
                                         self.lsp_manager.change_workspace();
                                         let documents: Vec<_> = self.documents.ids().collect();
                                         for document in &documents {
@@ -62,6 +63,13 @@ impl App {
                                             doc.inlay_revision = None;
                                         }
                                         self.tree.replace_workspace(workspace);
+                                        if self
+                                            .workspace_trust
+                                            .as_ref()
+                                            .is_some_and(|trust| trust.is_trusted(self.tree.root()))
+                                        {
+                                            self.start_workspace_trusted_plugins();
+                                        }
                                         for document in documents {
                                             self.sync_lsp_document(document);
                                         }

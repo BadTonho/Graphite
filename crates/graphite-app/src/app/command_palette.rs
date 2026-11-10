@@ -12,9 +12,11 @@ pub(crate) struct CommandPalette {
     pub query: String,
     pub items: Vec<PaletteItem>,
     pub selected: usize,
+    pub extension_prompt: Option<(String, bool)>,
 }
 impl App {
     pub(crate) fn open_command_palette(&mut self) {
+        self.cancel_vsix_prompt();
         self.quick_open = None;
         self.local_search = None;
         self.refresh_command_context();
@@ -69,6 +71,7 @@ impl App {
                 enabled: trusted && self.task_cancel.is_none(),
             }));
         }
+        items.extend(self.vsix_palette_items());
         items.sort_by(|a, b| {
             a.title
                 .to_lowercase()
@@ -79,6 +82,7 @@ impl App {
             query: String::new(),
             items,
             selected: 0,
+            extension_prompt: None,
         });
     }
     pub(crate) fn handle_command_palette(&mut self, event: &winit::event::KeyEvent) {
@@ -86,7 +90,10 @@ impl App {
             return;
         };
         match event.logical_key {
-            Key::Named(NamedKey::Escape) => self.command_palette = None,
+            Key::Named(NamedKey::Escape) => {
+                self.command_palette = None;
+                self.cancel_vsix_prompt();
+            }
             Key::Named(NamedKey::ArrowDown) => {
                 let count = palette
                     .items
@@ -117,11 +124,23 @@ impl App {
                     .iter()
                     .filter(|item| matches(item, &palette.query))
                     .nth(palette.selected)
-                    .filter(|item| item.enabled)
+                    .filter(|item| item.enabled || item.id.starts_with("graphite.vsix:"))
                     .map(|item| item.id.clone());
+                let answer = palette
+                    .extension_prompt
+                    .as_ref()
+                    .map(|_| (palette.query.clone(), selected.clone()));
                 self.command_palette = None;
+                if let Some(answer) = answer {
+                    self.answer_vsix_prompt(Some(answer));
+                    return;
+                }
                 if let Some(id) = selected {
-                    if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
+                    if let Some(command) = id.strip_prefix("graphite.vsix:") {
+                        if let Err(error) = self.run_vsix_command(command) {
+                            self.status = error;
+                        }
+                    } else if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
                         if let Err(error) = self.run_task(label) {
                             self.status = error;
                         }

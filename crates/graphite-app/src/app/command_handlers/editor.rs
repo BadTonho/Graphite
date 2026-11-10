@@ -247,7 +247,9 @@ pub(super) fn editor_action_trigger_suggest(
 ) -> Result<(), CommandError> {
     {
         app.completion_items.clear();
-        app.request_lsp("completion");
+        if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Completion) {
+            app.request_lsp("completion");
+        }
     };
     Ok(())
 }
@@ -264,8 +266,20 @@ pub(super) fn editor_action_show_hover(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    app.request_lsp("hover");
+    if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Hover) {
+        app.request_lsp("hover");
+    }
     Ok(())
+}
+
+fn format_document(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Format) {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(
+            "No active VSIX formatter matches this document".into(),
+        ))
+    }
 }
 
 pub(super) fn editor_action_quick_fix(
@@ -619,6 +633,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "documentHasPath",
         None,
         editor_action_show_hover,
+    );
+    add(
+        registry,
+        "editor.action.formatDocument",
+        "Format document",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        format_document,
     );
     add(
         registry,
