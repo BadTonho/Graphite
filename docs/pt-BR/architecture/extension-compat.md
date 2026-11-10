@@ -1,10 +1,10 @@
 # Compatibilidade com Extensões do VS Code (planejado)
 
-**Protótipo atual:** o Graphite instala e inspeciona pacotes VSIX locais ou de releases GitHub, mostrando manifesto e categorias de contribuições. Nenhum código ou contribuição VSIX executa. Plugins JS/TS nativos do Graphite já usam API e host Node próprios; consulte [Plugins nativos e inspeção de VSIX](native-plugins.md). A integração Code OSS abaixo permanece como trabalho futuro.
+**Implementação atual:** o Graphite pesquisa no Open VSX e instala pacotes VSIX inspecionados, mostrando manifesto e categorias de contribuições. Código VSIX ainda não executa. Plugins JS/TS nativos do Graphite usam API e host Node próprios; consulte [Plugins nativos e inspeção de VSIX](native-plugins.md). A integração Code OSS fixada abaixo continua sendo trabalho necessário.
 
-A compatibilidade com extensões `.vsix` é um **objetivo central** e molda a arquitetura desde o início.
+O alvo de compatibilidade da Fase 5 é o Code OSS **1.145.2**, commit `c4453f8ea430795f941c1b2ff6c9321135a74a02`. A superfície-alvo é a API pública `vscode.d.ts` nos namespaces `commands`, `workspace`, `window` e `languages`. Esse alvo está documentado para implementação e testes; atualmente, nenhuma API desta matriz é atendida pelo host Code OSS.
 
-Serviços internos compartilhados e um host Rust simulado e isolado estão implementados; consulte [Serviços e host simulado](services-host.md). Isso valida sessões, propriedade de recursos, requisições e isolamento de falhas. O host Code OSS/Node descrito abaixo continua como integração posterior obrigatória: fixar sua versão e testar uma extensão real antes de declarar compatibilidade `.vsix`.
+Serviços internos compartilhados e um host Rust simulado e isolado estão implementados; consulte [Serviços e host simulado](services-host.md). Isso valida sessões, propriedade de recursos, requisições e isolamento de falhas. Ele não fala o protocolo Code OSS. O host Code OSS/Node descrito abaixo continua necessário: fixe sua versão, implemente a ponte do lado principal e ative um VSIX real antes de declarar compatibilidade `.vsix`.
 
 ## Abordagem
 
@@ -14,10 +14,22 @@ Rodar o **extension host do Code OSS** (licença MIT, `microsoft/vscode`) como u
 [ Graphite (Rust) ] ←─ ponte RPC ─→ [ Extension Host (Node) ] → [ extensões .vsix ]
 ```
 
-- **Reaproveitado como está:** carregamento de `.vsix`, ativação, módulo `vscode`, transporte RPC.
-- **Implementado em Rust:** o lado `MainThread*` (documentos, comandos, workspace, window, languages, tree views, decorations, webviews, SCM, debug), crescendo sob demanda.
+- **Reaproveitado como está:** carregamento upstream de `.vsix`, ativação, módulo `vscode` e transporte RPC, depois que o host oficial for empacotado.
+- **Alvo da ponte na Fase 5:** implementações Rust `MainThread*` para commands, workspace, window e languages, evoluídas com base nas declarações fixadas e nos testes.
+- **Fases posteriores:** webviews, depuração e Test Explorer não fazem parte do alvo da Fase 5; outras APIs públicas exigem decisões de compatibilidade separadas.
 - **Spawn lazy:** o Node só sobe quando há extensão instalada e pode ser encerrado quando ocioso.
 - **Métrica de progresso:** as extensões mais populares do OpenVSX formam a suíte de testes de compatibilidade.
+
+## Matriz de APIs da Fase 5
+
+| Namespace `vscode.d.ts` | Alvo da Fase 5 | Status atual | Evidência necessária |
+|---|---|---|---|
+| `commands` | Registrar/executar comandos e observar seu ciclo de vida | Não implementado para VSIX | Ativação de VSIX local e fixture de chamada de comando |
+| `workspace` | Workspace, documentos, edições, configurações e eventos | Não implementado para VSIX | Testes VSIX locais de leitura, escrita, eventos e falhas |
+| `window` | Mensagens, progresso, entrada/seleções rápidas e interface do editor | Não implementado para VSIX | Testes VSIX locais de solicitação/resposta e cancelamento |
+| `languages` | Provedores, diagnósticos e registro de recursos de linguagem | Não implementado para VSIX | Testes VSIX locais do ciclo de vida dos provedores e resultados |
+
+Esta matriz descreve o alvo de aceite, não a compatibilidade atual. Webviews, depuração e Test Explorer continuam atribuídos à Fase 6.
 
 ## Camadas de extensões
 

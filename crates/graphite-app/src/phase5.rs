@@ -1,4 +1,5 @@
 //! Security and task configuration primitives for v0.5.
+use crate::{app::theme::Theme, config, App, DARK_THEME};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -91,6 +92,13 @@ impl Profiles {
     pub fn open(config_root: &Path) -> Result<Self, String> {
         let root = config_root.join("profiles");
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let active_path = root.join("active-profile.json");
+        let configured = match fs::read(&active_path) {
+            Ok(bytes) => serde_json::from_slice::<String>(&bytes).map_err(|e| e.to_string())?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => "Default".into(),
+            Err(error) => return Err(error.to_string()),
+        };
+        validate_profile_name(&configured)?;
         let metadata = root.join("Default").join("profile.json");
         if !metadata.exists() {
             fs::create_dir_all(metadata.parent().unwrap()).map_err(|e| e.to_string())?;
@@ -101,6 +109,7 @@ impl Profiles {
                 "theme.json",
                 "terminal.json",
                 "snippets",
+                "imported",
             ] {
                 let source = config_root.join(name);
                 if source.exists() {
@@ -117,10 +126,12 @@ impl Profiles {
             )
             .map_err(|e| e.to_string())?;
         }
-        Ok(Self {
-            root,
-            active: "Default".into(),
-        })
+        let active = if root.join(&configured).join("profile.json").is_file() {
+            configured
+        } else {
+            "Default".into()
+        };
+        Ok(Self { root, active })
     }
     pub fn active(&self) -> &str {
         &self.active
@@ -165,8 +176,94 @@ impl Profiles {
         if self.active == name {
             return Ok(false);
         }
+        let active_path = self.root.join("active-profile.json");
+        let temp_path = self.root.join(".active-profile.json.tmp");
+        fs::write(
+            &temp_path,
+            serde_json::to_vec(name).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        if let Err(error) = replace_profile_pointer(&temp_path, &active_path) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error.to_string());
+        }
         self.active = name.into();
         Ok(true)
+    }
+}
+
+impl App {
+    pub(crate) fn create_user_profile(&mut self, name: &str) -> Result<(), String> {
+        self.profiles
+            .as_ref()
+            .ok_or_else(|| "Profiles are unavailable".to_owned())?
+            .create(name)?;
+        self.status = format!("Created profile: {name}");
+        Ok(())
+    }
+
+    pub(crate) fn user_profiles(&self) -> Result<Vec<String>, String> {
+        self.profiles
+            .as_ref()
+            .ok_or_else(|| "Profiles are unavailable".to_owned())?
+            .list()
+    }
+
+    pub(crate) fn switch_user_profile(&mut self, name: &str) -> Result<(), String> {
+        let Some(profiles) = self.profiles.as_mut() else {
+            return Err("Profiles are unavailable".into());
+        };
+        if !profiles.switch(name)? {
+            self.status = format!("Profile already active: {name}");
+            return Ok(());
+        }
+        let profile_root = profiles.path(name)?;
+        let translator = self.translator;
+        let workspace = self.tree.root().to_path_buf();
+        self.profile_root = profile_root;
+        self.refresh_plugins_for_profile();
+        if let Some(host) = self.extension_host.supervisor.as_mut() {
+            host.shutdown();
+        }
+        self.clear_host_session();
+        if let Ok(prefs) =
+            config::editor_prefs_for_workspace_in(&self.profile_root, &workspace, &translator)
+        {
+            self.font_size = prefs.font_size;
+            self.tab_size = prefs.tab_size;
+            self.insert_spaces = prefs.insert_spaces;
+            self.detect_indentation = prefs.detect_indentation;
+            self.trim_trailing_whitespace = prefs.trim_trailing_whitespace;
+            self.rulers = prefs.rulers;
+            self.word_wrap = prefs.word_wrap;
+            self.wrapping_indent = prefs.wrapping_indent;
+            self.read_only_patterns = prefs.read_only_patterns;
+        }
+        if let Ok(colors) =
+            config::imported_theme_colors_in(&self.profile_root, &workspace, &translator)
+        {
+            Theme::set_imported_colors(colors);
+        }
+        DARK_THEME.store(
+            config::load_dark_theme_from(&self.profile_root),
+            Ordering::Relaxed,
+        );
+        (self.snippets, self.snippet_load_warnings) =
+            config::load_snippets_for_workspace_in(&self.profile_root, &workspace, &translator);
+        if let Ok(settings) = config::terminal_settings_in(&self.profile_root, &translator) {
+            self.terminal_profiles = settings.profiles;
+            self.selected_terminal_profile = settings.default_profile;
+        }
+        let keybindings = self.profile_root.join("keybindings.json");
+        if let Ok(source) = fs::read_to_string(keybindings) {
+            if let Err(error) = self.keymap.reload(&source, &translator) {
+                self.status = format!("Profile keybindings could not be loaded: {error}");
+            }
+        } else {
+            self.keymap = crate::keybindings::Keymap::default();
+        }
+        self.status = format!("Switched to profile: {name}");
+        Ok(())
     }
 }
 fn validate_profile_name(name: &str) -> Result<(), String> {
@@ -181,6 +278,25 @@ fn validate_profile_name(name: &str) -> Result<(), String> {
         return Err("Invalid profile name".into());
     }
     Ok(())
+}
+#[cfg(not(windows))]
+fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    fs::rename(from, to)
+}
+#[cfg(windows)]
+fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
+    }
+    let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 1 | 8) } == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 fn copy_tree_no_links(source: &Path, destination: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
@@ -472,6 +588,7 @@ mod tests {
         assert!(profiles.switch("Work").unwrap());
         assert_eq!(profiles.active(), "Work");
         assert!(profiles.path("../escape").is_err());
+        assert_eq!(Profiles::open(&dir).unwrap().active(), "Work");
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]

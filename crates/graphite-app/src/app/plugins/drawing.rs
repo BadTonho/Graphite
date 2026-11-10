@@ -181,20 +181,20 @@ impl App {
     }
 
     fn draw_plugin_tabs(&self, renderer: &mut Renderer, layout: &PluginsLayout, line_height: f32) {
-        let active = if self.plugins.github {
-            PluginsTab::Github
+        let active = if self.plugins.marketplace {
+            PluginsTab::OpenVsx
         } else {
             PluginsTab::Installed
         };
         let half = layout.width * 0.5;
-        for (index, tab) in [PluginsTab::Installed, PluginsTab::Github]
+        for (index, tab) in [PluginsTab::Installed, PluginsTab::OpenVsx]
             .into_iter()
             .enumerate()
         {
             let x = layout.sidebar_x + index as f32 * half;
             let label = match tab {
                 PluginsTab::Installed => self.t("plugins.sidebar.installed"),
-                PluginsTab::Github => self.t("plugins.sidebar.github"),
+                PluginsTab::OpenVsx => self.t("plugins.sidebar.open_vsx"),
             };
             let color = if tab == active {
                 Theme::color(Theme::TEXT, 0x1e1e1e)
@@ -260,14 +260,15 @@ impl App {
         let placeholder = if self.plugins.path_input {
             self.t("plugins.sidebar.search_path")
         } else {
-            self.t("plugins.sidebar.search_github")
+            self.t("plugins.sidebar.search_open_vsx")
         };
         let (label, color) = if self.plugins.editing {
             (
                 format!("{}_", self.plugins.query),
                 Theme::color(Theme::TEXT, 0x1e1e1e),
             )
-        } else if !self.plugins.query.is_empty() && (self.plugins.github || self.plugins.path_input)
+        } else if !self.plugins.query.is_empty()
+            && (self.plugins.marketplace || self.plugins.path_input)
         {
             (
                 self.plugins.query.clone(),
@@ -285,24 +286,14 @@ impl App {
     }
 
     fn plugin_section(&self) -> (String, &'static str) {
-        if self.plugins.github {
-            if let Some(assets) = &self.plugins.assets {
-                (
-                    self.tf(
-                        "plugins.sidebar.section_assets",
-                        &[("count", &assets.len())],
-                    ),
-                    "plugins.sidebar.empty_assets",
-                )
-            } else {
-                (
-                    self.tf(
-                        "plugins.sidebar.section_github",
-                        &[("page", &self.plugins.page)],
-                    ),
-                    "plugins.sidebar.empty_github",
-                )
-            }
+        if self.plugins.marketplace {
+            (
+                self.tf(
+                    "plugins.sidebar.section_open_vsx",
+                    &[("count", &self.plugins.open_vsx.len())],
+                ),
+                "plugins.sidebar.empty_open_vsx",
+            )
         } else {
             (
                 self.tf(
@@ -461,41 +452,17 @@ impl App {
     fn plugin_card_data(&self, index: usize) -> Option<PluginCard> {
         let dim = Theme::color(Theme::DIM, 0x616161);
         let error = 0x9b2226;
-        if self.plugins.github {
-            if let Some(assets) = &self.plugins.assets {
-                let asset = assets.get(index)?;
-                let (kind, color) = if asset.name.ends_with(".vsix") {
-                    (self.t("plugins.sidebar.badge_vsix").to_string(), 0x6f42c1)
-                } else {
-                    (self.t("plugins.sidebar.badge_plugin").to_string(), 0x007acc)
-                };
-                return Some(PluginCard {
-                    title: asset.name.clone(),
-                    subtitle: self.plugin_size_label(asset.size),
-                    description: self.t("plugins.sidebar.asset_hint").to_string(),
-                    description_color: dim,
-                    badges: vec![(kind, color)],
-                    avatar: initial(&asset.name),
-                    avatar_color: avatar_color(&asset.name),
-                });
-            }
-            let repository = self.plugins.repositories.get(index)?;
-            let name = repository
-                .full_name
-                .rsplit('/')
-                .next()
-                .unwrap_or(&repository.full_name);
+        if self.plugins.marketplace {
+            let extension = self.plugins.open_vsx.get(index)?;
+            let id = format!("{}.{}", extension.namespace, extension.name);
             return Some(PluginCard {
-                title: repository.full_name.clone(),
-                subtitle: self.tf(
-                    "plugins.sidebar.stars",
-                    &[("stars", &repository.stargazers_count)],
-                ),
-                description: repository.description.clone().unwrap_or_default(),
+                title: extension.display_name.clone(),
+                subtitle: format!("{} · v{}", extension.namespace, extension.version),
+                description: extension.description.clone(),
                 description_color: dim,
                 badges: Vec::new(),
-                avatar: initial(name),
-                avatar_color: avatar_color(&repository.full_name),
+                avatar: initial(&extension.name),
+                avatar_color: avatar_color(&id),
             });
         }
         let record = self.plugins.installed.get(index)?;
@@ -563,22 +530,6 @@ impl App {
             avatar: initial(plugin_name(id)),
             avatar_color: avatar_color(id),
         })
-    }
-
-    fn plugin_size_label(&self, bytes: u64) -> String {
-        if bytes >= 1024 * 1024 {
-            self.tf(
-                "plugins.sidebar.size_mb",
-                &[("size", &format!("{:.1}", bytes as f64 / (1024.0 * 1024.0)))],
-            )
-        } else if bytes >= 1024 {
-            self.tf(
-                "plugins.sidebar.size_kb",
-                &[("size", &format!("{:.1}", bytes as f64 / 1024.0))],
-            )
-        } else {
-            self.tf("plugins.bytes", &[("bytes", &bytes)])
-        }
     }
 
     fn draw_plugin_details(
@@ -732,8 +683,8 @@ impl App {
             "plugins.sidebar.hints_details"
         } else if self.plugins.editing {
             "plugins.sidebar.hints_editing"
-        } else if self.plugins.github {
-            "plugins.sidebar.hints_github"
+        } else if self.plugins.marketplace {
+            "plugins.sidebar.hints_open_vsx"
         } else {
             "plugins.sidebar.hints_installed"
         };

@@ -206,4 +206,27 @@ mod tests {
             .unwrap()
             .is_trusted(app.tree.root()));
     }
+
+    #[test]
+    fn profile_commands_create_and_switch_isolated_profile_state() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.profiles = Some(crate::app::phase5::Profiles::open(dir.path()).unwrap());
+        app.profile_root = app.profiles.as_ref().unwrap().path("Default").unwrap();
+        app.run_ui_command_args(
+            "graphite.profiles.create",
+            serde_json::json!({"text":"Work"}),
+        );
+        assert!(app.profiles.as_ref().unwrap().path("Work").is_ok());
+        app.run_ui_command_args(
+            "graphite.profiles.switch",
+            serde_json::json!({"text":"Work"}),
+        );
+        assert_eq!(app.profiles.as_ref().unwrap().active(), "Work");
+        assert_eq!(app.profile_root, dir.path().join("profiles/Work"));
+        assert_eq!(
+            app.plugin_store_root().unwrap(),
+            dir.path().join("profiles/Work/plugins").as_path()
+        );
+    }
 }

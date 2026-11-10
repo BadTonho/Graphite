@@ -8,20 +8,26 @@ mod theme_includes;
 mod themes;
 #[cfg(test)]
 use import::import_from_with;
-pub use import::import_vscode;
-pub(crate) use language::language_selection;
-pub(crate) use paths::terminal_settings;
+pub use import::{import_vscode, import_vscode_to};
+pub(crate) use language::{language_selection, language_selection_in};
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, TerminalProfile};
+pub(crate) use paths::{terminal_settings, terminal_settings_in};
 pub(crate) use settings::parse_jsonc;
 use settings::project_settings;
-pub use settings::{editor_prefs_for_workspace, workspace_configuration};
+pub use settings::{
+    editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
+    workspace_configuration_in,
+};
 #[cfg(test)]
 use snippets::expand_snippet;
-pub use snippets::{load_snippets_for_workspace, Snippet};
+pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
 #[cfg(test)]
 use themes::theme_colors_from;
-pub use themes::{imported_theme_colors, load_dark_theme, save_dark_theme};
+pub use themes::{
+    imported_theme_colors, imported_theme_colors_in, load_dark_theme, load_dark_theme_from,
+    save_dark_theme, save_dark_theme_in,
+};
 
 use graphite_i18n::Translator;
 use serde_json::{Map, Value};

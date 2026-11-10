@@ -1,6 +1,6 @@
 # Plugins nativos e inspeção de VSIX
 
-Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação, geração de projetos e descoberta no GitHub sem depender da aplicação/GPU. A aplicação mantém o estado da barra lateral de Plugins e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
+Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação e geração de projetos sem depender da aplicação/GPU. A aplicação mantém o estado da barra lateral de Plugins e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
 
 ## Limite do runtime
 
@@ -12,7 +12,7 @@ Desabilitar, substituir ou remover um plugin libera seus registros e trabalhos p
 
 ## Pacotes e persistência
 
-Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. VSIX fornece somente metadados: sua entrada e contribuições não são ativadas e ele não pode ser habilitado. Uma API separada do cliente Open VSX oferece busca e download VSIX limitado, testados com fixture local; a interface de plugins e o ciclo de vida do host Code OSS ainda não estão conectados a ela.
+Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. A barra lateral de Plugins pesquisa no Open VSX, baixa o VSIX mais recente, valida o pacote e pede confirmação antes de instalar. VSIX fornece somente metadados até que o host Code OSS e sua ponte de API sejam integrados. Lojas e aprovações ficam separadas por perfil.
 
 O diretório de configuração do usuário contém `plugins/`, registros JSON por plugin e diretórios imutáveis de versões. A instalação valida e extrai para um diretório temporário novo e substitui atomicamente o registro. Uma falha na publicação preserva o registro e pacote anteriores. Diretórios anteriores permanecem disponíveis aos hosts ativos até a remoção; esta respeita o limite exato da identidade do plugin. Toda instalação bem-sucedida começa desabilitada e sem versão confiável, inclusive atualizações e reinstalações. A confiança é registrada para a versão instalada.
 
@@ -20,8 +20,8 @@ Pacotes/downloads têm limite de 100 MiB; arquivos ZIP, de 500 MiB expandidos e 
 
 ## Descoberta e interface
 
-A barra lateral de Plugins abre com `Ctrl+Shift+X` ou `graphite.plugins.open`. Ela reutiliza a barra lateral de 260 px ao lado da barra de atividades, mantendo o editor visível. A barra lateral só recebe entrada de teclado enquanto está focada; o editor, Quick Open, localizar, pesquisa do projeto, Controle de código, terminal e superfícies de confirmação têm precedência caso contrário. Sistema de arquivos, rede e verificação do Node executam em workers. O catálogo busca repositórios públicos com `topic:graphite-plugin`, pagina 30 resultados, mantém cache de 60 segundos e respeita cabeçalhos de limite de requisições. Não usa credenciais GitHub.
+A barra lateral de Plugins abre com `Ctrl+Shift+X` ou `graphite.plugins.open`. Ela reutiliza a barra lateral de 260 px ao lado da barra de atividades, mantendo o editor visível. A barra lateral só recebe entrada de teclado enquanto está focada; o editor, Quick Open, localizar, pesquisa do projeto, Controle de código, terminal e superfícies de confirmação têm precedência caso contrário. Sistema de arquivos, rede e verificação do Node executam em workers. O cliente Open VSX carrega até 30 resultados por busca e usa HTTPS para o registro público.
 
-Selecionar um repositório consulta sua última release estável e lista assets `.graphite-plugin` e `.vsix`. Downloads passam pelo mesmo validador/instalador local. O usuário revisa identidade/versão antes de instalar e concede confiança separadamente antes de executar código nativo. Atualizações são escolhidas manualmente nas releases; não há atualização em segundo plano nem clone de repositórios. A instalação local funciona offline.
+Selecionar um resultado do Open VSX baixa a última versão para um arquivo temporário que será inspecionado. A instalação usa o validador local de pacotes e exige confirmação. Plugins Graphite nativos ainda exigem confiança explícita por versão antes da execução; a ativação de VSIX Code OSS continua indisponível até que a ponte do host esteja pronta. A instalação de pacotes locais continua disponível offline.
 
 Os testes usam diretórios isolados, servidor HTTP local e exemplos reais em Node. Consulte [Desenvolvimento de plugins](../contributing/plugins.md) para manifesto, SDK e controles.
