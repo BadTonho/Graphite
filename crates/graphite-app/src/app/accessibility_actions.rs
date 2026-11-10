@@ -27,6 +27,37 @@ impl App {
             self.run_ui_command("workbench.actions.view.problems");
             return;
         }
+        if let Some(index) = super::accessibility::workbench_menu_target(request.target_node) {
+            if request.action == Action::Click {
+                let menu = if index == super::menu_bar::WorkbenchMenu::ALL.len() {
+                    super::menu_bar::WorkbenchMenu::More
+                } else {
+                    super::menu_bar::WorkbenchMenu::ALL[index]
+                };
+                if self.workbench_menu == Some(menu) {
+                    self.workbench_menu = None;
+                    self.activity_bar_menu = None;
+                } else {
+                    self.workbench_menu = Some(menu);
+                    self.activity_bar_menu = None;
+                    self.workbench_menu_overflow = menu == super::menu_bar::WorkbenchMenu::More;
+                    if menu == super::menu_bar::WorkbenchMenu::View {
+                        let (width, height) = self.gpu.as_ref().map_or((1200.0, 760.0), |gpu| {
+                            let (width, height) = gpu.renderer.size();
+                            (width as f32, height as f32)
+                        });
+                        self.view_menu_open(0.0, width, height);
+                    }
+                }
+            }
+            return;
+        }
+        if let Some(control) = super::accessibility::window_control_target(request.target_node) {
+            if request.action == Action::Click {
+                self.titlebar_control_action(control);
+            }
+            return;
+        }
         if let Some(activity) = super::accessibility::activity_target(request.target_node) {
             if request.action == Action::Click {
                 self.activate_activity(activity);
@@ -214,6 +245,54 @@ mod tests {
         ));
         assert!(app.scm_visible);
         assert_eq!(app.active_activity(), Activity::SourceControl);
+    }
+
+    #[test]
+    fn accessible_view_menu_can_restore_a_hidden_activity_bar() {
+        use crate::app::accessibility::{workbench_menu_bar_node, workbench_menu_button_node};
+        use crate::app::menu_bar::WorkbenchMenu;
+
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.activity_bar_preferences.position = crate::config::ActivityBarPosition::Hidden;
+        let tree = app.grouped_accessibility_tree(1200.0, 800.0, 20.0);
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|(id, _)| *id == workbench_menu_bar_node()));
+
+        let view_index = WorkbenchMenu::ALL
+            .iter()
+            .position(|menu| *menu == WorkbenchMenu::View)
+            .unwrap();
+        app.process_accessibility_action(request(
+            Action::Click,
+            workbench_menu_button_node(view_index),
+            None,
+        ));
+        assert!(app.activity_bar_menu.as_ref().unwrap().show_restore);
+    }
+
+    #[test]
+    fn accessible_titlebar_exposes_the_overflow_menu_when_the_window_is_narrow() {
+        use crate::app::accessibility::{workbench_menu_bar_node, workbench_menu_button_node};
+        use crate::app::menu_bar::WorkbenchMenu;
+
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        let tree = app.grouped_accessibility_tree(600.0, 800.0, 20.0);
+        let more_node = workbench_menu_button_node(WorkbenchMenu::ALL.len());
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|(id, node)| *id == workbench_menu_bar_node()
+                && node.children().contains(&more_node)));
+        let more_button = tree.nodes.iter().find(|(id, _)| *id == more_node).unwrap();
+        assert_eq!(more_button.1.label(), Some(app.t("menubar.more")));
+
+        app.process_accessibility_action(request(Action::Click, more_node, None));
+        assert_eq!(app.workbench_menu, Some(WorkbenchMenu::More));
+        assert!(app.workbench_menu_overflow);
     }
 
     #[test]

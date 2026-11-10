@@ -1,9 +1,15 @@
-# Barra de atividades
+# Barra de atividades e barra de título
 
 O Graphite tem uma barra de atividades configurável. Ela alterna Explorador,
 Pesquisar, Controle de código, Plugins e contêineres de atividade contribuídos
 por extensões habilitadas. Clique com o botão direito na barra para mostrar ou
-ocultar itens e abrir as opções de layout.
+ocultar itens e abrir as opções de layout. A barra de título personalizada
+coloca o ícone do Graphite e os menus na mesma faixa, com os controles da janela
+à direita. O título e o ícone do sistema continuam definidos para a barra de
+tarefas e o alternador de janelas. Arraste a área livre para mover a janela,
+clique duas vezes nela para maximizar ou restaurar e arraste as bordas para
+redimensionar. Quando a janela for estreita, os menus que não couberem ficam em
+**Mais**.
 
 ## Itens nativos
 
@@ -20,15 +26,23 @@ O menu de contexto lista as quatro atividades nativas e os contêineres declarad
 por extensões habilitadas e confiáveis no workspace. Ocultar um item remove
 somente seu botão da barra; não desabilita nem desinstala a extensão. Ao ocultar
 o item ativo, o Graphite muda para outra atividade nativa visível. O último item
-nativo visível não pode ser ocultado.
+nativo visível não pode ser ocultado. O menu superior **Exibir** contém as
+mesmas opções de visibilidade e layout; quando a barra estiver oculta, ele
+mostra **Mostrar barra de atividades** para restaurá-la sem depender da paleta.
+
+A faixa superior contém **Arquivo**, **Editar**, **Seleção**, **Exibir**, **Ir**,
+**Executar**, **Terminal** e **Ajuda**. Exibir já é funcional; os demais menus
+mostram uma mensagem localizada de estado vazio até que seus comandos sejam
+definidos. É possível abrir os menus com o ponteiro ou F10, navegar pelas setas,
+selecionar com Enter/Espaço e fechar com Esc.
 
 **Activity Bar Position** oferece Default (barra vertical à esquerda), Top,
 Bottom e Hidden. **Activity Bar Size** oferece Default e Compact. **Move Primary
 Side Bar Right** coloca a coluna principal à direita e mantém a barra de
 atividades à esquerda. Essas opções e os itens ocultos são salvos por perfil.
 Quando a barra estiver oculta, use **Show Activity Bar** na paleta de comandos
-para restaurá-la. O menu aceita navegação por ponteiro e pelas setas, Enter/Espaço
-e Esc.
+para restaurá-la. O menu de contexto aceita navegação por ponteiro e pelas
+setas, Enter/Espaço e Esc.
 
 Default usa uma barra de 48 px; Compact usa uma barra de 36 px e itens de 40 px.
 A barra lateral principal pode ser redimensionada e é salva por perfil. Seu
@@ -50,9 +64,9 @@ estão conectados ao painel.
 
 ## Acessibilidade e verificação
 
-A barra é exposta como uma `Toolbar` de acessibilidade, com botões localizados e
-estado selecionado. A navegação por teclado do menu usa a mesma geometria da
-detecção de cliques.
+A barra superior e a barra de atividades são expostas como toolbars de
+acessibilidade, com botões localizados e estado selecionado. A navegação por
+teclado e a detecção de cliques usam a mesma geometria.
 
 Os testes cobrem modos de layout, visibilidade nativa, ações do menu e
 visibilidade de contribuições de plugins. Execute `cargo test -p graphite-app

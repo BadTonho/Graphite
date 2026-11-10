@@ -106,8 +106,14 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    titlebar_pointer_down: Option<(f32, f32)>,
+    titlebar_drag_started: bool,
+    last_titlebar_click: Option<std::time::Instant>,
     activity_bar_preferences: config::ActivityBarPreferences,
     activity_bar_menu: Option<app::activity_bar::ActivityBarMenu>,
+    workbench_menu: Option<app::menu_bar::WorkbenchMenu>,
+    workbench_menu_overflow: bool,
+    workbench_overflow_selection: usize,
     active_plugin_activity: Option<String>,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
@@ -433,8 +439,14 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
+            titlebar_pointer_down: None,
+            titlebar_drag_started: false,
+            last_titlebar_click: None,
             activity_bar_preferences,
             activity_bar_menu: None,
+            workbench_menu: None,
+            workbench_menu_overflow: false,
+            workbench_overflow_selection: 0,
             active_plugin_activity: None,
             workspace_trust: if isolated {
                 None
@@ -1298,7 +1310,7 @@ mod tests {
         app.zen_mode = true;
         let zen_rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
         assert!(zen_rect.x > 300.0);
-        assert!(zen_rect.y == 0.0);
+        assert_eq!(zen_rect.y, app.top_menu_height());
     }
 
     #[test]

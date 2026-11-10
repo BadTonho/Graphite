@@ -82,14 +82,15 @@ impl App {
     }
 
     pub(crate) fn activity_bar_vertical_offset(&self) -> f32 {
+        let menu_bar_height = self.top_menu_height();
         if self.activity_bar_preferences.position == config::ActivityBarPosition::Top {
             if self.activity_bar_preferences.size == config::ActivityBarSize::Compact {
-                40.0
+                menu_bar_height + 40.0
             } else {
-                48.0
+                menu_bar_height + 48.0
             }
         } else {
-            0.0
+            menu_bar_height
         }
     }
 

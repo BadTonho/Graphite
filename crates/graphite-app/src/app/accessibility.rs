@@ -12,6 +12,9 @@ const TAB: u64 = 4;
 const LINE: u64 = 5;
 const ACTIVITY_TOOLBAR: u64 = 6;
 const ACTIVITY_BUTTON: u64 = 7;
+const WORKBENCH_MENU_BAR: u64 = 20;
+const WORKBENCH_MENU_BUTTON: u64 = 21;
+const WINDOW_CONTROL_BUTTON: u64 = 30;
 
 fn node_id(kind: u64, group: u64, value: u64) -> NodeId {
     NodeId((kind << KIND_SHIFT) | ((group & GROUP_MASK) << GROUP_SHIFT) | (value & VALUE_MASK))
@@ -49,6 +52,32 @@ pub(super) fn line_target(id: NodeId) -> Option<(u64, usize)> {
 }
 pub(super) fn activity_toolbar_node() -> NodeId {
     NodeId(ACTIVITY_TOOLBAR)
+}
+pub(super) fn workbench_menu_bar_node() -> NodeId {
+    NodeId(WORKBENCH_MENU_BAR)
+}
+pub(super) fn workbench_menu_button_node(index: usize) -> NodeId {
+    NodeId(WORKBENCH_MENU_BUTTON + index as u64)
+}
+pub(super) fn workbench_menu_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(WORKBENCH_MENU_BUTTON)? as usize;
+    (index <= super::menu_bar::WorkbenchMenu::ALL.len()).then_some(index)
+}
+pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
+    let index = match control {
+        super::menu_bar::WindowControl::Minimize => 0,
+        super::menu_bar::WindowControl::MaximizeRestore => 1,
+        super::menu_bar::WindowControl::Close => 2,
+    };
+    NodeId(WINDOW_CONTROL_BUTTON + index)
+}
+pub(super) fn window_control_target(id: NodeId) -> Option<super::menu_bar::WindowControl> {
+    match id.0.checked_sub(WINDOW_CONTROL_BUTTON)? {
+        0 => Some(super::menu_bar::WindowControl::Minimize),
+        1 => Some(super::menu_bar::WindowControl::MaximizeRestore),
+        2 => Some(super::menu_bar::WindowControl::Close),
+        _ => None,
+    }
 }
 pub(super) fn activity_button_node(activity: Activity) -> NodeId {
     let index = Activity::ALL
@@ -243,6 +272,12 @@ impl App {
                 != crate::config::ActivityBarPosition::Hidden)
             .then(activity_toolbar_node);
         let mut children = Vec::new();
+        children.push(workbench_menu_bar_node());
+        children.extend([
+            window_control_node(super::menu_bar::WindowControl::Minimize),
+            window_control_node(super::menu_bar::WindowControl::MaximizeRestore),
+            window_control_node(super::menu_bar::WindowControl::Close),
+        ]);
         if let Some(toolbar) = toolbar {
             children.push(toolbar);
         }
@@ -253,6 +288,61 @@ impl App {
         }
         root_node.set_children(children);
         let mut nodes = vec![(root, root_node)];
+        let mut menu_bar = Node::new(Role::Toolbar);
+        menu_bar.set_label(self.t("accessibility.menu_bar"));
+        let menu_items = self.titlebar_accessible_menus(
+            width,
+            self.gpu
+                .as_ref()
+                .map_or(self.font_size * 0.6, |gpu| gpu.renderer.char_width()),
+        );
+        let menu_ids = menu_items
+            .iter()
+            .map(|menu| {
+                let index = super::menu_bar::WorkbenchMenu::ALL
+                    .iter()
+                    .position(|candidate| candidate == menu)
+                    .unwrap_or(super::menu_bar::WorkbenchMenu::ALL.len());
+                workbench_menu_button_node(index)
+            })
+            .collect::<Vec<_>>();
+        menu_bar.set_children(menu_ids.clone());
+        nodes.push((workbench_menu_bar_node(), menu_bar));
+        for menu in menu_items {
+            let index = super::menu_bar::WorkbenchMenu::ALL
+                .iter()
+                .position(|candidate| *candidate == menu)
+                .unwrap_or(super::menu_bar::WorkbenchMenu::ALL.len());
+            let mut button = Node::new(Role::Button);
+            button.set_label(self.t(menu.label_key()));
+            button.set_selected(self.workbench_menu == Some(menu));
+            button.add_action(Action::Click);
+            nodes.push((workbench_menu_button_node(index), button));
+        }
+        for (control, label) in [
+            (
+                super::menu_bar::WindowControl::Minimize,
+                "titlebar.minimize",
+            ),
+            (
+                super::menu_bar::WindowControl::MaximizeRestore,
+                if self
+                    .gpu
+                    .as_ref()
+                    .is_some_and(|gpu| gpu.window.is_maximized())
+                {
+                    "titlebar.restore"
+                } else {
+                    "titlebar.maximize"
+                },
+            ),
+            (super::menu_bar::WindowControl::Close, "titlebar.close"),
+        ] {
+            let mut button = Node::new(Role::Button);
+            button.set_label(self.t(label));
+            button.add_action(Action::Click);
+            nodes.push((window_control_node(control), button));
+        }
         if toolbar.is_some() {
             let mut node = Node::new(Role::Toolbar);
             node.set_label(self.t("activity.bar"));
