@@ -57,6 +57,18 @@ impl App {
                         .is_ok_and(|condition| condition.evaluate(&context)),
             })
         }));
+        let trusted = self
+            .workspace_trust
+            .as_ref()
+            .is_some_and(|trust| trust.is_trusted(self.tree.root()));
+        if let Ok(tasks) = self.task_file() {
+            items.extend(tasks.tasks.into_iter().map(|task| PaletteItem {
+                id: format!("graphite.tasks.run:{}", task.label),
+                title: format!("Run Task: {}", task.label),
+                source: "Task".into(),
+                enabled: trusted && self.task_cancel.is_none(),
+            }));
+        }
         items.sort_by(|a, b| {
             a.title
                 .to_lowercase()
@@ -109,7 +121,13 @@ impl App {
                     .map(|item| item.id.clone());
                 self.command_palette = None;
                 if let Some(id) = selected {
-                    self.run_ui_command(&id);
+                    if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
+                        if let Err(error) = self.run_task(label) {
+                            self.status = error;
+                        }
+                    } else {
+                        self.run_ui_command(&id);
+                    }
                 }
             }
             _ if !self.modifiers.control_key() && !self.modifiers.alt_key() => {

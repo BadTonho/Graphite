@@ -152,6 +152,22 @@ impl App {
                 top + line_height * 1.5,
                 rgb(0xf14c4c),
             );
+        } else if !self.task_output.is_empty() {
+            let visible = ((panel_height / line_height) as usize).saturating_sub(2);
+            let start = self.task_output.len().saturating_sub(visible);
+            for (index, line) in self.task_output.iter().skip(start).enumerate() {
+                let clean: String = line
+                    .chars()
+                    .map(|ch| if ch.is_control() { ' ' } else { ch })
+                    .take((((width - SIDEBAR_WIDTH - PAD * 2.0) / cell_width).max(1.0)) as usize)
+                    .collect();
+                renderer.draw_text(
+                    &clean,
+                    SIDEBAR_WIDTH + PAD,
+                    top + line_height * (index as f32 + 1.5),
+                    rgb(0xd4d4d4),
+                );
+            }
         } else if !self.terminals.is_empty() {
             let body_top = top + line_height * 1.5;
             let body_height = panel_height - line_height * 1.5;

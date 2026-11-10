@@ -104,6 +104,8 @@ impl Registry {
             .map_err(|e| e.to_string())?;
         if !valid_part(&version.namespace)
             || !valid_part(&version.name)
+            || version.namespace != namespace
+            || version.name != name
             || semver::Version::parse(&version.version).is_err()
         {
             return Err("Invalid Open VSX version metadata".into());
@@ -282,6 +284,27 @@ mod tests {
         let found = registry.search("fixture", 5).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].version, "1.2.3");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn latest_rejects_registry_identity_mismatch() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            thread,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request).unwrap();
+            let body = r#"{"namespace":"other","name":"extension","version":"1.2.3","files":{"download":"http://127.0.0.1/package.vsix"}}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let registry = Registry::with_base(&format!("http://{address}")).unwrap();
+        assert!(registry.latest("publisher", "extension").is_err());
         server.join().unwrap();
     }
 }

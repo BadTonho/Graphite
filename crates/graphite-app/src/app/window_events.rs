@@ -18,7 +18,11 @@ impl ApplicationHandler<UserEvent> for App {
                     || !host.pending.is_empty()
             }) || !self.extension_host.incoming.is_empty());
         event_loop.set_control_flow(
-            if self.saving.pending() || host_pending || self.plugins.pending() {
+            if self.saving.pending()
+                || host_pending
+                || self.plugins.pending()
+                || self.task_cancel.is_some()
+            {
                 ControlFlow::WaitUntil(
                     std::time::Instant::now() + std::time::Duration::from_millis(10),
                 )
@@ -288,6 +292,30 @@ impl App {
                 }
             }
             UserEvent::TerminalWake => {
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::TaskOutput(line) => {
+                self.task_output.push(line);
+                if self.task_output.len() > 2_000 {
+                    self.task_output.drain(..self.task_output.len() - 2_000);
+                }
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+            UserEvent::TaskFinished {
+                result,
+                diagnostics,
+            } => {
+                self.task_cancel = None;
+                self.task_diagnostics = diagnostics;
+                self.status = match result {
+                    Ok(0) => "Task completed successfully".into(),
+                    Ok(code) => format!("Task exited with code {code}"),
+                    Err(error) => format!("Task failed: {error}"),
+                };
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
                 }

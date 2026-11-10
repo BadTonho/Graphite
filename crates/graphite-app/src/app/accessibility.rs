@@ -97,6 +97,11 @@ pub(crate) enum UserEvent {
     AccessibilityWake,
     LspWake,
     TerminalWake,
+    TaskOutput(String),
+    TaskFinished {
+        result: Result<i32, String>,
+        diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,
+    },
     ScmRefresh,
     ScmSnapshot(crate::scm::Snapshot),
     ScmOperationCompleted {

@@ -34,6 +34,7 @@ mod project_search;
 pub(super) mod quick_open;
 pub(crate) mod scm_ui;
 mod smart_selection;
+mod tasks;
 mod terminal_drawing;
 mod terminal_input;
 mod terminal_ui;

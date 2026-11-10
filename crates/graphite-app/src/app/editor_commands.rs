@@ -78,6 +78,34 @@ impl App {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
+        for task_diagnostic in &self.task_diagnostics {
+            let candidate = PathBuf::from(&task_diagnostic.file);
+            let path = if candidate.is_absolute() {
+                candidate
+            } else {
+                self.tree.root().join(candidate)
+            };
+            let target = path.canonicalize().unwrap_or(path);
+            if let Some(document) = self.documents.iter().find(|document| {
+                document.buffer.path().is_some_and(|path| {
+                    path.canonicalize().unwrap_or_else(|_| path.to_path_buf()) == target
+                })
+            }) {
+                let line = task_diagnostic.line.saturating_sub(1);
+                let column = task_diagnostic.column.saturating_sub(1);
+                if let Ok(diagnostic) = serde_json::from_value(serde_json::json!({
+                    "range": {
+                        "start": {"line": line, "character": column},
+                        "end": {"line": line, "character": column.saturating_add(1)}
+                    },
+                    "severity": 1,
+                    "source": "task",
+                    "message": task_diagnostic.message
+                })) {
+                    entries.push((document.id, diagnostic));
+                }
+            }
+        }
         entries.sort_by_key(|(document, diagnostic)| {
             let path = self.documents[*document]
                 .buffer
