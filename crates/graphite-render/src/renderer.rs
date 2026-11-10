@@ -78,6 +78,8 @@ pub struct Renderer {
     metrics: Metrics,
     suspended: bool,
     clip: Option<[f32; 4]>,
+    translation: (f32, f32),
+    translation_stack: Vec<(f32, f32)>,
 }
 
 impl Renderer {
@@ -286,6 +288,8 @@ impl Renderer {
             metrics,
             suspended: size.width == 0 || size.height == 0,
             clip: None,
+            translation: (0.0, 0.0),
+            translation_stack: Vec::new(),
         })
     }
 
@@ -326,13 +330,35 @@ impl Renderer {
 
     /// Restrict subsequent rectangles and text to a pixel rectangle, or clear it.
     pub fn set_clip(&mut self, clip: Option<[f32; 4]>) {
-        self.clip = clip;
+        self.clip = clip.map(|[x, y, right, bottom]| {
+            [
+                x + self.translation.0,
+                y + self.translation.1,
+                right + self.translation.0,
+                bottom + self.translation.1,
+            ]
+        });
+    }
+
+    /// Temporarily translate subsequent draw coordinates. Hit testing remains
+    /// the caller's responsibility and should apply the inverse translation.
+    pub fn push_translation(&mut self, x: f32, y: f32) {
+        self.translation_stack.push(self.translation);
+        self.translation.0 += x;
+        self.translation.1 += y;
+    }
+
+    pub fn pop_translation(&mut self) {
+        if let Some(previous) = self.translation_stack.pop() {
+            self.translation = previous;
+        }
     }
 
     pub fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
         // Sample the middle of the reserved solid block.
         let uv = [1.0 / ATLAS_SIZE as f32, 1.0 / ATLAS_SIZE as f32];
-        self.push_quad(x, y, x + w, y + h, uv, uv, color);
+        let (tx, ty) = self.translation;
+        self.push_quad(x + tx, y + ty, x + w + tx, y + h + ty, uv, uv, color);
     }
 
     #[allow(clippy::too_many_arguments)]

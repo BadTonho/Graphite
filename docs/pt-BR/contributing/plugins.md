@@ -23,11 +23,23 @@ O manifesto na raiz é:
   "apiVersion": 1,
   "main": "dist/index.js",
   "description": "My Graphite plugin",
-  "commands": [{"id": "local.my-plugin.hello", "title": "Hello from my plugin"}]
+  "commands": [{"id": "local.my-plugin.hello", "title": "Hello from my plugin"}],
+  "activityBar": [{
+    "id": "local.my-plugin.tools",
+    "title": "My Tools",
+    "views": [{"id": "local.my-plugin.items", "title": "Items", "kind": "tree"}]
+  }]
 }
 ```
 
 IDs seguem `publisher.name`, com letras ASCII minúsculas, dígitos e hífens. Versões seguem semver. IDs de comandos começam com o ID completo do plugin e `.`; os registros usam seus títulos declarados. Entradas são caminhos relativos `.js`, `.cjs` ou `.mjs`. Módulos ES usam `"type": "module"` no `package.json`; CommonJS pode exportar `activate` diretamente.
+
+`activityBar` declara um contêiner na barra de atividades e suas views `tree`
+ou `webview`. Pacotes VSIX usam as chaves do VS Code
+`contributes.viewsContainers.activitybar` e `contributes.views`. Atualmente,
+essas declarações preenchem o menu de atividades e o painel informativo; o SDK
+nativo ainda não fornece registro de provedores de dados para árvores ou de
+Webviews interativas.
 
 ## API v1
 

@@ -128,6 +128,7 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
                 engines: m.get("engines").cloned().unwrap_or_default(),
                 main: text("main").ok(),
                 commands: vsix_commands(&m),
+                activity_bar: vsix_activity_bar(&m),
                 contributions: m
                     .get("contributes")
                     .and_then(|v| v.as_object())

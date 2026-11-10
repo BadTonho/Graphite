@@ -174,6 +174,13 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 let previous_x = self.mouse.x as f32;
                 self.mouse = position;
+                if let Some(gpu) = &self.gpu {
+                    self.activity_bar_menu_pointer_moved(
+                        position.x as f32,
+                        position.y as f32,
+                        gpu.renderer.size().0,
+                    );
+                }
                 let pointer_x = position.x as f32;
                 if self.sidebar_resize_dragging {
                     self.resize_sidebar_from_pointer(pointer_x);
@@ -194,7 +201,10 @@ impl ApplicationHandler<UserEvent> for App {
                         } else {
                             winit::window::CursorIcon::Default
                         });
-                        if over_separator || (previous_x - separator_x).abs() <= 4.0 {
+                        if over_separator
+                            || (previous_x - separator_x).abs() <= 4.0
+                            || self.activity_bar_menu.is_some()
+                        {
                             gpu.window.request_redraw();
                         }
                     }
@@ -245,6 +255,19 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                let opened =
+                    self.activity_bar_right_click(self.mouse.x as f32, self.mouse.y as f32);
+                if opened || self.activity_bar_menu.is_none() {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::MouseInput {
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
@@ -285,14 +308,21 @@ impl ApplicationHandler<UserEvent> for App {
                         self.mouse.y as f32 >= gpu.renderer.line_height()
                             && (self.mouse.y as f32) < height - gpu.renderer.line_height() * 2.0
                     });
-                let over_plugins = self.plugins.visible
-                    && !self.zen_mode
-                    && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
-                    && (self.mouse.x as f32) < self.sidebar_width_px();
-                let over_scm = self.scm_visible
-                    && !self.zen_mode
-                    && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
-                    && (self.mouse.x as f32) < self.sidebar_width_px();
+                let (window_width, window_height, line_height) =
+                    self.gpu.as_ref().map_or((0.0, 0.0, 20.0), |gpu| {
+                        let (width, height) = gpu.renderer.size();
+                        (width, height, gpu.renderer.line_height())
+                    });
+                let over_sidebar = !self.zen_mode
+                    && self.primary_sidebar_contains(
+                        self.mouse.x as f32,
+                        self.mouse.y as f32,
+                        window_width,
+                        window_height,
+                        line_height,
+                    );
+                let over_plugins = self.plugins.visible && over_sidebar;
+                let over_scm = self.scm_visible && over_sidebar;
                 if over_scm {
                     let staged = self
                         .scm_snapshot

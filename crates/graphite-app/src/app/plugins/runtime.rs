@@ -1,6 +1,6 @@
 use super::*;
 impl App {
-    pub(super) fn start_plugin(&mut self, id: String) {
+    pub(crate) fn start_plugin(&mut self, id: String) {
         if self
             .workspace_trust
             .as_ref()
@@ -129,6 +129,15 @@ impl App {
                             .collect();
                     }
                     self.plugins.installed = records;
+                    if self.active_plugin_activity.as_ref().is_some_and(|active| {
+                        !self
+                            .plugin_activity_entries()
+                            .iter()
+                            .any(|entry| &entry.key == active)
+                    }) {
+                        self.active_plugin_activity = None;
+                        self.activate_activity(super::super::activity_bar::Activity::Explorer);
+                    }
                     self.plugins.index = self
                         .plugins
                         .index

@@ -15,7 +15,12 @@ impl App {
             return;
         };
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
-        let sidebar_width = self.sidebar_width_px();
+        let sidebar_width = self.sidebar_layout_width_px();
+
+        if self.activity_bar_menu.is_some() {
+            self.handle_activity_bar_menu_click(mx, my, window_width as f32);
+            return;
+        }
 
         if self.diff_view.is_some() {
             if my < lh * 1.5 {
@@ -45,12 +50,15 @@ impl App {
             return;
         }
 
-        if !self.zen_mode && mx < ACTIVITY_BAR_WIDTH {
-            self.activity_bar_click(my);
+        if !self.zen_mode && self.activity_bar_contains(mx, my) {
+            self.activity_bar_click_at(mx, my);
             return;
         }
 
-        if self.plugins.visible && !self.zen_mode && mx < sidebar_width && my < window_height - lh {
+        if self.plugins.visible
+            && !self.zen_mode
+            && self.primary_sidebar_contains(mx, my, window_width, window_height, lh)
+        {
             self.plugin_click();
             return;
         }
@@ -148,8 +156,10 @@ impl App {
             }
         }
 
-        if mx < sidebar_width {
+        if self.primary_sidebar_contains(mx, my, window_width, window_height, lh) {
             if self.scm_visible {
+                let local_x = self.sidebar_local_x(mx, window_width);
+                let local_y = self.sidebar_local_y(my);
                 let row_h = lh.max(18.0);
                 let layout = scm_panel_layout(
                     &self.scm_snapshot,
@@ -162,25 +172,28 @@ impl App {
                     self.scm_staged_collapsed,
                     self.scm_changes_collapsed,
                 );
-                if layout.repository_header.contains(mx, my) {
+                if layout.repository_header.contains(local_x, local_y) {
                     self.scm_repositories_collapsed = !self.scm_repositories_collapsed;
                     return;
                 }
-                if layout.commit_field.contains(mx, my) {
+                if layout.commit_field.contains(local_x, local_y) {
                     self.scm_commit_prompt = true;
                     return;
                 }
-                if layout.commit_button.contains(mx, my)
+                if layout.commit_button.contains(local_x, local_y)
                     && !self.scm_commit_message.trim().is_empty()
                 {
                     self.run_ui_command("graphite.scm.commit");
                     return;
                 }
                 self.scm_commit_prompt = false;
-                if layout.branch_row.contains(mx, my) && !self.scm_repositories_collapsed {
-                    if layout.refresh.contains(mx, my) {
+                if layout.branch_row.contains(local_x, local_y) && !self.scm_repositories_collapsed
+                {
+                    if layout.refresh.contains(local_x, local_y) {
                         self.refresh_scm_async();
-                    } else if layout.branch_picker.contains(mx, my) || mx < layout.branch_picker.x {
+                    } else if layout.branch_picker.contains(local_x, local_y)
+                        || local_x < layout.branch_picker.x
+                    {
                         self.open_branch_picker();
                     }
                     return;
@@ -188,11 +201,11 @@ impl App {
                 if let Some(row) = layout
                     .list_rows
                     .iter()
-                    .find(|row| row.bounds.contains(mx, my))
+                    .find(|row| row.bounds.contains(local_x, local_y))
                 {
                     match row.kind {
                         ScmListRowKind::Section { staged, .. } => {
-                            if row.action.contains(mx, my) {
+                            if row.action.contains(local_x, local_y) {
                                 self.perform_scm_action(if staged {
                                     ScmAction::UnstageAll
                                 } else {

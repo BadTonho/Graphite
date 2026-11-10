@@ -6,6 +6,8 @@ impl Renderer {
         if text.is_empty() {
             return;
         }
+        let (tx, ty) = self.translation;
+        let (x, y) = (x + tx, y + ty);
         let key = (text.to_owned(), self.metrics.font_size.to_bits());
         if self.line_cache.len() > 2000 {
             self.line_cache.clear();
@@ -60,6 +62,8 @@ impl Renderer {
         if !size.is_finite() || size <= 0.0 {
             return;
         }
+        let (tx, ty) = self.translation;
+        let (x, y) = (x + tx, y + ty);
         let key = (icon, size.to_bits());
         if self.icon_cache.len() > 512 {
             self.icon_cache.clear();

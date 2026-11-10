@@ -232,6 +232,7 @@ fn native_registration_cannot_escape_manifest_or_shadow_builtins() {
         main: "main.js".into(),
         description: String::new(),
         commands: vec![],
+        activity_bar: vec![],
     });
     for id in ["undo", "other.plugin.command", "local.test.undeclared"] {
         let metadata = CommandMetadata {
@@ -286,6 +287,7 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
             main: None,
             contributions: vec![],
             commands: vec![],
+            activity_bar: vec![],
         }),
         enabled: false,
         trusted_version: None,
@@ -312,6 +314,7 @@ fn tab_switches_leave_details_and_clear_path_input() {
         main: None,
         contributions: vec![],
         commands: vec![],
+        activity_bar: vec![],
     });
     app.plugins.inspecting = Some(metadata.clone());
     app.plugin_action('i');
@@ -453,6 +456,7 @@ fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
                 main: None,
                 contributions: vec![],
                 commands: vec![],
+                activity_bar: vec![],
             }),
             enabled: false,
             trusted_version: None,

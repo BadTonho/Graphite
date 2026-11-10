@@ -15,18 +15,107 @@ pub(crate) fn ruler_positions(
 }
 
 impl App {
+    pub(crate) fn activity_bar_width_px(&self) -> f32 {
+        match self.activity_bar_preferences.position {
+            config::ActivityBarPosition::Top
+            | config::ActivityBarPosition::Bottom
+            | config::ActivityBarPosition::Hidden => 0.0,
+            _ if self.activity_bar_preferences.size == config::ActivityBarSize::Compact => 36.0,
+            _ => ACTIVITY_BAR_WIDTH,
+        }
+    }
+
+    pub(crate) fn sidebar_translation(&self, window_width: f32) -> f32 {
+        let bar = self.activity_bar_width_px();
+        let content = if self.activity_bar_preferences.primary_sidebar_right {
+            (window_width - self.sidebar_width_px()).max(0.0)
+        } else {
+            (self.sidebar_width_px() - bar).max(0.0)
+        };
+        if self.activity_bar_preferences.primary_sidebar_right {
+            window_width - content - ACTIVITY_BAR_WIDTH
+        } else {
+            bar - ACTIVITY_BAR_WIDTH
+        }
+    }
+
+    pub(crate) fn sidebar_layout_width_px(&self) -> f32 {
+        let bar = self.activity_bar_width_px();
+        let content = if self.activity_bar_preferences.primary_sidebar_right {
+            self.sidebar_window_width_px - self.sidebar_width_px()
+        } else {
+            self.sidebar_width_px() - bar
+        };
+        ACTIVITY_BAR_WIDTH + content.max(0.0)
+    }
+
+    pub(crate) fn primary_sidebar_bounds(&self, window_width: f32) -> (f32, f32) {
+        let content = (self.sidebar_layout_width_px() - ACTIVITY_BAR_WIDTH).max(0.0);
+        if self.activity_bar_preferences.primary_sidebar_right {
+            (window_width - content, content)
+        } else {
+            (self.activity_bar_width_px(), content)
+        }
+    }
+
+    pub(crate) fn primary_sidebar_contains(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) -> bool {
+        let (left, panel_width) = self.primary_sidebar_bounds(width);
+        x >= left
+            && x < left + panel_width
+            && y >= self.activity_bar_vertical_offset()
+            && y < height - line_height
+    }
+
+    pub(crate) fn sidebar_local_x(&self, x: f32, window_width: f32) -> f32 {
+        x - self.sidebar_translation(window_width)
+    }
+
+    pub(crate) fn sidebar_local_y(&self, y: f32) -> f32 {
+        y - self.activity_bar_vertical_offset()
+    }
+
+    pub(crate) fn activity_bar_vertical_offset(&self) -> f32 {
+        if self.activity_bar_preferences.position == config::ActivityBarPosition::Top {
+            if self.activity_bar_preferences.size == config::ActivityBarSize::Compact {
+                40.0
+            } else {
+                48.0
+            }
+        } else {
+            0.0
+        }
+    }
+
     pub(crate) fn sidebar_width_px(&self) -> f32 {
-        effective_sidebar_boundary(
+        let bar = self.activity_bar_width_px();
+        let content = effective_sidebar_content_width(
             self.sidebar_width,
             self.sidebar_scale_factor,
             self.sidebar_window_width_px,
             if self.outline_visible { 240.0 } else { 0.0 },
-        )
+            bar,
+        );
+        if self.activity_bar_preferences.primary_sidebar_right {
+            self.sidebar_window_width_px - content * self.sidebar_scale_factor
+        } else {
+            bar + content * self.sidebar_scale_factor
+        }
     }
 
     pub(crate) fn resize_sidebar_from_pointer(&mut self, pointer_x: f32) {
         let scale = self.sidebar_scale_factor;
-        let raw_width = (pointer_x - ACTIVITY_BAR_WIDTH) / scale;
+        let raw_width = if self.activity_bar_preferences.primary_sidebar_right {
+            (self.sidebar_window_width_px - pointer_x) / scale
+        } else {
+            (pointer_x - self.activity_bar_width_px()) / scale
+        };
         let available = max_sidebar_content_width(
             scale,
             self.sidebar_window_width_px,
@@ -52,7 +141,13 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> Vec<GroupRect> {
-        let sidebar_width = self.sidebar_width_px();
+        let sidebar_boundary = self.sidebar_width_px();
+        let activity_width = self.activity_bar_width_px();
+        let primary_width = if self.activity_bar_preferences.primary_sidebar_right {
+            (width - sidebar_boundary).max(0.0)
+        } else {
+            (sidebar_boundary - activity_width).max(0.0)
+        };
         let panel = if self.terminal_visible {
             terminal_panel_height(height)
         } else if self.phase6_panel_visible() {
@@ -60,15 +155,28 @@ impl App {
         } else {
             0.0
         };
-        let (sidebar, right_sidebar) = if self.zen_mode {
+        let (left_sidebar, right_sidebar) = if self.zen_mode {
             (0.0, 0.0)
         } else {
+            let primary_right = self.activity_bar_preferences.primary_sidebar_right;
             (
-                sidebar_width,
-                if self.outline_visible { 240.0 } else { 0.0 },
+                if primary_right {
+                    activity_width
+                } else {
+                    sidebar_boundary
+                },
+                if primary_right {
+                    primary_width + if self.outline_visible { 240.0 } else { 0.0 }
+                } else if self.outline_visible {
+                    240.0
+                } else {
+                    0.0
+                },
             )
         };
-        let width = (width - right_sidebar).max(0.0);
+        let editor_left = left_sidebar;
+        let editor_right = (width - right_sidebar).max(editor_left);
+        let available_editor_width = (editor_right - editor_left).max(0.0);
         let centered = self.centered_editor || self.zen_mode;
         let editor_width = if centered {
             let cw = self
@@ -76,21 +184,37 @@ impl App {
                 .as_ref()
                 .map(|gpu| gpu.renderer.char_width())
                 .unwrap_or(8.0);
-            (cw * 80.0 + self.gutter_width(cw)).min(width)
+            (cw * 80.0 + self.gutter_width(cw)).min(available_editor_width)
         } else {
-            width - sidebar
+            available_editor_width
         };
         let x = if centered {
-            sidebar + (width - editor_width) / 2.0
+            editor_left + (available_editor_width - editor_width) / 2.0
         } else {
-            sidebar
+            editor_left
         };
+        let vertical_offset = self.activity_bar_vertical_offset();
+        let bottom_offset =
+            if self.activity_bar_preferences.position == config::ActivityBarPosition::Bottom {
+                if self.activity_bar_preferences.size == config::ActivityBarSize::Compact {
+                    40.0
+                } else {
+                    48.0
+                }
+            } else {
+                0.0
+            };
         self.editor_groups.rectangles(GroupRect {
             id: 0,
             x,
-            y: 0.0,
+            y: vertical_offset,
             width: editor_width.max(0.0),
-            height: (height - panel - if self.zen_mode { 0.0 } else { line_height }).max(0.0),
+            height: (height
+                - panel
+                - if self.zen_mode { 0.0 } else { line_height }
+                - vertical_offset
+                - bottom_offset)
+                .max(0.0),
         })
     }
 
@@ -155,6 +279,28 @@ fn max_sidebar_content_width(scale: f32, window_width_px: f32, right_sidebar_wid
     maximum_by_percentage
         .min(maximum_by_editor)
         .clamp(0.0, config::MAX_PERSISTED_SIDEBAR_WIDTH)
+}
+
+fn effective_sidebar_content_width(
+    preferred_logical: f32,
+    scale: f32,
+    window_width_px: f32,
+    right_sidebar_width_px: f32,
+    activity_width_px: f32,
+) -> f32 {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let mut available = max_sidebar_content_width(scale, window_width_px, right_sidebar_width_px);
+    available = (available + ACTIVITY_BAR_WIDTH / scale - activity_width_px / scale).max(0.0);
+    let min = if available >= config::MIN_SIDEBAR_WIDTH {
+        config::MIN_SIDEBAR_WIDTH
+    } else {
+        0.0
+    };
+    preferred_logical.clamp(min, available)
 }
 
 fn effective_sidebar_boundary(

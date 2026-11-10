@@ -24,6 +24,7 @@ pub fn create(destination: &Path) -> Result<()> {
             id: format!("{id}.hello"),
             title: "Hello from my plugin".into(),
         }],
+        activity_bar: Vec::new(),
     };
     m.validate()?;
     fs::create_dir_all(destination.join("src")).map_err(|e| e.to_string())?;

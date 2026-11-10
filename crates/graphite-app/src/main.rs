@@ -106,6 +106,9 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    activity_bar_preferences: config::ActivityBarPreferences,
+    activity_bar_menu: Option<app::activity_bar::ActivityBarMenu>,
+    active_plugin_activity: Option<String>,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
     translator: graphite_i18n::Translator,
@@ -269,6 +272,11 @@ impl App {
         } else {
             config::load_sidebar_width(&profile_root)
         };
+        let activity_bar_preferences = if isolated {
+            config::ActivityBarPreferences::default()
+        } else {
+            config::load_activity_bar_preferences(&profile_root)
+        };
         let language_selection =
             (!isolated).then(|| config::language_selection_in(&profile_root, &root));
         let translator = graphite_i18n::Translator::new(
@@ -425,6 +433,9 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
+            activity_bar_preferences,
+            activity_bar_menu: None,
+            active_plugin_activity: None,
             workspace_trust: if isolated {
                 None
             } else {

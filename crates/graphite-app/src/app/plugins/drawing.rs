@@ -937,7 +937,7 @@ impl App {
         if !self.plugins.visible || self.zen_mode {
             return;
         }
-        let layout = PluginsLayout::new(height, line_height, self.sidebar_width_px());
+        let layout = PluginsLayout::new(height, line_height, self.sidebar_layout_width_px());
         let x = layout.sidebar_x;
         let width = layout.width;
         renderer.set_clip(Some([x, 0.0, x + width, height - line_height]));

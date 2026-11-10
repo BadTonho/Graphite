@@ -1,5 +1,48 @@
 use std::{fs, path::Path};
 
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ActivityBarPosition {
+    #[default]
+    Default,
+    Top,
+    Bottom,
+    Hidden,
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ActivityBarSize {
+    #[default]
+    Default,
+    Compact,
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub(crate) struct ActivityBarPreferences {
+    pub position: ActivityBarPosition,
+    pub size: ActivityBarSize,
+    pub primary_sidebar_right: bool,
+    pub hidden_items: std::collections::HashSet<String>,
+}
+
+pub(crate) fn load_activity_bar_preferences(profile_root: &Path) -> ActivityBarPreferences {
+    fs::read(profile_root.join("activity-bar.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+pub(crate) fn save_activity_bar_preferences(
+    profile_root: &Path,
+    preferences: &ActivityBarPreferences,
+) -> Result<(), String> {
+    fs::create_dir_all(profile_root).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec_pretty(preferences).map_err(|error| error.to_string())?;
+    fs::write(profile_root.join("activity-bar.json"), bytes).map_err(|error| error.to_string())
+}
+
 pub(crate) const DEFAULT_WIDTH: f32 = 260.0;
 pub(crate) const MIN_WIDTH: f32 = 180.0;
 pub(crate) const MAX_PERSISTED_WIDTH: f32 = 16_384.0;
@@ -58,5 +101,22 @@ mod tests {
         assert_eq!(load_sidebar_width(temp.path()), 480.0);
         fs::write(temp.path().join("sidebar-layout.json"), "-10").unwrap();
         assert_eq!(load_sidebar_width(temp.path()), DEFAULT_WIDTH);
+    }
+
+    #[test]
+    fn activity_bar_preferences_round_trip_per_profile_and_default_on_invalid_data() {
+        let temp = crate::test_support::TempDir::new();
+        let mut preferences = ActivityBarPreferences::default();
+        preferences.position = ActivityBarPosition::Bottom;
+        preferences.size = ActivityBarSize::Compact;
+        preferences.primary_sidebar_right = true;
+        preferences.hidden_items.insert("search".into());
+        save_activity_bar_preferences(temp.path(), &preferences).unwrap();
+        assert_eq!(load_activity_bar_preferences(temp.path()), preferences);
+        fs::write(temp.path().join("activity-bar.json"), "{invalid").unwrap();
+        assert_eq!(
+            load_activity_bar_preferences(temp.path()),
+            ActivityBarPreferences::default()
+        );
     }
 }

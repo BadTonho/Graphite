@@ -42,8 +42,12 @@ impl App {
             .as_ref()
             .map(|gpu| {
                 let (_, height) = gpu.renderer.size();
-                PluginsLayout::new(height, gpu.renderer.line_height(), self.sidebar_width_px())
-                    .visible_rows()
+                PluginsLayout::new(
+                    height,
+                    gpu.renderer.line_height(),
+                    self.sidebar_layout_width_px(),
+                )
+                .visible_rows()
             })
             .unwrap_or(6)
     }
@@ -247,9 +251,10 @@ impl App {
         };
         let lh = gpu.renderer.line_height();
         let (_, height) = gpu.renderer.size();
-        let layout = PluginsLayout::new(height, lh, self.sidebar_width_px());
-        let x = self.mouse.x as f32;
-        let y = self.mouse.y as f32;
+        let layout = PluginsLayout::new(height, lh, self.sidebar_layout_width_px());
+        let window_width = gpu.renderer.size().0;
+        let x = self.sidebar_local_x(self.mouse.x as f32, window_width);
+        let y = self.sidebar_local_y(self.mouse.y as f32);
         if x < layout.sidebar_x || x >= layout.sidebar_x + layout.width || y >= height - lh {
             return;
         }

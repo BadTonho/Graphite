@@ -56,6 +56,76 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "graphite.activityBar.default",
+        "Activity Bar: Default Position",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_default,
+    );
+    add(
+        registry,
+        "graphite.activityBar.top",
+        "Activity Bar: Top",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_top,
+    );
+    add(
+        registry,
+        "graphite.activityBar.bottom",
+        "Activity Bar: Bottom",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_bottom,
+    );
+    add(
+        registry,
+        "graphite.activityBar.restore",
+        "Show Activity Bar",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_default,
+    );
+    add(
+        registry,
+        "graphite.activityBar.hide",
+        "Hide Activity Bar",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_hidden,
+    );
+    add(
+        registry,
+        "graphite.activityBar.toggleSize",
+        "Toggle Activity Bar Size",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_toggle_size,
+    );
+    add(
+        registry,
+        "graphite.activityBar.moveSidebarRight",
+        "Move Primary Side Bar Right",
+        "Activity Bar",
+        ALL,
+        "true",
+        None,
+        workbench::activity_bar_move_sidebar,
+    );
+    add(
+        registry,
         "graphite.extensions.restartHost",
         "Restart simulated extension host",
         "Developer",

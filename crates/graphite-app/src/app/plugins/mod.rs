@@ -76,6 +76,15 @@ pub(crate) struct GraphiteDetailTab {
     pub selected_asset: usize,
 }
 impl Plugins {
+    pub(crate) fn installed_plugins(&self) -> &[Installed] {
+        &self.installed
+    }
+
+    #[cfg(test)]
+    pub(crate) fn installed_plugins_mut(&mut self) -> &mut Vec<Installed> {
+        &mut self.installed
+    }
+
     pub fn pending(&self) -> bool {
         self.worker.is_some()
             || self.vsix.as_ref().is_some_and(vsix::Runtime::pending)
