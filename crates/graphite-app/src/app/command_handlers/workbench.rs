@@ -17,6 +17,25 @@ pub(super) fn workbench_action_show_commands(
     Ok(())
 }
 
+pub(super) fn workbench_action_tasks_build(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let file = app.task_file().map_err(CommandError::Failed)?;
+    let task = file
+        .default_build()
+        .ok_or_else(|| CommandError::Disabled("No default build task is configured".into()))?;
+    app.run_task(&task.label).map_err(CommandError::Failed)
+}
+
+pub(super) fn workbench_action_tasks_cancel(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.cancel_task();
+    Ok(())
+}
+
 pub(super) fn graphite_security_trust_workspace(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -332,6 +351,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         workbench_action_show_commands,
+    );
+    add(
+        registry,
+        "workbench.action.tasks.build",
+        "Run Build Task",
+        "Tasks",
+        ALL,
+        "true",
+        None,
+        workbench_action_tasks_build,
+    );
+    add(
+        registry,
+        "workbench.action.tasks.cancel",
+        "Terminate Task",
+        "Tasks",
+        ALL,
+        "true",
+        None,
+        workbench_action_tasks_cancel,
     );
     add(
         registry,

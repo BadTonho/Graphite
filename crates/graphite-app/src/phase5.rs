@@ -284,6 +284,9 @@ impl TaskFile {
             _ => false,
         })
     }
+    pub fn get(&self, label: &str) -> Option<&Task> {
+        self.tasks.iter().find(|task| task.label == label)
+    }
     pub fn run(
         &self,
         label: &str,
@@ -519,5 +522,32 @@ mod tests {
             TaskFile::parse(r#"{"tasks":[{"label":"x","type":"npm","command":"npm"}]}"#).is_err()
         );
         assert!(TaskFile::parse(r#"{"tasks":[{"label":"x","command":"echo","problemMatcher":[{"regexp":"[","file":"f","line":"l","message":"m"}]}]}"#).is_err());
+    }
+
+    #[test]
+    fn task_runner_observes_cancellation_and_stops_the_child() {
+        let dir = temp();
+        #[cfg(windows)]
+        let source = r#"{"tasks":[{"label":"wait","type":"process","command":"ping.exe","args":["-t","127.0.0.1"]}]}"#;
+        #[cfg(not(windows))]
+        let source = r#"{"tasks":[{"label":"wait","type":"process","command":"sh","args":["-c","sleep 10"]}]}"#;
+        let tasks = TaskFile::parse(source).unwrap();
+        let cancelled = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = cancelled.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let root = dir.clone();
+        let worker = std::thread::spawn(move || {
+            let result = tasks.run("wait", &root, true, &flag, |_| {});
+            tx.send(result).unwrap();
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        cancelled.store(true, Ordering::Release);
+        assert!(rx
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap()
+            .unwrap_err()
+            .contains("cancelled"));
+        worker.join().unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 }

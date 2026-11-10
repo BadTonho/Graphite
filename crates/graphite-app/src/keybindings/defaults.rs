@@ -2,6 +2,7 @@
 pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+shift+p", "workbench.action.showCommands", "true"),
     ("f1", "workbench.action.showCommands", "true"),
+    ("ctrl+shift+b", "workbench.action.tasks.build", "true"),
     ("ctrl+shift+x", "graphite.plugins.open", "true"),
     (
         "left",
