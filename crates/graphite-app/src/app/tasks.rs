@@ -59,22 +59,32 @@ impl App {
             .name("graphite-task".into())
             .spawn(move || {
                 let mut diagnostics = Vec::new();
-                let result = task_file.run(&task.label, &root, trusted, &worker_cancel, |line| {
-                    let _ = proxy.send_event(UserEvent::TaskOutput(line.to_owned()));
-                    for matcher in &matchers {
-                        if let ProblemMatcher::Pattern(pattern) = matcher {
-                            if let Some(diagnostic) = pattern.parse_line(line) {
-                                let mut diagnostic = diagnostic;
-                                let path = PathBuf::from(&diagnostic.file);
-                                if !path.is_absolute() {
-                                    diagnostic.file =
-                                        diagnostic_base.join(path).display().to_string();
+                let process_proxy = proxy.clone();
+                let result = task_file.run_with_process(
+                    &task.label,
+                    &root,
+                    trusted,
+                    &worker_cancel,
+                    move |pid| {
+                        let _ = process_proxy.send_event(UserEvent::TaskProcessStarted(pid));
+                    },
+                    |line| {
+                        let _ = proxy.send_event(UserEvent::TaskOutput(line.to_owned()));
+                        for matcher in &matchers {
+                            if let ProblemMatcher::Pattern(pattern) = matcher {
+                                if let Some(diagnostic) = pattern.parse_line(line) {
+                                    let mut diagnostic = diagnostic;
+                                    let path = PathBuf::from(&diagnostic.file);
+                                    if !path.is_absolute() {
+                                        diagnostic.file =
+                                            diagnostic_base.join(path).display().to_string();
+                                    }
+                                    diagnostics.push(diagnostic);
                                 }
-                                diagnostics.push(diagnostic);
                             }
                         }
-                    }
-                });
+                    },
+                );
                 let _ = proxy.send_event(UserEvent::TaskFinished {
                     result,
                     diagnostics,

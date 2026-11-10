@@ -550,6 +550,7 @@ impl App {
             r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));
         }
         self.draw_phase4_overlays(r, w, h, lh);
+        self.draw_phase6_overlays(r, w, h, lh);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();

@@ -98,6 +98,7 @@ pub(crate) enum UserEvent {
     LspWake,
     TerminalWake,
     TaskOutput(String),
+    TaskProcessStarted(u32),
     TaskFinished {
         result: Result<i32, String>,
         diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,

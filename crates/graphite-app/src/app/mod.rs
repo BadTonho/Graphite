@@ -44,7 +44,11 @@ mod window_events;
 mod workspace_edit;
 mod wrap_drawing;
 
+pub(crate) mod debugging;
 mod document_edit;
+mod phase6_drawing;
+mod ports_ui;
+mod previews_ui;
 
 #[cfg(test)]
 mod document_view_tests;

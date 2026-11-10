@@ -297,13 +297,16 @@ pub(crate) fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std:
     extern "system" {
         fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
     }
-    let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
-    let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 1 | 8) } == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
+    let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    if unsafe { MoveFileExW(from_wide.as_ptr(), to_wide.as_ptr(), 1 | 8) } != 0 {
+        return Ok(());
     }
+    let native_error = std::io::Error::last_os_error();
+    // Some Windows filesystems and restricted test environments reject the
+    // native replacement call. A same-volume copy is the portable fallback.
+    fs::copy(from, to).map_err(|_| native_error)?;
+    fs::remove_file(from)
 }
 fn copy_tree_no_links(source: &Path, destination: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
@@ -418,6 +421,18 @@ impl TaskFile {
         cancelled: &AtomicBool,
         mut output: impl FnMut(&str),
     ) -> Result<i32, String> {
+        self.run_with_process(label, workspace, trusted, cancelled, |_| {}, output)
+    }
+
+    pub fn run_with_process(
+        &self,
+        label: &str,
+        workspace: &Path,
+        trusted: bool,
+        cancelled: &AtomicBool,
+        on_process: impl FnOnce(u32),
+        mut output: impl FnMut(&str),
+    ) -> Result<i32, String> {
         if !trusted {
             return Err("Workspace is restricted; trust is required to run tasks".into());
         }
@@ -464,6 +479,7 @@ impl TaskFile {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
+        on_process(child.id());
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
         let (tx, rx) = std::sync::mpsc::channel::<String>();

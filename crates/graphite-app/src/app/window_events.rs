@@ -12,6 +12,51 @@ impl ApplicationHandler<UserEvent> for App {
         self.collect_closed_documents();
         self.poll_extension_host(std::time::Instant::now());
         self.poll_plugins();
+        if let (Some(view), Some(gpu)) = (&self.webview, &self.gpu) {
+            view.pump();
+            let _ = view.set_bounds(&gpu.window);
+        }
+        if self.markdown_preview.is_some() && self.webview_handle.is_none() {
+            if let Some(view) = &self.webview {
+                for message in view.take_messages() {
+                    if let Ok(message) = serde_json::from_str::<serde_json::Value>(&message) {
+                        if message["type"] == "markdown-scroll" {
+                            if let Some(ratio) = message["ratio"].as_f64() {
+                                let total = self.documents[self.active_document()]
+                                    .buffer
+                                    .len_lines()
+                                    .saturating_sub(1);
+                                let line = (ratio.clamp(0.0, 1.0) * total as f64).round() as usize;
+                                self.editor_groups.active_view_mut().scroll_line = line;
+                                self.preview_source_scroll = Some(line);
+                                if let Some(gpu) = &self.gpu {
+                                    gpu.window.request_redraw();
+                                }
+                            }
+                        }
+                    }
+                }
+                let source_line = self.editor_groups.active_view().scroll_line;
+                if self.preview_source_scroll != Some(source_line) {
+                    let total = self.documents[self.active_document()]
+                        .buffer
+                        .len_lines()
+                        .saturating_sub(1)
+                        .max(1);
+                    let ratio = (source_line as f64 / total as f64).clamp(0.0, 1.0);
+                    let _ = view.evaluate_script(&format!(
+                        "window.postMessage({{type:'markdown-scroll-to',ratio:{ratio}}},'*')"
+                    ));
+                    self.preview_source_scroll = Some(source_line);
+                }
+            }
+        }
+        let debug_pending = self.debug.session.is_some();
+        if debug_pending && self.debug.poll(self.tree.root()).unwrap_or(false) {
+            if let Some(gpu) = &self.gpu {
+                gpu.window.request_redraw();
+            }
+        }
         let host_pending = self.extension_host.enabled
             && (self.extension_host.supervisor.as_ref().is_some_and(|host| {
                 host.state == graphite_extension_host::HostState::Starting
@@ -19,6 +64,7 @@ impl ApplicationHandler<UserEvent> for App {
             }) || !self.extension_host.incoming.is_empty());
         event_loop.set_control_flow(
             if self.saving.pending()
+                || debug_pending
                 || host_pending
                 || self.plugins.pending()
                 || self.task_cancel.is_some()
@@ -131,7 +177,25 @@ impl ApplicationHandler<UserEvent> for App {
                     .smart_selection_history
                     .clear();
                 let editor_state = self.editor_state();
-                self.click();
+                let panel_geometry = self.gpu.as_ref().map(|gpu| {
+                    (
+                        gpu.renderer.size().0,
+                        gpu.renderer.size().1,
+                        gpu.renderer.line_height(),
+                    )
+                });
+                let phase6_hit = panel_geometry.is_some_and(|(width, height, line_height)| {
+                    self.phase6_panel_click(
+                        self.mouse.x as f32,
+                        self.mouse.y as f32,
+                        width,
+                        height,
+                        line_height,
+                    )
+                });
+                if !phase6_hit {
+                    self.click();
+                }
                 if editor_state != self.editor_state() {
                     self.invalidate_lsp_requests();
                 }
@@ -230,6 +294,7 @@ impl ApplicationHandler<UserEvent> for App {
             self.process_cancel.store(true, Ordering::Release);
             self.screencast_cancel.store(true, Ordering::Release);
             self.lsp_manager.shutdown();
+            let _ = self.debug.stop();
             self.terminals.clear();
             event_loop.exit();
             return;
@@ -305,6 +370,7 @@ impl App {
                     gpu.window.request_redraw();
                 }
             }
+            UserEvent::TaskProcessStarted(pid) => self.ports.register_process(pid),
             UserEvent::TaskFinished {
                 result,
                 diagnostics,

@@ -13,17 +13,22 @@ mod config;
 mod document;
 mod document_store;
 use document::Document;
+mod debugger;
 mod file_format;
 mod file_icons;
 mod json_schema;
 mod keybindings;
 mod lsp;
+mod ports;
+mod previews;
 mod process_explorer;
 mod scm;
 mod terminal;
+mod test_explorer;
 #[cfg(test)]
 mod test_support;
 mod tree;
+mod webview;
 
 use accesskit::{
     Action, ActionData, ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, Node,
@@ -180,6 +185,23 @@ struct App {
     process_metrics: Vec<process_explorer::ProcessMetric>,
     process_scroll: usize,
     process_cancel: Arc<AtomicBool>,
+    debug: debugger::DebugRuntime,
+    debug_panel_visible: bool,
+    debug_input: String,
+    debug_input_focused: bool,
+    debug_scroll: usize,
+    test_explorer: test_explorer::TestExplorer,
+    tests_visible: bool,
+    ports: ports::PortManager,
+    ports_visible: bool,
+    selected_port_process: Option<u32>,
+    markdown_preview: Option<previews::MarkdownPreview>,
+    preview_source_scroll: Option<usize>,
+    image_preview: Option<previews::ImagePreview>,
+    preview_zoom: f32,
+    webview: Option<webview::WebviewHost>,
+    webview_html: String,
+    webview_handle: Option<String>,
     screencast_mode: bool,
     screencast_cancel: Arc<AtomicBool>,
     screencast_shortcut: Option<(String, std::time::Instant)>,
@@ -488,6 +510,23 @@ impl App {
             process_metrics: Vec::new(),
             process_scroll: 0,
             process_cancel: Arc::new(AtomicBool::new(true)),
+            debug: debugger::DebugRuntime::default(),
+            debug_panel_visible: false,
+            debug_input: String::new(),
+            debug_input_focused: false,
+            debug_scroll: 0,
+            test_explorer: test_explorer::TestExplorer::default(),
+            tests_visible: false,
+            ports: ports::PortManager::default(),
+            ports_visible: false,
+            selected_port_process: None,
+            markdown_preview: None,
+            preview_source_scroll: None,
+            image_preview: None,
+            preview_zoom: 1.0,
+            webview: None,
+            webview_html: String::new(),
+            webview_handle: None,
             screencast_mode: false,
             screencast_cancel: Arc::new(AtomicBool::new(true)),
             screencast_shortcut: None,

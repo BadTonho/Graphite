@@ -1,0 +1,228 @@
+use super::*;
+use crate::test_explorer::{TestItem, TestState};
+
+const PANEL_LINES: usize = 9;
+
+impl App {
+    pub(crate) fn phase6_panel_visible(&self) -> bool {
+        self.debug_panel_visible || self.tests_visible || self.ports_visible
+    }
+
+    pub(crate) fn phase6_panel_click(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) -> bool {
+        if !self.phase6_panel_visible() || y < height - line_height * PANEL_LINES as f32 {
+            return false;
+        }
+        self.debug_input_focused = self.debug_panel_visible && y >= height - line_height * 1.8;
+        if self.tests_visible {
+            let row = ((y - (height - line_height * (PANEL_LINES - 1) as f32)) / line_height)
+                .floor()
+                .max(0.0) as usize;
+            if let Some(item) = test_items(
+                &self
+                    .test_explorer
+                    .controllers
+                    .values()
+                    .flat_map(|controller| controller.roots.iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+            .get(row)
+            {
+                self.test_explorer.selected = Some(item.1.id.clone());
+                return true;
+            }
+        }
+        if self.ports_visible {
+            let row = ((y - (height - line_height * (PANEL_LINES - 1) as f32)) / line_height)
+                .floor()
+                .max(0.0) as usize;
+            if let Some(port) = self.ports.listeners.get(row) {
+                self.selected_port_process = Some(port.process_id);
+                self.status = format!(
+                    "{}:{} · process {}",
+                    port.address, port.port, port.process_id
+                );
+                return true;
+            }
+        }
+        let _ = (x, width);
+        true
+    }
+
+    pub(crate) fn draw_phase6_overlays(
+        &self,
+        r: &mut Renderer,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) {
+        if !self.phase6_panel_visible() {
+            return;
+        }
+        let top = height - line_height * PANEL_LINES as f32;
+        r.set_clip(None);
+        r.draw_rect(
+            0.0,
+            top,
+            width,
+            line_height * (PANEL_LINES - 1) as f32,
+            rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+        );
+        let heading = if self.debug_panel_visible {
+            format!(
+                "Debug · {} · F5 Continue/Start · F10 Step Over · F11 Step Into · Shift+F5 Stop",
+                debug_state_label(&self.debug.state)
+            )
+        } else if self.tests_visible {
+            format!(
+                "Test Explorer · Enter Run · Esc Close · {} controller(s)",
+                self.test_explorer.controllers.len()
+            )
+        } else {
+            format!(
+                "Local Ports · Ctrl+Shift+P → Refresh Local Ports · {} listener(s)",
+                self.ports.listeners.len()
+            )
+        };
+        r.draw_text(
+            &heading,
+            PAD,
+            top + PAD * 0.3,
+            rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+        );
+        if self.debug_panel_visible {
+            let mut y = top + line_height;
+            for frame in self.debug.frames.iter().take(2) {
+                r.draw_text(
+                    &format!(
+                        "  {} · {}:{}",
+                        frame.name,
+                        frame
+                            .source
+                            .as_deref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default(),
+                        frame.line
+                    ),
+                    PAD,
+                    y,
+                    rgb(Theme::color(Theme::DIM, 0x616161)),
+                );
+                y += line_height;
+            }
+            for (name, value, _) in self.debug.variables.iter().take(3) {
+                r.draw_text(
+                    &format!("  {name} = {value}"),
+                    PAD,
+                    y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+                y += line_height;
+            }
+            for output in self.debug.output.iter().rev().take(2).rev() {
+                r.draw_text(
+                    &format!("{}: {}", output.category, output.text.trim()),
+                    PAD,
+                    y,
+                    rgb(Theme::color(Theme::DIM, 0x616161)),
+                );
+                y += line_height;
+            }
+            r.draw_text(
+                &format!("> {}", self.debug_input),
+                PAD,
+                height - line_height * 1.7,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+        } else if self.tests_visible {
+            let roots = self
+                .test_explorer
+                .controllers
+                .values()
+                .flat_map(|controller| controller.roots.iter().cloned())
+                .collect::<Vec<_>>();
+            for (index, (depth, item)) in
+                test_items(&roots).iter().take(PANEL_LINES - 2).enumerate()
+            {
+                let y = top + line_height * (index as f32 + 1.0);
+                if self.test_explorer.selected.as_deref() == Some(item.id.as_str()) {
+                    r.draw_rect(
+                        0.0,
+                        y,
+                        width,
+                        line_height,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                r.draw_text(
+                    &format!(
+                        "{}{} {}",
+                        "  ".repeat(*depth),
+                        test_state_glyph(&item.state),
+                        item.label
+                    ),
+                    PAD,
+                    y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        } else {
+            for (index, port) in self
+                .ports
+                .listeners
+                .iter()
+                .take(PANEL_LINES - 2)
+                .enumerate()
+            {
+                r.draw_text(
+                    &format!(
+                        "{}:{} · process {} · {}",
+                        port.address, port.port, port.process_id, port.state
+                    ),
+                    PAD,
+                    top + line_height * (index as f32 + 1.0),
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
+    }
+}
+
+fn debug_state_label(state: &crate::debugger::DebugState) -> String {
+    match state {
+        crate::debugger::DebugState::Stopped => "stopped".into(),
+        crate::debugger::DebugState::Initializing => "initializing".into(),
+        crate::debugger::DebugState::Running => "running".into(),
+        crate::debugger::DebugState::Paused { reason, .. } => format!("paused: {reason}"),
+        crate::debugger::DebugState::Failed(error) => format!("failed: {error}"),
+    }
+}
+
+fn test_state_glyph(state: &TestState) -> &'static str {
+    match state {
+        TestState::Passed => "✓",
+        TestState::Failed { .. } | TestState::Errored(_) => "×",
+        TestState::Running => "●",
+        TestState::Skipped => "–",
+        _ => "○",
+    }
+}
+
+pub(crate) fn test_items(items: &[TestItem]) -> Vec<(usize, TestItem)> {
+    fn visit(items: &[TestItem], depth: usize, output: &mut Vec<(usize, TestItem)>) {
+        for item in items {
+            output.push((depth, item.clone()));
+            visit(&item.children, depth + 1, output);
+        }
+    }
+    let mut result = Vec::new();
+    visit(items, 0, &mut result);
+    result
+}

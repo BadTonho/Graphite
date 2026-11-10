@@ -11,6 +11,7 @@ pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
 mod storage;
+mod testing;
 #[cfg(test)]
 mod tests;
 
@@ -24,11 +25,15 @@ pub(super) struct Runtime {
     prompt: Option<prompts::Prompt>,
     languages: languages::Languages,
     editor_commands: BTreeMap<u64, graphite_core_api::CommandTicket>,
+    test_calls: BTreeSet<u64>,
 }
 
 impl Runtime {
     pub(super) fn pending(&self) -> bool {
-        self.command.is_some() || self.languages.pending() || !self.editor_commands.is_empty()
+        self.command.is_some()
+            || self.languages.pending()
+            || !self.editor_commands.is_empty()
+            || !self.test_calls.is_empty()
     }
 }
 
@@ -160,6 +165,7 @@ impl App {
                 prompt: None,
                 languages: Default::default(),
                 editor_commands: BTreeMap::new(),
+                test_calls: BTreeSet::new(),
             });
         }
         let runtime = self.plugins.vsix.as_mut().unwrap();
@@ -239,6 +245,16 @@ impl App {
                         if let Some(error) = event["error"].as_str() {
                             self.status = error.to_owned();
                         }
+                    } else if event["id"]
+                        .as_u64()
+                        .is_some_and(|id| runtime.test_calls.remove(&id))
+                    {
+                        if let Some(run) = self.test_explorer.active_run {
+                            self.test_explorer.finish_run(run);
+                        }
+                        if let Some(error) = event["error"].as_str() {
+                            self.status = error.to_owned();
+                        }
                     } else {
                         self.finish_vsix_language_request(runtime, &event)?;
                     }
@@ -267,6 +283,15 @@ impl App {
             self.reply_vsix_editor_commands(runtime)?;
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
+            if let (Some(handle), Some(webview)) =
+                (self.webview_handle.as_deref(), self.webview.as_ref())
+            {
+                for message in webview.take_messages() {
+                    let value =
+                        serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
+                    runtime.session.send(json!({"type":"call","actor":"ExtHostWebviews","method":"$onMessage","args":[handle,value]}))?;
+                }
+            }
             if let Some((owner, command, _)) = &runtime.command {
                 if !runtime.sent {
                     runtime.session.send(

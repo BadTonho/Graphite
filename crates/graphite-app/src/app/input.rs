@@ -81,6 +81,67 @@ impl App {
             }
             return;
         }
+        if self.debug_input_focused {
+            match &event.logical_key {
+                Key::Named(NamedKey::Escape) => self.debug_input_focused = false,
+                Key::Named(NamedKey::Enter) => {
+                    if let Err(error) = self.evaluate_debug_input() {
+                        self.status = error;
+                    }
+                }
+                Key::Named(NamedKey::Backspace) => {
+                    self.debug_input.pop();
+                }
+                _ if !ctrl && !self.modifiers.alt_key() => {
+                    if let Some(text) = event
+                        .text
+                        .as_ref()
+                        .filter(|text| !text.chars().any(char::is_control))
+                    {
+                        self.debug_input.push_str(text);
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+        if self.tests_visible {
+            match event.logical_key {
+                Key::Named(NamedKey::Escape) => {
+                    self.tests_visible = false;
+                }
+                Key::Named(NamedKey::Enter) => {
+                    if let Err(error) = self.run_selected_test() {
+                        self.status = error;
+                    }
+                }
+                Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowUp) => {
+                    let roots = self
+                        .test_explorer
+                        .controllers
+                        .values()
+                        .flat_map(|controller| controller.roots.iter().cloned())
+                        .collect::<Vec<_>>();
+                    let items = super::phase6_drawing::test_items(&roots);
+                    if !items.is_empty() {
+                        let current = self
+                            .test_explorer
+                            .selected
+                            .as_ref()
+                            .and_then(|id| items.iter().position(|(_, item)| &item.id == id))
+                            .unwrap_or(0);
+                        let next = if matches!(event.logical_key, Key::Named(NamedKey::ArrowDown)) {
+                            (current + 1) % items.len()
+                        } else {
+                            (current + items.len() - 1) % items.len()
+                        };
+                        self.test_explorer.selected = Some(items[next].1.id.clone());
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if self.scm_visible && !ctrl && !self.modifiers.alt_key() {
             match event
                 .text
