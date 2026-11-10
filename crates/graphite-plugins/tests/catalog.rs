@@ -92,11 +92,22 @@ fn details_loads_repository_readme_and_sums_only_installable_asset_downloads() {
     let (base, log, join) = server(vec![
         (200, String::new(), repository.into()),
         (200, String::new(), readme.into()),
+        (
+            200,
+            String::new(),
+            "<h1>Hello World</h1><p><img src=\"https://github.com/author/plugin/raw/main/logo.png\"></p>"
+                .into(),
+        ),
         (200, String::new(), release.into()),
     ]);
     let mut catalog = Catalog::with_base(&base).unwrap();
     let details = catalog.details("author/plugin").unwrap();
     assert_eq!(details.readme.as_deref(), Some("# Hello World\n"));
+    assert!(details
+        .readme_html
+        .as_deref()
+        .unwrap()
+        .contains("<h1>Hello World</h1>"));
     assert_eq!(details.repository.stargazers_count, 3);
     assert_eq!(details.repository.topics, ["graphite-plugin", "editor"]);
     let release = details.release.unwrap();
@@ -105,7 +116,10 @@ fn details_loads_repository_readme_and_sums_only_installable_asset_downloads() {
     assert_eq!(release.downloads, 13);
     assert_eq!(release.size, 300);
     join.join().unwrap();
-    assert_eq!(log.lock().unwrap().len(), 3);
+    let requests = log.lock().unwrap();
+    assert_eq!(requests.len(), 4);
+    assert!(requests[2].starts_with("GET /repos/author/plugin/readme HTTP/1.1"));
+    assert!(requests[2].contains("accept: application/vnd.github.html+json"));
 }
 
 #[test]

@@ -61,6 +61,10 @@ fn fit(text: &str, max: usize) -> String {
     result
 }
 
+fn graphite_resource_label(label: &str, max: usize) -> String {
+    fit(&format!("↗ {label}"), max)
+}
+
 fn wrap_text(text: &str, max: usize) -> Vec<String> {
     let max = max.max(1);
     let mut lines = Vec::new();
@@ -245,17 +249,29 @@ impl App {
             y += line_height * 1.7;
             renderer.draw_text(self.t("plugins.sidebar.readme"), main_x, y, rgb(text_color));
             y += line_height * 1.35;
+            if details.readme_html.is_none() && tab.error.is_some() {
+                renderer.draw_text(
+                    self.t("plugins.sidebar.readme_render_error"),
+                    main_x,
+                    y,
+                    rgb(0x9b2226),
+                );
+                y += line_height * 1.2;
+            }
             let max_rows = ((body_y + body_height - y) / line_height).max(0.0) as usize;
-            let rows = markdown_display_rows(
-                details
-                    .readme
-                    .as_deref()
-                    .unwrap_or_else(|| self.t("plugins.sidebar.no_readme")),
-                max_main,
-            );
-            let start = tab.scroll_line.min(rows.len());
-            for (index, (line, color, _)) in rows.iter().skip(start).take(max_rows).enumerate() {
-                renderer.draw_text(line, main_x, y + index as f32 * line_height, rgb(*color));
+            if details.readme_html.is_none() {
+                let rows = markdown_display_rows(
+                    details
+                        .readme
+                        .as_deref()
+                        .unwrap_or_else(|| self.t("plugins.sidebar.no_readme")),
+                    max_main,
+                );
+                let start = tab.scroll_line.min(rows.len());
+                for (index, (line, color, _)) in rows.iter().skip(start).take(max_rows).enumerate()
+                {
+                    renderer.draw_text(line, main_x, y + index as f32 * line_height, rgb(*color));
+                }
             }
         } else if tab.loading {
             renderer.draw_text(
@@ -369,7 +385,7 @@ impl App {
                 rgb(dim),
             );
             rows_y += line_height * 2.0;
-            self.draw_graphite_resources(renderer, details, x, rows_y, width, line_height, max);
+            self.draw_graphite_resources(renderer, details, x, rows_y, line_height, max);
             return;
         };
         let heading = self.t("plugins.sidebar.installation");
@@ -431,7 +447,6 @@ impl App {
             details,
             x,
             rows_y + line_height * 0.5,
-            width,
             line_height,
             max,
         );
@@ -443,7 +458,6 @@ impl App {
         details: &RepositoryDetails,
         x: f32,
         mut y: f32,
-        width: f32,
         line_height: f32,
         max: usize,
     ) {
@@ -489,10 +503,7 @@ impl App {
         }
         for (label, _) in links {
             renderer.draw_text(
-                &fit(
-                    &format!("↗ {label}"),
-                    max.min((width / 4.0 / PAD).max(1.0) as usize),
-                ),
+                &graphite_resource_label(&label, max),
                 x + pad,
                 y,
                 rgb(0x007acc),
@@ -755,6 +766,114 @@ impl App {
         true
     }
 
+    pub(crate) fn sync_graphite_detail_webview(&mut self) {
+        let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
+            self.graphite_detail_webview = None;
+            self.graphite_detail_webview_target = None;
+            self.graphite_detail_webview_html = None;
+            self.graphite_detail_webview_bounds = None;
+            return;
+        };
+        let Some(details) = self
+            .plugins
+            .graphite_details
+            .iter()
+            .find(|tab| tab.group == group && tab.repository == repository)
+            .and_then(|tab| tab.details.as_ref())
+        else {
+            self.graphite_detail_webview = None;
+            self.graphite_detail_webview_target = None;
+            self.graphite_detail_webview_html = None;
+            self.graphite_detail_webview_bounds = None;
+            return;
+        };
+        let Some(rendered_html) = details.readme_html.as_deref() else {
+            self.graphite_detail_webview = None;
+            self.graphite_detail_webview_target = None;
+            self.graphite_detail_webview_html = None;
+            self.graphite_detail_webview_bounds = None;
+            return;
+        };
+        let html = crate::previews::github_readme_document(rendered_html);
+        let Some((window, width, height, line_height, cell_width)) = self.gpu.as_ref().map(|gpu| {
+            let (width, height) = gpu.renderer.size();
+            (
+                gpu.window.clone(),
+                width,
+                height,
+                gpu.renderer.line_height(),
+                gpu.renderer.char_width(),
+            )
+        }) else {
+            return;
+        };
+        let Some(rect) = self
+            .group_rectangles(width, height, line_height)
+            .into_iter()
+            .find(|rect| rect.id == group)
+        else {
+            return;
+        };
+        let body_y = rect.y + line_height * 1.5;
+        let sidebar_width = (rect.width * 0.28)
+            .clamp(220.0, 340.0)
+            .min(rect.width * 0.45);
+        let main_x = rect.x + PAD * 2.0;
+        let main_width = (rect.width - sidebar_width - PAD * 4.0).max(cell_width * 12.0);
+        let max_main = (main_width / cell_width).max(1.0) as usize;
+        let description_rows = details
+            .repository
+            .description
+            .as_deref()
+            .map(|description| wrap_text(description, max_main).len().min(2))
+            .unwrap_or(0);
+        let readme_y = body_y + PAD + line_height * (4.45 + description_rows as f32);
+        let bounds = [
+            f64::from(main_x),
+            f64::from(readme_y),
+            f64::from(main_width),
+            f64::from((rect.y + rect.height - readme_y).max(0.0)),
+        ];
+        let target = (group, repository.clone());
+        if self.graphite_detail_webview_target.as_ref() == Some(&target)
+            && self.graphite_detail_webview_html.as_deref() == Some(html.as_str())
+        {
+            if self.graphite_detail_webview_bounds != Some(bounds) || cfg!(target_os = "linux") {
+                if let Some(view) = &self.graphite_detail_webview {
+                    let _ = view.set_overlay_bounds(&window, bounds);
+                    self.graphite_detail_webview_bounds = Some(bounds);
+                }
+            }
+            return;
+        }
+        match crate::webview::WebviewHost::open_overlay(&window, &html, bounds) {
+            Ok(view) => {
+                self.graphite_detail_webview = Some(view);
+                self.graphite_detail_webview_target = Some(target);
+                self.graphite_detail_webview_html = Some(html);
+                self.graphite_detail_webview_bounds = Some(bounds);
+            }
+            Err(error) => {
+                self.graphite_detail_webview = None;
+                self.graphite_detail_webview_target = None;
+                self.graphite_detail_webview_html = None;
+                self.graphite_detail_webview_bounds = None;
+                let message = self.t("plugins.sidebar.readme_render_error").to_owned();
+                if let Some(tab) = self
+                    .plugins
+                    .graphite_details
+                    .iter_mut()
+                    .find(|tab| tab.group == group && tab.repository == repository)
+                {
+                    if let Some(details) = &mut tab.details {
+                        details.readme_html = None;
+                    }
+                    tab.error = Some(format!("{message} ({error})"));
+                }
+            }
+        }
+    }
+
     fn graphite_resource_url_at(
         &self,
         details: &RepositoryDetails,
@@ -767,6 +886,13 @@ impl App {
         let mut rows_y = body_y + PAD + line_height * 2.2;
         if details.release.is_some() {
             rows_y += line_height * 1.3 + line_height * 4.6 + line_height * 0.6;
+            if details
+                .release
+                .as_ref()
+                .is_some_and(|release| release.assets.is_empty())
+            {
+                rows_y += line_height * 1.5;
+            }
             if !details.repository.topics.is_empty() {
                 rows_y += line_height * (1.2 + details.repository.topics.len().min(5) as f32);
             }
@@ -1688,6 +1814,13 @@ mod graphite_readme_tests {
             markdown_inline_text("<script>alert(1)</script>"),
             "alert(1)"
         );
+    }
+
+    #[test]
+    fn resource_links_use_the_available_panel_width_before_truncating() {
+        for label in ["Repository", "Homepage", "Issues", "License · MIT"] {
+            assert_eq!(graphite_resource_label(label, 28), format!("↗ {label}"));
+        }
     }
 
     #[test]
