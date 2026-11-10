@@ -233,7 +233,39 @@ impl ApplicationHandler<UserEvent> for App {
                     && !self.zen_mode
                     && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
                     && (self.mouse.x as f32) < SIDEBAR_WIDTH;
-                if over_plugins {
+                let over_scm = self.scm_visible
+                    && !self.zen_mode
+                    && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
+                    && (self.mouse.x as f32) < SIDEBAR_WIDTH;
+                if over_scm {
+                    let staged = self
+                        .scm_snapshot
+                        .files
+                        .iter()
+                        .filter(|file| file.staged)
+                        .count();
+                    let changed = self
+                        .scm_snapshot
+                        .files
+                        .iter()
+                        .filter(|file| file.unstaged || file.untracked || file.conflicted)
+                        .count();
+                    let total_rows = changed + usize::from(staged > 0) + staged + 1;
+                    let visible_rows = self.gpu.as_ref().map_or(1, |gpu| {
+                        let line = gpu.renderer.line_height().max(18.0);
+                        let repo_rows = if self.scm_repositories_collapsed {
+                            2.0
+                        } else {
+                            4.0
+                        };
+                        let visible =
+                            (gpu.renderer.size().1 - line * (repo_rows + 2.35) - line * 1.2) / line;
+                        visible.max(1.0) as usize
+                    });
+                    let max = total_rows.saturating_sub(visible_rows);
+                    self.scm_scroll =
+                        (self.scm_scroll as i32 + lines as i32).clamp(0, max as i32) as usize;
+                } else if over_plugins {
                     self.scroll_plugins(lines as i32);
                 } else if self.plugins.active_graphite_detail.is_some() {
                     self.scroll_graphite_detail(lines as i32);
