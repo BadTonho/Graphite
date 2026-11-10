@@ -29,7 +29,7 @@ impl Store {
         for entry in fs::read_dir(&self.root).map_err(|e| e.to_string())? {
             let path = entry.map_err(|e| e.to_string())?.path();
             if path.extension().is_some_and(|x| x == "json") {
-                let record: Installed =
+                let mut record: Installed =
                     serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
                         .map_err(|e| e.to_string())?;
                 if !crate::manifest::valid_id(record.metadata.id())
@@ -38,13 +38,31 @@ impl Store {
                 {
                     return Err("Invalid plugin registry".into());
                 }
+                // Older records predate the command index. Their original
+                // package manifest is already in the extracted directory.
+                if let Metadata::Vsix(vsix) = &mut record.metadata {
+                    if vsix.commands.is_empty() {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.commands = crate::manifest::vsix_commands(&manifest);
+                            }
+                        }
+                    }
+                }
                 result.push(record);
             }
         }
         result.sort_by(|a, b| a.metadata.id().cmp(b.metadata.id()));
         Ok(result)
     }
-    fn publish(&self, record: &Installed) -> Result<()> {
+    fn publish(&self, record: &Installed, replace_directory: Option<&str>) -> Result<()> {
         fs::create_dir_all(&self.root).map_err(|e| e.to_string())?;
         let path = self.root.join(format!("{}.json", record.metadata.id()));
         let temp = self.root.join(format!(".{}.tmp", record.metadata.id()));
@@ -55,6 +73,15 @@ impl Store {
             .map_err(|e| e.to_string())?;
         let result = (|| {
             use std::io::Write;
+            if let Some(expected) = replace_directory {
+                let current: Installed = serde_json::from_reader(
+                    fs::File::open(&path).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if current.directory != expected {
+                    return Err("The installed package changed; review the new installation".into());
+                }
+            }
             file.write_all(&serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
             file.sync_all().map_err(|e| e.to_string())?;
@@ -90,7 +117,7 @@ impl Store {
                 trusted_version: None,
                 directory: unique,
             };
-            self.publish(&record)?;
+            self.publish(&record, None)?;
             // Old immutable directories are deliberately retained until removal; a live host may own one.
             Ok(record)
         })();
@@ -101,21 +128,28 @@ impl Store {
         result
     }
     pub fn enable(&self, id: &str, trusted: bool) -> Result<()> {
-        let mut record = self.get(id)?;
-        if !matches!(record.metadata, Metadata::Native(_)) {
-            return Err("VSIX execution is unavailable".into());
-        }
+        let record = self.get(id)?;
+        self.enable_installation(id, &record.directory, trusted)
+    }
+    pub fn enable_installation(&self, id: &str, directory: &str, trusted: bool) -> Result<()> {
         if !trusted {
             return Err("Explicit trust is required to execute plugin code".into());
         }
+        let mut record = self.get(id)?;
+        if record.directory != directory {
+            return Err("The installed package changed; review the new installation".into());
+        }
+        if matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()) {
+            return Err("VSIX has no Node.js entry point".into());
+        }
         record.enabled = true;
         record.trusted_version = Some(record.metadata.version().into());
-        self.publish(&record)
+        self.publish(&record, Some(directory))
     }
     pub fn disable(&self, id: &str) -> Result<()> {
         let mut record = self.get(id)?;
         record.enabled = false;
-        self.publish(&record)
+        self.publish(&record, Some(&record.directory))
     }
     pub fn get(&self, id: &str) -> Result<Installed> {
         self.list()?

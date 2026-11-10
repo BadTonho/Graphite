@@ -47,34 +47,41 @@ impl WorkspaceTrust {
     pub fn trust(&mut self, workspace: &Path) -> Result<(), String> {
         let key = canonical_workspace(workspace)?;
         if !self.trusted.contains(&key) {
-            self.trusted.push(key);
-            self.persist()?;
+            let mut trusted = self.trusted.clone();
+            trusted.push(key);
+            self.persist(trusted)?;
         }
         Ok(())
     }
     pub fn revoke(&mut self, workspace: &Path) -> Result<(), String> {
         let key = canonical_workspace(workspace)?;
-        self.trusted.retain(|item| item != &key);
-        self.persist()
+        let mut trusted = self.trusted.clone();
+        trusted.retain(|item| item != &key);
+        self.persist(trusted)
     }
-    fn persist(&self) -> Result<(), String> {
+    fn persist(&mut self, trusted: Vec<String>) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let bytes = serde_json::to_vec_pretty(&TrustFile {
-            trusted_workspaces: self.trusted.clone(),
-        })
-        .map_err(|e| e.to_string())?;
+        let value = TrustFile {
+            trusted_workspaces: trusted,
+        };
+        let bytes = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
         let tmp = self.path.with_extension("json.tmp");
         fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-        fs::rename(tmp, &self.path).map_err(|e| e.to_string())
+        replace_profile_pointer(&tmp, &self.path).map_err(|e| e.to_string())?;
+        self.trusted = value.trusted_workspaces;
+        Ok(())
     }
 }
 fn canonical_workspace(workspace: &Path) -> Result<String, String> {
     let canonical = workspace
         .canonicalize()
         .map_err(|e| format!("Cannot resolve workspace path: {e}"))?;
-    Ok(canonical.to_string_lossy().to_lowercase())
+    let key = canonical.to_str().ok_or("Workspace path is not UTF-8")?;
+    #[cfg(windows)]
+    let key = key.to_lowercase();
+    Ok(key.to_owned())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -280,11 +287,11 @@ fn validate_profile_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 #[cfg(not(windows))]
-fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+pub(crate) fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     fs::rename(from, to)
 }
 #[cfg(windows)]
-fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+pub(crate) fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
     extern "system" {
@@ -543,6 +550,19 @@ impl ProblemPattern {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn workspace_trust_distinguishes_paths_that_differ_in_case() {
+        let temp = crate::test_support::TempDir::new();
+        let trusted = temp.path().join("Workspace");
+        let restricted = temp.path().join("workspace");
+        fs::create_dir(&trusted).unwrap();
+        fs::create_dir(&restricted).unwrap();
+        let mut trust = WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+        trust.trust(&trusted).unwrap();
+        assert!(trust.is_trusted(&trusted));
+        assert!(!trust.is_trusted(&restricted));
+    }
     use super::*;
     fn temp() -> PathBuf {
         let p = std::env::temp_dir().join(format!(

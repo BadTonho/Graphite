@@ -1,6 +1,6 @@
 # Creating and installing plugins
 
-Build Graphite with `cargo build --workspace`. Native plugin execution requires system Node.js 24 or newer; VSIX inspection does not. Set `graphite.plugins.nodePath` in your user `settings.json` to select a different Node executable. Windows and Linux use the same API and package format.
+Build Graphite with `cargo build --workspace` for native plugin development. Native plugin execution uses Node.js 24+ and accepts a custom executable through `graphite.plugins.nodePath` in user settings. Use the [portable package](building.md) for Code OSS VSIX execution.
 
 ## Create a native plugin
 
@@ -51,19 +51,19 @@ Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar wit
 | / | Enter Open VSX search text; Enter submits |
 | Enter | Inspect an installed plugin, or download and inspect the selected Open VSX result |
 | Y / Esc | Confirm / cancel installation or trust |
-| E / D | Enable / disable the selected native plugin |
+| E / D | Enable / disable the selected plugin |
 | U | Download the latest Open VSX version for an installed VSIX; confirm to replace it |
 | R / X | Restart a native plugin / remove the selected plugin |
 | C | Run the selected plugin's first registered command |
 
 The sidebar shows declared command IDs; assign additional commands in `keybindings.json`, for example `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Missing Node or activation failures appear in the sidebar; use R to retry after correcting the cause.
 
-VSIX packages show identity, version, engines, entry and contribution categories. Their status is **Imported — VS Code execution unavailable**. They cannot be enabled, and their themes, commands and code do not execute. Updates are installed disabled and require fresh trust if execution support is added later.
+Select an installed VSIX with a Node.js entry point and press **E** to approve that installation. Trust the workspace, then open the command palette (`Ctrl+Shift+P` or `F1`) and choose the extension command. Approve the replacement installation after an update. See [supported VSIX APIs](../architecture/extension-compat.md).
 
 ## Publish and test
 
-Publish VSIX extensions on Open VSX for discovery. Graphite also accepts local `.vsix` and `.graphite-plugin` packages. VSIX packages can currently be inspected and installed as metadata; activation waits for the Code OSS host integration. Native Graphite plugins run only after version trust is granted.
+Publish VSIX extensions on Open VSX for discovery. Graphite accepts local `.vsix` and `.graphite-plugin` packages through the Plugins sidebar.
 
 Run `cargo test -p graphite-plugins` for package/store/catalog tests. Application plugin and upstream Emmet integration tests require Node.js 24+ and use local fixtures: `cargo test -p graphite-app app::plugins`. Complete changes with `cargo test --workspace` and `cargo build --workspace`; marketplace tests use a local HTTP fixture and never call Open VSX. Linux execution and interactive UI checks must be recorded separately when unavailable.
 
-Windows validation for this pass passed `cargo test --workspace --offline`, `cargo build --workspace --offline` and `cargo fmt --all -- --check`. Interactive native UI/GPU verification was not performed in this run. Linux execution was not performed in this Windows environment. Open VSX behavior was verified against a local HTTP fixture; the public registry was not contacted by tests.
+See [portable package tests](building.md) and [v0.5 validation](../features/v0.5-extensions-automation.md) for the Code OSS checks.

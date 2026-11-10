@@ -196,8 +196,15 @@ impl App {
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
+            let prompt = match &palette.extension_prompt {
+                Some((title, true)) => {
+                    format!("{} > {}", title, "•".repeat(palette.query.chars().count()))
+                }
+                Some((title, false)) => format!("{} > {}", title, palette.query),
+                None => format!("> {}", palette.query),
+            };
             r.draw_text(
-                &format!("> {}", palette.query),
+                &prompt,
                 x + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),

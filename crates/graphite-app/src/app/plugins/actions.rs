@@ -99,7 +99,7 @@ impl App {
                     result
                 });
             }
-            'e' if matches!(record.metadata, Metadata::Native(_)) => {
+            'e' if !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()) => {
                 if record.trusted_version.as_deref() != Some(record.metadata.version()) {
                     self.plugins.trust = Some(id);
                 } else {
@@ -140,9 +140,22 @@ impl App {
         }
     }
     pub(super) fn enable_plugin(&mut self, id: String) {
-        self.plugins.startup.push(id.clone());
+        let Some(record) = self
+            .plugins
+            .installed
+            .iter()
+            .find(|record| record.metadata.id() == id)
+        else {
+            return;
+        };
+        let directory = record.directory.clone();
+        if matches!(record.metadata, Metadata::Native(_)) {
+            self.plugins.startup.push(id.clone());
+        } else {
+            self.stop_vsix();
+        }
         self.plugin_job(move |store| {
-            store.enable(&id, true)?;
+            store.enable_installation(&id, &directory, true)?;
             Ok(Outcome::Refreshed(store.list()?))
         });
     }

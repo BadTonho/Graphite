@@ -468,7 +468,13 @@ impl App {
         let record = self.plugins.installed.get(index)?;
         let id = record.metadata.id();
         let (status, status_color) = match &record.metadata {
-            Metadata::Vsix(_) => (self.t("plugins.sidebar.badge_vsix").to_string(), 0x6f42c1),
+            Metadata::Vsix(_) if record.enabled => {
+                (self.t("plugins.sidebar.badge_vsix").to_string(), 0x6f42c1)
+            }
+            Metadata::Vsix(_) => (
+                self.t("plugins.sidebar.badge_disabled").to_string(),
+                0x6e7681,
+            ),
             Metadata::Native(_) if !record.enabled => (
                 self.t("plugins.sidebar.badge_disabled").to_string(),
                 0x6e7681,
@@ -556,9 +562,19 @@ impl App {
             );
             self.plugin_metadata_lines(metadata, max, &mut lines);
         } else if let Some(id) = &self.plugins.trust {
+            let version = self
+                .plugins
+                .installed
+                .iter()
+                .find(|record| record.metadata.id() == id)
+                .map(|record| record.metadata.version())
+                .unwrap_or_default();
             push_lines(
                 &mut lines,
-                &self.tf("plugins.trust_confirm", &[("id", id)]),
+                &self.tf(
+                    "plugins.trust_confirm",
+                    &[("id", id), ("version", &version)],
+                ),
                 max,
                 text,
             );
@@ -663,7 +679,9 @@ impl App {
                     max,
                     dim,
                 );
-                push_lines(lines, self.t("plugins.vsix_prototype"), max, dim);
+                if vsix.main.is_some() {
+                    push_lines(lines, self.t("plugins.vsix_enable_hint"), max, dim);
+                }
             }
         }
     }

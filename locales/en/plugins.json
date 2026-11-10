@@ -62,9 +62,9 @@
   "plugins.sidebar.stars": "{stars} stars",
   "plugins.sidebar.title": "PLUGINS",
   "plugins.sidebar.version": "v{version}",
-  "plugins.trust_confirm": "Trust and enable {id}? [Y] Enable  [Esc] Cancel",
+  "plugins.trust_confirm": "Trust and enable {id} v{version}? [Y] Enable  [Esc] Cancel",
   "plugins.trust_warning": "This plugin runs local code with your account's access. A separate process is not a security sandbox.",
-  "plugins.vsix_prototype": "VSIX prototype: no code or contributions are activated",
+  "plugins.vsix_enable_hint": "Enable this version, trust the workspace, then run its commands from the command palette.",
   "plugins.window_title": "Graphite — Plugins",
   "plugins.worker_stopped": "Plugin worker stopped unexpectedly"
 }

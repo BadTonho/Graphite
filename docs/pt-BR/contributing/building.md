@@ -1,6 +1,6 @@
 # Compilação e Testes
 
-Plugins nativos e seus testes de integração exigem Node.js 24+. O editor e a inspeção de VSIX podem funcionar sem Node; consulte [Desenvolvimento de plugins](plugins.md).
+Plugins nativos, Emmet e seus testes de integração usam Node.js 24+ no build comum do Cargo. A distribuição portátil inclui Node.js 24.22.1 e o host Code OSS para execução de VSIX.
 
 ## Requisitos
 
@@ -41,3 +41,8 @@ Consulte [Testes de regressão](testing.md) para a matriz de cobertura, comandos
 - Suporte Windows e Linux; use `#[cfg(...)]` quando código específico de plataforma for inevitável.
 - Nunca faça commit de segredos (veja a [política de segurança](../security/policy.md)).
 
+## Pacotes portáteis e testes do Code OSS
+
+No Windows ou Linux x86-64, rode `python packaging/portable.py` na raiz do projeto com Python 3.11+, Rust e um compilador C++ nativo. No Windows, instale o Visual Studio Build Tools com desenvolvimento para desktop em C++, o SDK do Windows e as bibliotecas MSVC correspondentes com mitigação Spectre. No Linux, instale um compilador C++ e o Make. O script verifica os arquivos fixados do código-fonte e do Node, instala as dependências fixadas do upstream, compila o host e grava o pacote da plataforma em `target/portable/`. O build comum do Cargo dispensa o Node e os downloads do Code OSS.
+
+Extraia o pacote e execute o Graphite no diretório extraído. Mantenha o diretório `code-oss` ao lado do executável. Para executar o teste de integração com VSIX local, aponte `GRAPHITE_TEST_CODE_OSS` para esse diretório e rode `cargo test -p graphite-app official_host_runs_local_vsix_services_and_invalidates_sessions -- --ignored`. O teste separado `open_vsx_sort_command_edits_and_undoes` também exige `GRAPHITE_TEST_OPEN_VSX_SAMPLE` apontando para o VSIX fixado na [validação da v0.5](../features/v0.5-extensions-automation.md). Por padrão, os testes usam arquivos locais. Defina `GRAPHITE_TEST_OPEN_VSX_LIVE=1` para verificar também a busca e o download no registro público, comparando com o arquivo fixado.

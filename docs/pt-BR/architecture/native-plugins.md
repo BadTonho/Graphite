@@ -1,4 +1,4 @@
-# Plugins nativos e inspeção de VSIX
+# Plugins nativos e instalação de pacotes
 
 Plugins da API Graphite v1 executam JavaScript em um processo Node.js 24+ do sistema por plugin. TypeScript é compilado antes do empacotamento. `graphite-plugins` cuida de manifestos, validação ZIP, instalação e geração de projetos sem depender da aplicação/GPU. A aplicação mantém o estado da barra lateral de Plugins e o roteamento das sessões; os serviços existentes aplicam mudanças de documentos e comandos no loop de eventos.
 
@@ -12,7 +12,7 @@ Desabilitar, substituir ou remover um plugin libera seus registros e trabalhos p
 
 ## Pacotes e persistência
 
-Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. A barra lateral de Plugins pesquisa no Open VSX, baixa o VSIX mais recente, valida o pacote e pede confirmação antes de instalar. VSIX fornece somente metadados até que o host Code OSS e sua ponte de API sejam integrados. Lojas e aprovações ficam separadas por perfil.
+Pacotes nativos são ZIPs `.graphite-plugin`, com `graphite-plugin.json` na raiz. VSIX é lido por `extension/package.json`. A instalação nunca executa npm, scripts de ciclo de vida ou código do pacote. A barra lateral de Plugins pesquisa no Open VSX, baixa o VSIX mais recente, valida o pacote e pede confirmação antes de instalar. Pacotes VSIX executáveis usam o [runtime Code OSS](extension-compat.md). Lojas e aprovações ficam separadas por perfil.
 
 O diretório de configuração do usuário contém `plugins/`, registros JSON por plugin e diretórios imutáveis de versões. A instalação valida e extrai para um diretório temporário novo e substitui atomicamente o registro. Uma falha na publicação preserva o registro e pacote anteriores. Diretórios anteriores permanecem disponíveis aos hosts ativos até a remoção; esta respeita o limite exato da identidade do plugin. Toda instalação bem-sucedida começa desabilitada e sem versão confiável, inclusive atualizações e reinstalações. A confiança é registrada para a versão instalada. Atualizações do Open VSX conferem identidade e versão do arquivo baixado contra os metadados do registro antes de substituir o registro instalado.
 
@@ -22,6 +22,6 @@ Pacotes/downloads têm limite de 100 MiB; arquivos ZIP, de 500 MiB expandidos e 
 
 A barra lateral de Plugins abre com `Ctrl+Shift+X` ou `graphite.plugins.open`. Ela reutiliza a barra lateral de 260 px ao lado da barra de atividades, mantendo o editor visível. A barra lateral só recebe entrada de teclado enquanto está focada; o editor, Quick Open, localizar, pesquisa do projeto, Controle de código, terminal e superfícies de confirmação têm precedência caso contrário. Sistema de arquivos, rede e verificação do Node executam em workers. O cliente Open VSX carrega até 30 resultados por busca e usa HTTPS para o registro público.
 
-Selecionar um resultado do Open VSX baixa a última versão para um arquivo temporário que será inspecionado. Instalação e atualização de VSIX usam o validador local de pacotes e exigem confirmação. Atualizações redefinem habilitação e confiança por versão. Plugins Graphite nativos ainda exigem confiança explícita por versão e confiança do workspace; revogar a confiança do workspace encerra hosts ativos e tarefas. A ativação de VSIX Code OSS continua indisponível até que a ponte do host esteja pronta. A instalação de pacotes locais continua disponível offline.
+Selecionar um resultado do Open VSX baixa a última versão para um arquivo temporário que será inspecionado. Instalação e atualização de VSIX usam o validador local de pacotes e exigem confirmação. Atualizações redefinem habilitação e confiança por versão. Plugins Graphite nativos exigem confiança explícita por versão e confiança do workspace. Revogar a confiança do workspace encerra hosts ativos e tarefas. A ativação VSIX usa a mesma barreira de confiança e uma sessão própria do Code OSS. A instalação de pacotes locais continua disponível offline.
 
 Os testes usam diretórios isolados, servidor HTTP local e exemplos reais em Node. Consulte [Desenvolvimento de plugins](../contributing/plugins.md) para manifesto, SDK e controles.
