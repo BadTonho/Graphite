@@ -900,7 +900,7 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) {
-        let sidebar_width = self.sidebar_width_px();
+        let sidebar_width = self.sidebar_layout_width_px();
         renderer.draw_rect(
             ACTIVITY_BAR_WIDTH,
             0.0,

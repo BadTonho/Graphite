@@ -1,5 +1,55 @@
 use super::*;
 
+pub(super) fn activity_bar_default(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_activity_bar_position(crate::config::ActivityBarPosition::Default);
+    Ok(())
+}
+
+pub(super) fn activity_bar_top(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.set_activity_bar_position(crate::config::ActivityBarPosition::Top);
+    Ok(())
+}
+
+pub(super) fn activity_bar_bottom(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_activity_bar_position(crate::config::ActivityBarPosition::Bottom);
+    Ok(())
+}
+
+pub(super) fn activity_bar_hidden(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_activity_bar_position(crate::config::ActivityBarPosition::Hidden);
+    Ok(())
+}
+
+pub(super) fn activity_bar_toggle_size(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let size = if app.activity_bar_preferences.size == crate::config::ActivityBarSize::Default {
+        crate::config::ActivityBarSize::Compact
+    } else {
+        crate::config::ActivityBarSize::Default
+    };
+    app.set_activity_bar_size(size);
+    Ok(())
+}
+
+pub(super) fn activity_bar_move_sidebar(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.toggle_primary_sidebar_side();
+    Ok(())
+}
+
 pub(super) fn workbench_action_quick_open(
     app: &mut App,
     _invocation: &CommandInvocation,

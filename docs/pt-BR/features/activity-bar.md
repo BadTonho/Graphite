@@ -1,84 +1,60 @@
 # Barra de atividades
 
-O Graphite tem uma barra de atividades na borda esquerda da janela. Ela alterna
-as principais views do workbench em uma coluna de 48 px: Explorador, Controle de
-código e Plugins compartilham a mesma coluna lateral de 260 px, então o editor
-mantém sua posição.
+O Graphite tem uma barra de atividades configurável. Ela alterna Explorador,
+Pesquisar, Controle de código, Plugins e contêineres de atividade contribuídos
+por extensões habilitadas. Clique com o botão direito na barra para mostrar ou
+ocultar itens e abrir as opções de layout.
 
-## Itens
+## Itens nativos
 
 | Item | Ícone | Comportamento |
 | --- | --- | --- |
-| **Explorador** | `cod-files` | Mostra a árvore de arquivos e fecha o Controle de código, a pesquisa do projeto e os Plugins. |
-| **Pesquisar** | `cod-search` | Abre a sobreposição de pesquisa do projeto (`Ctrl+Shift+F`); clicar novamente fecha a sobreposição. |
-| **Controle de código** | `cod-source_control` | Alterna a barra lateral do Git (`Ctrl+Shift+G`) e fecha os Plugins. |
-| **Plugins** | `cod-extensions` | Alterna a barra lateral de Plugins (`Ctrl+Shift+X`); um item focado a fecha e um item visível sem foco recupera o foco. |
+| **Explorador** | `cod-files` | Mostra a árvore de arquivos e fecha Controle de código, pesquisa do projeto e Plugins. |
+| **Pesquisar** | `cod-search` | Abre a pesquisa do projeto (`Ctrl+Shift+F`); clicar novamente fecha a pesquisa. |
+| **Controle de código** | `cod-source_control` | Alterna o painel Git (`Ctrl+Shift+G`) e fecha Plugins. |
+| **Plugins** | `cod-extensions` | Alterna o painel de Plugins (`Ctrl+Shift+X`). |
 
-O item ativo é marcado com uma barra de destaque de 2 px em `Theme::STATUS` e um
-ícone mais claro. Passar o mouse sobre um item inativo desenha um realce sutil
-na linha. O item selecionado acompanha a view visível: Plugins quando a barra
-lateral está aberta, depois Pesquisar quando a sobreposição está aberta, depois
-Controle de código, caso contrário Explorador.
+## Menu de contexto e layout
 
-## Layout
+O menu de contexto lista as quatro atividades nativas e os contêineres declarados
+por extensões habilitadas e confiáveis no workspace. Ocultar um item remove
+somente seu botão da barra; não desabilita nem desinstala a extensão. Ao ocultar
+o item ativo, o Graphite muda para outra atividade nativa visível. O último item
+nativo visível não pode ser ocultado.
 
-A geometria fica em `crates/graphite-app/src/app/activity_bar.rs`:
+**Activity Bar Position** oferece Default (barra vertical à esquerda), Top,
+Bottom e Hidden. **Activity Bar Size** oferece Default e Compact. **Move Primary
+Side Bar Right** coloca a coluna principal à direita e mantém a barra de
+atividades à esquerda. Essas opções e os itens ocultos são salvos por perfil.
+Quando a barra estiver oculta, use **Show Activity Bar** na paleta de comandos
+para restaurá-la. O menu aceita navegação por ponteiro e pelas setas, Enter/Espaço
+e Esc.
 
-- `ACTIVITY_BAR_WIDTH` tem 48 px (definido em `main.rs`).
-- `SIDEBAR_WIDTH` é `ACTIVITY_BAR_WIDTH + 260.0`, então o editor, o terminal, o
-  Quick Open e todas as sobreposições continuam começando depois da barra
-  esquerda completa.
-- As linhas do Explorer, a barra lateral do Controle de código e a barra lateral
-  de Plugins são deslocadas por `ACTIVITY_BAR_WIDTH`; a barra ocupa a coluna
-  restante.
-- Plugins reutiliza a coluna lateral e mantém o editor visível. Seus cartões,
-  abas e caixa de pesquisa usam a geometria compartilhada em
-  `crates/graphite-app/src/app/plugins/layout.rs`.
-- A barra fica oculta no Modo Zen e é coberta por superfícies de tela cheia,
-  como o visualizador de diferenças. Plugins é uma view lateral, não uma
-  superfície de tela cheia.
+Default usa uma barra de 48 px; Compact usa uma barra de 36 px e itens de 40 px.
+A barra lateral principal pode ser redimensionada e é salva por perfil. Seu
+limite máximo é 70% da largura da janela, preservando ao menos 320 px para o
+editor. Top e Bottom reservam uma faixa horizontal e reorganizam o editor na
+vertical. A geometria compartilhada mantém desenho, cliques e redimensionamento
+alinhados quando a barra ou a coluna principal muda de posição.
 
-## Foco
+## Contribuições de extensões
 
-A barra lateral de Plugins só recebe entrada de teclado enquanto está focada.
-Clicar na barra lateral concede o foco; clicar no editor ou em outra view o
-libera. Quick Open, localizar, pesquisa do projeto, Controle de código, terminal,
-views de diferença/conflito e diálogos de confirmação sempre têm precedência de
-teclado. `pluginsVisible` e `pluginsFocus` expõem o estado para condições de
-atalhos, e `editorTextFocus` é falso enquanto a barra lateral controla o teclado.
+Pacotes VSIX podem declarar contêineres em
+`contributes.viewsContainers.activitybar` e views em `contributes.views`.
+Manifestos de plugins nativos Graphite usam a lista equivalente `activity_bar`,
+com IDs, títulos, ícones opcionais e tipos `tree` ou `webview`. Só são listados
+registros habilitados e confiáveis no workspace. Selecionar uma contribuição
+abre atualmente seu painel informativo e ativa plugins nativos confiáveis. Os
+provedores de dados de árvore e a renderização interativa de Webviews ainda não
+estão conectados ao painel.
 
-A lista da barra lateral rola com a roda do mouse enquanto o cursor está sobre
-ela. A navegação por teclado mantém o cartão selecionado visível, e trocar de aba
-ou atualizar uma lista reinicia o deslocamento da viewport.
+## Acessibilidade e verificação
 
-O fundo usa `activityBar.background` quando um tema importado define essa cor e
-recorre a `#333333` no tema escuro e `#e8e8e8` no tema claro.
+A barra é exposta como uma `Toolbar` de acessibilidade, com botões localizados e
+estado selecionado. A navegação por teclado do menu usa a mesma geometria da
+detecção de cliques.
 
-## Acessibilidade
-
-A barra é exposta como uma `Toolbar` de acessibilidade com um `Button` por item.
-Cada botão informa seu rótulo localizado e o estado selecionado e suporta a ação
-`Click`, permitindo alternar views com leitores de tela sem usar o mouse.
-
-## Adicionando um item
-
-1. Adicione uma variante a `Activity` e a `Activity::ALL` em
-   `crates/graphite-app/src/app/activity_bar.rs`.
-2. Retorne o glifo em `Activity::glyph` e a chave do rótulo em
-   `Activity::label_key`.
-3. Adicione o codepoint do Nerd Fonts em `AVAILABLE_GLYPHS` em
-   `crates/graphite-render/src/icons.rs` e recompile o subset com
-   `python crates/graphite-render/assets/generate-icons.py --source SymbolsNerdFont-Regular.ttf`.
-4. Adicione o rótulo em `locales/en/app.json` e `locales/pt-BR/app.json`.
-5. Trate a nova variante em `App::activate_activity`.
-6. Execute `cargo test -p graphite-app --bin graphite activity_bar` e
-   `cargo test --workspace`.
-
-## Verificação
-
-A cobertura automatizada verifica o teste de posição dos slots, a prioridade do
-item ativo, a alternância de Pesquisar, Controle de código e Plugins, o foco e a
-geometria de rolagem da barra lateral, a barra de acessibilidade e se cada glifo
-de atividade existe na fonte de ícones embutida. A verificação visual é feita
-executando `target/debug/graphite.exe .` e conferindo Explorador, Controle de
-código, Pesquisar e a barra lateral de Plugins nos dois temas.
+Os testes cobrem modos de layout, visibilidade nativa, ações do menu e
+visibilidade de contribuições de plugins. Execute `cargo test -p graphite-app
+--bin graphite activity_bar` e `cargo test --workspace`. A verificação visual
+nativa deve incluir Windows e Linux quando disponíveis.

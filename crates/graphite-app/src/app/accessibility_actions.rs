@@ -33,6 +33,18 @@ impl App {
             }
             return;
         }
+        if request.action == Action::Click {
+            if let Some(entry) = self.plugin_activity_entries().into_iter().find(|entry| {
+                !self
+                    .activity_bar_preferences
+                    .hidden_items
+                    .contains(&entry.key)
+                    && super::accessibility::plugin_activity_target(request.target_node, &entry.key)
+            }) {
+                self.activate_plugin_activity(entry);
+                return;
+            }
+        }
         if let Some((group, document_id)) = super::accessibility::tab_target(request.target_node) {
             if !matches!(request.action, Action::Click | Action::Focus) {
                 return;

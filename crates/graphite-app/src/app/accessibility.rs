@@ -61,6 +61,16 @@ pub(super) fn activity_target(id: NodeId) -> Option<Activity> {
     let index = id.0.checked_sub(ACTIVITY_BUTTON)? as usize;
     Activity::ALL.get(index).copied()
 }
+pub(super) fn plugin_activity_target(id: NodeId, key: &str) -> bool {
+    id == plugin_activity_node(key)
+}
+
+fn plugin_activity_node(key: &str) -> NodeId {
+    let hash = key.bytes().fold(0xcbf29ce484222325u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    });
+    NodeId((1 << 63) | (hash & !(1 << 63)))
+}
 pub(super) fn line_content(text: &str) -> &str {
     text.strip_suffix("\r\n")
         .or_else(|| text.strip_suffix('\n'))
@@ -228,7 +238,10 @@ impl App {
         let root = NodeId(0);
         let mut root_node = Node::new(Role::Window);
         root_node.set_label(self.t("accessibility.app_name"));
-        let toolbar = (!self.zen_mode).then(activity_toolbar_node);
+        let toolbar = (!self.zen_mode
+            && self.activity_bar_preferences.position
+                != crate::config::ActivityBarPosition::Hidden)
+            .then(activity_toolbar_node);
         let mut children = Vec::new();
         if let Some(toolbar) = toolbar {
             children.push(toolbar);
@@ -243,21 +256,62 @@ impl App {
         if toolbar.is_some() {
             let mut node = Node::new(Role::Toolbar);
             node.set_label(self.t("activity.bar"));
+            let builtins = Activity::ALL
+                .iter()
+                .copied()
+                .filter(|activity| {
+                    !self
+                        .activity_bar_preferences
+                        .hidden_items
+                        .contains(match activity {
+                            Activity::Explorer => "explorer",
+                            Activity::Search => "search",
+                            Activity::SourceControl => "source_control",
+                            Activity::Plugins => "plugins",
+                        })
+                })
+                .map(activity_button_node);
+            let plugins = self.plugin_activity_entries().into_iter().filter(|entry| {
+                !self
+                    .activity_bar_preferences
+                    .hidden_items
+                    .contains(&entry.key)
+            });
             node.set_children(
-                Activity::ALL
-                    .iter()
-                    .copied()
-                    .map(activity_button_node)
+                builtins
+                    .chain(plugins.map(|entry| plugin_activity_node(&entry.key)))
                     .collect::<Vec<_>>(),
             );
             nodes.push((activity_toolbar_node(), node));
             let active = self.active_activity();
-            for activity in Activity::ALL {
+            for activity in Activity::ALL.into_iter().filter(|activity| {
+                !self
+                    .activity_bar_preferences
+                    .hidden_items
+                    .contains(match activity {
+                        Activity::Explorer => "explorer",
+                        Activity::Search => "search",
+                        Activity::SourceControl => "source_control",
+                        Activity::Plugins => "plugins",
+                    })
+            }) {
                 let mut button = Node::new(Role::Button);
                 button.set_label(self.t(activity.label_key()));
                 button.set_selected(activity == active);
                 button.add_action(Action::Click);
                 nodes.push((activity_button_node(activity), button));
+            }
+            for entry in self.plugin_activity_entries().into_iter().filter(|entry| {
+                !self
+                    .activity_bar_preferences
+                    .hidden_items
+                    .contains(&entry.key)
+            }) {
+                let mut button = Node::new(Role::Button);
+                button.set_label(entry.title.clone());
+                button.set_selected(self.active_plugin_activity.as_deref() == Some(&entry.key));
+                button.add_action(Action::Click);
+                nodes.push((plugin_activity_node(&entry.key), button));
             }
         }
         for (index, rect) in rects.iter().enumerate() {

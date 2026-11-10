@@ -3,13 +3,24 @@ use super::*;
 impl App {
     pub(crate) fn draw(&mut self) {
         self.resize_terminal();
-        let sidebar_width = self.sidebar_width_px();
+        let sidebar_width = self.sidebar_layout_width_px();
         let Some(mut gpu) = self.gpu.take() else {
             return;
         };
         let r = &mut gpu.renderer;
         let (w, h) = r.size();
         let (lh, cw) = (r.line_height(), r.char_width());
+        let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
+            self.activity_bar_width_px()
+        } else {
+            self.sidebar_width_px()
+        };
+        let editor_right = if self.activity_bar_preferences.primary_sidebar_right {
+            self.sidebar_width_px() - if self.outline_visible { 240.0 } else { 0.0 }
+        } else {
+            w - if self.outline_visible { 240.0 } else { 0.0 }
+        };
+        let editor_width = (editor_right - editor_left).max(0.0);
 
         let visible = self.visible_lines(r);
         if self.reveal_cursor {
@@ -20,6 +31,12 @@ impl App {
         gpu.accessibility
             .update_if_active(|| self.grouped_accessibility_tree(w, h, lh));
 
+        // Sidebar views share one transform so activity position and side affect
+        // Explorer, Source Control and Plugins consistently.
+        r.push_translation(
+            self.sidebar_translation(w),
+            self.activity_bar_vertical_offset(),
+        );
         // Sidebar
         if !self.plugins.visible {
             r.draw_rect(
@@ -96,8 +113,9 @@ impl App {
             if self.scm_visible {
                 self.draw_scm_sidebar(r, h, lh, cw);
             }
-            self.draw_activity_bar(r, h);
+            self.draw_plugin_activity_sidebar(r, h, lh, cw);
         }
+        r.pop_translation();
 
         let rects = self.group_rectangles(w, h, lh);
         self.draw_editor_groups(r, &rects, lh, cw);
@@ -126,9 +144,9 @@ impl App {
             let height = lh * (count as f32 + 1.5);
             let y = lh * 1.5;
             r.draw_rect(
-                sidebar_width,
+                editor_left,
                 y,
-                w - sidebar_width,
+                editor_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -140,7 +158,7 @@ impl App {
                         ("preedit", &self.editor_groups.active_view().ime_preedit),
                     ],
                 ),
-                sidebar_width + PAD,
+                editor_left + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -159,9 +177,9 @@ impl App {
                 let item_y = y + lh * (row as f32 + 1.0);
                 if i == quick.index {
                     r.draw_rect(
-                        sidebar_width,
+                        editor_left,
                         item_y,
-                        w - sidebar_width,
+                        editor_width,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -171,14 +189,14 @@ impl App {
                 let icon_size = (lh * 0.85).round();
                 r.draw_icon(
                     icon.glyph,
-                    sidebar_width + PAD,
+                    editor_left + PAD,
                     item_y + (lh - icon_size) * 0.5,
                     icon_size,
                     rgb(icon.color),
                 );
                 r.draw_text(
                     &relative.display().to_string(),
-                    sidebar_width + PAD + lh + 4.0,
+                    editor_left + PAD + lh + 4.0,
                     item_y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -188,8 +206,8 @@ impl App {
             let rows = self.command_palette_rows();
             let height = lh * (rows.len().min(8) as f32 + 1.5);
             let y = lh * 1.5;
-            let x = sidebar_width;
-            let width = w - x;
+            let x = editor_left;
+            let width = editor_width;
             r.draw_rect(
                 x,
                 y,
@@ -249,9 +267,9 @@ impl App {
             let height = if search.replace { lh * 3.5 } else { lh * 2.5 };
             let y = h - lh - height;
             r.draw_rect(
-                sidebar_width,
+                editor_left,
                 y,
-                w - sidebar_width,
+                editor_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -274,7 +292,7 @@ impl App {
             );
             r.draw_text(
                 &label,
-                sidebar_width + PAD,
+                editor_left + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -294,7 +312,7 @@ impl App {
                 );
                 r.draw_text(
                     &replacement,
-                    sidebar_width + PAD,
+                    editor_left + PAD,
                     y + lh + PAD,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -327,7 +345,7 @@ impl App {
             );
             r.draw_text(
                 &opts,
-                sidebar_width + PAD,
+                editor_left + PAD,
                 y + height - lh,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -343,15 +361,15 @@ impl App {
             );
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
             r.draw_rect(
-                sidebar_width,
+                editor_left,
                 h - lh - height,
-                w - sidebar_width,
+                editor_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
                 &label,
-                sidebar_width + PAD,
+                editor_left + PAD,
                 h - lh - height + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -370,9 +388,9 @@ impl App {
                 let y = h - lh - height + lh * (visible_i as f32 + 1.0);
                 if i == self.search_index {
                     r.draw_rect(
-                        sidebar_width,
+                        editor_left,
                         y,
-                        w - sidebar_width,
+                        editor_width,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -385,7 +403,7 @@ impl App {
                 let row = format!("{}:{}  {}", rel, hit.line + 1, hit.text);
                 r.draw_text(
                     &row,
-                    sidebar_width + PAD,
+                    editor_left + PAD,
                     y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -400,9 +418,9 @@ impl App {
                 .collect();
             let y = h - lh * (matches.len() as f32 + 1.0);
             r.draw_rect(
-                sidebar_width,
+                editor_left,
                 y,
-                w - sidebar_width,
+                editor_width,
                 lh * (matches.len() as f32 + 1.0),
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -414,14 +432,14 @@ impl App {
                         ("preedit", &self.editor_groups.active_view().ime_preedit),
                     ],
                 ),
-                sidebar_width + PAD,
+                editor_left + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
             for (i, s) in matches.iter().enumerate() {
                 r.draw_text(
                     &s.prefix,
-                    sidebar_width + PAD,
+                    editor_left + PAD,
                     y + lh * (i as f32 + 1.0),
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -553,10 +571,11 @@ impl App {
         self.draw_phase4_overlays(r, w, h, lh);
         self.draw_phase6_overlays(r, w, h, lh);
         if !self.zen_mode {
+            let split = self.sidebar_width_px();
             let hovered =
-                !self.sidebar_resize_dragging && (self.mouse.x as f32 - sidebar_width).abs() <= 4.0;
+                !self.sidebar_resize_dragging && (self.mouse.x as f32 - split).abs() <= 4.0;
             r.draw_rect(
-                sidebar_width - 0.5,
+                split - 0.5,
                 0.0,
                 1.0,
                 h,
@@ -564,13 +583,17 @@ impl App {
             );
             if hovered || self.sidebar_resize_dragging {
                 r.draw_rect(
-                    sidebar_width - 1.5,
+                    split - 1.5,
                     0.0,
                     3.0,
                     h,
                     rgb(Theme::color(Theme::STATUS, 0x007acc)),
                 );
             }
+        }
+
+        if !self.zen_mode {
+            self.draw_activity_bar(r, h);
         }
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));

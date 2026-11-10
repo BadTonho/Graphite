@@ -55,6 +55,20 @@ impl Store {
                             }
                         }
                     }
+                    if vsix.activity_bar.is_empty() {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.activity_bar = crate::manifest::vsix_activity_bar(&manifest);
+                            }
+                        }
+                    }
                 }
                 result.push(record);
             }
