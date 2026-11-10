@@ -290,6 +290,28 @@ pub(crate) fn unstage_file(
         .map_err(display_error)
 }
 
+pub(crate) fn stage_files(
+    root: &Path,
+    paths: &[PathBuf],
+    translator: &Translator,
+) -> Result<(), String> {
+    for path in paths {
+        stage_file(root, path, translator)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn unstage_files(
+    root: &Path,
+    paths: &[PathBuf],
+    translator: &Translator,
+) -> Result<(), String> {
+    for path in paths {
+        unstage_file(root, path, translator)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn commit(
     root: &Path,
     message: &str,
@@ -820,6 +842,33 @@ mod tests {
             .files
             .iter()
             .any(|item| item.staged && !item.unstaged));
+    }
+
+    #[test]
+    fn staged_and_worktree_changes_are_reported_separately_for_same_file() {
+        let (dir, file) = repo();
+        stage_file(dir.path(), &file, &translator()).unwrap();
+        fs::write(&file, "two\n").unwrap();
+        let status = snapshot(dir.path());
+        let changed = status
+            .files
+            .iter()
+            .find(|item| item.path == Path::new("note.txt"))
+            .unwrap();
+        assert!(changed.staged);
+        assert!(changed.unstaged);
+    }
+
+    #[test]
+    fn batch_stage_and_unstage_update_all_files() {
+        let (dir, first) = repo();
+        let second = dir.path().join("other.txt");
+        fs::write(&second, "other\n").unwrap();
+        let paths = vec![first, second];
+        stage_files(dir.path(), &paths, &translator()).unwrap();
+        assert!(snapshot(dir.path()).files.iter().all(|item| item.staged));
+        unstage_files(dir.path(), &paths, &translator()).unwrap();
+        assert!(snapshot(dir.path()).files.iter().all(|item| item.untracked));
     }
 
     #[test]

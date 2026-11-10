@@ -166,7 +166,6 @@ fn commit_delete(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
 }
 fn commit_prompt(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.scm_commit_prompt = true;
-    app.scm_commit_message.clear();
     Ok(())
 }
 fn scm_next(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

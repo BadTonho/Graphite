@@ -1,6 +1,64 @@
 use super::command_execution::{deliver_command_event, CommandError};
 use super::*;
 
+fn scm_centered_text_x(x: f32, width: f32, text: &str, cell_width: f32) -> f32 {
+    (x + (width - text.chars().count() as f32 * cell_width) * 0.5).max(x)
+}
+
+fn scm_file_label_x(icon_x: f32, icon_size: f32, icon_gap: f32) -> f32 {
+    icon_x + icon_size + icon_gap
+}
+
+fn scm_visible_tail(text: &str, max_chars: usize) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    chars[chars.len().saturating_sub(max_chars)..]
+        .iter()
+        .collect()
+}
+
+fn scm_icon_color(color: u32) -> u32 {
+    let dark = Theme::color(0x000000, 0xffffff) == 0x000000;
+    let channels = [
+        ((color >> 16) & 0xff),
+        ((color >> 8) & 0xff),
+        (color & 0xff),
+    ];
+    let limit = if dark { 128 } else { 190 };
+    if channels.iter().copied().max().unwrap_or_default() >= limit {
+        return color;
+    }
+    let target = if dark { 0xff } else { 0x20 };
+    let blend = |channel: u32| (channel * 55 + target * 45) / 100;
+    (blend(channels[0]) << 16) | (blend(channels[1]) << 8) | blend(channels[2])
+}
+
+#[cfg(test)]
+mod scm_sidebar_layout_tests {
+    use super::*;
+
+    #[test]
+    fn commit_label_is_centered_in_the_button() {
+        let x = scm_centered_text_x(56.0, 244.0, "✓ Commit", 9.0);
+        assert_eq!(x, 142.0);
+    }
+
+    #[test]
+    fn file_name_starts_after_the_icon_and_its_gap() {
+        let icon_x = 64.0;
+        let icon_size = 14.0;
+        let gap = 5.0;
+        let label_x = scm_file_label_x(icon_x, icon_size, gap);
+        assert_eq!(label_x - (icon_x + icon_size), gap);
+    }
+
+    #[test]
+    fn long_commit_message_keeps_its_end_visible_without_splitting_unicode() {
+        assert_eq!(scm_visible_tail("mensagem longa 🌎 final", 8), " 🌎 final");
+        assert_eq!(scm_visible_tail("texto", 20), "texto");
+        assert_eq!(scm_visible_tail("texto", 0), "");
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct DiffView {
     pub title: String,
@@ -158,6 +216,23 @@ impl App {
             _ if self.scm_visible => self.scm_selected_path(),
             _ => active_path,
         };
+        let batch_paths = match action {
+            ScmAction::StageAll => self
+                .scm_snapshot
+                .files
+                .iter()
+                .filter(|file| file.unstaged || file.untracked)
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
+            ScmAction::UnstageAll => self
+                .scm_snapshot
+                .files
+                .iter()
+                .filter(|file| file.staged)
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
         let message = self.scm_commit_message.clone();
         let line = self.editor().cursor_line_col().0;
         self.status = self.t("scm.status.running").into();
@@ -173,6 +248,14 @@ impl App {
                     return;
                 }
                 let result = match action {
+                    ScmAction::StageAll => {
+                        crate::scm::stage_files(&root, &batch_paths, &translator)
+                            .map(|_| translator.text("scm.status.all_staged").to_owned())
+                    }
+                    ScmAction::UnstageAll => {
+                        crate::scm::unstage_files(&root, &batch_paths, &translator)
+                            .map(|_| translator.text("scm.status.all_unstaged").to_owned())
+                    }
                     ScmAction::Stage => selected
                         .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
@@ -510,87 +593,320 @@ impl App {
             height,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
-        renderer.draw_text(
-            self.t("scm.sidebar.title"),
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 0.25,
-            rgb(Theme::color(Theme::DIM, 0x616161)),
+        let left = ACTIVITY_BAR_WIDTH + PAD;
+        let right = SIDEBAR_WIDTH - PAD;
+        let row_h = line_height.max(18.0);
+        let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
+        renderer.draw_text(self.t("scm.sidebar.title"), left, row_h * 0.2, dim);
+        let repo_header_y = row_h;
+        let repo_chevron = if self.scm_repositories_collapsed {
+            crate::file_icons::CHEVRON_RIGHT
+        } else {
+            crate::file_icons::CHEVRON_DOWN
+        };
+        let header_icon_size = (row_h * 0.65).round();
+        renderer.draw_icon(
+            repo_chevron,
+            left,
+            repo_header_y + (row_h - header_icon_size) * 0.5,
+            header_icon_size,
+            dim,
         );
+        renderer.draw_text(
+            self.t("scm.sidebar.repositories"),
+            left + cell_width,
+            repo_header_y,
+            text,
+        );
+        let repo_name = self
+            .tree
+            .root()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_else(|| self.tree.root().to_str().unwrap_or("Workspace"));
+        if !self.scm_repositories_collapsed {
+            let repo_y = row_h * 2.0;
+            let icon_size = (row_h * 0.76).round();
+            renderer.draw_icon(
+                crate::file_icons::GIT.glyph,
+                left + cell_width,
+                repo_y + (row_h - icon_size) * 0.5,
+                icon_size,
+                rgb(scm_icon_color(crate::file_icons::GIT.color)),
+            );
+            renderer.draw_text(repo_name, left + cell_width * 2.0, repo_y, text);
+        }
         let branch = self
             .scm_snapshot
             .branch
             .as_deref()
             .unwrap_or_else(|| self.t("scm.sidebar.no_repository"));
-        renderer.draw_text(
-            &self.tf("scm.sidebar.branch", &[("branch", &branch)]),
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 1.25,
-            rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+        let repo_offset = if self.scm_repositories_collapsed {
+            -2.0
+        } else {
+            0.0
+        };
+        if !self.scm_repositories_collapsed {
+            let icon_size = (row_h * 0.70).round();
+            renderer.draw_icon(
+                crate::file_icons::GIT.glyph,
+                left + cell_width,
+                row_h * 3.0 + (row_h - icon_size) * 0.5,
+                icon_size,
+                rgb(Theme::color(0x9da5b4, 0x5f6672)),
+            );
+            renderer.draw_text(branch, left + cell_width * 2.0, row_h * 3.0, text);
+            renderer.draw_icon(
+                crate::file_icons::CHEVRON_DOWN,
+                right - cell_width * 2.0,
+                row_h * 3.0 + (row_h - icon_size) * 0.5,
+                icon_size,
+                dim,
+            );
+            let refresh = "⟳";
+            renderer.draw_text(
+                refresh,
+                scm_centered_text_x(right - cell_width, cell_width, refresh, cell_width),
+                row_h * 3.0 + row_h * 0.12,
+                dim,
+            );
+        }
+        let commit_top = row_h * (4.0 + repo_offset);
+        let field_width = right - left;
+        let focused = self.scm_commit_prompt;
+        let field_background = Theme::color(0x1f1f1f, 0xffffff);
+        let field_border = if focused {
+            Theme::color(Theme::STATUS, 0x007acc)
+        } else {
+            Theme::color(0x606060, 0x8a8a8a)
+        };
+        renderer.draw_rect(left, commit_top, field_width, row_h, rgb(field_background));
+        renderer.draw_rect(left, commit_top, field_width, 1.0, rgb(field_border));
+        renderer.draw_rect(
+            left,
+            commit_top + row_h - 1.0,
+            field_width,
+            1.0,
+            rgb(field_border),
         );
-        renderer.draw_text(
-            self.t("scm.sidebar.shortcuts"),
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 2.25,
-            rgb(Theme::color(Theme::DIM, 0x616161)),
+        renderer.draw_rect(left, commit_top, 1.0, row_h, rgb(field_border));
+        renderer.draw_rect(
+            left + field_width - 1.0,
+            commit_top,
+            1.0,
+            row_h,
+            rgb(field_border),
         );
+        let field_padding = cell_width * 0.55;
+        let visible_chars = ((field_width - field_padding * 2.0) / cell_width)
+            .floor()
+            .max(0.0) as usize;
+        let placeholder = self.t("scm.sidebar.commit_placeholder");
+        let field_text = if self.scm_commit_message.is_empty() {
+            placeholder.chars().take(visible_chars).collect::<String>()
+        } else {
+            scm_visible_tail(&self.scm_commit_message, visible_chars)
+        };
+        renderer.draw_text(
+            &field_text,
+            left + field_padding,
+            commit_top + (row_h - line_height) * 0.5 + row_h * 0.08,
+            if self.scm_commit_message.is_empty() {
+                rgb(Theme::color(0xb0b0b0, 0x666666))
+            } else {
+                text
+            },
+        );
+        if focused {
+            let caret_chars = if self.scm_commit_message.is_empty() {
+                0
+            } else {
+                field_text.chars().count()
+            };
+            let caret_x = left + field_padding + caret_chars as f32 * cell_width;
+            renderer.draw_rect(
+                caret_x,
+                commit_top + row_h * 0.22,
+                1.5,
+                row_h * 0.56,
+                rgb(Theme::color(Theme::STATUS, 0x007acc)),
+            );
+        }
+        let commit_y = commit_top + row_h * 1.15;
+        let commit_enabled = !self.scm_commit_message.trim().is_empty();
+        renderer.draw_rect(
+            left,
+            commit_y,
+            right - left,
+            row_h,
+            if commit_enabled {
+                rgb(Theme::color(Theme::STATUS, 0x0e639c))
+            } else {
+                rgb(Theme::color(0x3c3c3c, 0xe5e5e5))
+            },
+        );
+        let commit_label = self.t("scm.sidebar.commit");
+        renderer.draw_text(
+            commit_label,
+            scm_centered_text_x(left, field_width, commit_label, cell_width),
+            commit_y + (row_h - line_height) * 0.5 + row_h * 0.08,
+            if commit_enabled { rgb(0xffffff) } else { dim },
+        );
+        let list_top = commit_top + row_h * 2.35;
         if let Some(error) = &self.scm_snapshot.error {
             renderer.draw_text(
                 error,
-                ACTIVITY_BAR_WIDTH + PAD,
-                line_height * 3.25,
+                left,
+                list_top + row_h,
                 rgb(Theme::color(Theme::TEXT, 0x9b2226)),
             );
             return;
         }
-        for (index, item) in self.scm_snapshot.files.iter().enumerate() {
-            let y = line_height * 3.25 + index as f32 * line_height;
-            if y + line_height > height - line_height {
-                break;
-            }
-            if index == self.scm_selected {
-                renderer.draw_rect(
-                    ACTIVITY_BAR_WIDTH,
-                    y,
-                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
-                    line_height,
-                    rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+        let staged_count = self
+            .scm_snapshot
+            .files
+            .iter()
+            .filter(|file| file.staged)
+            .count();
+        let change_count = self
+            .scm_snapshot
+            .files
+            .iter()
+            .filter(|file| file.unstaged || file.untracked || file.conflicted)
+            .count();
+        let mut entries = Vec::new();
+        if staged_count > 0 {
+            entries.push((None, true));
+            if !self.scm_staged_collapsed {
+                entries.extend(
+                    self.scm_snapshot
+                        .files
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, file)| file.staged)
+                        .map(|(index, _)| (Some(index), true)),
                 );
             }
-            let marker = if item.conflicted {
+        }
+        entries.push((None, false));
+        if !self.scm_changes_collapsed {
+            entries.extend(
+                self.scm_snapshot
+                    .files
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
+                    .map(|(index, _)| (Some(index), false)),
+            );
+        }
+        let available = ((height - list_top - row_h * 1.2) / row_h).max(0.0) as usize;
+        for (visible, (entry, staged)) in entries
+            .iter()
+            .skip(self.scm_scroll)
+            .take(available)
+            .enumerate()
+        {
+            let y = list_top + row_h * (visible as f32 + 1.0);
+            let Some(index) = entry else {
+                let count = if *staged { staged_count } else { change_count };
+                let label = if *staged {
+                    self.t("scm.sidebar.staged")
+                } else {
+                    self.t("scm.sidebar.changes")
+                };
+                let collapsed = if *staged {
+                    self.scm_staged_collapsed
+                } else {
+                    self.scm_changes_collapsed
+                };
+                let chevron = if collapsed {
+                    crate::file_icons::CHEVRON_RIGHT
+                } else {
+                    crate::file_icons::CHEVRON_DOWN
+                };
+                let icon_size = (row_h * 0.65).round();
+                renderer.draw_icon(chevron, left, y + (row_h - icon_size) * 0.5, icon_size, dim);
+                renderer.draw_text(label, left + cell_width, y, text);
+                renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
+                let action = if *staged { "−" } else { "+" };
+                renderer.draw_text(
+                    action,
+                    scm_centered_text_x(right - cell_width * 2.0, cell_width, action, cell_width),
+                    y + row_h * 0.12,
+                    dim,
+                );
+                continue;
+            };
+            let item = &self.scm_snapshot.files[*index];
+            if *index == self.scm_selected {
+                renderer.draw_rect(
+                    ACTIVITY_BAR_WIDTH,
+                    y - row_h * 0.1,
+                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                    row_h,
+                    rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+                );
+            }
+            let icon = crate::file_icons::for_path(&item.path);
+            let icon_size = (row_h * 0.72).round();
+            let icon_x = left + cell_width;
+            renderer.draw_icon(
+                icon.glyph,
+                icon_x,
+                y + (row_h - icon_size) * 0.5,
+                icon_size,
+                rgb(scm_icon_color(icon.color)),
+            );
+            let full = item.path.to_string_lossy();
+            let name = item
+                .path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&full);
+            let dir = item
+                .path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let status = if item.conflicted {
                 "!"
             } else if item.untracked {
                 "U"
-            } else if item.staged {
-                "S"
+            } else if *staged {
+                "M"
             } else {
                 "M"
             };
-            let name = item.path.to_string_lossy();
-            let max_chars = ((SIDEBAR_WIDTH - cell_width * 5.0) / cell_width).max(1.0) as usize;
-            let label = name.chars().take(max_chars).collect::<String>();
+            let status_color = if status == "U" {
+                0xff73c991
+            } else if status == "!" {
+                0xfff14c4c
+            } else {
+                0xffcca700
+            };
+            let reserved = cell_width * (status.chars().count() as f32 + 3.0);
+            let file_x = scm_file_label_x(icon_x, icon_size, cell_width * 0.65);
+            let max = ((right - file_x - reserved) / cell_width).max(1.0) as usize;
+            let name = name.chars().take(max).collect::<String>();
+            renderer.draw_text(&name, file_x, y, text);
+            let dir_x = file_x + name.chars().count() as f32 * cell_width + cell_width * 0.4;
+            let dir_max = ((right - dir_x - reserved) / cell_width).max(0.0) as usize;
             renderer.draw_text(
-                &format!("{marker} {label}"),
-                ACTIVITY_BAR_WIDTH + PAD,
+                &dir.chars().take(dir_max).collect::<String>(),
+                dir_x,
                 y,
-                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                dim,
             );
-        }
-        if self.scm_commit_prompt {
-            renderer.draw_rect(
-                ACTIVITY_BAR_WIDTH,
-                height - line_height * 2.0,
-                SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
-                line_height * 2.0,
-                rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
-            );
+            renderer.draw_text(status, right - cell_width, y, rgb(status_color));
+            let action = if *staged { "−" } else { "+" };
             renderer.draw_text(
-                &self.tf(
-                    "scm.sidebar.commit_prompt",
-                    &[("message", &self.scm_commit_message)],
-                ),
-                ACTIVITY_BAR_WIDTH + PAD,
-                height - line_height * 1.25,
-                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                action,
+                scm_centered_text_x(right - cell_width * 2.0, cell_width, action, cell_width),
+                y + row_h * 0.12,
+                dim,
             );
         }
     }
@@ -900,6 +1216,8 @@ impl App {
 pub(crate) enum ScmAction {
     Stage,
     Unstage,
+    StageAll,
+    UnstageAll,
     Commit,
     StageCursorLine,
     RevertCursorLine,

@@ -10,12 +10,18 @@ impl App {
         }
         let ctrl = self.modifiers.control_key();
         if self.scm_commit_prompt {
+            if ctrl && matches!(event.logical_key, Key::Named(NamedKey::Enter)) {
+                if !self.scm_commit_message.trim().is_empty() {
+                    self.run_ui_command("graphite.scm.commit");
+                }
+                return;
+            }
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) => {
                     self.run_ui_command("graphite.commit.cancel");
                 }
                 Key::Named(NamedKey::Enter) => {
-                    self.run_ui_command("graphite.scm.commit");
+                    self.scm_commit_prompt = false;
                 }
                 Key::Named(NamedKey::Backspace) => {
                     self.run_ui_command("graphite.commit.deleteLeft");

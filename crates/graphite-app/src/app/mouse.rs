@@ -1,3 +1,4 @@
+use super::scm_ui::ScmAction;
 use super::*;
 
 impl App {
@@ -148,12 +149,107 @@ impl App {
 
         if mx < SIDEBAR_WIDTH {
             if self.scm_visible {
-                let row = ((my - lh * 3.25) / lh).max(0.0) as usize;
-                if my >= lh * 3.25 && row < self.scm_snapshot.files.len() {
-                    self.run_ui_command_args(
-                        "graphite.scm.select",
-                        serde_json::json!({"index":row}),
+                let right = SIDEBAR_WIDTH - PAD;
+                let row_h = lh.max(18.0);
+                if my >= row_h && my < row_h * 2.0 {
+                    self.scm_repositories_collapsed = !self.scm_repositories_collapsed;
+                    return;
+                }
+                let repo_offset = if self.scm_repositories_collapsed {
+                    -2.0
+                } else {
+                    0.0
+                };
+                let commit_top = row_h * (4.0 + repo_offset);
+                if my >= commit_top && my < commit_top + row_h {
+                    self.scm_commit_prompt = true;
+                    return;
+                }
+                if my >= commit_top + row_h * 1.15
+                    && my < commit_top + row_h * 2.15
+                    && !self.scm_commit_message.trim().is_empty()
+                {
+                    self.run_ui_command("graphite.scm.commit");
+                    return;
+                }
+                self.scm_commit_prompt = false;
+                if !self.scm_repositories_collapsed && my >= row_h * 3.0 && my < row_h * 4.0 {
+                    if mx >= right - lh {
+                        self.refresh_scm_async();
+                    } else {
+                        self.open_branch_picker();
+                    }
+                    return;
+                }
+                let list_top = commit_top + row_h * 2.35;
+                let staged_count = self
+                    .scm_snapshot
+                    .files
+                    .iter()
+                    .filter(|file| file.staged)
+                    .count();
+                let mut entries = Vec::new();
+                if staged_count > 0 {
+                    entries.push((None, true));
+                    if !self.scm_staged_collapsed {
+                        entries.extend(
+                            self.scm_snapshot
+                                .files
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, f)| f.staged)
+                                .map(|(i, _)| (Some(i), true)),
+                        );
+                    }
+                }
+                entries.push((None, false));
+                if !self.scm_changes_collapsed {
+                    entries.extend(
+                        self.scm_snapshot
+                            .files
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, f)| f.unstaged || f.untracked || f.conflicted)
+                            .map(|(i, _)| (Some(i), false)),
                     );
+                }
+                let row = ((my - list_top - row_h).max(0.0) / row_h) as usize + self.scm_scroll;
+                if my >= list_top && row < entries.len() {
+                    let (entry, staged) = entries[row];
+                    if entry.is_none() {
+                        if mx >= right - lh * 2.2 {
+                            self.perform_scm_action(if staged {
+                                ScmAction::UnstageAll
+                            } else {
+                                ScmAction::StageAll
+                            });
+                            return;
+                        }
+                        if staged {
+                            self.scm_staged_collapsed = !self.scm_staged_collapsed;
+                        } else {
+                            self.scm_changes_collapsed = !self.scm_changes_collapsed;
+                        }
+                        return;
+                    }
+                    let index = entry.unwrap();
+                    self.scm_selected = index;
+                    if mx >= right - lh * 2.2 {
+                        self.perform_scm_action(if staged {
+                            ScmAction::Unstage
+                        } else {
+                            ScmAction::Stage
+                        });
+                    } else {
+                        self.run_ui_command_args(
+                            "graphite.scm.select",
+                            serde_json::json!({"index":index}),
+                        );
+                        let file = &self.scm_snapshot.files[index];
+                        let path = self.tree.root().join(&file.path);
+                        self.open_file(path);
+                    }
+                    return;
                 }
                 return;
             }
