@@ -154,6 +154,10 @@ impl App {
             self.handle_terminal_key(event);
             return;
         }
+        if self.command_palette.is_some() {
+            self.handle_command_palette(event);
+            return;
+        }
         if self.quick_open.is_some() {
             self.handle_quick_open(event);
             return;

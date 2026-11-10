@@ -92,6 +92,7 @@ struct App {
     command_runtime: app::command_execution::CommandRuntime,
     extension_host: app::extension_host::ExtensionRuntime,
     plugins: app::plugins::Plugins,
+    workspace_trust: Option<app::phase5::WorkspaceTrust>,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
     translator: graphite_i18n::Translator,
@@ -110,6 +111,7 @@ struct App {
     search_cancel: Arc<std::sync::atomic::AtomicU64>,
     local_search: Option<LocalSearch>,
     quick_open: Option<QuickOpen>,
+    command_palette: Option<app::command_palette::CommandPalette>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
     snippet_load_warnings: Vec<String>,
@@ -350,6 +352,20 @@ impl App {
             command_runtime: Default::default(),
             extension_host: Default::default(),
             plugins: Default::default(),
+            workspace_trust: if isolated {
+                None
+            } else {
+                Some(
+                    app::phase5::WorkspaceTrust::open(
+                        config::app_config_dir().join("workspace-trust.json"),
+                    )
+                    .unwrap_or_else(|_| {
+                        app::phase5::WorkspaceTrust::restricted(
+                            config::app_config_dir().join("workspace-trust.json"),
+                        )
+                    }),
+                )
+            },
             service_configuration_override: isolated.then(|| serde_json::json!({})),
             translator,
             saving: Default::default(),
@@ -371,6 +387,7 @@ impl App {
             search_cancel: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             local_search: None,
             quick_open: None,
+            command_palette: None,
             snippet_query: None,
             snippets,
             snippet_load_warnings,

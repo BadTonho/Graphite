@@ -22,7 +22,7 @@ A resolução parte da instância de widget, passa por sua view proprietária e 
 
 Os valores continuam sendo strings compatíveis com o avaliador existente. As chaves descrevem foco, disponibilidade do documento, caminho, permissões, seleções, undo/redo, visibilidade e conteúdo de widgets, comandos pendentes e carregamento de diff. O enablement de edição usa as permissões do documento alvo independentemente do foco físico. Comandos de widgets validam a instância e seu tipo.
 
-Três condições continuam independentes: `when` seleciona atalhos elegíveis, `menu_when` controla visibilidade de menu e enablement autoriza a execução. O predicado de menu é uma API para consumidores; esta mudança não adiciona paleta de comandos nem interface de menus. Itens ocultos e atalhos inelegíveis não impedem uma chamada programática habilitada.
+Três condições continuam independentes: `when` seleciona atalhos elegíveis, `menu_when` controla visibilidade de menu e enablement autoriza a execução. A paleta abre com `Ctrl+Shift+P` e `F1`, filtra os registros nativos e do host ativo e só executa entradas habilitadas no contexto da vista atual. Itens ocultos e atalhos inelegíveis não impedem uma chamada programática habilitada.
 
 ## Execuções pendentes e workers
 
