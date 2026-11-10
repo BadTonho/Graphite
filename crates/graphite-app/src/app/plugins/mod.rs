@@ -1,7 +1,7 @@
 //! UI-thread plugin ownership. Blocking package/network/runtime work stays on workers.
 use super::*;
 use graphite_plugins::{
-    catalog::{Asset, Repository},
+    catalog::{Asset, Repository, RepositoryDetails},
     manifest::Metadata,
     open_vsx::Extension,
     store::{Installed, Store},
@@ -25,6 +25,7 @@ pub(crate) enum Outcome {
     OpenVsx(Vec<Extension>),
     Graphite(Vec<Repository>),
     GraphiteAssets(Repository, Vec<Asset>),
+    GraphiteDetails(String, RepositoryDetails),
     Preview(PathBuf, Metadata),
     Notice(String),
     Started(String, u64, super::extension_host::ExtensionRuntime),
@@ -38,6 +39,9 @@ pub(crate) struct Plugins {
     open_vsx: Vec<Extension>,
     graphite: Vec<Repository>,
     graphite_assets: Option<(Repository, Vec<Asset>)>,
+    pub(super) graphite_details: Vec<GraphiteDetailTab>,
+    pub(super) active_graphite_detail: Option<(u64, String)>,
+    graphite_details_loading: Option<String>,
     preview: Option<(PathBuf, Metadata)>,
     inspecting: Option<Metadata>,
     trust: Option<String>,
@@ -58,6 +62,18 @@ pub(crate) struct Plugins {
     temporary: Option<PathBuf>,
     vsix: Option<vsix::Runtime>,
     vsix_generation: u64,
+}
+
+#[derive(Clone)]
+pub(crate) struct GraphiteDetailTab {
+    pub repository: String,
+    pub group: u64,
+    pub details: Option<RepositoryDetails>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub scroll_line: usize,
+    pub choosing_asset: bool,
+    pub selected_asset: usize,
 }
 impl Plugins {
     pub fn pending(&self) -> bool {

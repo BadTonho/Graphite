@@ -2,6 +2,9 @@ use super::*;
 
 impl App {
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
+        if self.graphite_detail_key(event) {
+            return;
+        }
         if self.plugin_key(event) {
             return;
         }

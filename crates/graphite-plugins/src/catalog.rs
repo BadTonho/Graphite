@@ -13,12 +13,45 @@ pub struct Repository {
     pub description: Option<String>,
     pub stargazers_count: u64,
     pub html_url: String,
+    #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub topics: Vec<String>,
+    #[serde(default)]
+    pub license: Option<License>,
+    #[serde(default)]
+    pub open_issues_count: u64,
+    #[serde(default)]
+    pub default_branch: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize)]
+pub struct License {
+    pub name: String,
+    #[serde(default)]
+    pub spdx_id: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Asset {
     pub name: String,
     pub browser_download_url: String,
     pub size: u64,
+    #[serde(default)]
+    pub download_count: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseInfo {
+    pub tag_name: String,
+    pub name: Option<String>,
+    pub published_at: Option<String>,
+    pub assets: Vec<Asset>,
+    pub downloads: u64,
+    pub size: u64,
+}
+#[derive(Clone, Debug)]
+pub struct RepositoryDetails {
+    pub repository: Repository,
+    pub readme: Option<String>,
+    pub release: Option<ReleaseInfo>,
 }
 #[derive(Deserialize)]
 struct Search {
@@ -26,9 +59,17 @@ struct Search {
 }
 #[derive(Deserialize)]
 struct Release {
+    tag_name: String,
+    name: Option<String>,
+    published_at: Option<String>,
     assets: Vec<Asset>,
     draft: bool,
     prerelease: bool,
+}
+#[derive(Deserialize)]
+struct Readme {
+    content: String,
+    encoding: String,
 }
 pub struct Catalog {
     client: Client,
@@ -174,6 +215,64 @@ impl Catalog {
             .filter(|a| a.name.ends_with(".graphite-plugin") || a.name.ends_with(".vsix"))
             .collect())
     }
+
+    pub fn details(&mut self, repository: &str) -> Result<RepositoryDetails> {
+        validate_repository(repository)?;
+        let base = self.base.clone();
+        let repository_info: Repository = self
+            .get(&format!("{base}/repos/{repository}"))?
+            .json()
+            .map_err(|error| error.to_string())?;
+        let readme = match self.get_raw(&format!("{base}/repos/{repository}/readme"))? {
+            response if response.status() == reqwest::StatusCode::NOT_FOUND => None,
+            response => {
+                let response = response
+                    .error_for_status()
+                    .map_err(|error| error.to_string())?;
+                let readme: Readme = response.json().map_err(|error| error.to_string())?;
+                if readme.encoding != "base64" {
+                    return Err("GitHub returned an unsupported README encoding".into());
+                }
+                Some(decode_base64(&readme.content)?)
+            }
+        };
+        let release = match self.get_raw(&format!("{base}/repos/{repository}/releases/latest"))? {
+            response if response.status() == reqwest::StatusCode::NOT_FOUND => None,
+            response => {
+                let response = response
+                    .error_for_status()
+                    .map_err(|error| error.to_string())?;
+                let release: Release = response.json().map_err(|error| error.to_string())?;
+                if release.draft || release.prerelease {
+                    None
+                } else {
+                    let assets = release
+                        .assets
+                        .into_iter()
+                        .filter(|asset| {
+                            asset.name.ends_with(".graphite-plugin")
+                                || asset.name.ends_with(".vsix")
+                        })
+                        .collect::<Vec<_>>();
+                    let downloads = assets.iter().map(|asset| asset.download_count).sum();
+                    let size = assets.iter().map(|asset| asset.size).sum();
+                    Some(ReleaseInfo {
+                        tag_name: release.tag_name,
+                        name: release.name,
+                        published_at: release.published_at,
+                        assets,
+                        downloads,
+                        size,
+                    })
+                }
+            }
+        };
+        Ok(RepositoryDetails {
+            repository: repository_info,
+            readme,
+            release,
+        })
+    }
     pub fn download(&mut self, asset: &Asset, destination: &Path) -> Result<()> {
         let url = reqwest::Url::parse(&asset.browser_download_url).map_err(|e| e.to_string())?;
         if self.base.starts_with("https:")
@@ -210,6 +309,47 @@ impl Catalog {
         }
         result
     }
+}
+
+fn validate_repository(repository: &str) -> Result<()> {
+    let parts: Vec<_> = repository.split('/').collect();
+    if parts.len() != 2
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
+        })
+    {
+        return Err("Invalid GitHub repository".into());
+    }
+    Ok(())
+}
+
+fn decode_base64(encoded: &str) -> Result<String> {
+    let mut bytes = Vec::with_capacity(encoded.len() * 3 / 4);
+    let mut accumulator = 0u32;
+    let mut bits = 0u8;
+    for byte in encoded.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
+        if byte == b'=' {
+            break;
+        }
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return Err("GitHub returned invalid README data".into()),
+        };
+        accumulator = (accumulator << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((accumulator >> bits) as u8);
+        }
+    }
+    String::from_utf8(bytes).map_err(|_| "GitHub README is not UTF-8".into())
 }
 
 fn validate_release_asset_final_url(url: &reqwest::Url) -> Result<()> {
@@ -256,5 +396,15 @@ mod redirect_tests {
         assert!(Catalog::with_base("https://api.github.com").is_ok());
         assert!(Catalog::with_base("http://127.0.0.1:8000").is_ok());
         assert!(Catalog::with_base("http://example.com").is_err());
+    }
+
+    #[test]
+    fn decodes_github_readme_content_as_utf8() {
+        assert_eq!(
+            decode_base64("IyBIZWxsbyBXb3JsZAo=").unwrap(),
+            "# Hello World\n"
+        );
+        assert_eq!(decode_base64("Y2Fmw6k=").unwrap(), "café");
+        assert!(decode_base64("%%%=").is_err());
     }
 }

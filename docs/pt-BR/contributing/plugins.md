@@ -42,14 +42,14 @@ Registre recursos em `context.subscriptions`; o descarte é idempotente. O encer
 
 ## Instalar e gerenciar
 
-Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados, Open VSX e o catálogo Graphite do GitHub. Resultados Open VSX baixam o VSIX mais recente para inspeção. Resultados Graphite são repositórios GitHub com o tópico `graphite-plugin`; selecionar um repositório carrega sua release estável mais recente. Se houver vários pacotes compatíveis, escolha um para baixar e inspecionar. A instalação exige confirmação. As setas selecionam cartões; Esc retorna da lista de pacotes ou fecha. As mesmas ações estão disponíveis pelo teclado:
+Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados, Open VSX e o catálogo Graphite do GitHub. Resultados Open VSX baixam o VSIX mais recente para inspeção. Clique ou pressione Enter em um repositório Graphite para abrir uma aba própria no editor com o README renderizado, estrelas, downloads de pacotes da release e detalhes de instalação. A coluna direita lista os pacotes compatíveis, informações da release, tópicos e links disponíveis do projeto. Se houver vários pacotes, escolha qual inspecionar e instalar; a confirmação atual do pacote continua sendo exibida. Repositórios sem pacote compatível em release estável mantêm o README visível e explicam por que a instalação está indisponível. As abas de detalhes podem ser alternadas e fechadas como abas do editor. As mesmas ações estão disponíveis pelo teclado:
 
 | Tecla | Ação |
 |---|---|
 | I / O / G | Plugins instalados / Open VSX / catálogo Graphite no GitHub |
 | L | Digitar caminho local `.graphite-plugin` ou `.vsix` |
 | / | Digitar pesquisa no catálogo ativo; Enter envia |
-| Enter | Inspecionar plugin instalado, baixar resultado Open VSX ou abrir repositório/pacote Graphite selecionado |
+| Enter | Inspecionar plugin instalado, baixar resultado Open VSX ou abrir/instalar o item Graphite selecionado |
 | Y / Esc | Confirmar / cancelar instalação ou confiança |
 | E / D | Habilitar / desabilitar o plugin selecionado |
 | U | Baixar a versão Open VSX mais recente para um VSIX instalado; confirmar para substituir |

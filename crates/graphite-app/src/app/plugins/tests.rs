@@ -353,6 +353,11 @@ fn graphite_catalog_is_an_additive_tab_with_repository_and_asset_rows() {
         description: Some("A Graphite plugin".into()),
         stargazers_count: 12,
         html_url: "https://github.com/author/plugin".into(),
+        homepage: None,
+        topics: vec!["graphite-plugin".into()],
+        license: None,
+        open_issues_count: 0,
+        default_branch: Some("main".into()),
     };
     app.plugins.graphite = vec![repository.clone()];
     assert_eq!(app.plugin_row_count(), 1);
@@ -366,11 +371,13 @@ fn graphite_catalog_is_an_additive_tab_with_repository_and_asset_rows() {
                     name: "plugin.graphite-plugin".into(),
                     browser_download_url: "https://github.com/author/plugin/releases/download/v1/plugin.graphite-plugin".into(),
                     size: 10,
+                    download_count: 1,
                 },
                 graphite_plugins::catalog::Asset {
                     name: "plugin.vsix".into(),
                     browser_download_url: "https://github.com/author/plugin/releases/download/v1/plugin.vsix".into(),
                     size: 20,
+                    download_count: 2,
                 },
             ],
         )))
@@ -388,6 +395,48 @@ fn graphite_catalog_is_an_additive_tab_with_repository_and_asset_rows() {
     assert_eq!(app.plugin_row_count(), 1);
     app.plugin_action('o');
     assert_eq!(app.plugins.tab, PluginsTab::OpenVsx);
+}
+
+#[test]
+fn graphite_repository_opens_a_separate_editor_detail_tab_per_plugin() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.plugins.tab = PluginsTab::Graphite;
+    let repository = |name: &str| graphite_plugins::catalog::Repository {
+        full_name: format!("author/{name}"),
+        description: Some("A Graphite plugin".into()),
+        stargazers_count: 12,
+        html_url: format!("https://github.com/author/{name}"),
+        homepage: None,
+        topics: vec!["graphite-plugin".into()],
+        license: None,
+        open_issues_count: 0,
+        default_branch: Some("main".into()),
+    };
+    app.plugins.graphite = vec![repository("first"), repository("second")];
+
+    app.plugins.index = 0;
+    app.plugin_action('\n');
+    assert_eq!(app.plugins.graphite_details.len(), 1);
+    assert_eq!(
+        app.plugins.active_graphite_detail.as_ref().unwrap().1,
+        "author/first"
+    );
+
+    app.plugins.index = 1;
+    app.plugin_action('\n');
+    assert_eq!(app.plugins.graphite_details.len(), 2);
+    assert_eq!(
+        app.plugins.active_graphite_detail.as_ref().unwrap().1,
+        "author/second"
+    );
+    app.plugin_action('\n');
+    assert_eq!(app.plugins.graphite_details.len(), 2);
+
+    let group = app.plugins.active_graphite_detail.as_ref().unwrap().0;
+    app.close_graphite_detail(group, "author/second");
+    assert_eq!(app.plugins.graphite_details.len(), 1);
+    assert!(app.plugins.active_graphite_detail.is_none());
 }
 
 #[test]

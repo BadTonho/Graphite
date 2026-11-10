@@ -497,6 +497,7 @@ impl App {
         }
         self.editor_groups
             .activate_document(document, Default::default(), 0);
+        self.plugins.active_graphite_detail = None;
         if self.command_runtime.current.is_some() {
             self.command_runtime.view = Some(self.editor_groups.active_view().id);
         }
@@ -517,6 +518,14 @@ impl App {
     pub(super) fn focus_editor_group(&mut self, id: u64) -> bool {
         if !self.editor_groups.focus(id) {
             return false;
+        }
+        if self
+            .plugins
+            .active_graphite_detail
+            .as_ref()
+            .is_some_and(|(group, _)| *group != id)
+        {
+            self.plugins.active_graphite_detail = None;
         }
         if self.command_runtime.current.is_some() {
             self.command_runtime.view = Some(self.editor_groups.active_view().id);

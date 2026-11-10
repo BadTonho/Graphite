@@ -11,7 +11,7 @@ pub(super) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) 
     format!(" {}{} ", name, if tab.is_dirty() { " ●" } else { "" })
 }
 
-pub(super) fn tab_width(
+pub(crate) fn tab_width(
     tab: &Document,
     char_width: f32,
     translator: &graphite_i18n::Translator,
@@ -125,6 +125,17 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
                 x += width;
+            }
+            self.draw_graphite_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
+            if self
+                .plugins
+                .active_graphite_detail
+                .as_ref()
+                .is_some_and(|(group, _)| *group == rect.id)
+            {
+                self.draw_graphite_detail_page(r, *rect, lh, cw);
+                r.set_clip(None);
+                continue;
             }
             let primary = view
                 .selection_state

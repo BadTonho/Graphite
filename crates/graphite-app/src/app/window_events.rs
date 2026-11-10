@@ -229,6 +229,8 @@ impl ApplicationHandler<UserEvent> for App {
                     && (self.mouse.x as f32) < SIDEBAR_WIDTH;
                 if over_plugins {
                     self.scroll_plugins(lines as i32);
+                } else if self.plugins.active_graphite_detail.is_some() {
+                    self.scroll_graphite_detail(lines as i32);
                 } else if over_process_panel {
                     let max_scroll = self.process_metrics.len().saturating_sub(9);
                     self.process_scroll = (self.process_scroll as i32 + lines as i32)
