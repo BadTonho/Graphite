@@ -35,9 +35,9 @@ pub(super) struct PluginsLayout {
 }
 
 impl PluginsLayout {
-    pub(super) fn new(height: f32, line_height: f32) -> Self {
+    pub(super) fn new(height: f32, line_height: f32, sidebar_width: f32) -> Self {
         let sidebar_x = ACTIVITY_BAR_WIDTH;
-        let width = SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH;
+        let width = sidebar_width - ACTIVITY_BAR_WIDTH;
         let title_y = line_height * 0.2;
         let tabs_y = line_height * 1.1;
         let tab_height = line_height * 1.6;
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn sidebar_geometry_stays_inside_the_left_column() {
-        let layout = PluginsLayout::new(720.0, 19.0);
+        let layout = PluginsLayout::new(720.0, 19.0, SIDEBAR_WIDTH);
         assert_eq!(layout.sidebar_x, ACTIVITY_BAR_WIDTH);
         assert_eq!(layout.width, 260.0);
         assert!(layout.list_y > layout.search_y + layout.search_height);
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn tabs_search_and_cards_share_the_drawn_geometry() {
-        let layout = PluginsLayout::new(720.0, 19.0);
+        let layout = PluginsLayout::new(720.0, 19.0, SIDEBAR_WIDTH);
         assert_eq!(
             layout.tab_at(ACTIVITY_BAR_WIDTH + 10.0, layout.tabs_y + 2.0),
             Some(PluginsTab::Installed)

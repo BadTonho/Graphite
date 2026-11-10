@@ -101,6 +101,11 @@ struct App {
     workspace_trust: Option<app::phase5::WorkspaceTrust>,
     profiles: Option<app::phase5::Profiles>,
     profile_root: PathBuf,
+    /// Preferred shared sidebar width in logical pixels.
+    sidebar_width: f32,
+    sidebar_scale_factor: f32,
+    sidebar_window_width_px: f32,
+    sidebar_resize_dragging: bool,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
     translator: graphite_i18n::Translator,
@@ -259,6 +264,11 @@ impl App {
             .as_ref()
             .and_then(|profiles| profiles.path(profiles.active()).ok())
             .unwrap_or_else(|| config_root.clone());
+        let sidebar_width = if isolated {
+            config::DEFAULT_SIDEBAR_WIDTH
+        } else {
+            config::load_sidebar_width(&profile_root)
+        };
         let language_selection =
             (!isolated).then(|| config::language_selection_in(&profile_root, &root));
         let translator = graphite_i18n::Translator::new(
@@ -411,6 +421,10 @@ impl App {
             emmet_runtime: None,
             profiles,
             profile_root,
+            sidebar_width,
+            sidebar_scale_factor: 1.0,
+            sidebar_window_width_px: 1200.0,
+            sidebar_resize_dragging: false,
             workspace_trust: if isolated {
                 None
             } else {

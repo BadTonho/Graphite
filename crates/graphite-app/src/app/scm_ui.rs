@@ -63,6 +63,7 @@ pub(super) struct ScmPanelLayout {
 
 pub(super) fn scm_panel_layout(
     snapshot: &crate::scm::Snapshot,
+    sidebar_width: f32,
     height: f32,
     row_height: f32,
     cell_width: f32,
@@ -72,11 +73,11 @@ pub(super) fn scm_panel_layout(
     changes_collapsed: bool,
 ) -> ScmPanelLayout {
     let left = ACTIVITY_BAR_WIDTH + PAD;
-    let right = SIDEBAR_WIDTH - PAD;
+    let right = sidebar_width - PAD;
     let full_row = |y| ScmRect {
         x: ACTIVITY_BAR_WIDTH,
         y,
-        width: SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+        width: sidebar_width - ACTIVITY_BAR_WIDTH,
         height: row_height,
     };
     let icon_size = (row_height * 0.70).round();
@@ -305,6 +306,7 @@ mod scm_sidebar_layout_tests {
     fn branch_buttons_have_separate_hit_areas_and_a_visible_gap() {
         let layout = scm_panel_layout(
             &crate::scm::Snapshot::default(),
+            SIDEBAR_WIDTH,
             700.0,
             20.0,
             9.0,
@@ -332,7 +334,17 @@ mod scm_sidebar_layout_tests {
             unstaged: true,
             ..Default::default()
         });
-        let layout = scm_panel_layout(&snapshot, 700.0, 20.0, 9.0, 0, false, false, false);
+        let layout = scm_panel_layout(
+            &snapshot,
+            SIDEBAR_WIDTH,
+            700.0,
+            20.0,
+            9.0,
+            0,
+            false,
+            false,
+            false,
+        );
         let changes = layout
             .list_rows
             .iter()
@@ -888,18 +900,20 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) {
+        let sidebar_width = self.sidebar_width_px();
         renderer.draw_rect(
             ACTIVITY_BAR_WIDTH,
             0.0,
-            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+            sidebar_width - ACTIVITY_BAR_WIDTH,
             height,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
         let left = ACTIVITY_BAR_WIDTH + PAD;
-        let right = SIDEBAR_WIDTH - PAD;
+        let right = sidebar_width - PAD;
         let row_h = line_height.max(18.0);
         let layout = scm_panel_layout(
             &self.scm_snapshot,
+            sidebar_width,
             height,
             row_h,
             cell_width,
@@ -1148,7 +1162,7 @@ impl App {
                         renderer.draw_rect(
                             ACTIVITY_BAR_WIDTH,
                             y - row_h * 0.1,
-                            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                            sidebar_width - ACTIVITY_BAR_WIDTH,
                             row_h,
                             rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
                         );
@@ -1231,6 +1245,7 @@ impl App {
         height: f32,
         line_height: f32,
     ) {
+        let sidebar_width = self.sidebar_width_px();
         if self.outline_visible && !self.zen_mode {
             let outline_width = 240.0;
             let x = width - outline_width;
@@ -1353,15 +1368,15 @@ impl App {
         }
         if self.process_panel_visible {
             renderer.draw_rect(
-                SIDEBAR_WIDTH,
+                sidebar_width,
                 line_height,
-                width - SIDEBAR_WIDTH,
+                width - sidebar_width,
                 height - line_height * 2.0,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
                 self.t("scm.process.title"),
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 line_height * 1.2,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -1386,7 +1401,7 @@ impl App {
                 );
                 renderer.draw_text(
                     &row,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     line_height * (index as f32 + 2.2),
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -1394,14 +1409,14 @@ impl App {
             let start = self.process_metrics.len().min(9) as f32 + 2.4;
             renderer.draw_text(
                 self.t("scm.process.startup"),
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 line_height * start,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
             for (index, metric) in self.startup_metrics.iter().enumerate() {
                 renderer.draw_text(
                     metric,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     line_height * (start + index as f32 + 1.0),
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );

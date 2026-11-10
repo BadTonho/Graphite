@@ -228,6 +228,7 @@ impl App {
         let translator = self.translator;
         let workspace = self.tree.root().to_path_buf();
         self.profile_root = profile_root;
+        self.sidebar_width = config::load_sidebar_width(&self.profile_root);
         self.refresh_plugins_for_profile();
         if let Some(host) = self.extension_host.supervisor.as_mut() {
             host.shutdown();

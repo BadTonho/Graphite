@@ -137,6 +137,8 @@ impl ApplicationHandler<UserEvent> for App {
         );
         window.set_visible(true);
         window.set_ime_allowed(true);
+        self.sidebar_scale_factor = scale;
+        self.sidebar_window_width_px = renderer.size().0 as f32;
         self.gpu = Some(Gpu {
             window,
             renderer,
@@ -159,18 +161,48 @@ impl ApplicationHandler<UserEvent> for App {
                 self.run_ui_command("workbench.action.quit");
             }
             WindowEvent::Resized(size) => {
+                self.sidebar_window_width_px = size.width as f32;
                 if let Some(gpu) = &mut self.gpu {
                     gpu.renderer.resize(size.width, size.height);
                 }
                 self.reveal_cursor = true;
             }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.sidebar_scale_factor = scale_factor as f32;
+            }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::CursorMoved { position, .. } => {
+                let previous_x = self.mouse.x as f32;
                 self.mouse = position;
-                let editor_state = self.editor_state();
-                self.drag_select();
-                if editor_state != self.editor_state() {
-                    self.invalidate_lsp_requests();
+                let pointer_x = position.x as f32;
+                if self.sidebar_resize_dragging {
+                    self.resize_sidebar_from_pointer(pointer_x);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                } else {
+                    let separator_x = self.sidebar_width_px();
+                    let over_separator = !self.zen_mode
+                        && (pointer_x - separator_x).abs() <= 4.0
+                        && (position.y as f32)
+                            < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
+                                gpu.renderer.size().1 as f32 - gpu.renderer.line_height()
+                            });
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(if over_separator {
+                            winit::window::CursorIcon::ColResize
+                        } else {
+                            winit::window::CursorIcon::Default
+                        });
+                        if over_separator || (previous_x - separator_x).abs() <= 4.0 {
+                            gpu.window.request_redraw();
+                        }
+                    }
+                    let editor_state = self.editor_state();
+                    self.drag_select();
+                    if editor_state != self.editor_state() {
+                        self.invalidate_lsp_requests();
+                    }
                 }
             }
             WindowEvent::MouseInput {
@@ -178,6 +210,12 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                let separator_x = self.sidebar_width_px();
+                if !self.zen_mode && (self.mouse.x as f32 - separator_x).abs() <= 4.0 {
+                    self.sidebar_resize_dragging = true;
+                    self.selecting = false;
+                    return;
+                }
                 self.editor_groups
                     .active_view_mut()
                     .smart_selection_history
@@ -210,7 +248,25 @@ impl ApplicationHandler<UserEvent> for App {
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } => self.selecting = false,
+            } => {
+                if self.sidebar_resize_dragging {
+                    self.sidebar_resize_dragging = false;
+                    self.sidebar_width = config::clamp_sidebar_width(self.sidebar_width);
+                    if self.profiles.is_some() {
+                        if let Err(error) =
+                            config::save_sidebar_width(&self.profile_root, self.sidebar_width)
+                        {
+                            self.status = format!("Sidebar width could not be saved: {error}");
+                        }
+                    }
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(winit::window::CursorIcon::Default);
+                        gpu.window.request_redraw();
+                    }
+                } else {
+                    self.selecting = false;
+                }
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
@@ -232,11 +288,11 @@ impl ApplicationHandler<UserEvent> for App {
                 let over_plugins = self.plugins.visible
                     && !self.zen_mode
                     && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
-                    && (self.mouse.x as f32) < SIDEBAR_WIDTH;
+                    && (self.mouse.x as f32) < self.sidebar_width_px();
                 let over_scm = self.scm_visible
                     && !self.zen_mode
                     && (self.mouse.x as f32) >= ACTIVITY_BAR_WIDTH
-                    && (self.mouse.x as f32) < SIDEBAR_WIDTH;
+                    && (self.mouse.x as f32) < self.sidebar_width_px();
                 if over_scm {
                     let staged = self
                         .scm_snapshot

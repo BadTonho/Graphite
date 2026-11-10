@@ -9,25 +9,26 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) {
+        let sidebar_width = self.sidebar_width_px();
         let panel_height = terminal_panel_height(height);
         let top = height - line_height - panel_height;
         renderer.draw_rect(
-            SIDEBAR_WIDTH,
+            sidebar_width,
             top,
-            width - SIDEBAR_WIDTH,
+            width - sidebar_width,
             panel_height,
             rgb(0x181818),
         );
         renderer.draw_rect(
-            SIDEBAR_WIDTH,
+            sidebar_width,
             top,
-            width - SIDEBAR_WIDTH,
+            width - sidebar_width,
             line_height * 1.35,
             rgb(0x252526),
         );
         renderer.draw_text(
             self.t("terminal.title"),
-            SIDEBAR_WIDTH + PAD,
+            sidebar_width + PAD,
             top,
             rgb(if !self.terminal_problems {
                 0xffffff
@@ -37,7 +38,7 @@ impl App {
         );
         renderer.draw_text(
             self.t("terminal.problems"),
-            SIDEBAR_WIDTH + cell_width * 9.0,
+            sidebar_width + cell_width * 9.0,
             top,
             rgb(if self.terminal_problems {
                 0xffffff
@@ -55,26 +56,26 @@ impl App {
                 "terminal.shell",
                 &[("name", &profile_label.chars().take(9).collect::<String>())],
             ),
-            SIDEBAR_WIDTH + cell_width * 19.0,
+            sidebar_width + cell_width * 19.0,
             top,
             rgb(0xd4d4d4),
         );
-        renderer.draw_text("+", SIDEBAR_WIDTH + cell_width * 34.0, top, rgb(0xd4d4d4));
+        renderer.draw_text("+", sidebar_width + cell_width * 34.0, top, rgb(0xd4d4d4));
         renderer.draw_text(
             self.t("terminal.split"),
-            SIDEBAR_WIDTH + cell_width * 38.0,
+            sidebar_width + cell_width * 38.0,
             top,
             rgb(0xd4d4d4),
         );
         renderer.draw_text(
             self.t("common.close"),
-            SIDEBAR_WIDTH + cell_width * 45.0,
+            sidebar_width + cell_width * 45.0,
             top,
             rgb(0xd4d4d4),
         );
-        renderer.draw_text("<", SIDEBAR_WIDTH + cell_width * 52.0, top, rgb(0xd4d4d4));
-        renderer.draw_text(" >", SIDEBAR_WIDTH + cell_width * 54.0, top, rgb(0xd4d4d4));
-        let mut tab_x = SIDEBAR_WIDTH + cell_width * 57.0;
+        renderer.draw_text("<", sidebar_width + cell_width * 52.0, top, rgb(0xd4d4d4));
+        renderer.draw_text(" >", sidebar_width + cell_width * 54.0, top, rgb(0xd4d4d4));
+        let mut tab_x = sidebar_width + cell_width * 57.0;
         for (index, name) in self
             .terminal_names
             .iter()
@@ -103,7 +104,7 @@ impl App {
             if diagnostics.is_empty() {
                 renderer.draw_text(
                     self.t("terminal.no_diagnostics"),
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     top + line_height * 1.5,
                     rgb(0x858585),
                 );
@@ -140,7 +141,7 @@ impl App {
                 );
                 renderer.draw_text(
                     &text,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     top + line_height * (index as f32 + 1.5),
                     rgb(0xd4d4d4),
                 );
@@ -148,7 +149,7 @@ impl App {
         } else if let Some(status) = self.terminal_status.as_deref() {
             renderer.draw_text(
                 status,
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 top + line_height * 1.5,
                 rgb(0xf14c4c),
             );
@@ -159,11 +160,11 @@ impl App {
                 let clean: String = line
                     .chars()
                     .map(|ch| if ch.is_control() { ' ' } else { ch })
-                    .take((((width - SIDEBAR_WIDTH - PAD * 2.0) / cell_width).max(1.0)) as usize)
+                    .take((((width - sidebar_width - PAD * 2.0) / cell_width).max(1.0)) as usize)
                     .collect();
                 renderer.draw_text(
                     &clean,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     top + line_height * (index as f32 + 1.5),
                     rgb(0xd4d4d4),
                 );
@@ -175,13 +176,13 @@ impl App {
                 .split_terminal
                 .filter(|index| *index < self.terminals.len())
             {
-                let split_x = SIDEBAR_WIDTH + (width - SIDEBAR_WIDTH) / 2.0;
+                let split_x = sidebar_width + (width - sidebar_width) / 2.0;
                 if let Some(first) = self.terminals.get(self.active_terminal) {
                     draw_terminal_snapshot(
                         renderer,
                         &first.snapshot(),
-                        SIDEBAR_WIDTH + PAD,
-                        split_x - SIDEBAR_WIDTH - PAD,
+                        sidebar_width + PAD,
+                        split_x - sidebar_width - PAD,
                         body_top,
                         body_height,
                         line_height,
@@ -207,8 +208,8 @@ impl App {
                 draw_terminal_snapshot(
                     renderer,
                     &terminal.snapshot(),
-                    SIDEBAR_WIDTH + PAD,
-                    width - SIDEBAR_WIDTH - PAD,
+                    sidebar_width + PAD,
+                    width - sidebar_width - PAD,
                     body_top,
                     body_height,
                     line_height,
