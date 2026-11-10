@@ -83,6 +83,46 @@ fn release_without_supported_assets_is_listed_as_empty() {
     assert!(catalog.assets("author/plugin").unwrap().is_empty());
     join.join().unwrap();
 }
+
+#[test]
+fn details_loads_repository_readme_and_sums_only_installable_asset_downloads() {
+    let repository = r#"{"full_name":"author/plugin","description":"Example","stargazers_count":3,"html_url":"https://github.com/author/plugin","homepage":"https://example.test","topics":["graphite-plugin","editor"],"license":{"name":"MIT License","spdx_id":"MIT"},"open_issues_count":2}"#;
+    let readme = r#"{"encoding":"base64","content":"IyBIZWxsbyBXb3JsZAo="}"#;
+    let release = r#"{"tag_name":"v1.2.0","name":"Version 1.2.0","published_at":"2026-10-30T10:00:00Z","draft":false,"prerelease":false,"assets":[{"name":"plugin.graphite-plugin","size":100,"download_count":9,"browser_download_url":"https://github.com/author/plugin/releases/download/v1/plugin.graphite-plugin"},{"name":"plugin.vsix","size":200,"download_count":4,"browser_download_url":"https://github.com/author/plugin/releases/download/v1/plugin.vsix"},{"name":"source.zip","size":300,"download_count":100,"browser_download_url":"https://github.com/author/plugin/releases/download/v1/source.zip"}]}"#;
+    let (base, log, join) = server(vec![
+        (200, String::new(), repository.into()),
+        (200, String::new(), readme.into()),
+        (200, String::new(), release.into()),
+    ]);
+    let mut catalog = Catalog::with_base(&base).unwrap();
+    let details = catalog.details("author/plugin").unwrap();
+    assert_eq!(details.readme.as_deref(), Some("# Hello World\n"));
+    assert_eq!(details.repository.stargazers_count, 3);
+    assert_eq!(details.repository.topics, ["graphite-plugin", "editor"]);
+    let release = details.release.unwrap();
+    assert_eq!(release.tag_name, "v1.2.0");
+    assert_eq!(release.assets.len(), 2);
+    assert_eq!(release.downloads, 13);
+    assert_eq!(release.size, 300);
+    join.join().unwrap();
+    assert_eq!(log.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn details_keep_repository_visible_when_readme_and_stable_release_are_missing() {
+    let repository = r#"{"full_name":"author/plugin","description":null,"stargazers_count":0,"html_url":"https://github.com/author/plugin"}"#;
+    let (base, _, join) = server(vec![
+        (200, String::new(), repository.into()),
+        (404, String::new(), "{}".into()),
+        (404, String::new(), "{}".into()),
+    ]);
+    let mut catalog = Catalog::with_base(&base).unwrap();
+    let details = catalog.details("author/plugin").unwrap();
+    assert!(details.readme.is_none());
+    assert!(details.release.is_none());
+    join.join().unwrap();
+}
+
 #[test]
 fn downloads_are_bounded_and_partial_downloads_are_removed() {
     let (base, _, join) = server(vec![
@@ -97,6 +137,7 @@ fn downloads_are_bounded_and_partial_downloads_are_removed() {
         name: "sample.vsix".into(),
         size: 3,
         browser_download_url: format!("{base}/asset"),
+        download_count: 0,
     };
     catalog.download(&asset, &path).unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), b"abc");

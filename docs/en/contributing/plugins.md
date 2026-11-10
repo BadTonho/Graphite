@@ -42,14 +42,14 @@ Track disposables in `context.subscriptions`; disposal is idempotent. Host termi
 
 ## Install and manage
 
-Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed, Open VSX and the Graphite GitHub catalog. Open VSX results download the latest VSIX for inspection. Graphite results are GitHub repositories with the `graphite-plugin` topic; selecting a repository loads its latest stable release. If it contains multiple supported packages, choose one to download and inspect. Installation requires confirmation. Arrow keys select cards; Escape returns from a release's assets or closes the sidebar. The same actions are available from the keyboard:
+Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed, Open VSX and the Graphite GitHub catalog. Open VSX results download the latest VSIX for inspection. Click or press Enter on a Graphite repository to open its own editor tab with a rendered README, stars, release package downloads and installation details. The right column lists compatible release packages, release information, topics and available project links. If there are multiple supported packages, choose one to inspect and install; the existing package confirmation still applies. Repositories without a compatible stable release keep their README and show why installation is unavailable. Detail tabs can be switched and closed like editor tabs. The same actions are available from the keyboard:
 
 | Key | Action |
 |---|---|
 | I / O / G | Installed plugins / Open VSX / Graphite GitHub catalog |
 | L | Enter a local `.graphite-plugin` or `.vsix` path |
 | / | Enter search text for the active marketplace tab; Enter submits |
-| Enter | Inspect installed plugin, download Open VSX result, or open a Graphite repository/release asset |
+| Enter | Inspect an installed plugin, download an Open VSX result, or open/install the selected Graphite item |
 | Y / Esc | Confirm / cancel installation or trust |
 | E / D | Enable / disable the selected plugin |
 | U | Download the latest Open VSX version for an installed VSIX; confirm to replace it |

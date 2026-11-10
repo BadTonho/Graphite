@@ -301,58 +301,91 @@ impl App {
                 node.add_action(Action::Focus);
                 nodes.push((ids[i], node));
             }
+            let graphite_detail = self
+                .plugins
+                .active_graphite_detail
+                .as_ref()
+                .filter(|(group, _)| *group == rect.id)
+                .and_then(|(_, repository)| {
+                    self.plugins
+                        .graphite_details
+                        .iter()
+                        .find(|tab| tab.group == rect.id && &tab.repository == repository)
+                });
             let mut editor = Node::new(Role::TextInput);
-            editor.set_label(self.t("accessibility.editor"));
-            editor.set_value(buffer.text());
-            if buffer.is_read_only() {
+            if let Some(detail) = graphite_detail {
+                editor.set_label(format!("{} — README", detail.repository));
+                editor.set_value(
+                    detail
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.readme.as_deref())
+                        .unwrap_or_else(|| {
+                            if detail.loading {
+                                self.t("plugins.sidebar.loading_details")
+                            } else if let Some(error) = &detail.error {
+                                error
+                            } else {
+                                self.t("plugins.sidebar.no_readme")
+                            }
+                        }),
+                );
                 editor.set_read_only();
-            }
-            editor.add_action(Action::Focus);
-            editor.add_action(Action::SetTextSelection);
-            if !buffer.is_read_only() {
-                editor.add_action(Action::SetValue);
-                editor.add_action(Action::ReplaceSelectedText);
-            }
-            let runs: Vec<_> = (0..buffer.len_lines())
-                .map(|line| line_node(rect.id, line))
-                .collect();
-            editor.set_children(runs.clone());
-            let position = |offset: usize| {
-                let offset = offset.min(buffer.len_chars());
-                let line = buffer.rope().char_to_line(offset);
-                let text = buffer.line(line);
-                let max = line_content(&text).chars().count();
-                accesskit::TextPosition {
-                    node: runs[line],
-                    character_index: (offset - buffer.line_start_char(line)).min(max),
+                editor.add_action(Action::Focus);
+                nodes.push((editor_id, editor));
+            } else {
+                editor.set_label(self.t("accessibility.editor"));
+                editor.set_value(buffer.text());
+                if buffer.is_read_only() {
+                    editor.set_read_only();
                 }
-            };
-            let selection = view
-                .selection_state
-                .selections()
-                .first()
-                .copied()
-                .unwrap_or_default();
-            editor.set_text_selection(accesskit::TextSelection {
-                anchor: position(selection.anchor),
-                focus: position(selection.head),
-            });
-            nodes.push((editor_id, editor));
-            for (line, id) in runs.into_iter().enumerate() {
-                let text = buffer.line(line);
-                let mut lengths: Vec<u8> = line_content(&text)
-                    .chars()
-                    .map(|ch| ch.len_utf8() as u8)
+                editor.add_action(Action::Focus);
+                editor.add_action(Action::SetTextSelection);
+                if !buffer.is_read_only() {
+                    editor.add_action(Action::SetValue);
+                    editor.add_action(Action::ReplaceSelectedText);
+                }
+                let runs: Vec<_> = (0..buffer.len_lines())
+                    .map(|line| line_node(rect.id, line))
                     .collect();
-                if text.ends_with("\r\n") {
-                    lengths.push(2);
-                } else if text.ends_with('\n') {
-                    lengths.push(1);
+                editor.set_children(runs.clone());
+                let position = |offset: usize| {
+                    let offset = offset.min(buffer.len_chars());
+                    let line = buffer.rope().char_to_line(offset);
+                    let text = buffer.line(line);
+                    let max = line_content(&text).chars().count();
+                    accesskit::TextPosition {
+                        node: runs[line],
+                        character_index: (offset - buffer.line_start_char(line)).min(max),
+                    }
+                };
+                let selection = view
+                    .selection_state
+                    .selections()
+                    .first()
+                    .copied()
+                    .unwrap_or_default();
+                editor.set_text_selection(accesskit::TextSelection {
+                    anchor: position(selection.anchor),
+                    focus: position(selection.head),
+                });
+                nodes.push((editor_id, editor));
+                for (line, id) in runs.into_iter().enumerate() {
+                    let text = buffer.line(line);
+                    let mut lengths: Vec<u8> = line_content(&text)
+                        .chars()
+                        .map(|ch| ch.len_utf8() as u8)
+                        .collect();
+                    if text.ends_with("\r\n") {
+                        lengths.push(2);
+                    } else if text.ends_with('\n') {
+                        lengths.push(1);
+                    }
+                    let mut run = Node::new(Role::TextRun);
+                    run.set_value(text);
+                    run.set_character_lengths(lengths);
+                    nodes.push((id, run));
                 }
-                let mut run = Node::new(Role::TextRun);
-                run.set_value(text);
-                run.set_character_lengths(lengths);
-                nodes.push((id, run));
             }
         }
         let mut terminal = Node::new(Role::Button);

@@ -104,6 +104,17 @@ impl App {
             match result {
                 Err(error) => {
                     self.cleanup_plugin_download();
+                    if let Some(repository) = self.plugins.graphite_details_loading.take() {
+                        if let Some(tab) = self
+                            .plugins
+                            .graphite_details
+                            .iter_mut()
+                            .find(|tab| tab.repository == repository)
+                        {
+                            tab.loading = false;
+                            tab.error = Some(error.clone());
+                        }
+                    }
                     if let Some(id) = starting {
                         self.plugins.errors.insert(id, error.clone());
                     }
@@ -145,12 +156,26 @@ impl App {
                     self.plugins.index = 0;
                     self.plugins.scroll = 0;
                 }
+                Ok(Outcome::GraphiteDetails(repository, details)) => {
+                    self.plugins.graphite_details_loading = None;
+                    if let Some(tab) = self
+                        .plugins
+                        .graphite_details
+                        .iter_mut()
+                        .find(|tab| tab.repository == repository)
+                    {
+                        tab.loading = false;
+                        tab.error = None;
+                        tab.details = Some(details);
+                    }
+                }
                 Ok(Outcome::Notice(message)) => {
                     self.cleanup_plugin_download();
                     self.plugins.message = message;
                 }
                 Ok(Outcome::Preview(path, metadata)) => {
                     self.plugins.temporary = Some(path.clone());
+                    self.plugins.focused = true;
                     self.plugins.preview = Some((path, metadata))
                 }
                 Ok(Outcome::Started(id, trust_generation, runtime)) => {

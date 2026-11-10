@@ -2,10 +2,17 @@ use super::*;
 
 impl App {
     pub(crate) fn click(&mut self) {
-        let Some(gpu) = &self.gpu else { return };
-        let lh = gpu.renderer.line_height();
-        let cw = gpu.renderer.char_width();
-        let (window_width, window_height) = gpu.renderer.size();
+        let Some((lh, cw, window_width, window_height)) = self.gpu.as_ref().map(|gpu| {
+            let (width, height) = gpu.renderer.size();
+            (
+                gpu.renderer.line_height(),
+                gpu.renderer.char_width(),
+                width,
+                height,
+            )
+        }) else {
+            return;
+        };
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
 
         if self.diff_view.is_some() {
@@ -49,6 +56,10 @@ impl App {
             self.plugins.focused = false;
         }
 
+        if self.graphite_detail_click(mx, my) {
+            return;
+        }
+
         if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {
             if let Some(language) = self.documents[self.active_document()].language {
                 let text = self.documents[self.active_document()].buffer.text();
@@ -66,9 +77,7 @@ impl App {
         }
 
         if self.terminal_visible {
-            let panel_top = gpu.renderer.size().1
-                - gpu.renderer.line_height()
-                - terminal_panel_height(gpu.renderer.size().1);
+            let panel_top = window_height - lh - terminal_panel_height(window_height);
             if my >= panel_top {
                 if my < panel_top + lh * 1.4 {
                     self.terminal_problems = mx < SIDEBAR_WIDTH + cw * 9.0;
@@ -195,6 +204,8 @@ impl App {
                     }
                     x += width;
                 }
+                self.focus_editor_group(rect.id);
+                self.graphite_detail_tab_click(rect.id, mx);
                 return;
             }
             let text_x = rect.x + self.gutter_width(cw);

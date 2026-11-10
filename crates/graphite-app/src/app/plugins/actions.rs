@@ -67,32 +67,8 @@ impl App {
             if action != '\n' {
                 return;
             }
-            if let Some((_, assets)) = &self.plugins.graphite_assets {
-                let Some(asset) = assets.get(self.plugins.index).cloned() else {
-                    return;
-                };
-                self.queue_graphite_asset_download(asset);
-            } else if let Some(repository) = self.plugins.graphite.get(self.plugins.index).cloned()
-            {
-                let root = self.plugins.store.as_ref().unwrap().root.clone();
-                let session = self.plugins.next_session;
-                self.plugins.next_session += 1;
-                self.plugin_job(move |_| {
-                    let mut catalog = graphite_plugins::catalog::Catalog::new()?;
-                    let assets = catalog.assets(&repository.full_name)?;
-                    if assets.is_empty() {
-                        return Err(format!(
-                            "The latest stable release for {} has no .graphite-plugin or .vsix assets",
-                            repository.full_name
-                        ));
-                    }
-                    if assets.len() == 1 {
-                        let destination = graphite_asset_destination(&root, session, &assets[0]);
-                        download_graphite_asset(&mut catalog, &assets[0], &destination)
-                    } else {
-                        Ok(Outcome::GraphiteAssets(repository, assets))
-                    }
-                });
+            if let Some(repository) = self.plugins.graphite.get(self.plugins.index).cloned() {
+                self.open_graphite_details(repository);
             }
             return;
         }
@@ -206,6 +182,112 @@ impl App {
             let mut catalog = graphite_plugins::catalog::Catalog::new()?;
             download_graphite_asset(&mut catalog, &asset, &destination)
         });
+    }
+
+    fn open_graphite_details(&mut self, repository: graphite_plugins::catalog::Repository) {
+        let existing = self
+            .plugins
+            .graphite_details
+            .iter()
+            .find(|tab| tab.repository == repository.full_name)
+            .map(|tab| tab.group);
+        let group = existing.unwrap_or_else(|| self.editor_groups.focused());
+        if existing.is_none() {
+            self.plugins.graphite_details.push(GraphiteDetailTab {
+                repository: repository.full_name.clone(),
+                group,
+                details: None,
+                loading: true,
+                error: None,
+                scroll_line: 0,
+                choosing_asset: false,
+                selected_asset: 0,
+            });
+            self.plugins.graphite_details_loading = Some(repository.full_name.clone());
+            let full_name = repository.full_name.clone();
+            self.plugin_job(move |_| {
+                let mut catalog = graphite_plugins::catalog::Catalog::new()?;
+                Ok(Outcome::GraphiteDetails(
+                    full_name.clone(),
+                    catalog.details(&full_name)?,
+                ))
+            });
+        }
+        self.focus_editor_group(group);
+        self.plugins.active_graphite_detail = Some((group, repository.full_name));
+        self.plugins.focused = false;
+    }
+
+    pub(crate) fn close_graphite_detail(&mut self, group: u64, repository: &str) {
+        self.plugins
+            .graphite_details
+            .retain(|tab| !(tab.group == group && tab.repository == repository));
+        if self.plugins.active_graphite_detail.as_ref() == Some(&(group, repository.to_owned())) {
+            self.plugins.active_graphite_detail = None;
+        }
+    }
+
+    pub(super) fn start_graphite_detail_install(&mut self) {
+        let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
+            return;
+        };
+        let choice = self
+            .plugins
+            .graphite_details
+            .iter_mut()
+            .find(|tab| tab.group == group && tab.repository == repository)
+            .map(|tab| {
+                let assets = tab
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.release.as_ref())
+                    .map(|release| release.assets.clone());
+                match assets {
+                    Some(mut assets) if assets.len() == 1 => Some(assets.remove(0)),
+                    Some(assets) if assets.len() > 1 => {
+                        tab.choosing_asset = true;
+                        tab.selected_asset = 0;
+                        None
+                    }
+                    _ => None,
+                }
+            });
+        match choice {
+            Some(Some(asset)) => self.queue_graphite_asset_download(asset),
+            Some(None) => {
+                let multiple = self.plugins.graphite_details.iter().any(|tab| {
+                    tab.group == group && tab.repository == repository && tab.choosing_asset
+                });
+                if !multiple {
+                    self.plugins.message = self.t("plugins.sidebar.no_compatible_release").into();
+                }
+            }
+            None => {}
+        }
+    }
+
+    pub(super) fn install_selected_graphite_asset(&mut self) {
+        let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
+            return;
+        };
+        let Some(tab) = self
+            .plugins
+            .graphite_details
+            .iter_mut()
+            .find(|tab| tab.group == group && tab.repository == repository)
+        else {
+            return;
+        };
+        let asset = tab
+            .details
+            .as_ref()
+            .and_then(|details| details.release.as_ref())
+            .and_then(|release| release.assets.get(tab.selected_asset))
+            .cloned();
+        if let Some(asset) = asset {
+            tab.choosing_asset = false;
+            self.queue_graphite_asset_download(asset);
+        }
     }
 }
 

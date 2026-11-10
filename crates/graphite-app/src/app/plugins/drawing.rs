@@ -117,6 +117,690 @@ fn push_lines(lines: &mut Vec<(String, u32)>, text: &str, max: usize, color: u32
 }
 
 impl App {
+    pub(crate) fn draw_graphite_detail_tabs(
+        &self,
+        renderer: &mut Renderer,
+        group: u64,
+        x: &mut f32,
+        y: f32,
+        line_height: f32,
+        cell_width: f32,
+    ) {
+        let active = self.plugins.active_graphite_detail.as_ref();
+        for tab in self
+            .plugins
+            .graphite_details
+            .iter()
+            .filter(|tab| tab.group == group)
+        {
+            let name = tab.repository.rsplit('/').next().unwrap_or(&tab.repository);
+            let label = format!(" {name}  × ");
+            let width = (label.chars().count() as f32 * cell_width * 1.4 + cell_width * 2.4)
+                .max(line_height * 4.5);
+            let selected = active.is_some_and(|(active_group, repository)| {
+                *active_group == group && repository == &tab.repository
+            });
+            renderer.draw_rect(
+                *x,
+                y,
+                width,
+                line_height * 1.5,
+                rgb(if selected {
+                    Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+                } else {
+                    Theme::color(Theme::SIDEBAR, 0xf3f3f3)
+                }),
+            );
+            renderer.draw_text(
+                &fit(&label, (width / cell_width) as usize),
+                *x + PAD,
+                y + line_height * 0.25,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            *x += width;
+        }
+    }
+
+    pub(crate) fn draw_graphite_detail_page(
+        &self,
+        renderer: &mut Renderer,
+        rect: super::editor_groups::GroupRect,
+        line_height: f32,
+        cell_width: f32,
+    ) {
+        let Some((group, repository)) = &self.plugins.active_graphite_detail else {
+            return;
+        };
+        if *group != rect.id {
+            return;
+        }
+        let Some(tab) = self
+            .plugins
+            .graphite_details
+            .iter()
+            .find(|tab| tab.group == *group && tab.repository == *repository)
+        else {
+            return;
+        };
+        let body_y = rect.y + line_height * 1.5;
+        let body_height = (rect.height - line_height * 1.5).max(0.0);
+        let body_width = rect.width;
+        renderer.draw_rect(
+            rect.x,
+            body_y,
+            body_width,
+            body_height,
+            rgb(Theme::color(Theme::BG, 0xffffff)),
+        );
+        let sidebar_width = (body_width * 0.28)
+            .clamp(220.0, 340.0)
+            .min(body_width * 0.45);
+        let sidebar_x = rect.x + body_width - sidebar_width;
+        renderer.draw_rect(
+            sidebar_x,
+            body_y,
+            sidebar_width,
+            body_height,
+            rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+        );
+        renderer.draw_rect(
+            sidebar_x,
+            body_y,
+            1.0,
+            body_height,
+            rgb(Theme::color(Theme::DIM, 0x616161)),
+        );
+        let text_color = Theme::color(Theme::TEXT, 0x1e1e1e);
+        let dim_color = Theme::color(Theme::DIM, 0x616161);
+        let main_x = rect.x + PAD * 2.0;
+        let main_width = (sidebar_x - main_x - PAD * 2.0).max(cell_width * 12.0);
+        let max_main = (main_width / cell_width).max(1.0) as usize;
+        let mut y = body_y + PAD;
+        let title = tab
+            .details
+            .as_ref()
+            .map(|details| details.repository.full_name.as_str())
+            .unwrap_or(tab.repository.as_str());
+        renderer.draw_text(title, main_x, y, rgb(text_color));
+        y += line_height * 1.4;
+        if let Some(details) = &tab.details {
+            if let Some(description) = &details.repository.description {
+                for line in wrap_text(description, max_main).into_iter().take(2) {
+                    renderer.draw_text(&line, main_x, y, rgb(dim_color));
+                    y += line_height;
+                }
+            }
+            let downloads = details
+                .release
+                .as_ref()
+                .map(|release| release.downloads)
+                .unwrap_or(0);
+            let stats = format!(
+                "★ {}    ↓ {} {}",
+                details.repository.stargazers_count,
+                downloads,
+                self.t("plugins.sidebar.downloads")
+            );
+            renderer.draw_text(&fit(&stats, max_main), main_x, y, rgb(dim_color));
+            y += line_height * 1.7;
+            renderer.draw_text(self.t("plugins.sidebar.readme"), main_x, y, rgb(text_color));
+            y += line_height * 1.35;
+            let max_rows = ((body_y + body_height - y) / line_height).max(0.0) as usize;
+            let rows = markdown_display_rows(
+                details
+                    .readme
+                    .as_deref()
+                    .unwrap_or_else(|| self.t("plugins.sidebar.no_readme")),
+                max_main,
+            );
+            let start = tab.scroll_line.min(rows.len());
+            for (index, (line, color, _)) in rows.iter().skip(start).take(max_rows).enumerate() {
+                renderer.draw_text(line, main_x, y + index as f32 * line_height, rgb(*color));
+            }
+        } else if tab.loading {
+            renderer.draw_text(
+                self.t("plugins.sidebar.loading_details"),
+                main_x,
+                y + line_height,
+                rgb(dim_color),
+            );
+        } else if let Some(error) = &tab.error {
+            for (index, line) in wrap_text(error, max_main).iter().take(4).enumerate() {
+                renderer.draw_text(line, main_x, y + line_height * index as f32, rgb(0x9b2226));
+            }
+        }
+        self.draw_graphite_detail_sidebar(
+            renderer,
+            tab,
+            sidebar_x,
+            body_y,
+            sidebar_width,
+            line_height,
+            cell_width,
+        );
+    }
+
+    fn draw_graphite_detail_sidebar(
+        &self,
+        renderer: &mut Renderer,
+        tab: &GraphiteDetailTab,
+        x: f32,
+        body_y: f32,
+        width: f32,
+        line_height: f32,
+        cell_width: f32,
+    ) {
+        let pad = PAD * 1.5;
+        let max = ((width - pad * 2.0) / cell_width).max(1.0) as usize;
+        let text = Theme::color(Theme::TEXT, 0x1e1e1e);
+        let dim = Theme::color(Theme::DIM, 0x616161);
+        let button_y = body_y + PAD;
+        let can_install = tab
+            .details
+            .as_ref()
+            .and_then(|details| details.release.as_ref())
+            .is_some_and(|release| !release.assets.is_empty());
+        renderer.draw_rect(
+            x + pad,
+            button_y,
+            width - pad * 2.0,
+            line_height * 1.7,
+            rgb(if can_install { 0x0e639c } else { 0x6e7681 }),
+        );
+        renderer.draw_text(
+            self.t("plugins.sidebar.install"),
+            x + pad * 2.0,
+            button_y + line_height * 0.3,
+            rgb(0xffffff),
+        );
+        let mut rows_y = button_y + line_height * 2.2;
+        let Some(details) = &tab.details else {
+            if let Some(error) = &tab.error {
+                for line in wrap_text(error, max).iter().take(4) {
+                    renderer.draw_text(line, x + pad, rows_y, rgb(0x9b2226));
+                    rows_y += line_height;
+                }
+            }
+            return;
+        };
+        if tab.choosing_asset {
+            renderer.draw_text(
+                self.t("plugins.sidebar.choose_package"),
+                x + pad,
+                rows_y,
+                rgb(text),
+            );
+            rows_y += line_height * 1.2;
+            if let Some(release) = &details.release {
+                for (index, asset) in release.assets.iter().enumerate() {
+                    let selected = index == tab.selected_asset;
+                    if selected {
+                        renderer.draw_rect(
+                            x + pad,
+                            rows_y,
+                            width - pad * 2.0,
+                            line_height,
+                            rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                        );
+                    }
+                    let label = format!("{} · {} ↓", asset.name, asset.download_count);
+                    renderer.draw_text(
+                        &fit(&label, max),
+                        x + pad,
+                        rows_y,
+                        rgb(if selected { text } else { dim }),
+                    );
+                    rows_y += line_height;
+                }
+            }
+            renderer.draw_text(
+                self.t("plugins.sidebar.package_enter_hint"),
+                x + pad,
+                rows_y + line_height * 0.4,
+                rgb(dim),
+            );
+            return;
+        }
+        let Some(release) = &details.release else {
+            renderer.draw_text(
+                self.t("plugins.sidebar.no_compatible_release"),
+                x + pad,
+                rows_y,
+                rgb(dim),
+            );
+            rows_y += line_height * 2.0;
+            self.draw_graphite_resources(renderer, details, x, rows_y, width, line_height, max);
+            return;
+        };
+        let heading = self.t("plugins.sidebar.installation");
+        renderer.draw_text(heading, x + pad, rows_y, rgb(text));
+        rows_y += line_height * 1.3;
+        for line in [
+            format!(
+                "{}: {}",
+                self.t("plugins.sidebar.release"),
+                release.name.as_deref().unwrap_or(&release.tag_name)
+            ),
+            format!(
+                "{}: {}",
+                self.t("plugins.sidebar.published"),
+                release
+                    .published_at
+                    .as_deref()
+                    .unwrap_or(self.t("common.none"))
+            ),
+            format!(
+                "{}: {} KB",
+                self.t("plugins.sidebar.size"),
+                release.size / 1024
+            ),
+            format!(
+                "{}: {}",
+                self.t("plugins.sidebar.downloads"),
+                release.downloads
+            ),
+        ] {
+            renderer.draw_text(&fit(&line, max), x + pad, rows_y, rgb(dim));
+            rows_y += line_height * 1.15;
+        }
+        if release.assets.is_empty() {
+            renderer.draw_text(
+                &fit(self.t("plugins.sidebar.no_compatible_release"), max),
+                x + pad,
+                rows_y,
+                rgb(0x9b2226),
+            );
+            rows_y += line_height * 1.5;
+        }
+        rows_y += line_height * 0.6;
+        if !details.repository.topics.is_empty() {
+            renderer.draw_text(
+                self.t("plugins.sidebar.categories"),
+                x + pad,
+                rows_y,
+                rgb(text),
+            );
+            rows_y += line_height * 1.2;
+            for topic in details.repository.topics.iter().take(5) {
+                renderer.draw_text(&fit(topic, max), x + pad, rows_y, rgb(dim));
+                rows_y += line_height;
+            }
+        }
+        self.draw_graphite_resources(
+            renderer,
+            details,
+            x,
+            rows_y + line_height * 0.5,
+            width,
+            line_height,
+            max,
+        );
+    }
+
+    fn draw_graphite_resources(
+        &self,
+        renderer: &mut Renderer,
+        details: &RepositoryDetails,
+        x: f32,
+        mut y: f32,
+        width: f32,
+        line_height: f32,
+        max: usize,
+    ) {
+        let pad = PAD * 1.5;
+        renderer.draw_text(
+            self.t("plugins.sidebar.resources"),
+            x + pad,
+            y,
+            rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+        );
+        y += line_height * 1.25;
+        let mut links = vec![(
+            self.t("plugins.sidebar.repository").to_owned(),
+            details.repository.html_url.clone(),
+        )];
+        if let Some(homepage) = details
+            .repository
+            .homepage
+            .as_ref()
+            .filter(|url| is_https_url(url))
+        {
+            links.push((
+                self.t("plugins.sidebar.homepage").to_owned(),
+                homepage.clone(),
+            ));
+        }
+        links.push((
+            self.t("plugins.sidebar.issues").to_owned(),
+            format!(
+                "{}/issues",
+                details.repository.html_url.trim_end_matches('/')
+            ),
+        ));
+        if let Some(license) = &details.repository.license {
+            let name = license.spdx_id.as_deref().unwrap_or(&license.name);
+            links.push((
+                format!("{} · {name}", self.t("plugins.sidebar.license")),
+                format!(
+                    "{}/blob/HEAD/LICENSE",
+                    details.repository.html_url.trim_end_matches('/')
+                ),
+            ));
+        }
+        for (label, _) in links {
+            renderer.draw_text(
+                &fit(
+                    &format!("↗ {label}"),
+                    max.min((width / 4.0 / PAD).max(1.0) as usize),
+                ),
+                x + pad,
+                y,
+                rgb(0x007acc),
+            );
+            y += line_height * 1.1;
+        }
+    }
+
+    pub(crate) fn graphite_detail_click(&mut self, x: f32, y: f32) -> bool {
+        let Some(gpu) = &self.gpu else {
+            return false;
+        };
+        let line_height = gpu.renderer.line_height();
+        let cell_width = gpu.renderer.char_width();
+        let (window_width, window_height) = gpu.renderer.size();
+        let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
+            return false;
+        };
+        let Some(rect) = self
+            .group_rectangles(window_width, window_height, line_height)
+            .into_iter()
+            .find(|rect| rect.id == group)
+        else {
+            return false;
+        };
+        let body_y = rect.y + line_height * 1.5;
+        if x < rect.x || x >= rect.x + rect.width || y < body_y || y >= rect.y + rect.height {
+            return false;
+        }
+        let sidebar_width = (rect.width * 0.28)
+            .clamp(220.0, 340.0)
+            .min(rect.width * 0.45);
+        let sidebar_x = rect.x + rect.width - sidebar_width;
+        let Some(tab) = self
+            .plugins
+            .graphite_details
+            .iter()
+            .find(|tab| tab.group == group && tab.repository == repository)
+        else {
+            return true;
+        };
+        if x >= sidebar_x {
+            let button_y = body_y + PAD;
+            if y >= button_y && y < button_y + line_height * 1.7 {
+                self.start_graphite_detail_install();
+                return true;
+            }
+            if tab.choosing_asset {
+                let rows_y = button_y + line_height * 2.2 + line_height * 1.2;
+                let asset_index = ((y - rows_y) / line_height).floor() as isize;
+                if asset_index >= 0 {
+                    if let Some(release) = tab
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.release.as_ref())
+                    {
+                        if (asset_index as usize) < release.assets.len() {
+                            if let Some(active) = self
+                                .plugins
+                                .graphite_details
+                                .iter_mut()
+                                .find(|tab| tab.group == group && tab.repository == repository)
+                            {
+                                active.selected_asset = asset_index as usize;
+                            }
+                            self.install_selected_graphite_asset();
+                        }
+                    }
+                }
+                return true;
+            }
+            if let Some(details) = &tab.details {
+                if let Some(url) = self.graphite_resource_url_at(
+                    details,
+                    y,
+                    sidebar_x,
+                    body_y,
+                    sidebar_width,
+                    line_height,
+                ) {
+                    open_external_https(&url);
+                }
+            }
+            return true;
+        }
+        if let Some(details) = &tab.details {
+            let sidebar_width = (rect.width * 0.28)
+                .clamp(220.0, 340.0)
+                .min(rect.width * 0.45);
+            let main_x = rect.x + PAD * 2.0;
+            let main_width =
+                (rect.x + rect.width - sidebar_width - main_x - PAD * 2.0).max(cell_width * 12.0);
+            let max_main = (main_width / cell_width).max(1.0) as usize;
+            let description_rows = details
+                .repository
+                .description
+                .as_deref()
+                .map(|description| wrap_text(description, max_main).len().min(2))
+                .unwrap_or(0);
+            let readme_top = body_y + PAD + line_height * (4.45 + description_rows as f32);
+            let display_row =
+                ((y - readme_top) / line_height).floor().max(0.0) as usize + tab.scroll_line;
+            let rows =
+                markdown_display_rows(details.readme.as_deref().unwrap_or_default(), max_main);
+            let Some((_, _, source_line)) = rows.get(display_row) else {
+                return true;
+            };
+            if let Some(url) = markdown_url_at(
+                details.readme.as_deref().unwrap_or_default(),
+                *source_line,
+                &details.repository,
+            ) {
+                open_external_https(&url);
+            }
+        }
+        true
+    }
+
+    pub(crate) fn graphite_detail_tab_click(&mut self, group: u64, x: f32) -> bool {
+        let Some(gpu) = &self.gpu else {
+            return false;
+        };
+        let cell_width = gpu.renderer.char_width();
+        let line_height = gpu.renderer.line_height();
+        let window_height = gpu.renderer.size().1;
+        let mut tab_x = self
+            .editor_groups
+            .views(group)
+            .map(|(views, _)| {
+                let x = self
+                    .group_rectangles(gpu.renderer.size().0, window_height, line_height)
+                    .into_iter()
+                    .find(|rect| rect.id == group)
+                    .map(|rect| rect.x)
+                    .unwrap_or(0.0);
+                views
+                    .iter()
+                    .filter_map(|view| self.resolve_document(view.document))
+                    .map(|document| {
+                        crate::app::group_drawing::tab_width(
+                            &self.documents[document],
+                            cell_width,
+                            &self.translator,
+                        )
+                    })
+                    .sum::<f32>()
+                    + x
+            })
+            .unwrap_or(0.0);
+        let tabs = self
+            .plugins
+            .graphite_details
+            .iter()
+            .filter(|tab| tab.group == group)
+            .map(|tab| {
+                let label = format!(
+                    " {}  × ",
+                    tab.repository.rsplit('/').next().unwrap_or(&tab.repository)
+                );
+                let width = (label.chars().count() as f32 * cell_width * 1.4 + cell_width * 2.4)
+                    .max(line_height * 4.5);
+                (tab.repository.clone(), width)
+            })
+            .collect::<Vec<_>>();
+        for (repository, width) in tabs {
+            if x >= tab_x && x < tab_x + width {
+                if x >= tab_x + width - cell_width * 2.0 {
+                    self.close_graphite_detail(group, &repository);
+                } else {
+                    self.plugins.active_graphite_detail = Some((group, repository));
+                }
+                return true;
+            }
+            tab_x += width;
+        }
+        false
+    }
+
+    pub(crate) fn graphite_detail_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
+            return false;
+        };
+        if self.editor_groups.focused() != group {
+            return false;
+        }
+        if self.modifiers.control_key() || self.modifiers.alt_key() {
+            return false;
+        }
+        let Some(tab) = self
+            .plugins
+            .graphite_details
+            .iter_mut()
+            .find(|tab| tab.group == group && tab.repository == repository)
+        else {
+            self.plugins.active_graphite_detail = None;
+            return false;
+        };
+        match event.logical_key {
+            Key::Named(NamedKey::Escape) => {
+                if tab.choosing_asset {
+                    tab.choosing_asset = false;
+                } else {
+                    self.close_graphite_detail(group, &repository);
+                }
+            }
+            Key::Named(NamedKey::ArrowDown) => {
+                if tab.choosing_asset {
+                    let count = tab
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.release.as_ref())
+                        .map_or(0, |release| release.assets.len());
+                    tab.selected_asset = (tab.selected_asset + 1).min(count.saturating_sub(1));
+                } else {
+                    tab.scroll_line = tab.scroll_line.saturating_add(1);
+                }
+            }
+            Key::Named(NamedKey::ArrowUp) => {
+                if tab.choosing_asset {
+                    tab.selected_asset = tab.selected_asset.saturating_sub(1);
+                } else {
+                    tab.scroll_line = tab.scroll_line.saturating_sub(1);
+                }
+            }
+            Key::Named(NamedKey::Enter) => {
+                if tab.choosing_asset {
+                    self.install_selected_graphite_asset();
+                } else {
+                    self.start_graphite_detail_install();
+                }
+            }
+            _ => {}
+        }
+        true
+    }
+
+    pub(crate) fn scroll_graphite_detail(&mut self, lines: i32) -> bool {
+        let Some((group, repository)) = self.plugins.active_graphite_detail.as_ref() else {
+            return false;
+        };
+        if let Some(tab) = self
+            .plugins
+            .graphite_details
+            .iter_mut()
+            .find(|tab| tab.group == *group && tab.repository == *repository)
+        {
+            if tab.choosing_asset {
+                let count = tab
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.release.as_ref())
+                    .map_or(0, |release| release.assets.len());
+                tab.selected_asset = (tab.selected_asset as i32 + lines)
+                    .clamp(0, count.saturating_sub(1) as i32)
+                    as usize;
+            } else {
+                tab.scroll_line = (tab.scroll_line as i32 + lines).max(0) as usize;
+            }
+        }
+        true
+    }
+
+    fn graphite_resource_url_at(
+        &self,
+        details: &RepositoryDetails,
+        y: f32,
+        sidebar_x: f32,
+        body_y: f32,
+        sidebar_width: f32,
+        line_height: f32,
+    ) -> Option<String> {
+        let mut rows_y = body_y + PAD + line_height * 2.2;
+        if details.release.is_some() {
+            rows_y += line_height * 1.3 + line_height * 4.6 + line_height * 0.6;
+            if !details.repository.topics.is_empty() {
+                rows_y += line_height * (1.2 + details.repository.topics.len().min(5) as f32);
+            }
+            rows_y += line_height * 0.5;
+        } else {
+            rows_y += line_height * 2.0;
+        }
+        rows_y += line_height * 1.25;
+        let row = ((y - rows_y) / (line_height * 1.1)).floor() as isize;
+        if row < 0 || y < rows_y || sidebar_x + sidebar_width < 0.0 {
+            return None;
+        }
+        let mut links = vec![details.repository.html_url.clone()];
+        if let Some(homepage) = details
+            .repository
+            .homepage
+            .as_ref()
+            .filter(|url| is_https_url(url))
+        {
+            links.push(homepage.clone());
+        }
+        links.push(format!(
+            "{}/issues",
+            details.repository.html_url.trim_end_matches('/')
+        ));
+        if details.repository.license.is_some() {
+            links.push(format!(
+                "{}/blob/HEAD/LICENSE",
+                details.repository.html_url.trim_end_matches('/')
+            ));
+        }
+        links.get(row as usize).cloned()
+    }
+
     pub(crate) fn draw_plugins_sidebar(
         &self,
         renderer: &mut Renderer,
@@ -782,5 +1466,247 @@ impl App {
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
         }
+    }
+}
+
+fn markdown_display_rows(markdown: &str, width: usize) -> Vec<(String, u32, usize)> {
+    let mut rows = Vec::new();
+    let mut in_code = false;
+    for (source_line, raw) in markdown.lines().enumerate() {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if trimmed.is_empty() {
+            rows.push((
+                String::new(),
+                Theme::color(Theme::DIM, 0x616161),
+                source_line,
+            ));
+            continue;
+        }
+        if in_code {
+            for line in wrap_text(raw, width.saturating_sub(2)).into_iter() {
+                rows.push((format!("  {line}"), 0x6a9955, source_line));
+            }
+            continue;
+        }
+        let (text, color) = if let Some(heading) = trimmed.strip_prefix("#### ") {
+            (format!("  {}", markdown_inline_text(heading)), 0x569cd6)
+        } else if let Some(heading) = trimmed.strip_prefix("### ") {
+            (format!("▌ {}", markdown_inline_text(heading)), 0x569cd6)
+        } else if let Some(heading) = trimmed.strip_prefix("## ") {
+            (format!("▌ {}", markdown_inline_text(heading)), 0x569cd6)
+        } else if let Some(heading) = trimmed.strip_prefix("# ") {
+            (format!("▌ {}", markdown_inline_text(heading)), 0x569cd6)
+        } else if let Some(item) = trimmed.strip_prefix("- [ ] ") {
+            (
+                format!("☐ {}", markdown_inline_text(item)),
+                Theme::color(Theme::TEXT, 0x1e1e1e),
+            )
+        } else if let Some(item) = trimmed
+            .strip_prefix("- [x] ")
+            .or_else(|| trimmed.strip_prefix("- [X] "))
+        {
+            (
+                format!("☑ {}", markdown_inline_text(item)),
+                Theme::color(Theme::TEXT, 0x1e1e1e),
+            )
+        } else if let Some(item) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "))
+        {
+            (
+                format!("• {}", markdown_inline_text(item)),
+                Theme::color(Theme::TEXT, 0x1e1e1e),
+            )
+        } else if let Some((number, item)) = trimmed
+            .split_once(". ")
+            .filter(|(number, _)| number.chars().all(|character| character.is_ascii_digit()))
+        {
+            (
+                format!("{number}. {}", markdown_inline_text(item)),
+                Theme::color(Theme::TEXT, 0x1e1e1e),
+            )
+        } else if trimmed.starts_with('|') {
+            let cells = trimmed
+                .trim_matches('|')
+                .split('|')
+                .map(str::trim)
+                .filter(|cell| {
+                    !cell
+                        .chars()
+                        .all(|c| c == '-' || c == ':' || c.is_whitespace())
+                })
+                .map(markdown_inline_text)
+                .collect::<Vec<_>>();
+            (cells.join("   │   "), Theme::color(Theme::TEXT, 0x1e1e1e))
+        } else if let Some(quote) = trimmed.strip_prefix("> ") {
+            (format!("│ {}", markdown_inline_text(quote)), 0x9da5b4)
+        } else {
+            (
+                markdown_inline_text(trimmed),
+                Theme::color(Theme::TEXT, 0x1e1e1e),
+            )
+        };
+        for line in wrap_text(&text, width) {
+            rows.push((line, color, source_line));
+        }
+    }
+    rows
+}
+
+fn markdown_inline_text(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '!' && chars.peek() == Some(&'[') {
+            chars.next();
+            let alt = collect_until(&mut chars, ']');
+            if chars.next() == Some('(') {
+                let target = collect_until(&mut chars, ')');
+                output.push_str("▧ ");
+                output.push_str(&alt);
+                if !target.is_empty() {
+                    output.push_str(" <");
+                    output.push_str(&target);
+                    output.push('>');
+                }
+            } else {
+                output.push_str(&alt);
+            }
+        } else if ch == '[' {
+            let label = collect_until(&mut chars, ']');
+            if chars.next() == Some('(') {
+                let target = collect_until(&mut chars, ')');
+                output.push_str(&label);
+                if !target.is_empty() {
+                    output.push_str(" <");
+                    output.push_str(&target);
+                    output.push('>');
+                }
+            } else {
+                output.push_str(&label);
+            }
+        } else if matches!(ch, '`' | '*' | '_' | '~') {
+            while chars.peek() == Some(&ch) {
+                chars.next();
+            }
+        } else if ch == '<' {
+            for next in chars.by_ref() {
+                if next == '>' {
+                    break;
+                }
+            }
+        } else if !ch.is_control() {
+            output.push(ch);
+        } else {
+            output.push(' ');
+        }
+    }
+    output
+}
+
+fn collect_until(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, end: char) -> String {
+    let mut text = String::new();
+    for ch in chars.by_ref() {
+        if ch == end {
+            break;
+        }
+        text.push(ch);
+    }
+    text
+}
+
+fn markdown_url_at(
+    markdown: &str,
+    line: usize,
+    repository: &graphite_plugins::catalog::Repository,
+) -> Option<String> {
+    let source = markdown.lines().nth(line)?;
+    let start = source.find("](")? + 2;
+    let end = source[start..].find(')')? + start;
+    let url = source[start..end].trim();
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        return (parsed.scheme() == "https").then(|| url.to_owned());
+    }
+    if url.starts_with('#') || url.is_empty() || url.starts_with("//") {
+        return None;
+    }
+    let branch = repository.default_branch.as_deref().unwrap_or("HEAD");
+    let path = if url.starts_with('/') {
+        url.trim_start_matches('/')
+    } else {
+        url
+    };
+    let target = format!(
+        "{}/blob/{branch}/{path}",
+        repository.html_url.trim_end_matches('/')
+    );
+    is_https_url(&target).then_some(target)
+}
+
+fn is_https_url(value: &str) -> bool {
+    reqwest::Url::parse(value).is_ok_and(|url| url.scheme() == "https" && url.host_str().is_some())
+}
+
+fn open_external_https(value: &str) {
+    if !is_https_url(value) {
+        return;
+    }
+    #[cfg(windows)]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(not(any(windows, target_os = "linux")))]
+    let mut command = std::process::Command::new("open");
+    let _ = command.arg(value).spawn();
+}
+
+#[cfg(test)]
+mod graphite_readme_tests {
+    use super::*;
+
+    #[test]
+    fn readme_blocks_render_common_markdown_as_safe_text() {
+        let rows = markdown_display_rows(
+            "# Title\n\n- item **bold**\n\n```js\n<script>alert(1)</script>\n```\n\n[Docs](https://example.test)",
+            40,
+        );
+        let rendered = rows
+            .iter()
+            .map(|(line, _, _)| line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("Title"));
+        assert!(rendered.contains("• item bold"));
+        assert!(rendered.contains("alert(1)"));
+        assert!(rendered.contains("Docs <https://example.test>"));
+        assert_eq!(
+            markdown_inline_text("<script>alert(1)</script>"),
+            "alert(1)"
+        );
+    }
+
+    #[test]
+    fn readme_relative_links_resolve_to_the_repository_default_branch() {
+        let repository = graphite_plugins::catalog::Repository {
+            full_name: "author/plugin".into(),
+            description: None,
+            stargazers_count: 0,
+            html_url: "https://github.com/author/plugin".into(),
+            homepage: None,
+            topics: Vec::new(),
+            license: None,
+            open_issues_count: 0,
+            default_branch: Some("main".into()),
+        };
+        assert_eq!(
+            markdown_url_at("[guide](docs/guide.md)", 0, &repository).as_deref(),
+            Some("https://github.com/author/plugin/blob/main/docs/guide.md")
+        );
+        assert!(markdown_url_at("[bad](javascript:alert(1))", 0, &repository).is_none());
     }
 }

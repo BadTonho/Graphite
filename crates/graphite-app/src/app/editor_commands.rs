@@ -422,6 +422,10 @@ impl App {
     }
 
     pub(crate) fn close_active_tab(&mut self) {
+        if let Some((group, repository)) = self.plugins.active_graphite_detail.clone() {
+            self.close_graphite_detail(group, &repository);
+            return;
+        }
         let view = self.command_view_ref().clone();
         let document = view.document;
         let last_view = self.editor_groups.view_count(document) == 1;
