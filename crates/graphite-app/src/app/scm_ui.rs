@@ -9,6 +9,237 @@ fn scm_file_label_x(icon_x: f32, icon_size: f32, icon_gap: f32) -> f32 {
     icon_x + icon_size + icon_gap
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct ScmRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl ScmRect {
+    pub fn contains(self, x: f32, y: f32) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ScmListRowKind {
+    Section {
+        staged: bool,
+        count: usize,
+        collapsed: bool,
+    },
+    File {
+        index: usize,
+        staged: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct ScmListRow {
+    pub bounds: ScmRect,
+    pub chevron: ScmRect,
+    pub action: ScmRect,
+    pub kind: ScmListRowKind,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ScmPanelLayout {
+    pub repository_header: ScmRect,
+    pub repository_chevron: ScmRect,
+    pub repository_icon: ScmRect,
+    pub repository_label: ScmRect,
+    pub branch_row: ScmRect,
+    pub branch_icon: ScmRect,
+    pub branch_label: ScmRect,
+    pub branch_picker: ScmRect,
+    pub refresh: ScmRect,
+    pub commit_field: ScmRect,
+    pub commit_button: ScmRect,
+    pub list_top: f32,
+    pub list_rows: Vec<ScmListRow>,
+}
+
+pub(super) fn scm_panel_layout(
+    snapshot: &crate::scm::Snapshot,
+    height: f32,
+    row_height: f32,
+    cell_width: f32,
+    scroll: usize,
+    repositories_collapsed: bool,
+    staged_collapsed: bool,
+    changes_collapsed: bool,
+) -> ScmPanelLayout {
+    let left = ACTIVITY_BAR_WIDTH + PAD;
+    let right = SIDEBAR_WIDTH - PAD;
+    let full_row = |y| ScmRect {
+        x: ACTIVITY_BAR_WIDTH,
+        y,
+        width: SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+        height: row_height,
+    };
+    let icon_size = (row_height * 0.70).round();
+    let icon_x = left + cell_width;
+    let icon_gap = cell_width * 0.55;
+    let repo_y = row_height * 2.0;
+    let branch_y = row_height * 3.0;
+    let repo_offset = if repositories_collapsed { -2.0 } else { 0.0 };
+    let commit_y = row_height * (4.0 + repo_offset);
+    let button_width = (cell_width * 2.2).max(20.0);
+    let button_gap = (cell_width * 0.75).max(7.0);
+    let refresh_x = right - button_width;
+    let picker_x = refresh_x - button_gap - button_width;
+    let action_width = cell_width * 2.0;
+    let chevron_slot = cell_width * 1.6;
+    let action_rect = |y| ScmRect {
+        x: right - cell_width * 3.1,
+        y,
+        width: action_width,
+        height: row_height,
+    };
+    let mut entries = Vec::new();
+    let staged_count = snapshot.files.iter().filter(|file| file.staged).count();
+    let changes_count = snapshot
+        .files
+        .iter()
+        .filter(|file| file.unstaged || file.untracked || file.conflicted)
+        .count();
+    if staged_count > 0 {
+        entries.push(ScmListRowKind::Section {
+            staged: true,
+            count: staged_count,
+            collapsed: staged_collapsed,
+        });
+        if !staged_collapsed {
+            entries.extend(
+                snapshot
+                    .files
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, file)| file.staged)
+                    .map(|(index, _)| ScmListRowKind::File {
+                        index,
+                        staged: true,
+                    }),
+            );
+        }
+    }
+    entries.push(ScmListRowKind::Section {
+        staged: false,
+        count: changes_count,
+        collapsed: changes_collapsed,
+    });
+    if !changes_collapsed {
+        entries.extend(
+            snapshot
+                .files
+                .iter()
+                .enumerate()
+                .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
+                .map(|(index, _)| ScmListRowKind::File {
+                    index,
+                    staged: false,
+                }),
+        );
+    }
+    let list_top = commit_y + row_height * 2.50;
+    let available = ((height - list_top - row_height * 1.2) / row_height).max(0.0) as usize;
+    let list_rows = entries
+        .into_iter()
+        .skip(scroll)
+        .take(available)
+        .enumerate()
+        .map(|(visible, kind)| {
+            let y = list_top + row_height * (visible as f32 + 1.0);
+            ScmListRow {
+                bounds: full_row(y),
+                chevron: ScmRect {
+                    x: left,
+                    y,
+                    width: chevron_slot,
+                    height: row_height,
+                },
+                action: action_rect(y),
+                kind,
+            }
+        })
+        .collect();
+
+    ScmPanelLayout {
+        repository_header: full_row(row_height),
+        repository_chevron: ScmRect {
+            x: left,
+            y: row_height,
+            width: chevron_slot,
+            height: row_height,
+        },
+        repository_icon: ScmRect {
+            x: icon_x,
+            y: repo_y + (row_height - icon_size) * 0.5,
+            width: icon_size,
+            height: icon_size,
+        },
+        repository_label: ScmRect {
+            x: scm_file_label_x(icon_x, icon_size, icon_gap),
+            y: repo_y,
+            width: right - scm_file_label_x(icon_x, icon_size, icon_gap),
+            height: row_height,
+        },
+        branch_row: full_row(branch_y),
+        branch_icon: ScmRect {
+            x: icon_x,
+            y: branch_y + (row_height - icon_size) * 0.5,
+            width: icon_size,
+            height: icon_size,
+        },
+        branch_label: ScmRect {
+            x: scm_file_label_x(icon_x, icon_size, icon_gap),
+            y: branch_y,
+            width: picker_x - button_gap * 0.5 - scm_file_label_x(icon_x, icon_size, icon_gap),
+            height: row_height,
+        },
+        branch_picker: ScmRect {
+            x: picker_x,
+            y: branch_y,
+            width: button_width,
+            height: row_height,
+        },
+        refresh: ScmRect {
+            x: refresh_x,
+            y: branch_y,
+            width: button_width,
+            height: row_height,
+        },
+        commit_field: ScmRect {
+            x: left,
+            y: commit_y,
+            width: right - left,
+            height: row_height,
+        },
+        commit_button: ScmRect {
+            x: left,
+            y: commit_y + row_height * 1.30,
+            width: right - left,
+            height: row_height,
+        },
+        list_top,
+        list_rows,
+    }
+}
+
+fn scm_fit_label(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        return text.to_owned();
+    }
+    match max_chars {
+        0 => String::new(),
+        1 => "…".to_owned(),
+        _ => format!("{}…", text.chars().take(max_chars - 1).collect::<String>()),
+    }
+}
+
 fn scm_visible_tail(text: &str, max_chars: usize) -> String {
     let chars = text.chars().collect::<Vec<_>>();
     chars[chars.len().saturating_sub(max_chars)..]
@@ -32,6 +263,25 @@ fn scm_icon_color(color: u32) -> u32 {
     (blend(channels[0]) << 16) | (blend(channels[1]) << 8) | blend(channels[2])
 }
 
+fn draw_scm_control_slot(renderer: &mut Renderer, bounds: ScmRect, hovered: bool) {
+    let inset = 2.0;
+    let background = if hovered {
+        Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+    } else {
+        Theme::color(0x303033, 0xeeeeee)
+    };
+    let border = Theme::color(0x4d4d50, 0xc7c7c7);
+    let x = bounds.x + inset;
+    let y = bounds.y + inset;
+    let width = (bounds.width - inset * 2.0).max(1.0);
+    let height = (bounds.height - inset * 2.0).max(1.0);
+    renderer.draw_rect(x, y, width, height, rgb(background));
+    renderer.draw_rect(x, y, width, 1.0, rgb(border));
+    renderer.draw_rect(x, y + height - 1.0, width, 1.0, rgb(border));
+    renderer.draw_rect(x, y, 1.0, height, rgb(border));
+    renderer.draw_rect(x + width - 1.0, y, 1.0, height, rgb(border));
+}
+
 #[cfg(test)]
 mod scm_sidebar_layout_tests {
     use super::*;
@@ -49,6 +299,58 @@ mod scm_sidebar_layout_tests {
         let gap = 5.0;
         let label_x = scm_file_label_x(icon_x, icon_size, gap);
         assert_eq!(label_x - (icon_x + icon_size), gap);
+    }
+
+    #[test]
+    fn branch_buttons_have_separate_hit_areas_and_a_visible_gap() {
+        let layout = scm_panel_layout(
+            &crate::scm::Snapshot::default(),
+            700.0,
+            20.0,
+            9.0,
+            0,
+            false,
+            false,
+            false,
+        );
+        assert!(layout.branch_picker.x + layout.branch_picker.width < layout.refresh.x);
+        assert!(layout.branch_picker.contains(
+            layout.branch_picker.x + layout.branch_picker.width * 0.5,
+            layout.branch_picker.y + layout.branch_picker.height * 0.5,
+        ));
+        assert!(!layout.branch_picker.contains(
+            layout.refresh.x + layout.refresh.width * 0.5,
+            layout.refresh.y + layout.refresh.height * 0.5,
+        ));
+    }
+
+    #[test]
+    fn repository_and_changes_chevrons_share_a_column_and_action_button_is_separate() {
+        let mut snapshot = crate::scm::Snapshot::default();
+        snapshot.files.push(crate::scm::FileStatus {
+            path: PathBuf::from("a.rs"),
+            unstaged: true,
+            ..Default::default()
+        });
+        let layout = scm_panel_layout(&snapshot, 700.0, 20.0, 9.0, 0, false, false, false);
+        let changes = layout
+            .list_rows
+            .iter()
+            .find(|row| matches!(row.kind, ScmListRowKind::Section { staged: false, .. }))
+            .unwrap();
+        assert_eq!(layout.repository_chevron.x, changes.chevron.x);
+        assert_eq!(layout.repository_chevron.width, changes.chevron.width);
+        assert!(changes.action.x > layout.repository_header.x);
+        assert!(changes.action.x + changes.action.width <= SIDEBAR_WIDTH - PAD - 9.0);
+    }
+
+    #[test]
+    fn long_branch_names_are_truncated_to_the_available_slot() {
+        assert_eq!(
+            scm_fit_label("feature/a-very-long-branch", 10),
+            "feature/a…"
+        );
+        assert_eq!(scm_fit_label("main", 10), "main");
     }
 
     #[test]
@@ -596,11 +898,21 @@ impl App {
         let left = ACTIVITY_BAR_WIDTH + PAD;
         let right = SIDEBAR_WIDTH - PAD;
         let row_h = line_height.max(18.0);
+        let layout = scm_panel_layout(
+            &self.scm_snapshot,
+            height,
+            row_h,
+            cell_width,
+            self.scm_scroll,
+            self.scm_repositories_collapsed,
+            self.scm_staged_collapsed,
+            self.scm_changes_collapsed,
+        );
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
         renderer.draw_text(self.t("scm.sidebar.title"), left, row_h * 0.2, dim);
-        let repo_header_y = row_h;
+        let repo_header_y = layout.repository_header.y;
         let repo_chevron = if self.scm_repositories_collapsed {
             crate::file_icons::CHEVRON_RIGHT
         } else {
@@ -609,14 +921,15 @@ impl App {
         let header_icon_size = (row_h * 0.65).round();
         renderer.draw_icon(
             repo_chevron,
-            left,
+            layout.repository_chevron.x
+                + (layout.repository_chevron.width - header_icon_size) * 0.5,
             repo_header_y + (row_h - header_icon_size) * 0.5,
             header_icon_size,
             dim,
         );
         renderer.draw_text(
             self.t("scm.sidebar.repositories"),
-            left + cell_width,
+            left + layout.repository_chevron.width,
             repo_header_y,
             text,
         );
@@ -627,53 +940,76 @@ impl App {
             .and_then(|name| name.to_str())
             .unwrap_or_else(|| self.tree.root().to_str().unwrap_or("Workspace"));
         if !self.scm_repositories_collapsed {
-            let repo_y = row_h * 2.0;
-            let icon_size = (row_h * 0.76).round();
+            let icon_size = layout.repository_icon.width;
             renderer.draw_icon(
                 crate::file_icons::GIT.glyph,
-                left + cell_width,
-                repo_y + (row_h - icon_size) * 0.5,
+                layout.repository_icon.x,
+                layout.repository_icon.y,
                 icon_size,
                 rgb(scm_icon_color(crate::file_icons::GIT.color)),
             );
-            renderer.draw_text(repo_name, left + cell_width * 2.0, repo_y, text);
+            let available_chars = (layout.repository_label.width / cell_width)
+                .floor()
+                .max(0.0) as usize;
+            renderer.draw_text(
+                &scm_fit_label(repo_name, available_chars),
+                layout.repository_label.x,
+                layout.repository_label.y,
+                text,
+            );
         }
         let branch = self
             .scm_snapshot
             .branch
             .as_deref()
             .unwrap_or_else(|| self.t("scm.sidebar.no_repository"));
-        let repo_offset = if self.scm_repositories_collapsed {
-            -2.0
-        } else {
-            0.0
-        };
         if !self.scm_repositories_collapsed {
-            let icon_size = (row_h * 0.70).round();
+            let icon_size = layout.branch_icon.width;
             renderer.draw_icon(
                 crate::file_icons::GIT.glyph,
-                left + cell_width,
-                row_h * 3.0 + (row_h - icon_size) * 0.5,
+                layout.branch_icon.x,
+                layout.branch_icon.y,
                 icon_size,
                 rgb(Theme::color(0x9da5b4, 0x5f6672)),
             );
-            renderer.draw_text(branch, left + cell_width * 2.0, row_h * 3.0, text);
+            let branch_chars = (layout.branch_label.width / cell_width).floor().max(0.0) as usize;
+            renderer.draw_text(
+                &scm_fit_label(branch, branch_chars),
+                layout.branch_label.x,
+                layout.branch_label.y,
+                text,
+            );
+            let control_size = (row_h * 0.62).round();
+            draw_scm_control_slot(
+                renderer,
+                layout.branch_picker,
+                layout
+                    .branch_picker
+                    .contains(self.mouse.x as f32, self.mouse.y as f32),
+            );
             renderer.draw_icon(
                 crate::file_icons::CHEVRON_DOWN,
-                right - cell_width * 2.0,
-                row_h * 3.0 + (row_h - icon_size) * 0.5,
-                icon_size,
+                layout.branch_picker.x + (layout.branch_picker.width - control_size) * 0.5,
+                layout.branch_picker.y + (row_h - control_size) * 0.5,
+                control_size,
                 dim,
             );
             let refresh = "⟳";
+            draw_scm_control_slot(
+                renderer,
+                layout.refresh,
+                layout
+                    .refresh
+                    .contains(self.mouse.x as f32, self.mouse.y as f32),
+            );
             renderer.draw_text(
                 refresh,
-                scm_centered_text_x(right - cell_width, cell_width, refresh, cell_width),
-                row_h * 3.0 + row_h * 0.12,
+                scm_centered_text_x(layout.refresh.x, layout.refresh.width, refresh, cell_width),
+                layout.refresh.y + (row_h - line_height) * 0.5 + row_h * 0.08,
                 dim,
             );
         }
-        let commit_top = row_h * (4.0 + repo_offset);
+        let commit_top = layout.commit_field.y;
         let field_width = right - left;
         let focused = self.scm_commit_prompt;
         let field_background = Theme::color(0x1f1f1f, 0xffffff);
@@ -734,7 +1070,7 @@ impl App {
                 rgb(Theme::color(Theme::STATUS, 0x007acc)),
             );
         }
-        let commit_y = commit_top + row_h * 1.15;
+        let commit_y = layout.commit_button.y;
         let commit_enabled = !self.scm_commit_message.trim().is_empty();
         renderer.draw_rect(
             left,
@@ -754,7 +1090,7 @@ impl App {
             commit_y + (row_h - line_height) * 0.5 + row_h * 0.08,
             if commit_enabled { rgb(0xffffff) } else { dim },
         );
-        let list_top = commit_top + row_h * 2.35;
+        let list_top = layout.list_top;
         if let Some(error) = &self.scm_snapshot.error {
             renderer.draw_text(
                 error,
@@ -764,150 +1100,127 @@ impl App {
             );
             return;
         }
-        let staged_count = self
-            .scm_snapshot
-            .files
-            .iter()
-            .filter(|file| file.staged)
-            .count();
-        let change_count = self
-            .scm_snapshot
-            .files
-            .iter()
-            .filter(|file| file.unstaged || file.untracked || file.conflicted)
-            .count();
-        let mut entries = Vec::new();
-        if staged_count > 0 {
-            entries.push((None, true));
-            if !self.scm_staged_collapsed {
-                entries.extend(
-                    self.scm_snapshot
-                        .files
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, file)| file.staged)
-                        .map(|(index, _)| (Some(index), true)),
-                );
+        for row in &layout.list_rows {
+            let y = row.bounds.y;
+            match row.kind {
+                ScmListRowKind::Section {
+                    staged,
+                    count,
+                    collapsed,
+                } => {
+                    let label = if staged {
+                        self.t("scm.sidebar.staged")
+                    } else {
+                        self.t("scm.sidebar.changes")
+                    };
+                    let chevron = if collapsed {
+                        crate::file_icons::CHEVRON_RIGHT
+                    } else {
+                        crate::file_icons::CHEVRON_DOWN
+                    };
+                    let icon_size = (row_h * 0.65).round();
+                    renderer.draw_icon(
+                        chevron,
+                        row.chevron.x + (row.chevron.width - icon_size) * 0.5,
+                        y + (row.chevron.height - icon_size) * 0.5,
+                        icon_size,
+                        dim,
+                    );
+                    renderer.draw_text(label, row.chevron.x + row.chevron.width, y, text);
+                    renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
+                    let action = if staged { "−" } else { "+" };
+                    draw_scm_control_slot(
+                        renderer,
+                        row.action,
+                        row.action
+                            .contains(self.mouse.x as f32, self.mouse.y as f32),
+                    );
+                    renderer.draw_text(
+                        action,
+                        scm_centered_text_x(row.action.x, row.action.width, action, cell_width),
+                        y + row_h * 0.12,
+                        dim,
+                    );
+                }
+                ScmListRowKind::File { index, staged } => {
+                    let item = &self.scm_snapshot.files[index];
+                    if index == self.scm_selected {
+                        renderer.draw_rect(
+                            ACTIVITY_BAR_WIDTH,
+                            y - row_h * 0.1,
+                            SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                            row_h,
+                            rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+                        );
+                    }
+                    let icon = crate::file_icons::for_path(&item.path);
+                    let icon_size = (row_h * 0.72).round();
+                    let icon_x = left + cell_width;
+                    renderer.draw_icon(
+                        icon.glyph,
+                        icon_x,
+                        y + (row_h - icon_size) * 0.5,
+                        icon_size,
+                        rgb(scm_icon_color(icon.color)),
+                    );
+                    let full = item.path.to_string_lossy();
+                    let name = item
+                        .path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&full);
+                    let dir = item
+                        .path
+                        .parent()
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let status = if item.conflicted {
+                        "!"
+                    } else if item.untracked {
+                        "U"
+                    } else if staged {
+                        "M"
+                    } else {
+                        "M"
+                    };
+                    let status_color = if status == "U" {
+                        0xff73c991
+                    } else if status == "!" {
+                        0xfff14c4c
+                    } else {
+                        0xffcca700
+                    };
+                    let reserved = cell_width * (status.chars().count() as f32 + 3.0);
+                    let file_x = scm_file_label_x(icon_x, icon_size, cell_width * 0.65);
+                    let max = ((right - file_x - reserved) / cell_width).max(1.0) as usize;
+                    let name = name.chars().take(max).collect::<String>();
+                    renderer.draw_text(&name, file_x, y, text);
+                    let dir_x =
+                        file_x + name.chars().count() as f32 * cell_width + cell_width * 0.4;
+                    let dir_max = ((right - dir_x - reserved) / cell_width).max(0.0) as usize;
+                    renderer.draw_text(
+                        &dir.chars().take(dir_max).collect::<String>(),
+                        dir_x,
+                        y,
+                        dim,
+                    );
+                    renderer.draw_text(status, right - cell_width, y, rgb(status_color));
+                    let action = if staged { "−" } else { "+" };
+                    draw_scm_control_slot(
+                        renderer,
+                        row.action,
+                        row.action
+                            .contains(self.mouse.x as f32, self.mouse.y as f32),
+                    );
+                    renderer.draw_text(
+                        action,
+                        scm_centered_text_x(row.action.x, row.action.width, action, cell_width),
+                        y + row_h * 0.12,
+                        dim,
+                    );
+                }
             }
-        }
-        entries.push((None, false));
-        if !self.scm_changes_collapsed {
-            entries.extend(
-                self.scm_snapshot
-                    .files
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
-                    .map(|(index, _)| (Some(index), false)),
-            );
-        }
-        let available = ((height - list_top - row_h * 1.2) / row_h).max(0.0) as usize;
-        for (visible, (entry, staged)) in entries
-            .iter()
-            .skip(self.scm_scroll)
-            .take(available)
-            .enumerate()
-        {
-            let y = list_top + row_h * (visible as f32 + 1.0);
-            let Some(index) = entry else {
-                let count = if *staged { staged_count } else { change_count };
-                let label = if *staged {
-                    self.t("scm.sidebar.staged")
-                } else {
-                    self.t("scm.sidebar.changes")
-                };
-                let collapsed = if *staged {
-                    self.scm_staged_collapsed
-                } else {
-                    self.scm_changes_collapsed
-                };
-                let chevron = if collapsed {
-                    crate::file_icons::CHEVRON_RIGHT
-                } else {
-                    crate::file_icons::CHEVRON_DOWN
-                };
-                let icon_size = (row_h * 0.65).round();
-                renderer.draw_icon(chevron, left, y + (row_h - icon_size) * 0.5, icon_size, dim);
-                renderer.draw_text(label, left + cell_width, y, text);
-                renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
-                let action = if *staged { "−" } else { "+" };
-                renderer.draw_text(
-                    action,
-                    scm_centered_text_x(right - cell_width * 2.0, cell_width, action, cell_width),
-                    y + row_h * 0.12,
-                    dim,
-                );
-                continue;
-            };
-            let item = &self.scm_snapshot.files[*index];
-            if *index == self.scm_selected {
-                renderer.draw_rect(
-                    ACTIVITY_BAR_WIDTH,
-                    y - row_h * 0.1,
-                    SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
-                    row_h,
-                    rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
-                );
-            }
-            let icon = crate::file_icons::for_path(&item.path);
-            let icon_size = (row_h * 0.72).round();
-            let icon_x = left + cell_width;
-            renderer.draw_icon(
-                icon.glyph,
-                icon_x,
-                y + (row_h - icon_size) * 0.5,
-                icon_size,
-                rgb(scm_icon_color(icon.color)),
-            );
-            let full = item.path.to_string_lossy();
-            let name = item
-                .path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&full);
-            let dir = item
-                .path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let status = if item.conflicted {
-                "!"
-            } else if item.untracked {
-                "U"
-            } else if *staged {
-                "M"
-            } else {
-                "M"
-            };
-            let status_color = if status == "U" {
-                0xff73c991
-            } else if status == "!" {
-                0xfff14c4c
-            } else {
-                0xffcca700
-            };
-            let reserved = cell_width * (status.chars().count() as f32 + 3.0);
-            let file_x = scm_file_label_x(icon_x, icon_size, cell_width * 0.65);
-            let max = ((right - file_x - reserved) / cell_width).max(1.0) as usize;
-            let name = name.chars().take(max).collect::<String>();
-            renderer.draw_text(&name, file_x, y, text);
-            let dir_x = file_x + name.chars().count() as f32 * cell_width + cell_width * 0.4;
-            let dir_max = ((right - dir_x - reserved) / cell_width).max(0.0) as usize;
-            renderer.draw_text(
-                &dir.chars().take(dir_max).collect::<String>(),
-                dir_x,
-                y,
-                dim,
-            );
-            renderer.draw_text(status, right - cell_width, y, rgb(status_color));
-            let action = if *staged { "−" } else { "+" };
-            renderer.draw_text(
-                action,
-                scm_centered_text_x(right - cell_width * 2.0, cell_width, action, cell_width),
-                y + row_h * 0.12,
-                dim,
-            );
         }
     }
 

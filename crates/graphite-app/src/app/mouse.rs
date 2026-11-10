@@ -1,4 +1,4 @@
-use super::scm_ui::ScmAction;
+use super::scm_ui::{scm_panel_layout, ScmAction, ScmListRowKind};
 use super::*;
 
 impl App {
@@ -149,105 +149,77 @@ impl App {
 
         if mx < SIDEBAR_WIDTH {
             if self.scm_visible {
-                let right = SIDEBAR_WIDTH - PAD;
                 let row_h = lh.max(18.0);
-                if my >= row_h && my < row_h * 2.0 {
+                let layout = scm_panel_layout(
+                    &self.scm_snapshot,
+                    window_height,
+                    row_h,
+                    cw,
+                    self.scm_scroll,
+                    self.scm_repositories_collapsed,
+                    self.scm_staged_collapsed,
+                    self.scm_changes_collapsed,
+                );
+                if layout.repository_header.contains(mx, my) {
                     self.scm_repositories_collapsed = !self.scm_repositories_collapsed;
                     return;
                 }
-                let repo_offset = if self.scm_repositories_collapsed {
-                    -2.0
-                } else {
-                    0.0
-                };
-                let commit_top = row_h * (4.0 + repo_offset);
-                if my >= commit_top && my < commit_top + row_h {
+                if layout.commit_field.contains(mx, my) {
                     self.scm_commit_prompt = true;
                     return;
                 }
-                if my >= commit_top + row_h * 1.15
-                    && my < commit_top + row_h * 2.15
+                if layout.commit_button.contains(mx, my)
                     && !self.scm_commit_message.trim().is_empty()
                 {
                     self.run_ui_command("graphite.scm.commit");
                     return;
                 }
                 self.scm_commit_prompt = false;
-                if !self.scm_repositories_collapsed && my >= row_h * 3.0 && my < row_h * 4.0 {
-                    if mx >= right - lh {
+                if layout.branch_row.contains(mx, my) && !self.scm_repositories_collapsed {
+                    if layout.refresh.contains(mx, my) {
                         self.refresh_scm_async();
-                    } else {
+                    } else if layout.branch_picker.contains(mx, my) || mx < layout.branch_picker.x {
                         self.open_branch_picker();
                     }
                     return;
                 }
-                let list_top = commit_top + row_h * 2.35;
-                let staged_count = self
-                    .scm_snapshot
-                    .files
+                if let Some(row) = layout
+                    .list_rows
                     .iter()
-                    .filter(|file| file.staged)
-                    .count();
-                let mut entries = Vec::new();
-                if staged_count > 0 {
-                    entries.push((None, true));
-                    if !self.scm_staged_collapsed {
-                        entries.extend(
-                            self.scm_snapshot
-                                .files
-                                .iter()
-                                .enumerate()
-                                .filter(|(_, f)| f.staged)
-                                .map(|(i, _)| (Some(i), true)),
-                        );
-                    }
-                }
-                entries.push((None, false));
-                if !self.scm_changes_collapsed {
-                    entries.extend(
-                        self.scm_snapshot
-                            .files
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, f)| f.unstaged || f.untracked || f.conflicted)
-                            .map(|(i, _)| (Some(i), false)),
-                    );
-                }
-                let row = ((my - list_top - row_h).max(0.0) / row_h) as usize + self.scm_scroll;
-                if my >= list_top && row < entries.len() {
-                    let (entry, staged) = entries[row];
-                    if entry.is_none() {
-                        if mx >= right - lh * 2.2 {
-                            self.perform_scm_action(if staged {
-                                ScmAction::UnstageAll
+                    .find(|row| row.bounds.contains(mx, my))
+                {
+                    match row.kind {
+                        ScmListRowKind::Section { staged, .. } => {
+                            if row.action.contains(mx, my) {
+                                self.perform_scm_action(if staged {
+                                    ScmAction::UnstageAll
+                                } else {
+                                    ScmAction::StageAll
+                                });
+                            } else if staged {
+                                self.scm_staged_collapsed = !self.scm_staged_collapsed;
                             } else {
-                                ScmAction::StageAll
-                            });
-                            return;
+                                self.scm_changes_collapsed = !self.scm_changes_collapsed;
+                            }
                         }
-                        if staged {
-                            self.scm_staged_collapsed = !self.scm_staged_collapsed;
-                        } else {
-                            self.scm_changes_collapsed = !self.scm_changes_collapsed;
+                        ScmListRowKind::File { index, staged } => {
+                            self.scm_selected = index;
+                            if row.action.contains(mx, my) {
+                                self.perform_scm_action(if staged {
+                                    ScmAction::Unstage
+                                } else {
+                                    ScmAction::Stage
+                                });
+                            } else {
+                                self.run_ui_command_args(
+                                    "graphite.scm.select",
+                                    serde_json::json!({"index":index}),
+                                );
+                                let file = &self.scm_snapshot.files[index];
+                                let path = self.tree.root().join(&file.path);
+                                self.open_file(path);
+                            }
                         }
-                        return;
-                    }
-                    let index = entry.unwrap();
-                    self.scm_selected = index;
-                    if mx >= right - lh * 2.2 {
-                        self.perform_scm_action(if staged {
-                            ScmAction::Unstage
-                        } else {
-                            ScmAction::Stage
-                        });
-                    } else {
-                        self.run_ui_command_args(
-                            "graphite.scm.select",
-                            serde_json::json!({"index":index}),
-                        );
-                        let file = &self.scm_snapshot.files[index];
-                        let path = self.tree.root().join(&file.path);
-                        self.open_file(path);
                     }
                     return;
                 }
