@@ -66,9 +66,21 @@ fn missing_release_and_rate_limit_are_reported_and_backoff_prevents_requests() {
         (429, "Retry-After: 60\r\n".into(), "{}".into()),
     ]);
     let mut catalog = Catalog::with_base(&base).unwrap();
-    assert!(catalog.assets("author/plugin").is_err());
+    assert!(catalog
+        .assets("author/plugin")
+        .unwrap_err()
+        .contains("No stable GitHub release"));
     assert!(catalog.search("", 1).is_err());
     assert!(catalog.search("", 2).unwrap_err().contains("rate limit"));
+    join.join().unwrap();
+}
+
+#[test]
+fn release_without_supported_assets_is_listed_as_empty() {
+    let release = r#"{"draft":false,"prerelease":false,"assets":[{"name":"source.zip","size":2,"browser_download_url":"https://github.com/three"}]}"#;
+    let (base, _, join) = server(vec![(200, String::new(), release.into())]);
+    let mut catalog = Catalog::with_base(&base).unwrap();
+    assert!(catalog.assets("author/plugin").unwrap().is_empty());
     join.join().unwrap();
 }
 #[test]

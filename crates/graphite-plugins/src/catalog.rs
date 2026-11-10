@@ -41,18 +41,32 @@ impl Catalog {
         Self::with_base("https://api.github.com")
     }
     pub fn with_base(base: &str) -> Result<Self> {
+        let url = reqwest::Url::parse(base).map_err(|error| error.to_string())?;
+        let is_loopback = url.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+        if url.scheme() != "https" && !(url.scheme() == "http" && is_loopback) {
+            return Err(
+                "GitHub catalog must use HTTPS (HTTP is allowed for loopback fixtures)".into(),
+            );
+        }
+        let mut builder = Client::builder()
+            .user_agent("Graphite-Plugins/0.1")
+            .timeout(Duration::from_secs(30));
+        if is_loopback {
+            builder = builder.no_proxy();
+        }
         Ok(Self {
-            client: Client::builder()
-                .user_agent("Graphite-Plugins/0.1")
-                .timeout(Duration::from_secs(30))
-                .build()
-                .map_err(|e| e.to_string())?,
+            client: builder.build().map_err(|e| e.to_string())?,
             base: base.into(),
             cache: HashMap::new(),
             blocked_until: None,
         })
     }
-    fn get(&mut self, url: &str) -> Result<reqwest::blocking::Response> {
+    fn get_raw(&mut self, url: &str) -> Result<reqwest::blocking::Response> {
         if self.blocked_until.is_some_and(|t| Instant::now() < t) {
             return Err("GitHub rate limit reached; retry later".into());
         }
@@ -61,7 +75,7 @@ impl Catalog {
             .get(url)
             .header("Accept", "application/vnd.github+json")
             .send()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{e:#}"))?;
         if response.status().as_u16() == 429
             || response
                 .headers()
@@ -91,7 +105,12 @@ impl Catalog {
                 Instant::now() + Duration::from_secs(retry.or(reset).unwrap_or(60).min(86400)),
             );
         }
-        response.error_for_status().map_err(|e| e.to_string())
+        Ok(response)
+    }
+    fn get(&mut self, url: &str) -> Result<reqwest::blocking::Response> {
+        self.get_raw(url)?
+            .error_for_status()
+            .map_err(|error| error.to_string())
     }
     pub fn search(&mut self, query: &str, page: u32) -> Result<Vec<Repository>> {
         if !(1..=34).contains(&page) {
@@ -137,7 +156,14 @@ impl Catalog {
         {
             return Err("Invalid GitHub repository".into());
         }
-        let response = self.get(&format!("{}/repos/{repository}/releases/latest", self.base))?;
+        let response =
+            self.get_raw(&format!("{}/repos/{repository}/releases/latest", self.base))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(format!("No stable GitHub release found for {repository}"));
+        }
+        let response = response
+            .error_for_status()
+            .map_err(|error| error.to_string())?;
         let release: Release = response.json().map_err(|e| e.to_string())?;
         if release.draft || release.prerelease {
             return Err("No stable release available".into());
@@ -159,6 +185,9 @@ impl Catalog {
             return Err("Asset exceeds 100 MiB".into());
         }
         let response = self.get(url.as_str())?;
+        if self.base.starts_with("https:") {
+            validate_release_asset_final_url(response.url())?;
+        }
         if response.content_length().is_some_and(|n| n > MAX_DOWNLOAD) {
             return Err("Download exceeds 100 MiB".into());
         }
@@ -180,5 +209,52 @@ impl Catalog {
             let _ = std::fs::remove_file(destination);
         }
         result
+    }
+}
+
+fn validate_release_asset_final_url(url: &reqwest::Url) -> Result<()> {
+    let Some(host) = url.host_str() else {
+        return Err("GitHub redirected to a URL without a host".into());
+    };
+    let allowed_host = host == "github.com"
+        || host.ends_with(".github.com")
+        || host == "githubusercontent.com"
+        || host.ends_with(".githubusercontent.com");
+    if url.scheme() != "https" || !allowed_host {
+        return Err("GitHub redirected to an insecure or untrusted download URL".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use super::*;
+
+    #[test]
+    fn final_release_redirect_must_remain_https_on_github_domains() {
+        for allowed in [
+            "https://github.com/owner/repo/releases/download/v1/plugin.vsix",
+            "https://release-assets.githubusercontent.com/download/plugin.vsix",
+        ] {
+            assert!(
+                validate_release_asset_final_url(&reqwest::Url::parse(allowed).unwrap()).is_ok()
+            );
+        }
+        for rejected in [
+            "http://github.com/owner/repo/plugin.vsix",
+            "https://github.com.evil.invalid/plugin.vsix",
+            "https://attacker.invalid/plugin.vsix",
+        ] {
+            assert!(
+                validate_release_asset_final_url(&reqwest::Url::parse(rejected).unwrap()).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn custom_catalog_http_base_is_limited_to_loopback_fixtures() {
+        assert!(Catalog::with_base("https://api.github.com").is_ok());
+        assert!(Catalog::with_base("http://127.0.0.1:8000").is_ok());
+        assert!(Catalog::with_base("http://example.com").is_err());
     }
 }

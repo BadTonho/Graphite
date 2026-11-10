@@ -42,14 +42,14 @@ Track disposables in `context.subscriptions`; disposal is idempotent. Host termi
 
 ## Install and manage
 
-Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed and Open VSX. Search results download the latest VSIX for inspection; installation requires confirmation. Arrow keys select cards; Escape returns or closes. The same actions are available from the keyboard:
+Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar with Explorer and Source Control, and the editor stays visible. Click the sidebar to give it keyboard focus; clicking the editor releases it. Tabs switch between Installed, Open VSX and the Graphite GitHub catalog. Open VSX results download the latest VSIX for inspection. Graphite results are GitHub repositories with the `graphite-plugin` topic; selecting a repository loads its latest stable release. If it contains multiple supported packages, choose one to download and inspect. Installation requires confirmation. Arrow keys select cards; Escape returns from a release's assets or closes the sidebar. The same actions are available from the keyboard:
 
 | Key | Action |
 |---|---|
-| I / O | Installed plugins / Open VSX |
+| I / O / G | Installed plugins / Open VSX / Graphite GitHub catalog |
 | L | Enter a local `.graphite-plugin` or `.vsix` path |
-| / | Enter Open VSX search text; Enter submits |
-| Enter | Inspect an installed plugin, or download and inspect the selected Open VSX result |
+| / | Enter search text for the active marketplace tab; Enter submits |
+| Enter | Inspect installed plugin, download Open VSX result, or open a Graphite repository/release asset |
 | Y / Esc | Confirm / cancel installation or trust |
 | E / D | Enable / disable the selected plugin |
 | U | Download the latest Open VSX version for an installed VSIX; confirm to replace it |
@@ -62,7 +62,7 @@ Select an installed VSIX with a Node.js entry point and press **E** to approve t
 
 ## Publish and test
 
-Publish VSIX extensions on Open VSX for discovery. Graphite accepts local `.vsix` and `.graphite-plugin` packages through the Plugins sidebar.
+Publish VSIX extensions on Open VSX for discovery. To list a plugin in the Graphite catalog, publish a public GitHub repository, add the `graphite-plugin` repository topic, and attach a `.graphite-plugin` or `.vsix` file to its latest stable release. When both formats are attached, users can choose which package to inspect. Repositories without a stable release remain searchable, but cannot be installed until a supported release asset is published. Graphite accepts local `.vsix` and `.graphite-plugin` packages through the Plugins sidebar as well.
 
 Run `cargo test -p graphite-plugins` for package/store/catalog tests. Application plugin and upstream Emmet integration tests require Node.js 24+ and use local fixtures: `cargo test -p graphite-app app::plugins`. Complete changes with `cargo test --workspace` and `cargo build --workspace`; marketplace tests use a local HTTP fixture and never call Open VSX. Linux execution and interactive UI checks must be recorded separately when unavailable.
 

@@ -9,6 +9,13 @@ use super::*;
 pub(super) enum PluginsTab {
     Installed,
     OpenVsx,
+    Graphite,
+}
+
+impl Default for PluginsTab {
+    fn default() -> Self {
+        Self::Installed
+    }
 }
 
 pub(super) struct PluginsLayout {
@@ -71,11 +78,35 @@ impl PluginsLayout {
         {
             return None;
         }
-        if x < self.sidebar_x + self.width * 0.5 {
-            Some(PluginsTab::Installed)
+        let relative = x - self.sidebar_x;
+        Some(if relative < self.installed_tab_width() {
+            PluginsTab::Installed
+        } else if relative < self.installed_tab_width() + self.open_vsx_tab_width() {
+            PluginsTab::OpenVsx
         } else {
-            Some(PluginsTab::OpenVsx)
+            PluginsTab::Graphite
+        })
+    }
+
+    pub(super) fn tab_bounds(&self, tab: PluginsTab) -> (f32, f32) {
+        let installed = self.installed_tab_width();
+        let open_vsx = self.open_vsx_tab_width();
+        match tab {
+            PluginsTab::Installed => (self.sidebar_x, installed),
+            PluginsTab::OpenVsx => (self.sidebar_x + installed, open_vsx),
+            PluginsTab::Graphite => (
+                self.sidebar_x + installed + open_vsx,
+                self.width - installed - open_vsx,
+            ),
         }
+    }
+
+    fn installed_tab_width(&self) -> f32 {
+        self.width * 0.37
+    }
+
+    fn open_vsx_tab_width(&self) -> f32 {
+        self.width * 0.31
     }
 
     pub(super) fn search_contains(&self, x: f32, y: f32) -> bool {
@@ -122,8 +153,12 @@ mod tests {
             Some(PluginsTab::Installed)
         );
         assert_eq!(
-            layout.tab_at(SIDEBAR_WIDTH - 10.0, layout.tabs_y + 2.0),
+            layout.tab_at(ACTIVITY_BAR_WIDTH + layout.width * 0.5, layout.tabs_y + 2.0),
             Some(PluginsTab::OpenVsx)
+        );
+        assert_eq!(
+            layout.tab_at(SIDEBAR_WIDTH - 10.0, layout.tabs_y + 2.0),
+            Some(PluginsTab::Graphite)
         );
         assert!(layout.search_contains(ACTIVITY_BAR_WIDTH + PAD + 1.0, layout.search_y + 2.0));
         assert_eq!(

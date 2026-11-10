@@ -7,8 +7,9 @@ impl App {
         window.set_label(self.t("plugins.window_title"));
         window.set_children(vec![content]);
         let mut panel = Node::new(Role::Label);
-        let selected = if self.plugins.marketplace {
-            self.plugins
+        let selected = match self.plugins.tab {
+            PluginsTab::OpenVsx => self
+                .plugins
                 .open_vsx
                 .get(self.plugins.index)
                 .map(|extension| {
@@ -19,9 +20,35 @@ impl App {
                             ("version", &extension.version),
                         ],
                     )
-                })
-        } else {
-            self.plugins.installed.get(self.plugins.index).map(|r| {
+                }),
+            PluginsTab::Graphite => {
+                if let Some((repository, assets)) = &self.plugins.graphite_assets {
+                    assets.get(self.plugins.index).map(|asset| {
+                        self.tf(
+                            "plugins.accessibility.asset",
+                            &[("name", &asset.name), ("repository", &repository.full_name)],
+                        )
+                    })
+                } else {
+                    self.plugins
+                        .graphite
+                        .get(self.plugins.index)
+                        .map(|repository| {
+                            self.tf(
+                                "plugins.accessibility.graphite",
+                                &[
+                                    ("name", &repository.full_name),
+                                    (
+                                        "description",
+                                        &repository.description.clone().unwrap_or_default(),
+                                    ),
+                                    ("stars", &repository.stargazers_count),
+                                ],
+                            )
+                        })
+                }
+            }
+            PluginsTab::Installed => self.plugins.installed.get(self.plugins.index).map(|r| {
                 self.tf(
                     "plugins.accessibility.installed",
                     &[
@@ -37,7 +64,7 @@ impl App {
                         ),
                     ],
                 )
-            })
+            }),
         };
         let prompt = if let Some((_, m)) = &self.plugins.preview {
             self.tf(
@@ -60,7 +87,12 @@ impl App {
                         &self.t(if self.plugins.path_input {
                             "plugins.package_path"
                         } else {
-                            "plugins.open_vsx_search"
+                            match self.plugins.tab {
+                                PluginsTab::Installed | PluginsTab::OpenVsx => {
+                                    "plugins.open_vsx_search"
+                                }
+                                PluginsTab::Graphite => "plugins.graphite_search",
+                            }
                         }),
                     ),
                     ("query", &self.plugins.query),

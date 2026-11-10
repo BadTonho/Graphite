@@ -42,14 +42,14 @@ Registre recursos em `context.subscriptions`; o descarte é idempotente. O encer
 
 ## Instalar e gerenciar
 
-Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados e Open VSX. Resultados de busca baixam o VSIX mais recente para inspeção; a instalação exige confirmação. As setas selecionam cartões; Esc retorna ou fecha. As mesmas ações estão disponíveis pelo teclado:
+Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra lateral esquerda com o Explorador e o Controle de código, e o editor permanece visível. Clique na barra lateral para conceder foco de teclado; clicar no editor o libera. As abas alternam entre Instalados, Open VSX e o catálogo Graphite do GitHub. Resultados Open VSX baixam o VSIX mais recente para inspeção. Resultados Graphite são repositórios GitHub com o tópico `graphite-plugin`; selecionar um repositório carrega sua release estável mais recente. Se houver vários pacotes compatíveis, escolha um para baixar e inspecionar. A instalação exige confirmação. As setas selecionam cartões; Esc retorna da lista de pacotes ou fecha. As mesmas ações estão disponíveis pelo teclado:
 
 | Tecla | Ação |
 |---|---|
-| I / O | Plugins instalados / Open VSX |
+| I / O / G | Plugins instalados / Open VSX / catálogo Graphite no GitHub |
 | L | Digitar caminho local `.graphite-plugin` ou `.vsix` |
-| / | Digitar pesquisa no Open VSX; Enter envia |
-| Enter | Inspecionar plugin instalado ou baixar e inspecionar o resultado Open VSX selecionado |
+| / | Digitar pesquisa no catálogo ativo; Enter envia |
+| Enter | Inspecionar plugin instalado, baixar resultado Open VSX ou abrir repositório/pacote Graphite selecionado |
 | Y / Esc | Confirmar / cancelar instalação ou confiança |
 | E / D | Habilitar / desabilitar o plugin selecionado |
 | U | Baixar a versão Open VSX mais recente para um VSIX instalado; confirmar para substituir |
@@ -62,7 +62,7 @@ Selecione um VSIX instalado com ponto de entrada Node.js e pressione **E** para 
 
 ## Publicar e testar
 
-Publique extensões VSIX no Open VSX para descoberta. O Graphite aceita pacotes locais `.vsix` e `.graphite-plugin` pelo painel Plugins.
+Publique extensões VSIX no Open VSX para descoberta. Para listar um plugin no catálogo Graphite, publique um repositório GitHub público, adicione o tópico `graphite-plugin` e anexe um arquivo `.graphite-plugin` ou `.vsix` à release estável mais recente. Quando houver ambos os formatos ou mais de um pacote, a pessoa escolhe qual inspecionar. Repositórios sem release estável continuam aparecendo na busca, mas não podem ser instalados até que uma release compatível seja publicada. O Graphite também aceita pacotes locais `.vsix` e `.graphite-plugin` pelo painel Plugins.
 
 Execute `cargo test -p graphite-plugins` para testes de pacotes, persistência e catálogo. Os testes da aplicação para plugins e Emmet upstream exigem Node.js 24+ e usam fixtures locais: `cargo test -p graphite-app app::plugins`. Finalize mudanças com `cargo test --workspace` e `cargo build --workspace`; os testes de marketplace usam uma fixture HTTP local e nunca acessam o Open VSX. A execução Linux e verificações interativas devem ser registradas separadamente quando indisponíveis.
 

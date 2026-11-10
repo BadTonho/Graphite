@@ -103,6 +103,7 @@ impl App {
             let starting = self.plugins.starting.take();
             match result {
                 Err(error) => {
+                    self.cleanup_plugin_download();
                     if let Some(id) = starting {
                         self.plugins.errors.insert(id, error.clone());
                     }
@@ -129,6 +130,18 @@ impl App {
                 }
                 Ok(Outcome::OpenVsx(extensions)) => {
                     self.plugins.open_vsx = extensions;
+                    self.plugins.graphite_assets = None;
+                    self.plugins.index = 0;
+                    self.plugins.scroll = 0;
+                }
+                Ok(Outcome::Graphite(repositories)) => {
+                    self.plugins.graphite = repositories;
+                    self.plugins.graphite_assets = None;
+                    self.plugins.index = 0;
+                    self.plugins.scroll = 0;
+                }
+                Ok(Outcome::GraphiteAssets(repository, assets)) => {
+                    self.plugins.graphite_assets = Some((repository, assets));
                     self.plugins.index = 0;
                     self.plugins.scroll = 0;
                 }
@@ -137,6 +150,7 @@ impl App {
                     self.plugins.message = message;
                 }
                 Ok(Outcome::Preview(path, metadata)) => {
+                    self.plugins.temporary = Some(path.clone());
                     self.plugins.preview = Some((path, metadata))
                 }
                 Ok(Outcome::Started(id, trust_generation, runtime)) => {

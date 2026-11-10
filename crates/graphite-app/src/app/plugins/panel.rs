@@ -26,10 +26,14 @@ impl App {
     }
 
     pub(super) fn plugin_row_count(&self) -> usize {
-        if self.plugins.marketplace {
-            self.plugins.open_vsx.len()
-        } else {
-            self.plugins.installed.len()
+        match self.plugins.tab {
+            PluginsTab::Installed => self.plugins.installed.len(),
+            PluginsTab::OpenVsx => self.plugins.open_vsx.len(),
+            PluginsTab::Graphite => self
+                .plugins
+                .graphite_assets
+                .as_ref()
+                .map_or(self.plugins.graphite.len(), |(_, assets)| assets.len()),
         }
     }
 
@@ -86,6 +90,10 @@ impl App {
         if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
             if self.plugins.preview.take().is_some() {
                 self.cleanup_plugin_download();
+            } else if self.plugins.graphite_assets.take().is_some() {
+                self.cleanup_plugin_download();
+                self.plugins.index = 0;
+                self.plugins.scroll = 0;
             } else if self.plugins.trust.take().is_some() {
             } else if self.plugins.inspecting.take().is_some() {
             } else if self.plugins.editing {
@@ -141,7 +149,7 @@ impl App {
                 self.stop_plugin(metadata.id());
                 let temporary = self.plugins.temporary.take();
                 self.plugins.preview = None;
-                self.plugins.marketplace = false;
+                self.plugins.tab = PluginsTab::Installed;
                 self.plugins.index = 0;
                 self.plugins.scroll = 0;
                 self.plugin_job(move |store| {
@@ -173,7 +181,9 @@ impl App {
                             ))
                         });
                     } else {
-                        self.plugins.marketplace = true;
+                        if self.plugins.tab == PluginsTab::Installed {
+                            self.plugins.tab = PluginsTab::OpenVsx;
+                        }
                         self.search_plugins();
                     }
                 }
@@ -219,6 +229,9 @@ impl App {
         self.plugins.trust = None;
         self.plugins.inspecting = None;
         self.plugins.editing = false;
+        if self.plugins.graphite_assets.take().is_some() {
+            self.cleanup_plugin_download();
+        }
     }
 
     pub(super) fn cleanup_plugin_download(&mut self) {
@@ -248,6 +261,7 @@ impl App {
             self.plugin_action(match tab {
                 PluginsTab::Installed => 'i',
                 PluginsTab::OpenVsx => 'o',
+                PluginsTab::Graphite => 'g',
             });
             return;
         }
