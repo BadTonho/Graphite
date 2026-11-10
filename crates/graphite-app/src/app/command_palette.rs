@@ -258,12 +258,15 @@ mod tests {
             serde_json::json!({"text":"Work"}),
         );
         assert!(app.profiles.as_ref().unwrap().path("Work").is_ok());
+        let work_profile = app.profiles.as_ref().unwrap().path("Work").unwrap();
+        config::save_sidebar_width(&work_profile, 340.0).unwrap();
         app.run_ui_command_args(
             "graphite.profiles.switch",
             serde_json::json!({"text":"Work"}),
         );
         assert_eq!(app.profiles.as_ref().unwrap().active(), "Work");
         assert_eq!(app.profile_root, dir.path().join("profiles/Work"));
+        assert_eq!(app.sidebar_width, 340.0);
         assert_eq!(
             app.plugin_store_root().unwrap(),
             dir.path().join("profiles/Work/plugins").as_path()

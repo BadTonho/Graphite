@@ -3,6 +3,7 @@ mod import_themes;
 mod language;
 mod paths;
 mod settings;
+mod sidebar_layout;
 mod snippets;
 mod theme_includes;
 mod themes;
@@ -18,6 +19,12 @@ use settings::project_settings;
 pub use settings::{
     editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
     workspace_configuration_in,
+};
+pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
+pub(crate) use sidebar_layout::{load_sidebar_width, save_sidebar_width};
+pub(crate) use sidebar_layout::{
+    DEFAULT_WIDTH as DEFAULT_SIDEBAR_WIDTH, MAX_PERSISTED_WIDTH as MAX_PERSISTED_SIDEBAR_WIDTH,
+    MIN_WIDTH as MIN_SIDEBAR_WIDTH,
 };
 #[cfg(test)]
 use snippets::expand_snippet;

@@ -3,6 +3,7 @@ use super::*;
 impl App {
     pub(crate) fn draw(&mut self) {
         self.resize_terminal();
+        let sidebar_width = self.sidebar_width_px();
         let Some(mut gpu) = self.gpu.take() else {
             return;
         };
@@ -24,7 +25,7 @@ impl App {
             r.draw_rect(
                 ACTIVITY_BAR_WIDTH,
                 0.0,
-                SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                sidebar_width - ACTIVITY_BAR_WIDTH,
                 h,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -48,7 +49,7 @@ impl App {
                     r.draw_rect(
                         ACTIVITY_BAR_WIDTH,
                         y,
-                        SIDEBAR_WIDTH - ACTIVITY_BAR_WIDTH,
+                        sidebar_width - ACTIVITY_BAR_WIDTH,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -125,9 +126,9 @@ impl App {
             let height = lh * (count as f32 + 1.5);
             let y = lh * 1.5;
             r.draw_rect(
-                SIDEBAR_WIDTH,
+                sidebar_width,
                 y,
-                w - SIDEBAR_WIDTH,
+                w - sidebar_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -139,7 +140,7 @@ impl App {
                         ("preedit", &self.editor_groups.active_view().ime_preedit),
                     ],
                 ),
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -158,9 +159,9 @@ impl App {
                 let item_y = y + lh * (row as f32 + 1.0);
                 if i == quick.index {
                     r.draw_rect(
-                        SIDEBAR_WIDTH,
+                        sidebar_width,
                         item_y,
-                        w - SIDEBAR_WIDTH,
+                        w - sidebar_width,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -170,14 +171,14 @@ impl App {
                 let icon_size = (lh * 0.85).round();
                 r.draw_icon(
                     icon.glyph,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     item_y + (lh - icon_size) * 0.5,
                     icon_size,
                     rgb(icon.color),
                 );
                 r.draw_text(
                     &relative.display().to_string(),
-                    SIDEBAR_WIDTH + PAD + lh + 4.0,
+                    sidebar_width + PAD + lh + 4.0,
                     item_y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -187,7 +188,7 @@ impl App {
             let rows = self.command_palette_rows();
             let height = lh * (rows.len().min(8) as f32 + 1.5);
             let y = lh * 1.5;
-            let x = SIDEBAR_WIDTH;
+            let x = sidebar_width;
             let width = w - x;
             r.draw_rect(
                 x,
@@ -248,9 +249,9 @@ impl App {
             let height = if search.replace { lh * 3.5 } else { lh * 2.5 };
             let y = h - lh - height;
             r.draw_rect(
-                SIDEBAR_WIDTH,
+                sidebar_width,
                 y,
-                w - SIDEBAR_WIDTH,
+                w - sidebar_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -273,7 +274,7 @@ impl App {
             );
             r.draw_text(
                 &label,
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -293,7 +294,7 @@ impl App {
                 );
                 r.draw_text(
                     &replacement,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     y + lh + PAD,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -326,7 +327,7 @@ impl App {
             );
             r.draw_text(
                 &opts,
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 y + height - lh,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -342,15 +343,15 @@ impl App {
             );
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
             r.draw_rect(
-                SIDEBAR_WIDTH,
+                sidebar_width,
                 h - lh - height,
-                w - SIDEBAR_WIDTH,
+                w - sidebar_width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
                 &label,
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 h - lh - height + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -369,9 +370,9 @@ impl App {
                 let y = h - lh - height + lh * (visible_i as f32 + 1.0);
                 if i == self.search_index {
                     r.draw_rect(
-                        SIDEBAR_WIDTH,
+                        sidebar_width,
                         y,
-                        w - SIDEBAR_WIDTH,
+                        w - sidebar_width,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -384,7 +385,7 @@ impl App {
                 let row = format!("{}:{}  {}", rel, hit.line + 1, hit.text);
                 r.draw_text(
                     &row,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -399,9 +400,9 @@ impl App {
                 .collect();
             let y = h - lh * (matches.len() as f32 + 1.0);
             r.draw_rect(
-                SIDEBAR_WIDTH,
+                sidebar_width,
                 y,
-                w - SIDEBAR_WIDTH,
+                w - sidebar_width,
                 lh * (matches.len() as f32 + 1.0),
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -413,14 +414,14 @@ impl App {
                         ("preedit", &self.editor_groups.active_view().ime_preedit),
                     ],
                 ),
-                SIDEBAR_WIDTH + PAD,
+                sidebar_width + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
             for (i, s) in matches.iter().enumerate() {
                 r.draw_text(
                     &s.prefix,
-                    SIDEBAR_WIDTH + PAD,
+                    sidebar_width + PAD,
                     y + lh * (i as f32 + 1.0),
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -551,6 +552,26 @@ impl App {
         }
         self.draw_phase4_overlays(r, w, h, lh);
         self.draw_phase6_overlays(r, w, h, lh);
+        if !self.zen_mode {
+            let hovered =
+                !self.sidebar_resize_dragging && (self.mouse.x as f32 - sidebar_width).abs() <= 4.0;
+            r.draw_rect(
+                sidebar_width - 0.5,
+                0.0,
+                1.0,
+                h,
+                rgb(Theme::color(0x3f3f46, 0xd0d0d0)),
+            );
+            if hovered || self.sidebar_resize_dragging {
+                r.draw_rect(
+                    sidebar_width - 1.5,
+                    0.0,
+                    3.0,
+                    h,
+                    rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                );
+            }
+        }
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();

@@ -15,6 +15,7 @@ impl App {
             return;
         };
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+        let sidebar_width = self.sidebar_width_px();
 
         if self.diff_view.is_some() {
             if my < lh * 1.5 {
@@ -49,7 +50,7 @@ impl App {
             return;
         }
 
-        if self.plugins.visible && !self.zen_mode && mx < SIDEBAR_WIDTH && my < window_height - lh {
+        if self.plugins.visible && !self.zen_mode && mx < sidebar_width && my < window_height - lh {
             self.plugin_click();
             return;
         }
@@ -81,10 +82,10 @@ impl App {
             let panel_top = window_height - lh - terminal_panel_height(window_height);
             if my >= panel_top {
                 if my < panel_top + lh * 1.4 {
-                    self.terminal_problems = mx < SIDEBAR_WIDTH + cw * 9.0;
+                    self.terminal_problems = mx < sidebar_width + cw * 9.0;
                     self.terminal_focused = !self.terminal_problems;
-                    if !self.terminal_problems && mx >= SIDEBAR_WIDTH + cw * 19.0 {
-                        let offset = mx - SIDEBAR_WIDTH;
+                    if !self.terminal_problems && mx >= sidebar_width + cw * 19.0 {
+                        let offset = mx - sidebar_width;
                         if offset < cw * 34.0 {
                             self.run_ui_command("graphite.terminal.nextProfile");
                         } else if offset < cw * 38.0 {
@@ -98,7 +99,7 @@ impl App {
                         } else if offset < cw * 57.0 {
                             self.run_ui_command("graphite.terminal.scrollRight");
                         } else {
-                            let mut x = SIDEBAR_WIDTH + cw * 57.0;
+                            let mut x = sidebar_width + cw * 57.0;
                             let mut selected = None;
                             for (index, name) in self
                                 .terminal_names
@@ -133,7 +134,7 @@ impl App {
                 } else {
                     self.terminal_focused = true;
                     self.focused_terminal = if let Some(second) = self.split_terminal {
-                        let split_x = SIDEBAR_WIDTH + (window_width - SIDEBAR_WIDTH) / 2.0;
+                        let split_x = sidebar_width + (window_width - sidebar_width) / 2.0;
                         if mx >= split_x {
                             second
                         } else {
@@ -147,11 +148,12 @@ impl App {
             }
         }
 
-        if mx < SIDEBAR_WIDTH {
+        if mx < sidebar_width {
             if self.scm_visible {
                 let row_h = lh.max(18.0);
                 let layout = scm_panel_layout(
                     &self.scm_snapshot,
+                    sidebar_width,
                     window_height,
                     row_h,
                     cw,

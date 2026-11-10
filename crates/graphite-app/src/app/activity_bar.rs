@@ -213,6 +213,12 @@ mod tests {
         assert!(app.scm_visible);
         assert_eq!(app.active_activity(), Activity::SourceControl);
 
+        assert!(app.activity_bar_click(activity_top(2) + 1.0));
+        assert!(!app.scm_visible);
+        assert_eq!(app.active_activity(), Activity::Explorer);
+        assert!(app.activity_bar_click(activity_top(2) + 1.0));
+        assert!(app.scm_visible);
+
         assert!(app.activity_bar_click(activity_top(1) + 1.0));
         assert!(!app.scm_visible);
         assert!(app.search_query.is_some());

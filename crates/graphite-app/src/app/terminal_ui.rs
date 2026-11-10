@@ -165,9 +165,10 @@ impl App {
         let lh = gpu.renderer.line_height().max(1.0);
         let cw = gpu.renderer.char_width().max(1.0);
         let (w, h) = gpu.renderer.size();
+        let sidebar_width = self.sidebar_width_px();
         let panel_h = (h * 0.32).clamp(150.0, 300.0);
         let rows = ((panel_h - lh * 1.5) / lh).max(1.0) as u16;
-        let columns = (((w - SIDEBAR_WIDTH - PAD * 2.0)
+        let columns = (((w - sidebar_width - PAD * 2.0)
             / if self.split_terminal.is_some() {
                 2.0
             } else {
