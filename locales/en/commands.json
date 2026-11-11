@@ -214,5 +214,18 @@
   "command.graphite.preview.open": "Open Preview",
   "command.graphite.preview.close": "Close Preview",
   "command.graphite.preview.zoomIn": "Zoom In Image Preview",
-  "command.graphite.preview.zoomOut": "Zoom Out Image Preview"
+  "command.graphite.preview.zoomOut": "Zoom Out Image Preview",
+  "command.workbench.action.debug.run": "Run Without Debugging",
+  "command.workbench.debug.action.openConfiguration": "Open Configurations",
+  "command.workbench.debug.action.addConfiguration": "Add Configuration",
+  "command.graphite.debug.conditionalBreakpoint": "Conditional Breakpoint",
+  "command.graphite.debug.editBreakpoint": "Edit Breakpoint",
+  "command.graphite.debug.logpoint": "Logpoint",
+  "command.graphite.debug.inlineBreakpoint": "Inline Breakpoint",
+  "command.graphite.debug.functionBreakpoint": "Function Breakpoint",
+  "command.graphite.debug.triggeredBreakpoint": "Triggered Breakpoint",
+  "command.graphite.debug.enableAllBreakpoints": "Enable All Breakpoints",
+  "command.graphite.debug.disableAllBreakpoints": "Disable All Breakpoints",
+  "command.graphite.debug.removeAllBreakpoints": "Remove All Breakpoints",
+  "command.debug.installAdditionalDebuggers": "Install Additional Debuggers"
 }

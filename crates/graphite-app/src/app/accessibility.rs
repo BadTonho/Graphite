@@ -126,6 +126,32 @@ pub(super) fn help_modal_action_target(id: NodeId) -> Option<usize> {
 pub(super) fn help_modal_search_node() -> NodeId {
     NodeId(0xABD4_FFFF)
 }
+pub(super) fn run_menu_popup_node() -> NodeId {
+    NodeId(0xABD5_FFFF)
+}
+pub(super) fn run_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABD5_0000 + index as u64)
+}
+pub(super) fn run_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD5_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn run_breakpoint_menu_node() -> NodeId {
+    NodeId(0xABD6_FFFF)
+}
+pub(super) fn run_breakpoint_item_node(index: usize) -> NodeId {
+    NodeId(0xABD6_0000 + index as u64)
+}
+pub(super) fn run_breakpoint_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD6_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn run_breakpoint_prompt_node() -> NodeId {
+    NodeId(0xABD7_FFFF)
+}
+pub(super) fn run_breakpoint_prompt_input_node() -> NodeId {
+    NodeId(0xABD7_FFFE)
+}
 pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
     let index = match control {
         super::menu_bar::WindowControl::Minimize => 0,
@@ -344,6 +370,14 @@ impl App {
             children.push(terminal_menu_popup_node());
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Help) {
             children.push(help_menu_popup_node());
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Run) {
+            children.push(run_menu_popup_node());
+            if self.run_breakpoint_submenu {
+                children.push(run_breakpoint_menu_node());
+            }
+        }
+        if self.run_breakpoint_prompt.is_some() {
+            children.push(run_breakpoint_prompt_node());
         }
         if self.help_modal.is_some() {
             children.push(help_modal_node());
@@ -569,6 +603,100 @@ impl App {
             }
             menu.set_children(item_children);
             nodes.push((help_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Run) {
+            use super::run_menu::RunMenuRow;
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.run"));
+            let mut children = Vec::new();
+            let mut index = 0;
+            for row in self.run_menu_rows() {
+                if let RunMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    unavailable_reason,
+                    ..
+                } = row
+                {
+                    let id = run_menu_item_node(index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut name = self.t(label).to_owned();
+                    if !shortcut.is_empty() {
+                        name.push_str(&format!(", {shortcut}"));
+                    }
+                    if !enabled {
+                        if let Some(reason) = unavailable_reason {
+                            name.push_str(&format!(", {}", self.t(reason)));
+                        }
+                    }
+                    item.set_label(name);
+                    item.set_selected(index == self.run_menu_selection);
+                    if enabled {
+                        item.add_action(Action::Click);
+                    }
+                    nodes.push((id, item));
+                    children.push(id);
+                    index += 1;
+                }
+            }
+            menu.set_children(children);
+            nodes.push((run_menu_popup_node(), menu));
+            if self.run_breakpoint_submenu {
+                let mut submenu = Node::new(Role::Menu);
+                submenu.set_label(self.t("run.new_breakpoint"));
+                let mut children = Vec::new();
+                let mut index = 0;
+                for row in self.run_breakpoint_rows() {
+                    if let RunMenuRow::Item {
+                        label,
+                        shortcut,
+                        enabled,
+                        unavailable_reason,
+                        ..
+                    } = row
+                    {
+                        let id = run_breakpoint_item_node(index);
+                        let mut item = Node::new(Role::MenuItem);
+                        let mut name = self.t(label).to_owned();
+                        if !shortcut.is_empty() {
+                            name.push_str(&format!(", {shortcut}"));
+                        }
+                        if !enabled {
+                            if let Some(reason) = unavailable_reason {
+                                name.push_str(&format!(", {}", self.t(reason)));
+                            }
+                        }
+                        item.set_label(name);
+                        item.set_selected(index == self.run_breakpoint_selection);
+                        if enabled {
+                            item.add_action(Action::Click);
+                        }
+                        nodes.push((id, item));
+                        children.push(id);
+                        index += 1;
+                    }
+                }
+                submenu.set_children(children);
+                nodes.push((run_breakpoint_menu_node(), submenu));
+            }
+        }
+        if let Some(prompt) = &self.run_breakpoint_prompt {
+            let mut dialog = Node::new(Role::Dialog);
+            let title = match prompt.kind {
+                super::run_menu::BreakpointPromptKind::Conditional => {
+                    self.t("run.prompt.conditional")
+                }
+                super::run_menu::BreakpointPromptKind::Edit => self.t("run.prompt.edit"),
+                super::run_menu::BreakpointPromptKind::Logpoint => self.t("run.prompt.logpoint"),
+            };
+            dialog.set_label(title);
+            let mut input = Node::new(Role::TextInput);
+            input.set_label(title);
+            input.set_value(prompt.value.as_str());
+            input.add_action(Action::Focus);
+            dialog.set_children(vec![run_breakpoint_prompt_input_node()]);
+            nodes.push((run_breakpoint_prompt_input_node(), input));
+            nodes.push((run_breakpoint_prompt_node(), dialog));
         }
         if let Some(modal) = &self.help_modal {
             let mut dialog = Node::new(Role::Dialog);
@@ -858,6 +986,8 @@ impl App {
             tree_id: accesskit::TreeId::ROOT,
             focus: if self.help_modal.is_some() {
                 help_modal_node()
+            } else if self.run_breakpoint_prompt.is_some() {
+                run_breakpoint_prompt_input_node()
             } else if panel_focus {
                 NodeId(5)
             } else {

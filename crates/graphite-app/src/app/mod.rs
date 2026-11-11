@@ -37,6 +37,7 @@ pub(crate) mod phase5;
 pub(crate) mod plugins;
 mod project_search;
 pub(super) mod quick_open;
+pub(crate) mod run_menu;
 pub(crate) mod scm_ui;
 mod smart_selection;
 mod tasks;
