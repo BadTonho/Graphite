@@ -49,6 +49,7 @@ mod autosave;
 mod local_history;
 mod terminal_navigation;
 pub(crate) mod github_auth;
+pub(crate) mod github_dialog;
 mod focus_regions;
 mod custom_editors;
 pub(super) mod explorer_files;

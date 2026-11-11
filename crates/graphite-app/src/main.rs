@@ -122,6 +122,8 @@ struct App {
     github_session: Option<graphite_auth::Session>,
     /// A GitHub sign-in is waiting for the user to confirm the code.
     github_sign_in_pending: bool,
+    /// Centered dialog with the code the user confirms on github.com.
+    github_code_dialog: Option<app::github_dialog::GitHubCodeDialog>,
     titlebar_pointer_down: Option<(f32, f32)>,
     titlebar_drag_started: bool,
     last_titlebar_click: Option<std::time::Instant>,
@@ -543,6 +545,7 @@ impl App {
             explorer_prompt: None,
             github_session,
             github_sign_in_pending: false,
+            github_code_dialog: None,
             titlebar_pointer_down: None,
             titlebar_drag_started: false,
             last_titlebar_click: None,

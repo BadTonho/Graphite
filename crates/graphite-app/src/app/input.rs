@@ -9,6 +9,9 @@ impl App {
         ) {
             return;
         }
+        if self.handle_github_dialog_key(&event.logical_key) {
+            return;
+        }
         if self.handle_rename_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())
