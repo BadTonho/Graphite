@@ -19,3 +19,16 @@ O submenu Layout do Editor permite dividir para cima, baixo, esquerda ou direita
 ## Teclado e acessibilidade
 
 Use as setas para cima e para baixo para percorrer os itens, Direita ou Enter para abrir um submenu, Esquerda para voltar e Esc para fechar o nível atual do menu. Os itens expõem os estados marcado e indisponível aos recursos de acessibilidade. Os rótulos e as descrições estão localizados em inglês e português do Brasil.
+
+## Botões de layout na barra de título
+
+Quatro botões ficam à esquerda dos controles da janela:
+
+| Botão | Ação | Atalho |
+|---|---|---|
+| Personalizar layout... | Abre o menu Exibir embaixo do botão | — |
+| Alternar barra lateral primária | Mostra ou oculta a barra lateral primária | `Ctrl+B` |
+| Alternar painel | Mostra ou oculta o painel inferior | `Ctrl+J` |
+| Alternar barra lateral secundária | Mostra ou oculta a barra lateral secundária | `Ctrl+Alt+B` |
+
+Os botões de barra lateral e de painel ficam preenchidos enquanto a área estiver visível. Passe o mouse sobre um botão para ver o nome e o atalho.

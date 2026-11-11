@@ -1,6 +1,10 @@
 {
   "command.actions.find": "Localizar",
   "command.category.explorer": "Explorador",
+  "command.graphite.layout.customize": "Personalizar layout...",
+  "command.graphite.layout.togglePrimarySidebar": "Alternar barra lateral primária",
+  "command.graphite.layout.togglePanel": "Alternar painel",
+  "command.graphite.layout.toggleSecondarySidebar": "Alternar barra lateral secundária",
   "command.workbench.action.focusNextRegion": "Focar a próxima região",
   "command.workbench.action.focusPreviousRegion": "Focar a região anterior",
   "command.workbench.action.toggleHighContrast": "Alternar alto contraste",

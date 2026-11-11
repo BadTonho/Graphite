@@ -50,6 +50,7 @@ mod local_history;
 mod terminal_navigation;
 pub(crate) mod github_auth;
 pub(crate) mod github_dialog;
+pub(crate) mod titlebar_layout_controls;
 mod focus_regions;
 mod custom_editors;
 pub(super) mod explorer_files;
