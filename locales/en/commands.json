@@ -227,5 +227,12 @@
   "command.graphite.debug.enableAllBreakpoints": "Enable All Breakpoints",
   "command.graphite.debug.disableAllBreakpoints": "Disable All Breakpoints",
   "command.graphite.debug.removeAllBreakpoints": "Remove All Breakpoints",
-  "command.debug.installAdditionalDebuggers": "Install Additional Debuggers"
+  "command.debug.installAdditionalDebuggers": "Install Additional Debuggers",
+  "command.editor.action.addSelectionToPreviousFindMatch": "Add selection to previous find match",
+  "command.graphite.editor.duplicateSelection": "Duplicate Selection",
+  "command.graphite.editor.addCursorAbove": "Add Cursor Above",
+  "command.graphite.editor.addCursorBelow": "Add Cursor Below",
+  "command.graphite.editor.addCursorsToLineEnds": "Add Cursors to Line Ends",
+  "command.editor.action.toggleColumnSelection": "Toggle Column Selection Mode",
+  "command.graphite.editor.toggleMultiCursorModifier": "Switch Multi-Cursor Modifier"
 }

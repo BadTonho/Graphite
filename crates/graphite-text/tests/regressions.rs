@@ -423,6 +423,49 @@ fn next_and_all_occurrences_create_unicode_safe_selections() {
 }
 
 #[test]
+fn previous_occurrence_wraps_and_duplicate_selection_keeps_the_copied_text_selected() {
+    let mut document = Buffer::new();
+    let mut view = graphite_text::SelectionState::default();
+    let mut buffer = document.edit(&mut view, graphite_text::ViewId(1));
+    buffer.insert("one two one");
+    buffer.set_cursor_line_col(0, 9);
+    buffer.select_previous_occurrence();
+    assert_eq!(buffer.selected_texts(), ["one"]);
+    buffer.select_previous_occurrence();
+    assert_eq!(buffer.selected_texts(), ["one", "one"]);
+    assert_eq!(buffer.selections()[0], Selection { anchor: 0, head: 3 });
+
+    buffer.set_selections(vec![Selection { anchor: 0, head: 3 }]);
+    buffer.duplicate_selection();
+    assert_eq!(buffer.text(), "oneone two one");
+    assert_eq!(buffer.selected_text(), Some("one".into()));
+    assert_eq!(buffer.selection(), Some(Selection { anchor: 3, head: 6 }));
+    buffer.undo();
+    assert_eq!(buffer.text(), "one two one");
+
+    buffer.set_cursor_line_col(0, 1);
+    buffer.duplicate_selection();
+    assert_eq!(buffer.text(), "one two one\none two one");
+}
+
+#[test]
+fn duplicate_selection_duplicates_each_disjoint_range_in_one_edit() {
+    let mut document = Buffer::new();
+    let mut view = graphite_text::SelectionState::default();
+    let mut buffer = document.edit(&mut view, graphite_text::ViewId(1));
+    buffer.insert("aa bb");
+    buffer.set_selections(vec![
+        Selection { anchor: 0, head: 2 },
+        Selection { anchor: 3, head: 5 },
+    ]);
+    buffer.duplicate_selection();
+    assert_eq!(buffer.text(), "aaaa bbbb");
+    assert_eq!(buffer.selected_texts(), ["aa", "bb"]);
+    buffer.undo();
+    assert_eq!(buffer.text(), "aa bb");
+}
+
+#[test]
 fn multi_cursor_paste_distributes_lines_and_undoes_as_one_edit() {
     let mut b_document = Buffer::new();
     let mut b_view = graphite_text::SelectionState::default();

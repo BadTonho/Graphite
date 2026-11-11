@@ -228,8 +228,28 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     (
+        "ctrl+shift+d",
+        "editor.action.addSelectionToPreviousFindMatch",
+        "editorTextFocus",
+    ),
+    (
         "ctrl+shift+l",
         "editor.action.selectHighlights",
+        "editorTextFocus",
+    ),
+    (
+        "shift+alt+i",
+        "graphite.editor.addCursorsToLineEnds",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+alt+up",
+        "graphite.editor.addCursorAbove",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+alt+down",
+        "graphite.editor.addCursorBelow",
         "editorTextFocus",
     ),
     (

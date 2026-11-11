@@ -119,6 +119,7 @@ struct App {
     file_menu_selection: usize,
     file_menu_submenu: Option<app::file_menu::FileMenuSubmenu>,
     edit_menu_selection: usize,
+    selection_menu_selection: usize,
     terminal_menu_selection: usize,
     help_menu_selection: usize,
     help_modal: Option<app::help_menu::HelpModal>,
@@ -139,6 +140,7 @@ struct App {
     saving: app::saving::SaveRuntime,
     document_events: app::services::DocumentEventHub,
     selecting: bool,
+    column_selection_anchor: Option<(usize, usize)>,
     reveal_cursor: bool,
     status: String,
     close_confirm: bool,
@@ -493,6 +495,7 @@ impl App {
             file_menu_selection: 0,
             file_menu_submenu: None,
             edit_menu_selection: 0,
+            selection_menu_selection: 0,
             terminal_menu_selection: 0,
             help_menu_selection: 0,
             help_modal: None,
@@ -526,6 +529,7 @@ impl App {
             saving: Default::default(),
             document_events: Default::default(),
             selecting: false,
+            column_selection_anchor: None,
             reveal_cursor: true,
             status: language_warning
                 .or(settings_error)

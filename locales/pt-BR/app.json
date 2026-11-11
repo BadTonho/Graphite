@@ -464,5 +464,22 @@
   "run.prompt.logpoint": "Mensagem de log para este breakpoint",
   "run.prompt.hint": "Enter aplica · Esc cancela",
   "run.invalid_breakpoint_json": "Digite um objeto JSON válido para o breakpoint.",
-  "command.category.help": "Ajuda"
+  "command.category.help": "Ajuda",
+  "selection.select_all": "Selecionar Tudo",
+  "selection.expand": "Expandir Seleção",
+  "selection.shrink": "Reduzir Seleção",
+  "selection.copy_line_up": "Copiar Linha para Cima",
+  "selection.copy_line_down": "Copiar Linha para Baixo",
+  "selection.move_line_up": "Mover Linha para Cima",
+  "selection.move_line_down": "Mover Linha para Baixo",
+  "selection.duplicate": "Duplicar Seleção",
+  "selection.add_cursor_above": "Adicionar Cursor Acima",
+  "selection.add_cursor_below": "Adicionar Cursor Abaixo",
+  "selection.add_cursors_line_ends": "Adicionar Cursores ao Fim das Linhas",
+  "selection.add_next_occurrence": "Adicionar Próxima Ocorrência",
+  "selection.add_previous_occurrence": "Adicionar Ocorrência Anterior",
+  "selection.select_all_occurrences": "Selecionar Todas as Ocorrências",
+  "selection.switch_to_ctrl_click": "Alternar para Ctrl+clique para Múltiplos Cursores",
+  "selection.switch_to_alt_click": "Alternar para Alt+clique para Múltiplos Cursores",
+  "selection.column_mode": "Modo de Seleção por Coluna"
 }

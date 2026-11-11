@@ -41,7 +41,7 @@ pub use themes::{
     save_dark_theme, save_dark_theme_in,
 };
 pub(crate) use view_layout::{
-    load_view_layout_preferences, save_view_layout_preferences, PanelPosition,
+    load_view_layout_preferences, save_view_layout_preferences, MultiCursorModifier, PanelPosition,
     ViewLayoutPreferences, WhitespaceRendering,
 };
 
