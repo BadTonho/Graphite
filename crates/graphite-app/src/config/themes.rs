@@ -177,3 +177,35 @@ pub fn save_dark_theme_in(dir: &Path, dark: bool) {
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join("theme.json"), format!("{{\"dark\":{dark}}}"));
 }
+
+/// Whether high contrast was enabled in this profile (`high-contrast.json`).
+pub fn load_high_contrast_from(config_root: &Path) -> bool {
+    fs::read_to_string(config_root.join("high-contrast.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v.get("enabled").and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+pub fn save_high_contrast_in(dir: &Path, enabled: bool) {
+    let _ = fs::create_dir_all(dir);
+    let _ = fs::write(
+        dir.join("high-contrast.json"),
+        format!("{{\"enabled\":{enabled}}}"),
+    );
+}
+
+#[cfg(test)]
+mod high_contrast_storage_tests {
+    use super::*;
+
+    #[test]
+    fn high_contrast_choice_round_trips_and_defaults_to_off() {
+        let dir = crate::test_support::TempDir::new();
+        assert!(!load_high_contrast_from(dir.path()));
+        save_high_contrast_in(dir.path(), true);
+        assert!(load_high_contrast_from(dir.path()));
+        save_high_contrast_in(dir.path(), false);
+        assert!(!load_high_contrast_from(dir.path()));
+    }
+}

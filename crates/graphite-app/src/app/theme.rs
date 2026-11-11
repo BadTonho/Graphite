@@ -2,6 +2,26 @@ use super::*;
 
 pub(crate) struct Theme;
 pub(crate) static DARK_THEME: AtomicBool = AtomicBool::new(true);
+/// High contrast uses the dark palette with near-black and near-white surfaces.
+pub(crate) static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
+
+/// Maps one palette color to its high-contrast value. Dark surfaces become pure black and light
+/// text becomes pure white; mid-tones (syntax colors, dim text) are kept. The active row gets a
+/// saturated blue so the selection stays visible.
+pub(crate) fn high_contrast_color(color: u32) -> u32 {
+    if color == Theme::ACTIVE_ROW {
+        return 0x006ab1;
+    }
+    let (red, green, blue) = ((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
+    let luma = (red * 299 + green * 587 + blue * 114) / 1000;
+    if luma <= 0x50 {
+        0x000000
+    } else if luma >= 0xa0 {
+        0xffffff
+    } else {
+        color
+    }
+}
 static THEME_OVERRIDES: OnceLock<RwLock<HashMap<u32, u32>>> = OnceLock::new();
 impl Theme {
     pub(crate) const BG: u32 = 0x1e1e1e;
@@ -14,6 +34,9 @@ impl Theme {
     pub(crate) const STATUS: u32 = 0x007acc;
 
     pub(crate) fn color(dark: u32, light: u32) -> u32 {
+        if HIGH_CONTRAST.load(Ordering::Relaxed) {
+            return high_contrast_color(dark);
+        }
         let base = if DARK_THEME.load(Ordering::Relaxed) {
             dark
         } else {
@@ -81,4 +104,19 @@ fn parse_hex_color(s: &str) -> Option<u32> {
         return None;
     }
     u32::from_str_radix(&s[..6], 16).ok()
+}
+
+#[cfg(test)]
+mod high_contrast_tests {
+    use super::*;
+
+    #[test]
+    fn surfaces_and_text_snap_to_black_and_white_while_accents_are_kept() {
+        assert_eq!(high_contrast_color(0x1e1e1e), 0x000000);
+        assert_eq!(high_contrast_color(0x252526), 0x000000);
+        assert_eq!(high_contrast_color(0xd4d4d4), 0xffffff);
+        assert_eq!(high_contrast_color(0x569cd6), 0x569cd6);
+        assert_eq!(high_contrast_color(0x858585), 0x858585);
+        assert_eq!(high_contrast_color(Theme::ACTIVE_ROW), 0x006ab1);
+    }
 }
