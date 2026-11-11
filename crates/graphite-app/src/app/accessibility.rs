@@ -83,6 +83,16 @@ pub(super) fn edit_menu_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABCE_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn view_menu_popup_node() -> NodeId {
+    NodeId(0xABCF_FFFF)
+}
+pub(super) fn view_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABCF_0000 + index as u64)
+}
+pub(super) fn view_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABCF_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
     let index = match control {
         super::menu_bar::WindowControl::Minimize => 0,
@@ -418,6 +428,41 @@ impl App {
             }
             menu.set_children(item_children);
             nodes.push((edit_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::View) {
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.view"));
+            let mut item_children = Vec::new();
+            for (index, (label, enabled, checked, separator)) in
+                self.view_menu_accessible_rows().into_iter().enumerate()
+            {
+                if separator {
+                    continue;
+                }
+                let id = view_menu_item_node(index);
+                let mut item = Node::new(Role::MenuItem);
+                let label = if checked {
+                    format!("{label}, checked")
+                } else {
+                    label
+                };
+                item.set_label(if enabled {
+                    label
+                } else {
+                    format!("{label}, {}", self.t("accessibility.unavailable"))
+                });
+                item.set_selected(
+                    self.view_menu
+                        .as_ref()
+                        .is_some_and(|state| state.selected == index),
+                );
+                if enabled {
+                    item.add_action(Action::Click);
+                }
+                nodes.push((id, item));
+                item_children.push(id);
+            }
+            menu.set_children(item_children);
+            nodes.push((view_menu_popup_node(), menu));
         }
         for (control, label) in [
             (

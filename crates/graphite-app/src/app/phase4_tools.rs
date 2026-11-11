@@ -89,14 +89,6 @@ impl App {
 
     pub(crate) fn toggle_zen_mode(&mut self) {
         self.zen_mode = !self.zen_mode;
-        self.terminal_visible = false;
-        self.scm_visible = false;
-        if let Some(gpu) = &self.gpu {
-            let fullscreen = self
-                .zen_mode
-                .then(|| winit::window::Fullscreen::Borderless(gpu.window.current_monitor()));
-            gpu.window.set_fullscreen(fullscreen);
-        }
         self.status = if self.zen_mode {
             self.t("status.zen.enabled")
         } else {

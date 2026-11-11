@@ -31,6 +31,12 @@ impl App {
             }
             return;
         }
+        if let Some(index) = super::accessibility::view_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_view_menu_accessibility_item(index);
+            }
+            return;
+        }
         if id == 3 && request.action == Action::Click {
             self.run_ui_command("workbench.action.terminal.toggleTerminal");
             return;
@@ -282,7 +288,14 @@ mod tests {
             workbench_menu_button_node(view_index),
             None,
         ));
-        assert!(app.activity_bar_menu.as_ref().unwrap().show_restore);
+        assert!(app.view_menu.is_some());
+        app.activate_view_menu_accessibility_item(3);
+        app.activate_view_menu_accessibility_item(11);
+        app.activate_view_menu_accessibility_item(0);
+        assert_eq!(
+            app.activity_bar_preferences.position,
+            crate::config::ActivityBarPosition::Default
+        );
     }
 
     #[test]

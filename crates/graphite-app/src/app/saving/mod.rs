@@ -57,6 +57,10 @@ pub(super) enum AfterSave {
     Window {
         execution: Option<u64>,
     },
+    OpenEditorWindow {
+        path: PathBuf,
+        move_editor: bool,
+    },
     Revert {
         document: DocumentId,
         execution: Option<u64>,
@@ -113,7 +117,10 @@ impl SaveRuntime {
             || self.batches.iter().any(|b| {
                 matches!(
                     b.action,
-                    AfterSave::Close { .. } | AfterSave::Window { .. } | AfterSave::Workspace
+                    AfterSave::Close { .. }
+                        | AfterSave::Window { .. }
+                        | AfterSave::Workspace
+                        | AfterSave::OpenEditorWindow { .. }
                 )
             })
     }
@@ -238,7 +245,7 @@ impl App {
                     )])
                 })
                 .unwrap_or_default(),
-            AfterSave::Close { .. } => documents
+            AfterSave::Close { .. } | AfterSave::OpenEditorWindow { .. } => documents
                 .iter()
                 .filter_map(|id| {
                     self.documents
@@ -269,7 +276,7 @@ impl App {
             AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
             AfterSave::Close { execution, .. } => Some(*execution),
             AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
-            AfterSave::Workspace => None,
+            AfterSave::Workspace | AfterSave::OpenEditorWindow { .. } => None,
         };
         let requests: Vec<_> = documents
             .iter()

@@ -133,6 +133,82 @@ impl EditorGroups {
     pub fn group_count(&self) -> usize {
         self.groups.len()
     }
+    pub(crate) fn collapse_to_single_group(&mut self) {
+        if self.groups.len() <= 1 {
+            return;
+        }
+        let focused = self.focused;
+        let mut retained = self.group(focused).cloned().expect("focused group exists");
+        for group in &self.groups {
+            if group.id != focused {
+                retained.tabs.extend(group.tabs.iter().cloned());
+            }
+        }
+        self.groups = vec![retained];
+        self.layout = Layout::Leaf(focused);
+        self.focused = focused;
+    }
+    pub(crate) fn arrange_layout_grid(&mut self, columns: usize, rows: usize) {
+        let columns = columns.clamp(1, 3);
+        let rows = rows.clamp(1, 3);
+        let count = columns * rows;
+        if self.groups.len() > count {
+            self.collapse_to_single_group();
+        }
+        while self.groups.len() < count {
+            let source = self.active_view().id;
+            self.split_view(
+                source,
+                if columns > 1 {
+                    SplitDirection::Vertical
+                } else {
+                    SplitDirection::Horizontal
+                },
+            );
+        }
+        let ids = self
+            .groups
+            .iter()
+            .map(|group| group.id)
+            .take(count)
+            .collect::<Vec<_>>();
+        let columns_layout = (0..columns)
+            .map(|column| {
+                let ids = (0..rows)
+                    .map(|row| ids[row * columns + column])
+                    .collect::<Vec<_>>();
+                balanced_layout(&ids, SplitDirection::Horizontal)
+            })
+            .collect::<Vec<_>>();
+        self.layout = balanced_layout_nodes(&columns_layout, SplitDirection::Vertical);
+    }
+    pub(crate) fn arrange_two_rows_right(&mut self) {
+        self.arrange_layout_grid(3, 1);
+        self.layout = Layout::Split {
+            direction: SplitDirection::Vertical,
+            first: Box::new(Layout::Leaf(self.groups[0].id)),
+            second: Box::new(Layout::Split {
+                direction: SplitDirection::Horizontal,
+                first: Box::new(Layout::Leaf(self.groups[1].id)),
+                second: Box::new(Layout::Leaf(self.groups[2].id)),
+            }),
+        };
+    }
+    pub(crate) fn arrange_two_columns_bottom(&mut self) {
+        self.arrange_layout_grid(3, 1);
+        self.layout = Layout::Split {
+            direction: SplitDirection::Horizontal,
+            first: Box::new(Layout::Split {
+                direction: SplitDirection::Vertical,
+                first: Box::new(Layout::Leaf(self.groups[0].id)),
+                second: Box::new(Layout::Leaf(self.groups[1].id)),
+            }),
+            second: Box::new(Layout::Leaf(self.groups[2].id)),
+        };
+    }
+    pub(crate) fn flip_layout(&mut self) {
+        self.layout.flip();
+    }
     pub(super) fn view_ids(&self) -> std::collections::HashSet<ViewId> {
         self.groups
             .iter()
@@ -228,6 +304,17 @@ impl EditorGroups {
         self.split_view(self.active_view().id, direction)
     }
     pub(super) fn split_view(&mut self, source: ViewId, direction: SplitDirection) -> u64 {
+        self.split_view_with_placement(source, direction, false)
+    }
+    pub(super) fn split_view_before(&mut self, source: ViewId, direction: SplitDirection) -> u64 {
+        self.split_view_with_placement(source, direction, true)
+    }
+    fn split_view_with_placement(
+        &mut self,
+        source: ViewId,
+        direction: SplitDirection,
+        before: bool,
+    ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         let group = self.group_for_view(source).expect("source view exists");
@@ -243,6 +330,9 @@ impl EditorGroups {
             active: 0,
         });
         assert!(self.layout.split_leaf(group, id, direction));
+        if before {
+            assert!(self.layout.place_leaf_first(id));
+        }
         self.focused = id;
         id
     }
@@ -301,7 +391,44 @@ impl EditorGroups {
     }
 }
 
+fn balanced_layout(ids: &[u64], direction: SplitDirection) -> Layout {
+    balanced_layout_nodes(
+        &ids.iter().copied().map(Layout::Leaf).collect::<Vec<_>>(),
+        direction,
+    )
+}
+
+fn balanced_layout_nodes(nodes: &[Layout], direction: SplitDirection) -> Layout {
+    if nodes.len() == 1 {
+        return nodes[0].clone();
+    }
+    let middle = nodes.len().div_ceil(2);
+    Layout::Split {
+        direction,
+        first: Box::new(balanced_layout_nodes(&nodes[..middle], direction)),
+        second: Box::new(balanced_layout_nodes(&nodes[middle..], direction)),
+    }
+}
+
 impl Layout {
+    fn place_leaf_first(&mut self, target: u64) -> bool {
+        let Self::Split { first, second, .. } = self else {
+            return false;
+        };
+        if matches!(**second, Self::Leaf(id) if id == target) {
+            std::mem::swap(first, second);
+            return true;
+        }
+        first.place_leaf_first(target) || second.place_leaf_first(target)
+    }
+
+    fn flip(&mut self) {
+        if let Self::Split { first, second, .. } = self {
+            std::mem::swap(first, second);
+            first.flip();
+            second.flip();
+        }
+    }
     fn split_leaf(&mut self, target: u64, id: u64, direction: SplitDirection) -> bool {
         match self {
             Self::Leaf(current) if *current == target => {
@@ -515,6 +642,11 @@ impl App {
             .split_view(self.command_view_ref().id, direction)
     }
 
+    pub(super) fn split_editor_group_before(&mut self, direction: SplitDirection) -> u64 {
+        self.editor_groups
+            .split_view_before(self.command_view_ref().id, direction)
+    }
+
     pub(super) fn focus_editor_group(&mut self, id: u64) -> bool {
         if !self.editor_groups.focus(id) {
             return false;
@@ -573,6 +705,83 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layout_presets_create_distinct_non_overlapping_editor_groups() {
+        let mut groups = EditorGroups::new(DocumentId(0));
+        for (columns, rows) in [(2, 1), (3, 1), (1, 2), (1, 3), (2, 2)] {
+            groups.arrange_layout_grid(columns, rows);
+            let bounds = GroupRect {
+                id: 0,
+                x: 0.0,
+                y: 0.0,
+                width: 1200.0,
+                height: 800.0,
+            };
+            let rects = groups.rectangles(bounds);
+            assert_eq!(rects.len(), columns * rows);
+            for rect in &rects {
+                assert!(rect.width > 0.0 && rect.height > 0.0);
+                assert!(rect.x >= bounds.x && rect.y >= bounds.y);
+                assert!(rect.x + rect.width <= bounds.x + bounds.width + 0.01);
+                assert!(rect.y + rect.height <= bounds.y + bounds.height + 0.01);
+            }
+        }
+    }
+
+    #[test]
+    fn directional_splits_place_new_group_on_the_requested_side() {
+        for (direction, expect_before) in [
+            (SplitDirection::Vertical, true),
+            (SplitDirection::Horizontal, true),
+        ] {
+            let mut groups = EditorGroups::new(DocumentId(0));
+            let original_group = groups.focused();
+            let new_group = groups.split_view_before(groups.active_view().id, direction);
+            let bounds = GroupRect {
+                id: 0,
+                x: 0.0,
+                y: 0.0,
+                width: 1200.0,
+                height: 800.0,
+            };
+            let rects = groups.rectangles(bounds);
+            let original = rects.iter().find(|rect| rect.id == original_group).unwrap();
+            let new = rects.iter().find(|rect| rect.id == new_group).unwrap();
+            if expect_before && direction == SplitDirection::Vertical {
+                assert!(new.x < original.x);
+            } else {
+                assert!(new.y < original.y);
+            }
+        }
+    }
+
+    #[test]
+    fn single_layout_keeps_tabs_from_removed_groups() {
+        let mut groups = EditorGroups::new(DocumentId(0));
+        groups.active_view_mut().document = DocumentId(1);
+        groups.arrange_layout_grid(2, 2);
+        let document_ids = groups
+            .all_views()
+            .map(|view| view.document)
+            .collect::<Vec<_>>();
+        assert_eq!(document_ids.len(), 4);
+        groups.collapse_to_single_group();
+        assert_eq!(groups.group_count(), 1);
+        assert_eq!(groups.all_views().count(), 4);
+        assert_eq!(
+            groups
+                .rectangles(GroupRect {
+                    id: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0
+                })
+                .len(),
+            1
+        );
+    }
 
     #[test]
     fn view_ids_are_unique_and_stable_when_focus_changes() {

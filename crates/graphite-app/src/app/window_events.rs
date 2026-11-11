@@ -120,8 +120,11 @@ impl ApplicationHandler<UserEvent> for App {
         ));
         let scale = window.scale_factor() as f32;
         let renderer_started = std::time::Instant::now();
-        let renderer =
-            Renderer::new(window.clone(), self.font_size * scale).expect("failed to init renderer");
+        let renderer = Renderer::new(
+            window.clone(),
+            self.font_size * scale * f32::from(self.view_preferences.zoom_percent) / 100.0,
+        )
+        .expect("failed to init renderer");
         self.startup_metrics.push(self.tf(
             "startup.renderer_init",
             &[(
@@ -156,6 +159,9 @@ impl ApplicationHandler<UserEvent> for App {
         self.refresh_scm_async();
         if let Some(request) = self.initial_cli_request.take() {
             self.apply_cli_request(request, None);
+        }
+        if let Some(path) = std::env::var_os("GRAPHITE_STARTUP_FILE") {
+            self.open_file(PathBuf::from(path));
         }
     }
 
@@ -330,11 +336,18 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
                 let over_panel = self.terminal_visible
+                    && self.view_preferences.panel_visible
                     && self.gpu.as_ref().is_some_and(|gpu| {
-                        self.mouse.y as f32
-                            >= gpu.renderer.size().1
-                                - gpu.renderer.line_height()
-                                - terminal_panel_height(gpu.renderer.size().1)
+                        let (width, height) = gpu.renderer.size();
+                        let panel = self.panel_bounds(
+                            width as f32,
+                            height as f32,
+                            gpu.renderer.line_height(),
+                        );
+                        (self.mouse.x as f32) >= panel.x
+                            && (self.mouse.x as f32) < panel.x + panel.width
+                            && (self.mouse.y as f32) >= panel.y
+                            && (self.mouse.y as f32) < panel.y + panel.height
                     });
                 let over_process_panel = self.process_panel_visible
                     && self.gpu.as_ref().is_some_and(|gpu| {

@@ -24,8 +24,12 @@ impl App {
         self.rulers = prefs.rulers;
         self.reconfigure_wrapping(prefs.word_wrap, prefs.wrapping_indent);
         if let Some(gpu) = &mut self.gpu {
-            gpu.renderer
-                .set_font_size(self.font_size * gpu.window.scale_factor() as f32);
+            gpu.renderer.set_font_size(
+                self.font_size
+                    * gpu.window.scale_factor() as f32
+                    * f32::from(self.view_preferences.zoom_percent)
+                    / 100.0,
+            );
         }
         self.snippets = snippets;
         self.snippet_load_warnings = warnings;

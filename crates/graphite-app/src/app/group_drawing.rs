@@ -62,10 +62,14 @@ impl App {
                         Some((revision, view.scroll_line, headers.clone()));
                     headers
                 });
-            let mut sticky_headers = sticky_headers
-                .into_iter()
-                .filter(|header| header.line < view.scroll_line)
-                .collect::<Vec<_>>();
+            let mut sticky_headers = if self.view_preferences.sticky_scroll {
+                sticky_headers
+            } else {
+                Vec::new()
+            }
+            .into_iter()
+            .filter(|header| header.line < view.scroll_line)
+            .collect::<Vec<_>>();
             if sticky_headers.len() > 5 {
                 sticky_headers.drain(..sticky_headers.len() - 5);
             }
@@ -73,11 +77,23 @@ impl App {
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
             let text_x = rect.x + gutter;
-            let right = rect.x + rect.width;
+            let minimap_width = if self.view_preferences.minimap_visible {
+                72.0_f32.min(rect.width * 0.22)
+            } else {
+                0.0
+            };
+            let right = rect.x + rect.width - minimap_width;
             let bottom = rect.y + rect.height;
             let sticky_height = sticky_headers.len() as f32 * lh;
-            let body_y = rect.y + lh * 1.5 + sticky_height;
-            let body_height = (rect.height - lh * 1.5 - sticky_height).max(0.0);
+            let tab_height = self.editor_tab_strip_height(lh);
+            let breadcrumb_height = if self.view_preferences.breadcrumbs_visible && !self.zen_mode {
+                lh
+            } else {
+                0.0
+            };
+            let body_y = rect.y + tab_height + sticky_height + breadcrumb_height;
+            let body_height =
+                (rect.height - tab_height - sticky_height - breadcrumb_height).max(0.0);
             r.set_clip(Some([rect.x, rect.y, right, bottom]));
             r.draw_rect(
                 rect.x,
@@ -94,39 +110,41 @@ impl App {
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
             let mut x = rect.x;
-            for (index, view) in views.iter().enumerate() {
-                let tab = &self.documents[self
-                    .resolve_document(view.document)
-                    .expect("view document exists")];
-                let width = tab_width(tab, cw, &self.translator);
-                let color = if index == active {
-                    Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
-                } else {
-                    Theme::color(Theme::SIDEBAR, 0xf3f3f3)
-                };
-                r.draw_rect(x, rect.y, width, lh * 1.5, rgb(color));
-                let icon = tab
-                    .buffer
-                    .path()
-                    .map(crate::file_icons::for_path)
-                    .unwrap_or(crate::file_icons::FILE);
-                let icon_size = (lh * 0.8).round();
-                r.draw_icon(
-                    icon.glyph,
-                    x + PAD,
-                    rect.y + (lh * 1.5 - icon_size) * 0.5,
-                    icon_size,
-                    rgb(icon.color),
-                );
-                r.draw_text(
-                    &tab_label(tab, &self.translator),
-                    x + PAD + lh,
-                    rect.y + lh * 0.25,
-                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-                );
-                x += width;
+            if self.view_preferences.tabs_visible && !self.zen_mode {
+                for (index, view) in views.iter().enumerate() {
+                    let tab = &self.documents[self
+                        .resolve_document(view.document)
+                        .expect("view document exists")];
+                    let width = tab_width(tab, cw, &self.translator);
+                    let color = if index == active {
+                        Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+                    } else {
+                        Theme::color(Theme::SIDEBAR, 0xf3f3f3)
+                    };
+                    r.draw_rect(x, rect.y, width, lh * 1.5, rgb(color));
+                    let icon = tab
+                        .buffer
+                        .path()
+                        .map(crate::file_icons::for_path)
+                        .unwrap_or(crate::file_icons::FILE);
+                    let icon_size = (lh * 0.8).round();
+                    r.draw_icon(
+                        icon.glyph,
+                        x + PAD,
+                        rect.y + (lh * 1.5 - icon_size) * 0.5,
+                        icon_size,
+                        rgb(icon.color),
+                    );
+                    r.draw_text(
+                        &tab_label(tab, &self.translator),
+                        x + PAD + lh,
+                        rect.y + lh * 0.25,
+                        rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                    );
+                    x += width;
+                }
+                self.draw_graphite_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
             }
-            self.draw_graphite_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
             if self
                 .plugins
                 .active_graphite_detail
@@ -136,6 +154,40 @@ impl App {
                 self.draw_graphite_detail_page(r, *rect, lh, cw);
                 r.set_clip(None);
                 continue;
+            }
+            if self.view_preferences.breadcrumbs_visible && !self.zen_mode {
+                let mut breadcrumb = buffer
+                    .path()
+                    .map(|path| {
+                        path.strip_prefix(self.tree.root_for(path))
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .replace('\\', " / ")
+                    })
+                    .unwrap_or_else(|| self.t("common.untitled").to_owned());
+                if let Some(language) = tab.language {
+                    let cursor = view
+                        .selection_state
+                        .selections()
+                        .first()
+                        .map(|selection| selection.head)
+                        .unwrap_or_default()
+                        .min(buffer.len_chars());
+                    let line = buffer.rope().char_to_line(cursor);
+                    let text = buffer.text();
+                    if let Some(symbol) =
+                        graphite_syntax::enclosing_scope_headers(language, &text, line).last()
+                    {
+                        breadcrumb.push_str("  ›  ");
+                        breadcrumb.push_str(&symbol.text);
+                    }
+                }
+                r.draw_text(
+                    &breadcrumb,
+                    rect.x + PAD,
+                    rect.y + tab_height,
+                    rgb(Theme::color(Theme::DIM, 0x858585)),
+                );
             }
             let primary = view
                 .selection_state
@@ -161,7 +213,7 @@ impl App {
                 body_rect.y = body_y;
                 body_rect.height = body_height;
                 self.draw_wrapped_view(r, body_rect, view, text_x, gutter, visible, lh, cw);
-                draw_sticky_headers(r, *rect, &sticky_headers, text_x, lh, cw);
+                draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
                 continue;
             }
             for line in view.scroll_line..last {
@@ -243,6 +295,22 @@ impl App {
                     cw,
                     tab.indentation.tab_size,
                 );
+                if self.view_preferences.whitespace != config::WhitespaceRendering::None {
+                    draw_whitespace_markers(
+                        r,
+                        &text,
+                        line_start,
+                        &view.selection_state.selections(),
+                        text_x,
+                        y,
+                        cw,
+                        tab.indentation.tab_size,
+                        self.view_preferences.whitespace,
+                    );
+                }
+                if self.view_preferences.control_characters {
+                    draw_control_characters(r, &text, text_x, y, cw, tab.indentation.tab_size);
+                }
                 super::drawing_helpers::draw_line_diagnostic_squiggles(
                     r,
                     &tab.diagnostics,
@@ -345,9 +413,120 @@ impl App {
                     );
                 }
             }
-            draw_sticky_headers(r, *rect, &sticky_headers, text_x, lh, cw);
+            draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
+            if minimap_width > 0.0 {
+                let x = rect.x + rect.width - minimap_width;
+                r.draw_rect(
+                    x,
+                    rect.y + tab_height,
+                    minimap_width,
+                    (rect.height - tab_height).max(0.0),
+                    rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
+                );
+                r.draw_rect(
+                    x,
+                    rect.y + tab_height,
+                    1.0,
+                    (rect.height - tab_height).max(0.0),
+                    rgb(Theme::color(Theme::DIM, 0x454545)),
+                );
+                let lines = buffer.len_lines().max(1);
+                let pixels = (rect.height - tab_height).max(1.0);
+                for line in 0..lines.min(600) {
+                    let source = buffer.line(line);
+                    if source.trim().is_empty() {
+                        continue;
+                    }
+                    let y = rect.y + tab_height + line as f32 / lines as f32 * pixels;
+                    let length =
+                        source.chars().count().min(30) as f32 / 30.0 * (minimap_width - 8.0);
+                    r.draw_rect(
+                        x + 4.0,
+                        y,
+                        length.max(1.0),
+                        1.5,
+                        rgb(Theme::color(Theme::DIM, 0x858585)),
+                    );
+                }
+                let marker_y =
+                    rect.y + tab_height + view.scroll_line as f32 / lines as f32 * pixels;
+                r.draw_rect(
+                    x + 1.0,
+                    marker_y,
+                    minimap_width - 2.0,
+                    (visible as f32 / lines as f32 * pixels).max(4.0),
+                    rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                );
+            }
         }
         r.set_clip(None);
+    }
+}
+
+fn draw_whitespace_markers(
+    renderer: &mut Renderer,
+    text: &str,
+    line_start: usize,
+    selections: &[graphite_text::Selection],
+    x: f32,
+    y: f32,
+    cw: f32,
+    tab_size: usize,
+    mode: config::WhitespaceRendering,
+) {
+    let boundary = text.trim_end_matches(['\r', '\n']).chars().count();
+    for (index, ch) in text.trim_end_matches(['\r', '\n']).chars().enumerate() {
+        let visible = match mode {
+            config::WhitespaceRendering::None => false,
+            config::WhitespaceRendering::All => ch == ' ' || ch == '\t',
+            config::WhitespaceRendering::Boundary => {
+                ch == ' ' && (index == 0 || index + 1 == boundary)
+            }
+            config::WhitespaceRendering::Selection => {
+                ch == ' '
+                    && selections.iter().any(|selection| {
+                        let start = selection.anchor.min(selection.head);
+                        let end = selection.anchor.max(selection.head);
+                        (line_start + index) >= start && (line_start + index) < end
+                    })
+            }
+        };
+        if visible {
+            let display_column =
+                display_line(&text.chars().take(index).collect::<String>(), tab_size)
+                    .chars()
+                    .count();
+            renderer.draw_text(
+                if ch == '\t' { "→" } else { "·" },
+                x + display_column as f32 * cw,
+                y,
+                rgb(Theme::color(Theme::DIM, 0x858585)),
+            );
+        }
+    }
+}
+
+fn draw_control_characters(
+    renderer: &mut Renderer,
+    text: &str,
+    x: f32,
+    y: f32,
+    cw: f32,
+    tab_size: usize,
+) {
+    for (index, ch) in text.trim_end_matches(['\r', '\n']).chars().enumerate() {
+        if ch.is_control() && ch != '\t' {
+            let symbol = char::from_u32(0x2400 + ch as u32).unwrap_or('�');
+            let column = display_line(&text.chars().take(index).collect::<String>(), tab_size)
+                .chars()
+                .count();
+            renderer.draw_text(
+                &symbol.to_string(),
+                x + column as f32 * cw,
+                y,
+                rgb(Theme::color(Theme::DIM, 0x858585)),
+            );
+        }
     }
 }
 
@@ -356,6 +535,7 @@ fn draw_sticky_headers(
     rect: GroupRect,
     headers: &[graphite_syntax::ScopeHeader],
     text_x: f32,
+    tab_height: f32,
     line_height: f32,
     _cell_width: f32,
 ) {
@@ -364,13 +544,13 @@ fn draw_sticky_headers(
     }
     renderer.draw_rect(
         rect.x,
-        rect.y + line_height * 1.5,
+        rect.y + tab_height,
         rect.width,
         headers.len() as f32 * line_height,
         rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
     );
     for (index, header) in headers.iter().enumerate() {
-        let y = rect.y + line_height * (1.5 + index as f32);
+        let y = rect.y + tab_height + line_height * index as f32;
         renderer.draw_text(
             &format!("{:>3}", header.line + 1),
             rect.x + PAD,

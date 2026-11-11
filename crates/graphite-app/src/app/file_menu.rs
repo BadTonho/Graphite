@@ -753,11 +753,19 @@ impl App {
     }
 
     pub(super) fn spawn_window(&mut self, profile: Option<String>) {
+        let _ = self.spawn_window_process(profile, None);
+    }
+
+    fn spawn_window_process(
+        &mut self,
+        profile: Option<String>,
+        startup_file: Option<PathBuf>,
+    ) -> bool {
         let executable = match std::env::current_exe() {
             Ok(path) => path,
             Err(error) => {
                 self.status = error.to_string();
-                return;
+                return false;
             }
         };
         let mut command = std::process::Command::new(executable);
@@ -777,7 +785,7 @@ impl App {
                 .save_code_workspace(&workspace_file)
             {
                 self.status = error;
-                return;
+                return false;
             }
             workspace_file
         } else {
@@ -787,8 +795,41 @@ impl App {
         if let Some(profile) = profile {
             command.env("GRAPHITE_STARTUP_PROFILE", profile);
         }
-        if let Err(error) = command.spawn() {
-            self.status = error.to_string();
+        if let Some(path) = startup_file {
+            command.env("GRAPHITE_STARTUP_FILE", path);
+        }
+        match command.spawn() {
+            Ok(_) => true,
+            Err(error) => {
+                self.status = error.to_string();
+                false
+            }
+        }
+    }
+
+    pub(crate) fn open_editor_in_new_window(&mut self, move_editor: bool) {
+        let document = self.active_document();
+        let Some(path) = self.documents[document]
+            .buffer
+            .path()
+            .map(Path::to_path_buf)
+        else {
+            self.status = self.t("view.layout.unavailable").to_owned();
+            return;
+        };
+        if self.documents[document].is_dirty() {
+            self.save_batch(
+                vec![document],
+                super::saving::AfterSave::OpenEditorWindow { path, move_editor },
+            );
+        } else {
+            self.complete_editor_window(path, move_editor);
+        }
+    }
+
+    pub(crate) fn complete_editor_window(&mut self, path: PathBuf, move_editor: bool) {
+        if self.spawn_window_process(None, Some(path)) && move_editor {
+            self.close_active_tab();
         }
     }
 

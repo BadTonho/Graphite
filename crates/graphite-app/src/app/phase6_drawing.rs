@@ -16,12 +16,21 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> bool {
-        if !self.phase6_panel_visible() || y < height - line_height * PANEL_LINES as f32 {
+        if !self.view_preferences.panel_visible || !self.phase6_panel_visible() {
             return false;
         }
-        self.debug_input_focused = self.debug_panel_visible && y >= height - line_height * 1.8;
+        let bounds = self.panel_bounds(width, height, line_height);
+        if x < bounds.x
+            || x >= bounds.x + bounds.width
+            || y < bounds.y
+            || y >= bounds.y + bounds.height
+        {
+            return false;
+        }
+        self.debug_input_focused =
+            self.debug_panel_visible && y >= bounds.y + bounds.height - line_height * 1.8;
         if self.tests_visible {
-            let row = ((y - (height - line_height * (PANEL_LINES - 1) as f32)) / line_height)
+            let row = ((y - bounds.y - line_height) / line_height)
                 .floor()
                 .max(0.0) as usize;
             if let Some(item) = test_items(
@@ -40,7 +49,7 @@ impl App {
             }
         }
         if self.ports_visible {
-            let row = ((y - (height - line_height * (PANEL_LINES - 1) as f32)) / line_height)
+            let row = ((y - bounds.y - line_height) / line_height)
                 .floor()
                 .max(0.0) as usize;
             if let Some(port) = self.ports.listeners.get(row) {
@@ -63,16 +72,17 @@ impl App {
         height: f32,
         line_height: f32,
     ) {
-        if !self.phase6_panel_visible() {
+        if !self.view_preferences.panel_visible || !self.phase6_panel_visible() {
             return;
         }
-        let top = height - line_height * PANEL_LINES as f32;
+        let bounds = self.panel_bounds(width, height, line_height);
+        let top = bounds.y;
         r.set_clip(None);
         r.draw_rect(
-            0.0,
+            bounds.x,
             top,
-            width,
-            line_height * (PANEL_LINES - 1) as f32,
+            bounds.width,
+            bounds.height,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
         let heading = if self.debug_panel_visible {
@@ -93,7 +103,7 @@ impl App {
         };
         r.draw_text(
             &heading,
-            PAD,
+            bounds.x + PAD,
             top + PAD * 0.3,
             rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
         );
@@ -111,7 +121,7 @@ impl App {
                             .unwrap_or_default(),
                         frame.line
                     ),
-                    PAD,
+                    bounds.x + PAD,
                     y,
                     rgb(Theme::color(Theme::DIM, 0x616161)),
                 );
@@ -120,7 +130,7 @@ impl App {
             for (name, value, _) in self.debug.variables.iter().take(3) {
                 r.draw_text(
                     &format!("  {name} = {value}"),
-                    PAD,
+                    bounds.x + PAD,
                     y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -129,7 +139,7 @@ impl App {
             for output in self.debug.output.iter().rev().take(2).rev() {
                 r.draw_text(
                     &format!("{}: {}", output.category, output.text.trim()),
-                    PAD,
+                    bounds.x + PAD,
                     y,
                     rgb(Theme::color(Theme::DIM, 0x616161)),
                 );
@@ -137,8 +147,8 @@ impl App {
             }
             r.draw_text(
                 &format!("> {}", self.debug_input),
-                PAD,
-                height - line_height * 1.7,
+                bounds.x + PAD,
+                bounds.y + bounds.height - line_height * 1.7,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
         } else if self.tests_visible {
@@ -154,9 +164,9 @@ impl App {
                 let y = top + line_height * (index as f32 + 1.0);
                 if self.test_explorer.selected.as_deref() == Some(item.id.as_str()) {
                     r.draw_rect(
-                        0.0,
+                        bounds.x,
                         y,
-                        width,
+                        bounds.width,
                         line_height,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -168,7 +178,7 @@ impl App {
                         test_state_glyph(&item.state),
                         item.label
                     ),
-                    PAD,
+                    bounds.x + PAD,
                     y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -186,7 +196,7 @@ impl App {
                         "{}:{} · process {} · {}",
                         port.address, port.port, port.process_id, port.state
                     ),
-                    PAD,
+                    bounds.x + PAD,
                     top + line_height * (index as f32 + 1.0),
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );

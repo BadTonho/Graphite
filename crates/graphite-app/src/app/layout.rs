@@ -50,6 +50,9 @@ impl App {
     }
 
     pub(crate) fn primary_sidebar_bounds(&self, window_width: f32) -> (f32, f32) {
+        if !self.view_preferences.primary_sidebar_visible {
+            return (0.0, 0.0);
+        }
         let content = (self.sidebar_layout_width_px() - ACTIVITY_BAR_WIDTH).max(0.0);
         if self.activity_bar_preferences.primary_sidebar_right {
             (window_width - content, content)
@@ -66,6 +69,9 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> bool {
+        if !self.view_preferences.primary_sidebar_visible {
+            return false;
+        }
         let (left, panel_width) = self.primary_sidebar_bounds(width);
         x >= left
             && x < left + panel_width
@@ -144,18 +150,31 @@ impl App {
     ) -> Vec<GroupRect> {
         let sidebar_boundary = self.sidebar_width_px();
         let activity_width = self.activity_bar_width_px();
-        let primary_width = if self.activity_bar_preferences.primary_sidebar_right {
+        let primary_width = if !self.view_preferences.primary_sidebar_visible {
+            0.0
+        } else if self.activity_bar_preferences.primary_sidebar_right {
             (width - sidebar_boundary).max(0.0)
         } else {
             (sidebar_boundary - activity_width).max(0.0)
         };
-        let panel = if self.terminal_visible {
-            terminal_panel_height(height)
-        } else if self.phase6_panel_visible() {
-            line_height * 9.0
-        } else {
-            0.0
-        };
+        let has_panel = self.view_preferences.panel_visible
+            && (self.terminal_visible || self.phase6_panel_visible());
+        let panel =
+            if !has_panel || self.view_preferences.panel_position == config::PanelPosition::Right {
+                0.0
+            } else if self.terminal_visible {
+                terminal_panel_height(height)
+            } else if self.phase6_panel_visible() {
+                line_height * 9.0
+            } else {
+                0.0
+            };
+        let right_panel_width =
+            if has_panel && self.view_preferences.panel_position == config::PanelPosition::Right {
+                (width * 0.32).min(520.0)
+            } else {
+                0.0
+            };
         let (left_sidebar, right_sidebar) = if self.zen_mode {
             (0.0, 0.0)
         } else {
@@ -164,14 +183,25 @@ impl App {
                 if primary_right {
                     activity_width
                 } else {
-                    sidebar_boundary
+                    if self.view_preferences.primary_sidebar_visible {
+                        sidebar_boundary
+                    } else {
+                        activity_width
+                    }
                 },
-                if primary_right {
-                    primary_width + if self.outline_visible { 240.0 } else { 0.0 }
-                } else if self.outline_visible {
-                    240.0
+                if primary_right && self.view_preferences.primary_sidebar_visible {
+                    primary_width
+                        + if self.outline_visible && self.view_preferences.secondary_sidebar_visible
+                        {
+                            240.0
+                        } else {
+                            0.0
+                        }
+                        + right_panel_width
+                } else if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
+                    240.0 + right_panel_width
                 } else {
-                    0.0
+                    right_panel_width
                 },
             )
         };
@@ -212,11 +242,80 @@ impl App {
             width: editor_width.max(0.0),
             height: (height
                 - panel
-                - if self.zen_mode { 0.0 } else { line_height }
+                - if self.zen_mode || !self.view_preferences.status_bar_visible {
+                    0.0
+                } else {
+                    line_height
+                }
                 - vertical_offset
                 - bottom_offset)
                 .max(0.0),
         })
+    }
+
+    pub(crate) fn panel_bounds(&self, width: f32, height: f32, line_height: f32) -> GroupRect {
+        if self.view_preferences.panel_position == config::PanelPosition::Right {
+            let x = (width - (width * 0.32).min(520.0)).max(0.0);
+            let y = self.top_menu_height();
+            return GroupRect {
+                id: 0,
+                x,
+                y,
+                width: width - x,
+                height: (height
+                    - y
+                    - if self.view_preferences.status_bar_visible {
+                        line_height
+                    } else {
+                        0.0
+                    })
+                .max(0.0),
+            };
+        }
+        if self.terminal_visible {
+            let panel_height = terminal_panel_height(height);
+            let y = height - line_height - panel_height;
+            let available_x = self.sidebar_width_px();
+            let available_width = (width - available_x).max(0.0);
+            let aligned_width = if self.view_preferences.panel_align_center
+                || self.view_preferences.panel_align_right
+            {
+                available_width * 0.7
+            } else {
+                available_width
+            };
+            let x = if self.view_preferences.panel_align_center {
+                available_x + (available_width - aligned_width) / 2.0
+            } else if self.view_preferences.panel_align_right {
+                width - aligned_width
+            } else {
+                available_x
+            };
+            GroupRect {
+                id: 0,
+                x,
+                y,
+                width: aligned_width,
+                height: panel_height,
+            }
+        } else {
+            let panel_height = line_height * 9.0;
+            GroupRect {
+                id: 0,
+                x: 0.0,
+                y: height - panel_height,
+                width,
+                height: panel_height,
+            }
+        }
+    }
+
+    pub(crate) fn editor_tab_strip_height(&self, line_height: f32) -> f32 {
+        if self.view_preferences.tabs_visible && !self.zen_mode {
+            line_height * 1.5
+        } else {
+            0.0
+        }
     }
 
     pub(super) fn focused_group_rect(
@@ -367,6 +466,25 @@ mod sidebar_width_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn panel_alignment_changes_bottom_panel_bounds_without_changing_workspace_width() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.terminal_visible = true;
+        let left = app.panel_bounds(1200.0, 800.0, 20.0);
+        app.view_preferences.panel_align_center = true;
+        let center = app.panel_bounds(1200.0, 800.0, 20.0);
+        app.view_preferences.panel_align_center = false;
+        app.view_preferences.panel_align_right = true;
+        let right = app.panel_bounds(1200.0, 800.0, 20.0);
+
+        assert_eq!(left.x, app.sidebar_width_px());
+        assert!(center.x > left.x);
+        assert_eq!(center.width, right.width);
+        assert!(right.x > center.x);
+        assert!((right.x + right.width - 1200.0).abs() < f32::EPSILON);
+    }
 
     #[test]
     fn rulers_only_include_columns_inside_editor_width() {

@@ -19,6 +19,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Activity bar](features/activity-bar.md)
   - [File menu and workspaces](features/file-menu.md)
   - [Edit menu](features/edit-menu.md)
+  - [View menu and workspace layout](features/view-menu.md)
   - [Localization](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
