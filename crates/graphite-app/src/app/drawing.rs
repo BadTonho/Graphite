@@ -631,6 +631,7 @@ impl App {
         }
 
         self.draw_workbench_menu(r);
+        self.draw_help_modal(r);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();

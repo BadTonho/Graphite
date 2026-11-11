@@ -570,6 +570,113 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "graphite.help.welcome",
+        "Welcome",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::Welcome);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.editorPlayground",
+        "Editor Playground",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::Playground);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.openWalkthrough",
+        "Open Walkthrough",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::Walkthrough);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.releaseNotes",
+        "Show Release Notes",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::ReleaseNotes);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.keyboardShortcuts",
+        "Keyboard Shortcuts Reference",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::KeyboardShortcuts);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.developerTools",
+        "Toggle Developer Tools",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            if app.help_modal.as_ref().is_some_and(|modal| {
+                modal.page == super::super::help_menu::HelpPage::DeveloperTools
+            }) {
+                app.close_help_modal();
+            } else {
+                app.open_help_modal(super::super::help_menu::HelpPage::DeveloperTools);
+            }
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.about",
+        "About",
+        "Help",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_help_modal(super::super::help_menu::HelpPage::About);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.help.restartToUpdate",
+        "Restart to Update",
+        "Help",
+        ALL,
+        "false",
+        None,
+        |_, _| Ok(()),
+    );
+    add(
+        registry,
         "workbench.action.toggleScreencastMode",
         "Toggle screencast mode",
         "Workbench",

@@ -55,6 +55,51 @@ impl Default for Keymap {
 }
 
 impl Keymap {
+    /// Return the shortcut currently configured for a command, preferring a
+    /// profile binding over its default binding.
+    pub(crate) fn configured_shortcut(&self, command: &str) -> Option<String> {
+        let custom = self
+            .bindings
+            .iter()
+            .rev()
+            .find(|binding| binding.command == command);
+        if let Some(binding) = custom {
+            return Some(format_binding_keys(&binding.keys));
+        }
+        let binding = self.defaults.iter().find(|binding| {
+            binding.command == command
+                && !self.bindings.iter().any(|custom| {
+                    custom.keys == binding.keys
+                        && (custom.command == format!("-{command}") || custom.command != command)
+                })
+        })?;
+        Some(format_binding_keys(&binding.keys))
+    }
+
+    pub(crate) fn reference_bindings(&self) -> Vec<(String, String)> {
+        let mut rows = self
+            .defaults
+            .iter()
+            .filter(|binding| {
+                !self.bindings.iter().any(|custom| {
+                    custom.keys == binding.keys
+                        && (custom.command == format!("-{}", binding.command)
+                            || custom.command != binding.command)
+                })
+            })
+            .map(|binding| (binding.command.clone(), format_binding_keys(&binding.keys)))
+            .collect::<Vec<_>>();
+        rows.extend(
+            self.bindings
+                .iter()
+                .filter(|binding| !binding.command.starts_with('-'))
+                .map(|binding| (binding.command.clone(), format_binding_keys(&binding.keys))),
+        );
+        rows.sort();
+        rows.dedup();
+        rows
+    }
+
     /// Replace all user bindings only after the complete file validates.
     pub(crate) fn reload(&mut self, json: &str, translator: &Translator) -> Result<(), String> {
         let value = crate::config::parse_jsonc(json).map_err(|e| e.to_string())?;
@@ -172,6 +217,29 @@ impl Keymap {
             }
         }
     }
+}
+
+fn format_binding_keys(keys: &[String]) -> String {
+    keys.iter()
+        .map(|stroke| {
+            stroke
+                .split('+')
+                .map(|key| match key {
+                    "ctrl" => "Ctrl".to_owned(),
+                    "shift" => "Shift".to_owned(),
+                    "alt" => "Alt".to_owned(),
+                    "meta" => "Meta".to_owned(),
+                    other => other
+                        .chars()
+                        .next()
+                        .map(|first| first.to_uppercase().to_string() + &other[first.len_utf8()..])
+                        .unwrap_or_default(),
+                })
+                .collect::<Vec<_>>()
+                .join("+")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(crate) fn normalize_stroke(stroke: &str) -> Result<String, String> {

@@ -219,6 +219,9 @@ pub struct LspManager {
 }
 
 impl LspManager {
+    pub fn server_count(&self) -> usize {
+        self.servers.len()
+    }
     pub fn load_config(path: &Path, translator: &Translator) -> Result<Vec<ServerConfig>, String> {
         let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let config: ServerConfigFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
