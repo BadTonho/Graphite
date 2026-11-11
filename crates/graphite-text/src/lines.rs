@@ -283,6 +283,48 @@ impl Editor<'_> {
         self.transform_selected_lines(true);
     }
 
+    /// Join each selected block of lines into one line separated by single spaces.
+    /// A cursor without a selection joins its line with the following line.
+    pub fn join_lines(&mut self) {
+        if self.read_only {
+            return;
+        }
+        let total = self.len_lines();
+        let mut edits = Vec::new();
+        for mut block in self.selected_line_blocks() {
+            if block.len() < 2 {
+                if block.end >= total {
+                    continue;
+                }
+                block.end += 1;
+            }
+            let mut text = String::new();
+            let mut trailing = String::new();
+            for (index, line) in block.clone().enumerate() {
+                let value = self.rope.line(line).to_string();
+                let (content, ending) = split_line_ending(&value);
+                if index == 0 {
+                    text.push_str(content.trim_end());
+                } else {
+                    let piece = content.trim();
+                    if !piece.is_empty() {
+                        if !text.is_empty() && !text.ends_with(' ') {
+                            text.push(' ');
+                        }
+                        text.push_str(piece);
+                    }
+                }
+                trailing = ending.to_owned();
+            }
+            text.push_str(&trailing);
+            edits.push(TextReplacement {
+                range: self.line_block_range(&block),
+                text,
+            });
+        }
+        let _ = self.apply_preserving_selections(&edits);
+    }
+
     fn transform_selected_lines(&mut self, deduplicate: bool) {
         if self.read_only {
             return;

@@ -452,6 +452,10 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     ("f12", "editor.action.revealDefinition", "editorTextFocus"),
+    ("f2", "editor.action.rename", "editorTextFocus"),
+    ("alt+f12", "editor.action.peekDefinition", "editorTextFocus"),
+    ("ctrl+shift+space", "editor.action.triggerParameterHints", "editorTextFocus"),
+    ("shift+alt+h", "graphite.lsp.showCallHierarchy", "editorTextFocus"),
     ("f8", "editor.action.marker.next", "editorTextFocus"),
     ("shift+f8", "editor.action.marker.prev", "editorTextFocus"),
     (

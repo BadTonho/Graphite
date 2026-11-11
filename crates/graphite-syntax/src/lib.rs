@@ -23,6 +23,9 @@ pub enum Class {
     Operator,
     Punctuation,
     Variable,
+    BracketLevel1,
+    BracketLevel2,
+    BracketLevel3,
 }
 
 /// Capture names we recognise, in the order handed to tree-sitter.

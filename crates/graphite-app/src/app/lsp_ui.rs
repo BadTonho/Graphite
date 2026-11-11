@@ -145,7 +145,8 @@ impl App {
                 | LspUiEvent::CodeActions { request_id, .. }
                 | LspUiEvent::RequestFailed { request_id, .. }
                 | LspUiEvent::RequestRejected { request_id, .. }
-                | LspUiEvent::ServerCommandCompleted { request_id, .. } => Some(*request_id),
+                | LspUiEvent::ServerCommandCompleted { request_id, .. }
+                | LspUiEvent::Query { request_id, .. } => Some(*request_id),
                 _ => None,
             };
             if let Some(request) = request {
@@ -180,6 +181,7 @@ impl App {
                         LspUiEvent::Definition { location, .. } => {
                             Ok(serde_json::to_value(location).unwrap())
                         }
+                        LspUiEvent::Query { result, .. } => Ok(result.clone()),
                         LspUiEvent::CodeActions { actions, .. } => {
                             Ok(serde_json::to_value(actions).unwrap())
                         }
@@ -296,7 +298,10 @@ impl App {
                 request_id,
                 location,
             } if (tracked || request_id == self.lsp_request_id) => {
-                if let Some(location) = location {
+                if self.lsp_peek_request == Some(request_id) {
+                    self.lsp_peek_request = None;
+                    self.show_lsp_peek(location);
+                } else if let Some(location) = location {
                     if let Some(path) = lsp::uri_to_path(location.uri.as_str()) {
                         self.open_file(path);
                         let line = location.range.start.line as usize;
@@ -311,6 +316,9 @@ impl App {
                 } else {
                     self.status = translator.text("lsp.definition.none").into();
                 }
+            }
+            LspUiEvent::Query { kind, result, .. } => {
+                self.handle_lsp_query(kind, result);
             }
             LspUiEvent::Hover { request_id, text }
                 if (tracked || request_id == self.lsp_request_id) =>

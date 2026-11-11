@@ -1029,3 +1029,21 @@ fn completion_merges_overlapping_prefixes_and_respects_readonly() {
     assert_eq!(buffer.text(), "éclair");
     assert_eq!(buffer.selections(), selection);
 }
+
+#[test]
+fn join_lines_joins_cursor_line_with_next_and_selected_blocks_as_one_undo_step() {
+    let mut b_document = Buffer::new();
+    let mut b_view = graphite_text::SelectionState::default();
+    let mut b = b_document.edit(&mut b_view, graphite_text::ViewId(1));
+    b.insert("one  \n   two\n  three\nfour");
+    b.set_selection(0, 0);
+    b.join_lines();
+    assert_eq!(b.text(), "one two\n  three\nfour");
+    b.undo();
+    assert_eq!(b.text(), "one  \n   two\n  three\nfour");
+    b.set_selection(0, 15);
+    b.join_lines();
+    assert_eq!(b.text(), "one two three\nfour");
+    b.undo();
+    assert_eq!(b.text(), "one  \n   two\n  three\nfour");
+}

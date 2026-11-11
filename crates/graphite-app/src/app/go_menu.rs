@@ -90,6 +90,7 @@ pub(crate) enum GoPickerKind {
     EditorSymbols,
     WorkspaceSymbols,
     LineColumn,
+    Locations,
 }
 
 #[derive(Clone, Debug)]

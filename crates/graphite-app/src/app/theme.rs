@@ -39,6 +39,9 @@ impl Theme {
             Class::Number | Class::Constant => Self::color(0xb5cea8, 0x098658),
             Class::Comment => Self::color(0x6a9955, 0x008000),
             Class::Property | Class::Variable => Self::color(0x9cdcfe, 0x001080),
+            Class::BracketLevel1 => Self::color(0xffd700, 0xb8860b),
+            Class::BracketLevel2 => Self::color(0xda70d6, 0x9932cc),
+            Class::BracketLevel3 => Self::color(0x179fff, 0x1f6fd0),
         }
     }
 

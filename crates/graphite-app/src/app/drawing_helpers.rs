@@ -188,3 +188,104 @@ pub(crate) fn display_line(line: &str, tab_width: usize) -> String {
     }
     out
 }
+
+/// Maps a bracket nesting level to its highlight class.
+pub(crate) fn bracket_class(level: u8) -> Class {
+    match level % 3 {
+        0 => Class::BracketLevel1,
+        1 => Class::BracketLevel2,
+        _ => Class::BracketLevel3,
+    }
+}
+
+/// Returns spans covering the whole line, with bracket overlays replacing syntax classes.
+///
+/// `overlays` pairs a character column within `line` with the class to paint there.
+pub(crate) fn overlay_classes(line: &str, spans: &[Span], overlays: &[(usize, Class)]) -> Vec<Span> {
+    let mut classes = vec![Class::Default; line.len()];
+    for span in spans {
+        for byte in span.range.clone() {
+            if let Some(slot) = classes.get_mut(byte) {
+                *slot = span.class;
+            }
+        }
+    }
+    for &(column, class) in overlays {
+        if let Some((byte, ch)) = line.char_indices().nth(column) {
+            for slot in classes.iter_mut().skip(byte).take(ch.len_utf8()) {
+                *slot = class;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut start = 0;
+    for index in 1..=classes.len() {
+        if index == classes.len() || classes[index] != classes[start] {
+            if start < index {
+                out.push(Span {
+                    range: start..index,
+                    class: classes[start],
+                });
+            }
+            start = index;
+        }
+    }
+    out
+}
+
+/// Display columns where indent guides are drawn for a line; blank lines have none.
+pub(crate) fn indent_guide_columns(line: &str, tab_width: usize) -> Vec<usize> {
+    if line.chars().all(|ch| ch.is_whitespace()) {
+        return Vec::new();
+    }
+    let step = tab_width.max(1);
+    let mut width = 0;
+    for ch in line.chars() {
+        match ch {
+            ' ' => width += 1,
+            '\t' => width += step,
+            _ => break,
+        }
+    }
+    (0..width).step_by(step).collect()
+}
+
+#[cfg(test)]
+mod guide_and_bracket_tests {
+    use super::*;
+
+    #[test]
+    fn indent_guides_follow_each_indent_level_and_skip_blank_lines() {
+        assert_eq!(indent_guide_columns("    let x = 1;", 4), vec![0]);
+        assert_eq!(indent_guide_columns("        deep", 4), vec![0, 4]);
+        assert_eq!(indent_guide_columns("\t\tcode", 4), vec![0, 4]);
+        assert!(indent_guide_columns("    ", 4).is_empty());
+        assert!(indent_guide_columns("plain", 4).is_empty());
+    }
+
+    #[test]
+    fn overlays_replace_only_the_bracket_characters() {
+        let spans = vec![Span {
+            range: 0..5,
+            class: Class::Keyword,
+        }];
+        let merged = overlay_classes("fn(a)", &spans, &[(2, Class::BracketLevel1), (4, Class::BracketLevel1)]);
+        assert_eq!(
+            merged,
+            vec![
+                Span { range: 0..2, class: Class::Keyword },
+                Span { range: 2..3, class: Class::BracketLevel1 },
+                Span { range: 3..4, class: Class::Keyword },
+                Span { range: 4..5, class: Class::BracketLevel1 },
+            ]
+        );
+    }
+
+    #[test]
+    fn bracket_levels_map_onto_three_classes() {
+        assert_eq!(bracket_class(0), Class::BracketLevel1);
+        assert_eq!(bracket_class(1), Class::BracketLevel2);
+        assert_eq!(bracket_class(2), Class::BracketLevel3);
+        assert_eq!(bracket_class(3), Class::BracketLevel1);
+    }
+}
