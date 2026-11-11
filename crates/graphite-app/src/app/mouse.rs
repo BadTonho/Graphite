@@ -344,15 +344,15 @@ impl App {
             }
             if tab_strip > 0.0 && my < rect.y + tab_strip {
                 let mut x = rect.x;
-                let documents: Vec<_> = self
+                let views: Vec<(graphite_text::ViewId, DocumentId)> = self
                     .editor_groups
                     .views(rect.id)
                     .unwrap()
                     .0
                     .iter()
-                    .map(|view| view.document)
+                    .map(|view| (view.id, view.document))
                     .collect();
-                for document in documents {
+                for (view_id, document) in views {
                     let Some(document) = self.resolve_document(document) else {
                         continue;
                     };
@@ -362,7 +362,13 @@ impl App {
                         &self.translator,
                     );
                     if mx >= x && mx < x + width {
-                        self.activate_editor_document(document);
+                        let (close_left, close_right) =
+                            super::group_drawing::tab_close_area(x, width, cw);
+                        if mx >= close_left && mx < close_right {
+                            self.close_editor_tab(view_id);
+                        } else {
+                            self.activate_editor_document(document);
+                        }
                         return;
                     }
                     x += width;

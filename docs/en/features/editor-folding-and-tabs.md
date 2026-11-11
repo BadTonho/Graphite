@@ -15,6 +15,8 @@ Graphite folds code by indentation. A line opens a fold when the next non-blank 
 
 A folded line shows ` …` after its text. Folds are stored per view, so the same document can be folded differently in two groups.
 
+Each tab has a close button (×) at its right end. Click it to close that tab, even when it is not the active one. A tab with unsaved changes still shows the confirmation before closing.
+
 Limitations in this version:
 
 - Folds are cleared when the document changes. They are not kept across edits.

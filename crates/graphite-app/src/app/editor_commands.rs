@@ -421,6 +421,13 @@ impl App {
         }
     }
 
+    /// Closes one editor tab by view, making it the active tab first (its close button was clicked).
+    pub(crate) fn close_editor_tab(&mut self, view: graphite_text::ViewId) {
+        if self.editor_groups.focus_view(view) {
+            self.close_active_tab();
+        }
+    }
+
     pub(crate) fn close_active_tab(&mut self) {
         if let Some((group, repository)) = self.plugins.active_graphite_detail.clone() {
             self.close_graphite_detail(group, &repository);

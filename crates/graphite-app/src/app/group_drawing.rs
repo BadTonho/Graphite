@@ -11,12 +11,23 @@ pub(super) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) 
     format!(" {}{} ", name, if tab.is_dirty() { " ●" } else { "" })
 }
 
+/// Width of the close (×) area at the right end of a tab, in character cells.
+const CLOSE_AREA_CELLS: f32 = 2.2;
+
 pub(crate) fn tab_width(
     tab: &Document,
     char_width: f32,
     translator: &graphite_i18n::Translator,
 ) -> f32 {
-    tab_label(tab, translator).chars().count() as f32 * char_width * 1.8 + char_width * 2.6
+    tab_label(tab, translator).chars().count() as f32 * char_width * 1.8
+        + char_width * 2.6
+        + char_width * CLOSE_AREA_CELLS
+}
+
+/// The close area of a tab that starts at `tab_x` and is `width` wide: `(left, right)`.
+pub(crate) fn tab_close_area(tab_x: f32, width: f32, char_width: f32) -> (f32, f32) {
+    let right = tab_x + width;
+    (right - char_width * CLOSE_AREA_CELLS, right)
 }
 
 impl App {
@@ -147,6 +158,26 @@ impl App {
                         x + PAD + lh,
                         rect.y + lh * 0.25,
                         rgb(label_color),
+                    );
+                    let (close_left, close_right) = tab_close_area(x, width, cw);
+                    let hovered = self.mouse.x as f32 >= close_left
+                        && (self.mouse.x as f32) < close_right
+                        && self.mouse.y as f32 >= rect.y
+                        && (self.mouse.y as f32) < rect.y + lh * 1.5;
+                    if hovered {
+                        r.draw_rect(
+                            close_left + cw * 0.2,
+                            rect.y + lh * 0.2,
+                            cw * (CLOSE_AREA_CELLS - 0.4),
+                            lh * 1.1,
+                            rgb(Theme::color(Theme::DIM, 0x5a5a5a)),
+                        );
+                    }
+                    r.draw_text(
+                        "×",
+                        close_left + cw * 0.6,
+                        rect.y + lh * 0.25,
+                        rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                     );
                     if view.pinned {
                         r.draw_rect(x, rect.y, width, 2.0, rgb(0x0078d4));
@@ -634,6 +665,45 @@ fn draw_sticky_headers(
             text_x,
             y,
             rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+        );
+    }
+}
+
+#[cfg(test)]
+mod close_button_tests {
+    use super::*;
+
+    #[test]
+    fn close_area_sits_at_the_right_end_of_each_tab() {
+        let (left, right) = tab_close_area(100.0, 200.0, 10.0);
+        assert_eq!(right, 300.0);
+        assert_eq!(left, 300.0 - 22.0);
+        assert!(left > 100.0);
+    }
+
+    #[test]
+    fn closing_an_inactive_tab_closes_only_that_tab() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        std::fs::write(&first, "1").unwrap();
+        std::fs::write(&second, "2").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first.clone());
+        app.open_file(second.clone());
+        let group = app.editor_groups.focused();
+        let views = app.editor_groups.views(group).unwrap().0.to_vec();
+        assert_eq!(views.len(), 2);
+        // Close the first tab while the second one is active.
+        let first_view = views[0].id;
+        app.close_editor_tab(first_view);
+        let remaining = app.editor_groups.views(group).unwrap().0.to_vec();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(
+            app.documents[app.resolve_document(remaining[0].document).unwrap()]
+                .buffer
+                .path(),
+            Some(second.as_path())
         );
     }
 }
