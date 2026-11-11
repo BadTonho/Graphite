@@ -233,6 +233,7 @@ impl App {
         let translator = self.translator;
         let workspace = self.tree.root().to_path_buf();
         self.profile_root = profile_root;
+        self.github_session = graphite_auth::load_session(&self.profile_root);
         self.auto_save = fs::read(self.profile_root.join("files.json"))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
