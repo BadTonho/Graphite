@@ -184,6 +184,16 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ),
     ("ctrl+tab", "workbench.action.nextEditor", "editorTextFocus"),
     (
+        "ctrl+pageDown",
+        "workbench.action.nextEditor",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+pageUp",
+        "workbench.action.previousEditor",
+        "editorTextFocus",
+    ),
+    (
         "ctrl+shift+tab",
         "workbench.action.previousEditor",
         "editorTextFocus",
@@ -355,6 +365,92 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     ("f6", "workbench.action.focusNextGroup", "editorTextFocus"),
+    (
+        "ctrl+t",
+        "workbench.action.showAllSymbols",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+shift+o",
+        "workbench.action.gotoSymbol",
+        "editorTextFocus",
+    ),
+    ("ctrl+g", "workbench.action.gotoLine", "editorTextFocus"),
+    (
+        "ctrl+k ctrl+pageDown",
+        "workbench.action.nextEditorInGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+pageUp",
+        "workbench.action.previousEditorInGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+q",
+        "workbench.action.navigateToLastEditLocation",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+left",
+        "workbench.action.focusLeftGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+right",
+        "workbench.action.focusRightGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+up",
+        "workbench.action.focusAboveGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+k ctrl+down",
+        "workbench.action.focusBelowGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+1",
+        "workbench.action.focusFirstGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+2",
+        "workbench.action.focusSecondGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+3",
+        "workbench.action.focusThirdGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+4",
+        "workbench.action.focusFourthGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+5",
+        "workbench.action.focusFifthGroup",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+f12",
+        "editor.action.goToImplementation",
+        "editorTextFocus",
+    ),
+    (
+        "shift+f12",
+        "editor.action.goToReferences",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+shift+]",
+        "editor.action.jumpToBracket",
+        "editorTextFocus",
+    ),
     ("f12", "editor.action.revealDefinition", "editorTextFocus"),
     ("f8", "editor.action.marker.next", "editorTextFocus"),
     ("shift+f8", "editor.action.marker.prev", "editorTextFocus"),

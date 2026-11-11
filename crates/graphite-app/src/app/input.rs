@@ -333,6 +333,10 @@ impl App {
             self.handle_command_palette(event);
             return;
         }
+        if self.go_picker.is_some() {
+            self.handle_go_picker(event);
+            return;
+        }
         if self.quick_open.is_some() {
             self.handle_quick_open(event);
             return;

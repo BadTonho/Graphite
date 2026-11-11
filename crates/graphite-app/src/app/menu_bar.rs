@@ -368,6 +368,7 @@ impl App {
         self.activity_bar_menu = None;
         self.view_menu = None;
         self.run_breakpoint_submenu = false;
+        self.go_submenu = None;
     }
 
     pub(crate) fn dismiss_workbench_menu(&mut self) {
@@ -388,6 +389,10 @@ impl App {
         }
         if menu == WorkbenchMenu::Selection {
             self.selection_menu_selection = 0;
+        }
+        if menu == WorkbenchMenu::Go {
+            self.go_menu_selection = 0;
+            self.go_submenu = None;
         }
         if menu == WorkbenchMenu::Run {
             self.open_run_menu();
@@ -702,6 +707,51 @@ impl App {
                     self.close_workbench_menu();
                 }
             }
+        } else if active == WorkbenchMenu::Go {
+            let popup_width = self.go_menu_width(char_width, width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::Go)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            if let Some(submenu) = self.go_submenu {
+                let sub_width = self.go_submenu_width(submenu, char_width, width);
+                let sub_x = if popup_x + popup_width + sub_width <= width {
+                    popup_x + popup_width
+                } else {
+                    (popup_x - sub_width).max(0.0)
+                };
+                let sub_y = self.go_submenu_anchor_y(layout.height, popup_x, popup_width);
+                if let Some((command, true)) =
+                    self.go_submenu_command_at(submenu, x, y, sub_x, sub_y, sub_width)
+                {
+                    self.go_submenu_execute(command);
+                } else if x >= popup_x && x < popup_x + popup_width {
+                    if let Some((command, enabled, child)) =
+                        self.go_menu_command_at(x, y, popup_x, layout.height, popup_width)
+                    {
+                        if let Some(child) = child {
+                            self.go_submenu = Some(child);
+                            self.go_submenu_selection = 0;
+                        } else if enabled {
+                            self.go_menu_execute(command);
+                            self.close_workbench_menu();
+                        }
+                    }
+                } else if x < sub_x || x >= sub_x + sub_width || y < layout.height {
+                    self.close_workbench_menu();
+                }
+            } else if let Some((command, enabled, submenu)) =
+                self.go_menu_command_at(x, y, popup_x, layout.height, popup_width)
+            {
+                if let Some(submenu) = submenu {
+                    self.go_submenu = Some(submenu);
+                    self.go_submenu_selection = 0;
+                } else if enabled {
+                    self.go_menu_execute(command);
+                    self.close_workbench_menu();
+                }
+            } else if x < popup_x || x >= popup_x + popup_width || y < layout.height {
+                self.close_workbench_menu();
+            }
         } else if active == WorkbenchMenu::Terminal {
             let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width);
             let popup_x = layout
@@ -836,7 +886,43 @@ impl App {
             return;
         }
         if y >= layout.height {
-            if active == WorkbenchMenu::Selection {
+            if active == WorkbenchMenu::Go {
+                let popup_width = self.go_menu_width(char_width, width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::Go)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                let in_main = x >= popup_x && x < popup_x + popup_width;
+                if let Some(submenu) = self.go_submenu {
+                    let sub_width = self.go_submenu_width(submenu, char_width, width);
+                    let sub_x = if popup_x + popup_width + sub_width <= width {
+                        popup_x + popup_width
+                    } else {
+                        (popup_x - sub_width).max(0.0)
+                    };
+                    let sub_y = self.go_submenu_anchor_y(layout.height, popup_x, popup_width);
+                    if x >= sub_x && x < sub_x + sub_width && y >= sub_y {
+                        self.go_submenu_pointer_selection(submenu, y, sub_y);
+                    } else if in_main {
+                        self.go_menu_pointer_selection(y, layout.height);
+                        if let Some((_, _, hovered)) =
+                            self.go_menu_command_at(x, y, popup_x, layout.height, popup_width)
+                        {
+                            if hovered != self.go_submenu {
+                                self.go_submenu = hovered;
+                                self.go_submenu_selection = 0;
+                            }
+                        }
+                    }
+                } else if in_main {
+                    self.go_menu_pointer_selection(y, layout.height);
+                    if let Some((_, _, Some(submenu))) =
+                        self.go_menu_command_at(x, y, popup_x, layout.height, popup_width)
+                    {
+                        self.go_submenu = Some(submenu);
+                        self.go_submenu_selection = 0;
+                    }
+                }
+            } else if active == WorkbenchMenu::Selection {
                 let popup_width = self.selection_menu_width(char_width, width);
                 let popup_x = layout
                     .menu_anchor(WorkbenchMenu::Selection)
@@ -969,6 +1055,10 @@ impl App {
                 }
                 if item.menu == WorkbenchMenu::Selection {
                     self.selection_menu_selection = 0;
+                }
+                if item.menu == WorkbenchMenu::Go {
+                    self.go_menu_selection = 0;
+                    self.go_submenu = None;
                 }
                 if item.menu == WorkbenchMenu::View {
                     self.view_menu_open_at(item.x, width, height);
@@ -1160,6 +1250,58 @@ impl App {
                         }
                     }
                     _ => return false,
+                }
+                return true;
+            }
+            if active == WorkbenchMenu::Go {
+                if let Some(submenu) = self.go_submenu {
+                    match key {
+                        Key::Named(NamedKey::Escape) | Key::Named(NamedKey::ArrowLeft) => {
+                            self.go_submenu = None;
+                            self.go_submenu_selection = 0;
+                        }
+                        Key::Named(NamedKey::ArrowDown) => self.go_submenu_move_selection(1),
+                        Key::Named(NamedKey::ArrowUp) => self.go_submenu_move_selection(-1),
+                        Key::Named(NamedKey::ArrowRight) => {
+                            self.workbench_menu = Some(WorkbenchMenu::Run)
+                        }
+                        Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                            if let Some((command, true)) = self.go_submenu_selected() {
+                                self.go_submenu_execute(command);
+                            }
+                        }
+                        _ => return false,
+                    }
+                    let _ = submenu;
+                } else {
+                    match key {
+                        Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
+                        Key::Named(NamedKey::ArrowDown) => self.go_menu_move_selection(1),
+                        Key::Named(NamedKey::ArrowUp) => self.go_menu_move_selection(-1),
+                        Key::Named(NamedKey::ArrowRight) => {
+                            if let Some((_, true, Some(submenu))) = self.go_menu_selected() {
+                                self.go_submenu = Some(submenu);
+                                self.go_submenu_selection = 0;
+                            } else {
+                                self.workbench_menu = Some(WorkbenchMenu::Run);
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            self.workbench_menu = Some(WorkbenchMenu::Selection)
+                        }
+                        Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                            if let Some((command, true, submenu)) = self.go_menu_selected() {
+                                if let Some(submenu) = submenu {
+                                    self.go_submenu = Some(submenu);
+                                    self.go_submenu_selection = 0;
+                                } else {
+                                    self.go_menu_execute(command);
+                                    self.close_workbench_menu();
+                                }
+                            }
+                        }
+                        _ => return false,
+                    }
                 }
                 return true;
             }
@@ -1390,6 +1532,8 @@ impl App {
                 self.draw_edit_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Selection {
                 self.draw_selection_menu(renderer, &layout);
+            } else if active == WorkbenchMenu::Go {
+                self.draw_go_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Terminal {
                 self.draw_terminal_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Run {
@@ -1397,6 +1541,7 @@ impl App {
             } else if active == WorkbenchMenu::Help {
                 self.draw_help_menu(renderer, &layout);
             } else if active != WorkbenchMenu::View
+                && active != WorkbenchMenu::Go
                 && active != WorkbenchMenu::More
                 && !self.workbench_menu_overflow
             {
@@ -2120,6 +2265,142 @@ impl App {
                 }
             }
         }
+    }
+
+    fn draw_go_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::go_menu::{GoMenuRow as R, GoSubmenuRow as SR};
+        let (width, _) = renderer.size();
+        let width = width as f32;
+        let cw = renderer.char_width();
+        let lh = renderer.line_height();
+        let popup_width = self.go_menu_width(cw, width);
+        let popup_x = layout
+            .menu_anchor(WorkbenchMenu::Go)
+            .clamp(0.0, (width - popup_width).max(0.0));
+        let popup_y = layout.height;
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        renderer.draw_rect(
+            popup_x,
+            popup_y,
+            popup_width,
+            super::go_menu::go_menu_height(&self.go_menu_rows()),
+            border,
+        );
+        renderer.draw_rect(
+            popup_x + 1.0,
+            popup_y + 1.0,
+            popup_width - 2.0,
+            super::go_menu::go_menu_height(&self.go_menu_rows()) - 2.0,
+            bg,
+        );
+        let mut y = popup_y + 4.0;
+        let mut index = 0;
+        for row in self.go_menu_rows() {
+            match row {
+                R::Separator => {
+                    renderer.draw_rect(popup_x + 8.0, y + 4.0, popup_width - 16.0, 1.0, border);
+                    y += super::go_menu::go_row_height(row);
+                }
+                R::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    submenu,
+                    ..
+                } => {
+                    if index == self.go_menu_selection
+                        || submenu.is_some_and(|s| Some(s) == self.go_submenu)
+                    {
+                        renderer.draw_rect(popup_x + 2.0, y, popup_width - 4.0, 28.0, selected);
+                    }
+                    let shortcut_width = shortcut.chars().count() as f32 * cw;
+                    let label_width = (popup_width - 48.0 - shortcut_width - 20.0).max(0.0);
+                    let visible = Self::help_menu_visible_label(self.t(label), cw, label_width);
+                    renderer.draw_text(
+                        &visible,
+                        popup_x + 14.0,
+                        y + 5.0,
+                        if enabled { text } else { dim },
+                    );
+                    if !shortcut.is_empty() {
+                        renderer.draw_text(
+                            shortcut,
+                            popup_x + popup_width - 18.0 - shortcut_width,
+                            y + 5.0,
+                            dim,
+                        );
+                    }
+                    if submenu.is_some() {
+                        renderer.draw_text("›", popup_x + popup_width - 13.0, y + 5.0, dim);
+                    }
+                    index += 1;
+                    y += super::go_menu::go_row_height(row);
+                }
+            }
+        }
+        if let Some(submenu) = self.go_submenu {
+            let sub_width = self.go_submenu_width(submenu, cw, width);
+            let sub_x = if popup_x + popup_width + sub_width <= width {
+                popup_x + popup_width
+            } else {
+                (popup_x - sub_width).max(0.0)
+            };
+            let sub_y = self.go_submenu_anchor_y(popup_y, popup_x, popup_width);
+            let rows = self.go_submenu_rows(submenu);
+            let sub_height = super::go_menu::go_submenu_height(&rows);
+            renderer.draw_rect(sub_x, sub_y, sub_width, sub_height, border);
+            renderer.draw_rect(
+                sub_x + 1.0,
+                sub_y + 1.0,
+                sub_width - 2.0,
+                sub_height - 2.0,
+                bg,
+            );
+            let mut sy = sub_y + 4.0;
+            let mut si = 0;
+            for row in rows {
+                match row {
+                    SR::Separator => {
+                        renderer.draw_rect(sub_x + 8.0, sy + 4.0, sub_width - 16.0, 1.0, border);
+                        sy += super::go_menu::go_subrow_height(row);
+                    }
+                    SR::Item {
+                        label,
+                        shortcut,
+                        enabled,
+                        ..
+                    } => {
+                        if si == self.go_submenu_selection {
+                            renderer.draw_rect(sub_x + 2.0, sy, sub_width - 4.0, 28.0, selected);
+                        }
+                        let shortcut_width = shortcut.chars().count() as f32 * cw;
+                        let label_width = (sub_width - 30.0 - shortcut_width - 22.0).max(0.0);
+                        let visible = Self::help_menu_visible_label(self.t(label), cw, label_width);
+                        renderer.draw_text(
+                            &visible,
+                            sub_x + 14.0,
+                            sy + 5.0,
+                            if enabled { text } else { dim },
+                        );
+                        if !shortcut.is_empty() {
+                            renderer.draw_text(
+                                shortcut,
+                                sub_x + sub_width - 18.0 - shortcut_width,
+                                sy + 5.0,
+                                dim,
+                            );
+                        }
+                        si += 1;
+                        sy += super::go_menu::go_subrow_height(row);
+                    }
+                }
+            }
+        }
+        let _ = lh;
     }
 
     pub(super) fn file_menu_label(
