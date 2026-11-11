@@ -9,10 +9,12 @@ mod command_handlers;
 pub(crate) mod command_palette;
 pub(crate) mod command_registry;
 mod commands;
+mod comments;
 pub(super) mod context_keys;
 mod document;
 mod drawing;
 pub(super) mod drawing_helpers;
+pub(crate) mod edit_menu;
 mod editor_commands;
 #[allow(dead_code)]
 pub(super) mod editor_groups;

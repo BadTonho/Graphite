@@ -62,6 +62,31 @@ impl Drop for EmmetRuntime {
 }
 
 impl App {
+    pub(crate) fn can_expand_emmet_at_cursor(&self) -> bool {
+        let document = &self.documents[self.command_document()];
+        let Some(path) = document.buffer.path() else {
+            return false;
+        };
+        if !matches!(
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str(),
+            "html" | "htm" | "jsx" | "js" | "mjs" | "css"
+        ) {
+            return false;
+        }
+        let text = document.buffer.text().chars().collect::<Vec<_>>();
+        let cursor = self.editor().cursor().char_idx;
+        text.into_iter()
+            .take(cursor)
+            .rev()
+            .take_while(|character| !character.is_whitespace())
+            .next()
+            .is_some()
+    }
+
     pub(crate) fn expand_emmet_at_cursor(&mut self) -> bool {
         let path = self.documents[self.command_document()]
             .buffer

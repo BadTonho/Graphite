@@ -18,6 +18,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Ícones de arquivos](features/file-icons.md)
   - [Barra de atividades](features/activity-bar.md)
   - [Menu Arquivo e workspaces](features/file-menu.md)
+  - [Menu Editar](features/edit-menu.md)
   - [Localização](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)

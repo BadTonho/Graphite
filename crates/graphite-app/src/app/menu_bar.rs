@@ -356,7 +356,7 @@ impl App {
         self.open_activity_bar_menu_at(x, self.top_menu_height(), width, height);
     }
 
-    fn close_workbench_menu(&mut self) {
+    pub(crate) fn close_workbench_menu(&mut self) {
         self.workbench_menu = None;
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
@@ -553,6 +553,8 @@ impl App {
                         if selected == WorkbenchMenu::File {
                             self.file_menu_submenu = None;
                             self.file_menu_selection = 0;
+                        } else if selected == WorkbenchMenu::Edit {
+                            self.edit_menu_selection = 0;
                         } else if selected == WorkbenchMenu::View {
                             self.view_menu_open_at(layout.menu_anchor(selected), width, height);
                         }
@@ -579,6 +581,21 @@ impl App {
                 return true;
             }
             self.close_workbench_menu();
+        } else if active == WorkbenchMenu::Edit {
+            let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::Edit)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            if let Some((command, enabled)) =
+                self.edit_menu_command_at(x, y, popup_x, layout.height)
+            {
+                if enabled {
+                    self.execute_edit_menu_command(command);
+                    self.close_workbench_menu();
+                }
+            } else if x < popup_x || x >= popup_x + popup_width || y < layout.height {
+                self.close_workbench_menu();
+            }
         } else if active == WorkbenchMenu::File {
             let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width);
             let popup_x = layout
@@ -658,7 +675,15 @@ impl App {
             return;
         }
         if y >= layout.height {
-            if active == WorkbenchMenu::File {
+            if active == WorkbenchMenu::Edit {
+                let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::Edit)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                if x >= popup_x && x < popup_x + popup_width {
+                    self.edit_menu_pointer_selection(y, layout.height);
+                }
+            } else if active == WorkbenchMenu::File {
                 let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width);
                 let popup_x = layout
                     .menu_anchor(WorkbenchMenu::File)
@@ -763,6 +788,27 @@ impl App {
                 }
                 return true;
             }
+            if active == WorkbenchMenu::Edit {
+                match key {
+                    Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
+                    Key::Named(NamedKey::ArrowDown) => self.edit_menu_move_selection(1),
+                    Key::Named(NamedKey::ArrowUp) => self.edit_menu_move_selection(-1),
+                    Key::Named(NamedKey::ArrowRight) => {
+                        self.workbench_menu = Some(WorkbenchMenu::View)
+                    }
+                    Key::Named(NamedKey::ArrowLeft) => {
+                        self.workbench_menu = Some(WorkbenchMenu::File)
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        if let Some((command, true)) = self.edit_menu_selected() {
+                            self.execute_edit_menu_command(command);
+                            self.close_workbench_menu();
+                        }
+                    }
+                    _ => return false,
+                }
+                return true;
+            }
             if active == WorkbenchMenu::More && self.workbench_menu_overflow {
                 let layout = self.gpu.as_ref().map(|gpu| {
                     self.titlebar_layout(gpu.renderer.size().0, gpu.renderer.char_width())
@@ -861,6 +907,8 @@ impl App {
                         self.activate_menu(active, anchor, width, height);
                     } else if active == WorkbenchMenu::File {
                         self.file_menu_selection = 0;
+                    } else if active == WorkbenchMenu::Edit {
+                        self.edit_menu_selection = 0;
                     }
                 }
                 _ => return false,
@@ -950,6 +998,8 @@ impl App {
         if let Some(active) = self.workbench_menu {
             if active == WorkbenchMenu::File {
                 self.draw_file_menu(renderer, &layout);
+            } else if active == WorkbenchMenu::Edit {
+                self.draw_edit_menu(renderer, &layout);
             } else if active != WorkbenchMenu::View
                 && active != WorkbenchMenu::More
                 && !self.workbench_menu_overflow
@@ -1173,6 +1223,72 @@ impl App {
                         submenu_item_index += 1;
                         y += 26.0;
                     }
+                }
+            }
+        }
+    }
+
+    fn draw_edit_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::edit_menu::EditMenuRow;
+        let (width, _) = renderer.size();
+        let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width as f32);
+        let popup_x = layout
+            .menu_anchor(WorkbenchMenu::Edit)
+            .clamp(0.0, width as f32 - popup_width);
+        let popup_y = layout.height;
+        let rows = self.edit_menu_rows();
+        let popup_height = rows
+            .iter()
+            .map(|row| Self::edit_menu_row_height(*row))
+            .sum::<f32>()
+            + 8.0;
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        renderer.draw_rect(popup_x, popup_y, popup_width, popup_height, border);
+        renderer.draw_rect(
+            popup_x + 1.0,
+            popup_y + 1.0,
+            popup_width - 2.0,
+            popup_height - 2.0,
+            background,
+        );
+        let mut y = popup_y + 4.0;
+        let mut item_index = 0;
+        for row in rows {
+            match row {
+                EditMenuRow::Separator => {
+                    renderer.draw_rect(popup_x + 8.0, y + 4.0, popup_width - 16.0, 1.0, border);
+                    y += Self::edit_menu_row_height(row);
+                }
+                EditMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } => {
+                    if item_index == self.edit_menu_selection {
+                        renderer.draw_rect(popup_x + 2.0, y, popup_width - 4.0, 26.0, selected);
+                    }
+                    let label = self.edit_menu_label(label);
+                    renderer.draw_text(
+                        &label,
+                        popup_x + 30.0,
+                        y + 5.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    renderer.draw_text(
+                        shortcut,
+                        popup_x + popup_width
+                            - 12.0
+                            - shortcut.chars().count() as f32 * renderer.char_width(),
+                        y + 5.0,
+                        dim,
+                    );
+                    item_index += 1;
+                    y += Self::edit_menu_row_height(row);
                 }
             }
         }

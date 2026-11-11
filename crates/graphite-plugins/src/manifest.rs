@@ -123,6 +123,81 @@ pub struct Vsix {
     pub commands: Vec<Command>,
     #[serde(default)]
     pub activity_bar: Vec<ActivityBarContainer>,
+    #[serde(default)]
+    pub language_comments: Vec<LanguageComments>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageComments {
+    pub id: String,
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub line_comment: Option<String>,
+    #[serde(default)]
+    pub block_comment: Option<[String; 2]>,
+}
+
+pub(crate) fn vsix_language_comments(
+    manifest: &Value,
+    mut read_configuration: impl FnMut(&str) -> Option<Value>,
+) -> Vec<LanguageComments> {
+    let mut result = Vec::new();
+    for language in manifest
+        .pointer("/contributes/languages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = language.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let configuration = language
+            .get("configuration")
+            .and_then(Value::as_str)
+            .map(|path| path.strip_prefix("./").unwrap_or(path))
+            .filter(|path| crate::package::safe_path(path))
+            .and_then(&mut read_configuration);
+        let comments = configuration
+            .as_ref()
+            .and_then(|configuration| configuration.get("comments"));
+        let line_comment = comments
+            .and_then(|comments| comments.get("lineComment"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let block_comment = comments
+            .and_then(|comments| comments.get("blockComment"))
+            .and_then(Value::as_array)
+            .filter(|markers| markers.len() == 2)
+            .and_then(|markers| {
+                Some([
+                    markers[0].as_str()?.to_owned(),
+                    markers[1].as_str()?.to_owned(),
+                ])
+            })
+            .filter(|markers| !markers[0].is_empty() && !markers[1].is_empty());
+        if line_comment.is_none() && block_comment.is_none() {
+            continue;
+        }
+        let extensions = language
+            .get("extensions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
+            .filter(|extension| !extension.is_empty())
+            .collect();
+        result.push(LanguageComments {
+            id: id.to_owned(),
+            extensions,
+            line_comment,
+            block_comment,
+        });
+    }
+    result
 }
 
 pub(crate) fn vsix_activity_bar(manifest: &Value) -> Vec<ActivityBarContainer> {
@@ -251,5 +326,27 @@ mod activity_bar_tests {
         assert!(manifest.validate().is_ok());
         manifest.activity_bar[0].views[1].kind = "unknown".into();
         assert!(manifest.validate().is_err());
+    }
+
+    #[test]
+    fn vsix_language_comments_read_safe_configuration_and_ignore_invalid_markers() {
+        let manifest = serde_json::json!({
+            "contributes": {"languages": [
+                {"id":"sample","extensions":[".smp"],"configuration":"./language.json"},
+                {"id":"unsafe","extensions":[".bad"],"configuration":"../escape.json"}
+            ]}
+        });
+        let comments = vsix_language_comments(&manifest, |path| {
+            (path == "language.json").then(|| {
+                serde_json::json!({
+                    "comments":{"lineComment":"#","blockComment":["/*","*/"]}
+                })
+            })
+        });
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].id, "sample");
+        assert_eq!(comments[0].extensions, ["smp"]);
+        assert_eq!(comments[0].line_comment.as_deref(), Some("#"));
+        assert_eq!(comments[0].block_comment.as_ref().unwrap(), &["/*", "*/"]);
     }
 }

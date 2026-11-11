@@ -69,6 +69,33 @@ impl Store {
                             }
                         }
                     }
+                    if vsix.language_comments.is_empty() {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.language_comments = crate::manifest::vsix_language_comments(
+                                    &manifest,
+                                    |configuration| {
+                                        let path = self
+                                            .root
+                                            .join(&record.directory)
+                                            .join("extension")
+                                            .join(configuration);
+                                        let bytes = fs::read(path).ok()?;
+                                        (bytes.len() <= 1024 * 1024)
+                                            .then(|| serde_json::from_slice(&bytes).ok())
+                                            .flatten()
+                                    },
+                                );
+                            }
+                        }
+                    }
                 }
                 result.push(record);
             }

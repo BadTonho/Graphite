@@ -293,6 +293,10 @@ impl super::App {
                 .to_string(),
         );
         global.insert(
+            "projectSearchReplace".into(),
+            self.search_replacement.is_some().to_string(),
+        );
+        global.insert(
             "quickOpenHasItems".into(),
             self.quick_open
                 .as_ref()
@@ -363,6 +367,18 @@ impl super::App {
                     ),
                     ("canUndo".into(), editor.can_undo().to_string()),
                     ("canRedo".into(), editor.can_redo().to_string()),
+                    (
+                        "canToggleLineComment".into(),
+                        self.active_comment_tokens()
+                            .is_some_and(|comments| comments.line.is_some())
+                            .to_string(),
+                    ),
+                    (
+                        "canToggleBlockComment".into(),
+                        self.active_comment_tokens()
+                            .is_some_and(|comments| comments.block.is_some())
+                            .to_string(),
+                    ),
                 ]),
             );
         }

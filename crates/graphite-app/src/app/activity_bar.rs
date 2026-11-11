@@ -1472,6 +1472,7 @@ mod tests {
                             kind: "tree".into(),
                         }],
                     }],
+                    language_comments: vec![],
                 },
             ),
             enabled: true,

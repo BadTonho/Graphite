@@ -363,7 +363,9 @@ impl App {
                     ("count", &self.search_results.len()),
                 ],
             );
-            let height = lh * (self.search_results.len().min(6) as f32 + 1.2);
+            let replacement_row = self.search_replacement.is_some();
+            let height =
+                lh * (self.search_results.len().min(6) as f32 + 1.2 + replacement_row as u8 as f32);
             r.draw_rect(
                 editor_left,
                 h - lh - height,
@@ -377,6 +379,18 @@ impl App {
                 h - lh - height + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
+            if let Some(replacement) = &self.search_replacement {
+                let replacement_label = self.tf(
+                    "overlay.project_search.replace_prompt",
+                    &[("replacement", replacement)],
+                );
+                r.draw_text(
+                    &replacement_label,
+                    editor_left + PAD,
+                    h - lh - height + PAD + lh,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
             let start = self
                 .search_index
                 .saturating_sub(5)
@@ -389,7 +403,8 @@ impl App {
                 .take(6)
                 .enumerate()
             {
-                let y = h - lh - height + lh * (visible_i as f32 + 1.0);
+                let y =
+                    h - lh - height + lh * (visible_i as f32 + 1.0 + replacement_row as u8 as f32);
                 if i == self.search_index {
                     r.draw_rect(
                         editor_left,
