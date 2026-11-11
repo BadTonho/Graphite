@@ -25,6 +25,7 @@ impl App {
         if self.workbench_menu_click(mx, my) {
             return;
         }
+        self.column_selection_anchor = None;
 
         if self.activity_bar_menu.is_some() {
             self.handle_activity_bar_menu_click(mx, my, window_width as f32);
@@ -341,13 +342,16 @@ impl App {
                     tab.indentation.tab_size,
                     self.wrapping_indent,
                 );
-                if self.modifiers.alt_key() {
+                if self.multi_cursor_modifier_pressed() {
                     self.run_ui_command_args(
                         "graphite.editor.addCursor",
                         serde_json::json!({"index":offset}),
                     );
                     self.selecting = false;
                 } else {
+                    if self.view_preferences.column_selection_mode {
+                        self.column_selection_anchor = Some((row, col));
+                    }
                     self.run_ui_command_args(
                         "graphite.editor.setSelection",
                         serde_json::json!({"anchor":offset,"head":offset}),
@@ -359,7 +363,7 @@ impl App {
             let line = self.editor_groups.active_view_mut().scroll_line
                 + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
-            if self.modifiers.alt_key() {
+            if self.multi_cursor_modifier_pressed() {
                 let b = self.editor();
                 let line = line.min(b.len_lines() - 1);
                 let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
@@ -371,6 +375,9 @@ impl App {
                 );
                 self.selecting = false;
                 return;
+            }
+            if self.view_preferences.column_selection_mode {
+                self.column_selection_anchor = Some((line, col));
             }
             self.run_ui_command_args(
                 "graphite.editor.setCursor",
@@ -391,6 +398,30 @@ impl App {
         let rect = self.focused_group_rect(width, height, lh);
         let tab_strip = self.editor_tab_strip_height(lh);
         let text_x = rect.x + self.gutter_width(cw);
+        if self.view_preferences.column_selection_mode {
+            if let Some((anchor_row, anchor_column)) = self.column_selection_anchor {
+                let row = self.editor_groups.active_view_mut().scroll_line
+                    + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize;
+                let column = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
+                let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
+                let document = self.active_document();
+                let tab_size = self.documents[document].indentation.tab_size;
+                let indent = self.wrapping_indent;
+                let wrap = self.word_wrap;
+                let mut editor = self.editor_mut();
+                let selections = super::selection_menu::rectangular_selections(
+                    &editor,
+                    (anchor_row, anchor_column),
+                    (row, column),
+                    columns,
+                    tab_size,
+                    wrap,
+                    indent,
+                );
+                editor.set_selections(selections);
+                return;
+            }
+        }
         if self.word_wrap {
             let row = self.editor_groups.active_view_mut().scroll_line
                 + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize;

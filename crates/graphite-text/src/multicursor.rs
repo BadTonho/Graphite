@@ -156,6 +156,118 @@ impl Editor<'_> {
         }));
         self.set_selections(selections);
     }
+
+    /// Select the current word and then add its previous occurrence, wrapping to the last match.
+    pub fn select_previous_occurrence(&mut self) {
+        let mut selections = self.selections();
+        let primary = selections[0];
+        let (start, end) = if primary.anchor != primary.head {
+            (
+                primary.anchor.min(primary.head),
+                primary.anchor.max(primary.head),
+            )
+        } else {
+            let mut start = primary.head;
+            let mut end = primary.head;
+            while start > 0 && is_word(self.rope.char(start - 1)) {
+                start -= 1;
+            }
+            while end < self.len_chars() && is_word(self.rope.char(end)) {
+                end += 1;
+            }
+            if start == end {
+                return;
+            }
+            selections[0] = Selection {
+                anchor: start,
+                head: end,
+            };
+            self.set_selections(selections);
+            return;
+        };
+        let needle = self.rope.slice(start..end).to_string();
+        if needle.is_empty() {
+            return;
+        }
+        let existing: Vec<_> = selections
+            .iter()
+            .map(|selection| {
+                selection.anchor.min(selection.head)..selection.anchor.max(selection.head)
+            })
+            .collect();
+        let text = self.rope.to_string();
+        let candidate = text
+            .match_indices(&needle)
+            .map(|(byte, value)| {
+                let start = self.rope.byte_to_char(byte);
+                start..self.rope.byte_to_char(byte + value.len())
+            })
+            .filter(|candidate| {
+                !existing
+                    .iter()
+                    .any(|range| candidate.start < range.end && range.start < candidate.end)
+            })
+            .take_while(|candidate| candidate.start < start)
+            .last()
+            .or_else(|| {
+                text.match_indices(&needle).find_map(|(byte, value)| {
+                    let start = self.rope.byte_to_char(byte);
+                    let end = self.rope.byte_to_char(byte + value.len());
+                    let candidate = start..end;
+                    (!existing
+                        .iter()
+                        .any(|range| candidate.start < range.end && range.start < candidate.end))
+                    .then_some(candidate)
+                })
+            });
+        if let Some(range) = candidate {
+            selections.push(Selection {
+                anchor: range.start,
+                head: range.end,
+            });
+            self.set_selections(selections);
+        }
+    }
+
+    /// Duplicate selected text after each selection; with no selected text, duplicate its line.
+    pub fn duplicate_selection(&mut self) {
+        if self.read_only {
+            return;
+        }
+        let selections = self.selections();
+        let mut ranges: Vec<_> = selections
+            .iter()
+            .filter_map(|selection| {
+                let start = selection.anchor.min(selection.head);
+                let end = selection.anchor.max(selection.head);
+                (start < end).then_some((start..end, self.rope.slice(start..end).to_string()))
+            })
+            .collect();
+        if ranges.is_empty() {
+            self.duplicate_line(true);
+            return;
+        }
+        ranges.sort_by_key(|(range, _)| (range.start, range.end));
+        let mut edits = Vec::with_capacity(ranges.len());
+        let mut results = Vec::with_capacity(ranges.len());
+        let mut inserted_before = 0usize;
+        for (range, text) in ranges {
+            let duplicate_start = range.end + inserted_before;
+            let duplicate_len = text.chars().count();
+            edits.push(TextReplacement {
+                range: range.end..range.end,
+                text,
+            });
+            results.push(Selection {
+                anchor: duplicate_start,
+                head: duplicate_start + duplicate_len,
+            });
+            inserted_before += duplicate_len;
+        }
+        if self.apply_transaction(&edits).is_ok() {
+            self.set_selections(results);
+        }
+    }
     pub fn selections(&self) -> Vec<Selection> {
         let mut result = vec![self.state.selection.unwrap_or(Selection {
             anchor: self.state.cursor.char_idx,

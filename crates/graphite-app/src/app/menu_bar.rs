@@ -386,6 +386,9 @@ impl App {
         if menu == WorkbenchMenu::Terminal {
             self.terminal_menu_selection = 0;
         }
+        if menu == WorkbenchMenu::Selection {
+            self.selection_menu_selection = 0;
+        }
         if menu == WorkbenchMenu::Run {
             self.open_run_menu();
         }
@@ -580,6 +583,8 @@ impl App {
                             self.file_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Edit {
                             self.edit_menu_selection = 0;
+                        } else if selected == WorkbenchMenu::Selection {
+                            self.selection_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Terminal {
                             self.terminal_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Run {
@@ -609,6 +614,9 @@ impl App {
                 if selected == WorkbenchMenu::Terminal {
                     self.terminal_menu_selection = 0;
                 }
+                if selected == WorkbenchMenu::Selection {
+                    self.selection_menu_selection = 0;
+                }
                 if selected == WorkbenchMenu::Run {
                     self.open_run_menu();
                 }
@@ -618,6 +626,27 @@ impl App {
                 return true;
             }
             self.close_workbench_menu();
+        } else if active == WorkbenchMenu::Selection {
+            let popup_width = self.selection_menu_width(char_width, width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::Selection)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            let popup_height =
+                super::selection_menu::selection_menu_height(&self.selection_menu_rows());
+            if x >= popup_x
+                && x < popup_x + popup_width
+                && y >= layout.height
+                && y < layout.height + popup_height
+            {
+                if let Some((command, true)) =
+                    self.selection_menu_command_at(x, y, popup_x, layout.height, popup_width)
+                {
+                    self.execute_selection_menu_command(command);
+                    self.close_workbench_menu();
+                }
+            } else {
+                self.close_workbench_menu();
+            }
         } else if active == WorkbenchMenu::Edit {
             let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width);
             let popup_x = layout
@@ -807,7 +836,15 @@ impl App {
             return;
         }
         if y >= layout.height {
-            if active == WorkbenchMenu::Edit {
+            if active == WorkbenchMenu::Selection {
+                let popup_width = self.selection_menu_width(char_width, width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::Selection)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                if x >= popup_x && x < popup_x + popup_width {
+                    self.selection_menu_pointer_selection(y, layout.height);
+                }
+            } else if active == WorkbenchMenu::Edit {
                 let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width);
                 let popup_x = layout
                     .menu_anchor(WorkbenchMenu::Edit)
@@ -929,6 +966,9 @@ impl App {
                 }
                 if item.menu == WorkbenchMenu::Terminal {
                     self.terminal_menu_selection = 0;
+                }
+                if item.menu == WorkbenchMenu::Selection {
+                    self.selection_menu_selection = 0;
                 }
                 if item.menu == WorkbenchMenu::View {
                     self.view_menu_open_at(item.x, width, height);
@@ -1098,13 +1138,38 @@ impl App {
                 }
                 return true;
             }
+            if active == WorkbenchMenu::Selection {
+                match key {
+                    Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
+                    Key::Named(NamedKey::ArrowDown) => self.selection_menu_move_selection(1),
+                    Key::Named(NamedKey::ArrowUp) => self.selection_menu_move_selection(-1),
+                    Key::Named(NamedKey::ArrowRight) => {
+                        self.workbench_menu = Some(WorkbenchMenu::View)
+                    }
+                    Key::Named(NamedKey::ArrowLeft) => {
+                        self.workbench_menu = Some(WorkbenchMenu::Edit)
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        if let Some((command, true, _)) = self
+                            .selection_menu_items()
+                            .get(self.selection_menu_selection)
+                            .copied()
+                        {
+                            self.execute_selection_menu_command(command);
+                            self.close_workbench_menu();
+                        }
+                    }
+                    _ => return false,
+                }
+                return true;
+            }
             if active == WorkbenchMenu::Edit {
                 match key {
                     Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
                     Key::Named(NamedKey::ArrowDown) => self.edit_menu_move_selection(1),
                     Key::Named(NamedKey::ArrowUp) => self.edit_menu_move_selection(-1),
                     Key::Named(NamedKey::ArrowRight) => {
-                        self.workbench_menu = Some(WorkbenchMenu::View)
+                        self.workbench_menu = Some(WorkbenchMenu::Selection)
                     }
                     Key::Named(NamedKey::ArrowLeft) => {
                         self.workbench_menu = Some(WorkbenchMenu::File)
@@ -1187,6 +1252,9 @@ impl App {
                     self.workbench_menu_overflow = false;
                     self.activity_bar_menu = None;
                     let selected = entries[next];
+                    if selected == WorkbenchMenu::Selection {
+                        self.selection_menu_selection = 0;
+                    }
                     if selected == WorkbenchMenu::Terminal {
                         self.terminal_menu_selection = 0;
                     }
@@ -1320,6 +1388,8 @@ impl App {
                 self.draw_file_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Edit {
                 self.draw_edit_menu(renderer, &layout);
+            } else if active == WorkbenchMenu::Selection {
+                self.draw_selection_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Terminal {
                 self.draw_terminal_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Run {
@@ -1977,6 +2047,76 @@ impl App {
                     );
                     item_index += 1;
                     y += Self::edit_menu_row_height(row);
+                }
+            }
+        }
+    }
+
+    fn draw_selection_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::selection_menu::SelectionMenuRow;
+        let (width, _) = renderer.size();
+        let char_width = renderer.char_width();
+        let popup_width = self.selection_menu_width(char_width, width as f32);
+        let popup_x = layout
+            .menu_anchor(WorkbenchMenu::Selection)
+            .clamp(0.0, (width as f32 - popup_width).max(0.0));
+        let popup_y = layout.height;
+        let rows = self.selection_menu_rows();
+        let popup_height = super::selection_menu::selection_menu_height(&rows);
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        renderer.draw_rect(popup_x, popup_y, popup_width, popup_height, border);
+        renderer.draw_rect(
+            popup_x + 1.0,
+            popup_y + 1.0,
+            (popup_width - 2.0).max(0.0),
+            (popup_height - 2.0).max(0.0),
+            background,
+        );
+        let mut y = popup_y + 4.0;
+        let mut item_index = 0;
+        for row in rows {
+            match row {
+                SelectionMenuRow::Separator => {
+                    renderer.draw_rect(popup_x + 8.0, y + 4.0, popup_width - 16.0, 1.0, border);
+                    y += super::selection_menu::selection_menu_row_height(row);
+                }
+                SelectionMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    checked,
+                    ..
+                } => {
+                    if item_index == self.selection_menu_selection {
+                        renderer.draw_rect(popup_x + 2.0, y, popup_width - 4.0, 28.0, selected);
+                    }
+                    if checked {
+                        renderer.draw_text("✓", popup_x + 10.0, y + 6.0, foreground);
+                    }
+                    let shortcut_width = shortcut.chars().count() as f32 * char_width;
+                    let label_width = (popup_width - 44.0 - shortcut_width - 20.0).max(0.0);
+                    let text =
+                        Self::help_menu_visible_label(self.t(label), char_width, label_width);
+                    renderer.draw_text(
+                        &text,
+                        popup_x + 30.0,
+                        y + 6.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    if !shortcut.is_empty() {
+                        renderer.draw_text(
+                            shortcut,
+                            popup_x + popup_width - 12.0 - shortcut_width,
+                            y + 6.0,
+                            dim,
+                        );
+                    }
+                    item_index += 1;
+                    y += super::selection_menu::selection_menu_row_height(row);
                 }
             }
         }

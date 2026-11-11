@@ -19,6 +19,14 @@ pub(crate) enum WhitespaceRendering {
     All,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum MultiCursorModifier {
+    #[default]
+    Control,
+    Alt,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub(crate) struct ViewLayoutPreferences {
@@ -38,6 +46,8 @@ pub(crate) struct ViewLayoutPreferences {
     pub whitespace: WhitespaceRendering,
     pub control_characters: bool,
     pub zoom_percent: u16,
+    pub multi_cursor_modifier: MultiCursorModifier,
+    pub column_selection_mode: bool,
 }
 
 impl Default for ViewLayoutPreferences {
@@ -59,6 +69,8 @@ impl Default for ViewLayoutPreferences {
             whitespace: WhitespaceRendering::None,
             control_characters: false,
             zoom_percent: 100,
+            multi_cursor_modifier: MultiCursorModifier::Control,
+            column_selection_mode: false,
         }
     }
 }
@@ -104,6 +116,8 @@ mod tests {
         preferences.panel_position = PanelPosition::Right;
         preferences.panel_align_right = true;
         preferences.zoom_percent = 150;
+        preferences.multi_cursor_modifier = MultiCursorModifier::Alt;
+        preferences.column_selection_mode = true;
         save_view_layout_preferences(temp.path(), &preferences).unwrap();
         assert_eq!(load_view_layout_preferences(temp.path()), preferences);
         fs::write(

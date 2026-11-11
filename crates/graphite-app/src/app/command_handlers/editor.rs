@@ -115,6 +115,46 @@ pub(super) fn editor_action_add_selection_to_next_find_match(
     Ok(())
 }
 
+pub(super) fn editor_action_add_selection_to_previous_find_match(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().select_previous_occurrence();
+    Ok(())
+}
+
+pub(super) fn editor_action_duplicate_selection(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().duplicate_selection();
+    Ok(())
+}
+
+pub(super) fn editor_action_add_cursor_above(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.add_cursors_vertical(false);
+    Ok(())
+}
+
+pub(super) fn editor_action_add_cursor_below(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.add_cursors_vertical(true);
+    Ok(())
+}
+
+pub(super) fn editor_action_add_cursors_to_line_ends(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.add_cursors_to_line_ends();
+    Ok(())
+}
+
 pub(super) fn editor_action_select_highlights(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -477,6 +517,82 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "documentAvailable",
         None,
         editor_action_add_selection_to_next_find_match,
+    );
+    add(
+        registry,
+        "editor.action.addSelectionToPreviousFindMatch",
+        "Add selection to previous find match",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_action_add_selection_to_previous_find_match,
+    );
+    add(
+        registry,
+        "graphite.editor.duplicateSelection",
+        "Duplicate Selection",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_duplicate_selection,
+    );
+    add(
+        registry,
+        "graphite.editor.addCursorAbove",
+        "Add Cursor Above",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_action_add_cursor_above,
+    );
+    add(
+        registry,
+        "graphite.editor.addCursorBelow",
+        "Add Cursor Below",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_action_add_cursor_below,
+    );
+    add(
+        registry,
+        "graphite.editor.addCursorsToLineEnds",
+        "Add Cursors to Line Ends",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_action_add_cursors_to_line_ends,
+    );
+    add(
+        registry,
+        "editor.action.toggleColumnSelection",
+        "Toggle Column Selection Mode",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        |app, _| {
+            app.toggle_column_selection_mode();
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.editor.toggleMultiCursorModifier",
+        "Switch Multi-Cursor Modifier",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        |app, _| {
+            app.toggle_multi_cursor_modifier();
+            Ok(())
+        },
     );
     add(
         registry,
