@@ -1748,6 +1748,7 @@ impl App {
         self.draw_run_breakpoint_prompt(renderer);
         self.draw_rename_prompt(renderer);
         self.draw_explorer_prompt(renderer);
+        self.draw_github_dialog(renderer);
         self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
     }

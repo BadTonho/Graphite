@@ -207,3 +207,16 @@ pub(super) fn measure_char_width(font_system: &mut FontSystem, metrics: Metrics)
         .and_then(|r| r.glyphs.first().map(|g| g.w))
         .unwrap_or(metrics.font_size * 0.6)
 }
+
+impl Renderer {
+    /// Draws text at `scale` times the current font size, for emphasis such as a code to copy.
+    /// The current size is restored afterwards; text is cached per size, so the editor's cache
+    /// is not cleared.
+    pub fn draw_text_scaled(&mut self, text: &str, x: f32, y: f32, color: Color, scale: f32) {
+        let saved = self.metrics;
+        let font_size = saved.font_size * scale;
+        self.metrics = Metrics::new(font_size, (font_size * 1.4).round());
+        self.draw_text(text, x, y, color);
+        self.metrics = saved;
+    }
+}

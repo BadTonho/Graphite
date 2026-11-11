@@ -75,17 +75,23 @@ impl App {
                 user_code,
                 verification_uri,
             } => {
+                self.github_code_dialog = Some(super::github_dialog::GitHubCodeDialog {
+                    user_code: user_code.clone(),
+                    verification_uri: verification_uri.clone(),
+                });
                 self.status = self.tf(
                     "github.sign_in.code",
                     &[("code", &user_code), ("uri", &verification_uri)],
                 );
             }
             GitHubAuthEvent::Finished(Ok(session)) => {
+                self.github_code_dialog = None;
                 self.github_sign_in_pending = false;
                 self.status = self.tf("github.sign_in.done", &[("login", &session.login)]);
                 self.github_session = Some(session);
             }
             GitHubAuthEvent::Finished(Err(error)) => {
+                self.github_code_dialog = None;
                 self.github_sign_in_pending = false;
                 self.status = self.tf("github.sign_in.failed", &[("error", &error)]);
             }

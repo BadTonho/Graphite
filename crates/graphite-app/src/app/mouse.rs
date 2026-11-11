@@ -15,6 +15,9 @@ impl App {
             return;
         };
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+        if self.handle_github_dialog_click(mx, my, window_width, window_height, cw) {
+            return;
+        }
         let sidebar_width = self.sidebar_layout_width_px();
 
         if self.help_modal.is_some() {
