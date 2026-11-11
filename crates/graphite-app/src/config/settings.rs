@@ -10,6 +10,8 @@ pub fn project_settings(value: &Value, translator: &Translator) -> (Value, Vec<S
         "files.readonlyInclude",
         "editor.detectIndentation",
         "files.trimTrailingWhitespace",
+        "editor.formatOnSave",
+        "editor.formatOnPaste",
         "editor.rulers",
         "editor.wordWrap",
         "editor.wrappingIndent",
@@ -204,6 +206,8 @@ pub(super) fn read_editor_prefs(
         read_only_patterns: Vec::new(),
         detect_indentation: true,
         trim_trailing_whitespace: false,
+        format_on_save: false,
+        format_on_paste: false,
         rulers: Vec::new(),
         word_wrap: false,
         wrapping_indent: WrapIndent::Same,
@@ -313,6 +317,16 @@ pub(super) fn read_editor_prefs(
             prefs.trim_trailing_whitespace = value
                 .as_bool()
                 .ok_or_else(|| invalid("files.trimTrailingWhitespace", path))?;
+        }
+        if let Some(value) = value.get("editor.formatOnSave") {
+            prefs.format_on_save = value
+                .as_bool()
+                .ok_or_else(|| invalid("editor.formatOnSave", path))?;
+        }
+        if let Some(value) = value.get("editor.formatOnPaste") {
+            prefs.format_on_paste = value
+                .as_bool()
+                .ok_or_else(|| invalid("editor.formatOnPaste", path))?;
         }
         if let Some(value) = value.get("editor.rulers") {
             let values = value

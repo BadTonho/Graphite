@@ -360,11 +360,21 @@ pub(super) fn editor_action_clipboard_paste_action(
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
     {
+        // Format on paste covers the pasted text only when a single cursor pastes it.
+        let start = app
+            .editor()
+            .selection()
+            .map_or_else(|| app.editor().cursor().char_idx, |s| s.anchor.min(s.head));
+        let single_cursor = app.editor().selections().len() <= 1;
         let mut clipboard = crate::app::clipboard::SystemClipboard;
         if !crate::app::clipboard::paste(&mut app.editor_mut(), &mut clipboard) {
             return Err(CommandError::Failed(
                 app.t("editor.clipboard.read_failed").into(),
             ));
+        }
+        let end = app.editor().cursor().char_idx;
+        if app.format_on_paste && single_cursor && end > start {
+            app.lsp_format_chars(start, end);
         }
     };
     Ok(())
@@ -401,12 +411,35 @@ pub(super) fn editor_action_show_hover(
     Ok(())
 }
 
+/// Prefers an active VSIX formatter and falls back to the language server.
 fn format_document(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
     if app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Format) {
+        return Ok(());
+    }
+    if app.lsp_format_document() {
+        return Ok(());
+    }
+    Err(CommandError::Disabled(
+        "No active VSIX formatter or language server matches this document".into(),
+    ))
+}
+
+fn format_selection(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.lsp_format_selection() {
         Ok(())
     } else {
         Err(CommandError::Disabled(
-            "No active VSIX formatter matches this document".into(),
+            "No language server matches this document".into(),
+        ))
+    }
+}
+
+fn editor_action_refactor(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.request_refactors() {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(
+            "No language server matches this document".into(),
         ))
     }
 }
@@ -896,6 +929,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "editorWritable",
         None,
         format_document,
+    );
+    add(
+        registry,
+        "editor.action.formatSelection",
+        "Format selection",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        format_selection,
+    );
+    add(
+        registry,
+        "editor.action.refactor",
+        "Refactor",
+        "Editor",
+        VIEW,
+        "documentHasPath",
+        None,
+        editor_action_refactor,
     );
     add(
         registry,

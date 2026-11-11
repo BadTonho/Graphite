@@ -171,6 +171,8 @@ const QUERY_KINDS: &[&str] = &[
     "prepareTypeHierarchy",
     "typeHierarchySupertypes",
     "typeHierarchySubtypes",
+    "formatting",
+    "rangeFormatting",
 ];
 
 fn valid_response(kind: &str, value: &Value) -> bool {

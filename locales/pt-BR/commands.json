@@ -55,6 +55,8 @@
   "command.editor.action.selectHighlights": "Selecionar realces",
   "command.editor.action.showHover": "Mostrar informação",
   "command.editor.action.formatDocument": "Formatar documento",
+  "command.editor.action.formatSelection": "Formatar seleção",
+  "command.editor.action.refactor": "Refatorar",
   "command.editor.action.smartSelect.expand": "Expandir",
   "command.editor.action.smartSelect.shrink": "Reduzir",
   "command.editor.action.sortLinesAscending": "Classificar linhas em ordem crescente",

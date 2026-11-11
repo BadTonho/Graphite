@@ -178,6 +178,7 @@ impl App {
                 None => self.status = self.t("lsp.signature.none").into(),
             },
             "rename" => self.apply_rename_result(result),
+            "formatting" | "rangeFormatting" => self.apply_format_result(result),
             "prepareCallHierarchy" => self.follow_hierarchy(
                 &result,
                 [
@@ -199,6 +200,121 @@ impl App {
             "typeHierarchySupertypes" => self.add_hierarchy_items(items_from(&result, "↑ ")),
             "typeHierarchySubtypes" => self.add_hierarchy_items(items_from(&result, "↓ ")),
             _ => {}
+        }
+    }
+
+    /// Formats the active document with the language server, if one is configured.
+    pub(crate) fn lsp_format_document(&mut self) -> bool {
+        let Some((path, _)) = self.active_lsp_position() else {
+            self.status = self.t("lsp.save_for_features").into();
+            return false;
+        };
+        let Some(uri) = self.lsp_manager.document_uri(&path) else {
+            self.status = self.t("lsp.save_for_features").into();
+            return false;
+        };
+        let params = json!({
+            "textDocument": {"uri": uri},
+            "options": crate::lsp::LspManager::formatting_options(self.tab_size, self.insert_spaces),
+        });
+        self.lsp_format_revision = Some(self.documents[self.command_document()].buffer.revision());
+        self.lsp_request_at(&path, "formatting", "textDocument/formatting", params)
+    }
+
+    /// Formats the selected lines, or the caret's line when nothing is selected.
+    pub(crate) fn lsp_format_selection(&mut self) -> bool {
+        let range = self.lsp_selection_range();
+        self.request_range_formatting(range)
+    }
+
+    /// LSP range of the active selection, or of the caret's whole line when nothing is selected.
+    pub(crate) fn lsp_selection_range(&self) -> lsp_types::Range {
+        let buffer = &self.documents[self.command_document()].buffer;
+        let (start, end) = match self.editor().selection().filter(|s| s.anchor != s.head) {
+            Some(selection) => (
+                selection.anchor.min(selection.head),
+                selection.anchor.max(selection.head),
+            ),
+            None => {
+                let (line, _) = self.editor().cursor_line_col();
+                let start = buffer.line_start_char(line);
+                let end = if line + 1 < buffer.len_lines() {
+                    buffer.line_start_char(line + 1)
+                } else {
+                    buffer.len_chars()
+                };
+                (start, end)
+            }
+        };
+        self.lsp_char_range(start, end)
+    }
+
+    /// Converts character offsets of the active document into an LSP range.
+    fn lsp_char_range(&self, start: usize, end: usize) -> lsp_types::Range {
+        let text = self.documents[self.command_document()].buffer.text();
+        lsp_types::Range {
+            start: crate::lsp::position_at_char(&text, start),
+            end: crate::lsp::position_at_char(&text, end),
+        }
+    }
+
+    /// Sends a range formatting request for character offsets `start..end` of the active document.
+    /// Edits are applied only if the document is unchanged when the server answers.
+    pub(crate) fn lsp_format_chars(&mut self, start: usize, end: usize) -> bool {
+        let range = self.lsp_char_range(start, end);
+        self.request_range_formatting(range)
+    }
+
+    fn request_range_formatting(&mut self, range: lsp_types::Range) -> bool {
+        let Some((path, _)) = self.active_lsp_position() else {
+            self.status = self.t("lsp.save_for_features").into();
+            return false;
+        };
+        let Some(uri) = self.lsp_manager.document_uri(&path) else {
+            self.status = self.t("lsp.save_for_features").into();
+            return false;
+        };
+        let params = json!({
+            "textDocument": {"uri": uri},
+            "range": range,
+            "options": crate::lsp::LspManager::formatting_options(self.tab_size, self.insert_spaces),
+        });
+        self.lsp_format_revision = Some(self.documents[self.command_document()].buffer.revision());
+        self.lsp_request_at(&path, "rangeFormatting", "textDocument/rangeFormatting", params)
+    }
+
+    fn apply_format_result(&mut self, result: Value) {
+        let requested = self.lsp_format_revision.take();
+        if requested.is_some_and(|revision| {
+            revision != self.documents[self.command_document()].buffer.revision()
+        }) {
+            self.status = self.t("lsp.format.stale").into();
+            return;
+        }
+        let Some(path) = self.documents[self.command_document()]
+            .buffer
+            .path()
+            .map(PathBuf::from)
+        else {
+            self.status = self.t("lsp.save_for_features").into();
+            return;
+        };
+        let Some(uri) = self.lsp_manager.document_uri(&path) else {
+            self.status = self.t("lsp.save_for_features").into();
+            return;
+        };
+        let Some(edit) = formatting_edit(&uri, &result) else {
+            self.status = self.t("lsp.format.unchanged").into();
+            return;
+        };
+        match serde_json::from_value::<lsp_types::WorkspaceEdit>(edit)
+            .map_err(|error| error.to_string())
+            .and_then(|edit| self.apply_workspace_edit(edit))
+        {
+            Ok(()) => self.status = self.t("lsp.format.done").into(),
+            Err(error) => {
+                self.status = self.tf("lsp.format.apply_failed", &[("error", &error)]);
+            }
         }
     }
 
@@ -404,6 +520,15 @@ fn items_from(result: &Value, label: &str) -> Vec<GoSymbolItem> {
         .unwrap_or_default()
 }
 
+/// Wraps the `TextEdit[]` of a formatting result as a workspace edit for `uri`.
+/// Returns `None` when the server made no changes or sent a non-array result.
+fn formatting_edit(uri: &str, result: &Value) -> Option<Value> {
+    let edits = result.as_array().filter(|edits| !edits.is_empty())?;
+    let mut changes = serde_json::Map::new();
+    changes.insert(uri.to_owned(), Value::Array(edits.clone()));
+    Some(json!({ "changes": changes }))
+}
+
 /// The label of the active signature from a `SignatureHelp` result.
 fn signature_label(result: &Value) -> Option<String> {
     let signatures = result.get("signatures")?.as_array()?;
@@ -452,6 +577,23 @@ mod tests {
         });
         assert_eq!(signature_label(&result), Some("g()".to_owned()));
         assert_eq!(signature_label(&json!({"signatures": []})), None);
+    }
+
+    #[test]
+    fn formatting_result_becomes_a_workspace_edit_only_when_it_changes_text() {
+        let edits = json!([{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
+            "newText": "  "
+        }]);
+        let edit = formatting_edit("file:///C:/tmp/f.rs", &edits).expect("changes");
+        let parsed: lsp_types::WorkspaceEdit = serde_json::from_value(edit).expect("valid edit");
+        let changes = parsed.changes.expect("changes map");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes.values().next().unwrap().len(), 1);
+
+        assert!(formatting_edit("file:///C:/tmp/f.rs", &json!([])).is_none());
+        assert!(formatting_edit("file:///C:/tmp/f.rs", &Value::Null).is_none());
+        assert!(formatting_edit("file:///C:/tmp/f.rs", &json!({"a": 1})).is_none());
     }
 
     #[test]

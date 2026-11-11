@@ -65,6 +65,8 @@ pub struct EditorPrefs {
     pub read_only_patterns: Vec<String>,
     pub detect_indentation: bool,
     pub trim_trailing_whitespace: bool,
+    pub format_on_save: bool,
+    pub format_on_paste: bool,
     pub rulers: Vec<usize>,
     pub word_wrap: bool,
     pub wrapping_indent: WrapIndent,
@@ -99,6 +101,21 @@ mod tests {
         fs::write(&workspace, r#"{"editor.wordWrap":"bounded"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
     }
+    #[test]
+    fn format_on_save_is_read_from_settings_and_rejects_non_boolean_values() {
+        let temp = crate::test_support::TempDir::new();
+        let workspace = temp.path().join("settings.json");
+        fs::write(&workspace, r#"{"editor.formatOnSave":true}"#).unwrap();
+        let prefs = settings::read_editor_prefs(&[workspace.clone()], &Translator::english())
+            .unwrap();
+        assert!(prefs.format_on_save);
+        assert!(!prefs.format_on_paste);
+        fs::write(&workspace, r#"{"editor.formatOnSave":"yes"}"#).unwrap();
+        assert!(settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).is_err());
+        fs::write(&workspace, r#"{"editor.formatOnPaste":1}"#).unwrap();
+        assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
+    }
+
     #[test]
     fn expands_common_vscode_snippet_placeholders() {
         assert_eq!(expand_snippet("fn ${1:name}() { $0 }"), "fn name() {  }");
