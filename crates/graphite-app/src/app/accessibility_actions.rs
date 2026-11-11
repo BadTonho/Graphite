@@ -25,6 +25,12 @@ impl App {
             }
             return;
         }
+        if let Some(index) = super::accessibility::edit_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_edit_menu_accessibility_item(index);
+            }
+            return;
+        }
         if id == 3 && request.action == Action::Click {
             self.run_ui_command("workbench.action.terminal.toggleTerminal");
             return;

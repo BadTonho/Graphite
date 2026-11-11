@@ -271,5 +271,21 @@
   "file.workspace_opened": "Workspace aberto",
   "file.remove_folder": "Remover Pasta do Workspace",
   "file.folder_removed": "Pasta removida do workspace",
-  "file.revert_confirm_prompt": "Reverter arquivo: S salvar e reverter, D descartar e reverter, Esc cancelar"
+  "file.revert_confirm_prompt": "Reverter arquivo: S salvar e reverter, D descartar e reverter, Esc cancelar",
+  "edit.undo": "Desfazer",
+  "edit.redo": "Refazer",
+  "edit.cut": "Recortar",
+  "edit.copy": "Copiar",
+  "edit.paste": "Colar",
+  "edit.find": "Localizar",
+  "edit.replace": "Substituir",
+  "edit.find_in_files": "Localizar em Arquivos",
+  "edit.replace_in_files": "Substituir em Arquivos",
+  "edit.toggle_line_comment": "Alternar Comentário de Linha",
+  "edit.toggle_block_comment": "Alternar Comentário de Bloco",
+  "edit.emmet_expand": "Emmet: Expandir Abreviação",
+  "accessibility.unavailable": "indisponível",
+  "overlay.project_search.replace_prompt": "Substituir: {replacement}  (Tab alterna campos; Ctrl+Enter substitui tudo)",
+  "search.replace_failed": "Não foi possível preparar as substituições porque os resultados da busca são inválidos",
+  "search.replace_failed_detail": "Não foi possível substituir os arquivos: {error}"
 }

@@ -566,6 +566,32 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "editor.action.commentLine",
+        "Toggle Line Comment",
+        "Editor",
+        VIEW,
+        "editorWritable && canToggleLineComment",
+        None,
+        |app, _| {
+            app.toggle_line_comment();
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "editor.action.blockComment",
+        "Toggle Block Comment",
+        "Editor",
+        VIEW,
+        "editorWritable && canToggleBlockComment",
+        None,
+        |app, _| {
+            app.toggle_block_comment();
+            Ok(())
+        },
+    );
+    add(
+        registry,
         "editor.action.selectAll",
         "Select all",
         "Editor",

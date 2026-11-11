@@ -214,7 +214,7 @@ impl App {
                     .map_err(|e| e.to_string())?
                     .canonicalize()
                     .map_err(|e| format!("cannot resolve target: {e}"))?;
-                if workspace_relative_path(self.tree.root(), &path).is_none() {
+                if workspace_relative_path(self.tree.root_for(&path), &path).is_none() {
                     return Err("target outside the workspace".into());
                 }
                 Some(path)
@@ -267,11 +267,13 @@ impl App {
             let mut source_bytes = None;
             let path = target.path.as_deref();
             let tab = if index.is_none() {
-                let relative =
-                    workspace_relative_path(self.tree.root(), path.ok_or("missing document path")?)
-                        .ok_or("target outside workspace")?
-                        .to_string_lossy()
-                        .replace('\\', "/");
+                let relative = workspace_relative_path(
+                    self.tree.root_for(path.ok_or("missing document path")?),
+                    path.ok_or("missing document path")?,
+                )
+                .ok_or("target outside workspace")?
+                .to_string_lossy()
+                .replace('\\', "/");
                 if self.read_only_patterns.iter().any(|pattern| {
                     globset::Glob::new(pattern)
                         .is_ok_and(|glob| glob.compile_matcher().is_match(&relative))

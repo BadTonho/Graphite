@@ -358,10 +358,16 @@ impl App {
             {
                 if let Some(text) = &event.text {
                     if !text.chars().any(char::is_control) {
-                        if let Some(q) = &mut self.search_query {
-                            q.push_str(text);
+                        if self.search_editing_replacement {
+                            if let Some(replacement) = &mut self.search_replacement {
+                                replacement.push_str(text);
+                            }
+                        } else {
+                            if let Some(q) = &mut self.search_query {
+                                q.push_str(text);
+                            }
+                            self.start_project_search();
                         }
-                        self.start_project_search();
                     }
                 }
             }

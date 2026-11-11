@@ -73,6 +73,16 @@ pub(super) fn file_menu_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABCD_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn edit_menu_popup_node() -> NodeId {
+    NodeId(0xABCE_FFFF)
+}
+pub(super) fn edit_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABCE_0000 + index as u64)
+}
+pub(super) fn edit_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABCE_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
     let index = match control {
         super::menu_bar::WindowControl::Minimize => 0,
@@ -285,6 +295,8 @@ impl App {
         children.push(workbench_menu_bar_node());
         if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::File) {
             children.push(file_menu_popup_node());
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Edit) {
+            children.push(edit_menu_popup_node());
         }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
@@ -359,7 +371,8 @@ impl App {
                         accessible_label.push_str(", checked");
                     }
                     if !enabled {
-                        accessible_label.push_str(", unavailable");
+                        accessible_label
+                            .push_str(&format!(", {}", self.t("accessibility.unavailable")));
                     }
                     item.set_label(accessible_label);
                     item.set_selected(item_index == self.file_menu_selection);
@@ -371,6 +384,40 @@ impl App {
             }
             menu.set_children(item_children);
             nodes.push((file_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Edit) {
+            use super::edit_menu::EditMenuRow;
+            let rows = self.edit_menu_rows();
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.edit"));
+            let mut item_children = Vec::new();
+            let mut item_index = 0;
+            for row in rows {
+                if let EditMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } = row
+                {
+                    let id = edit_menu_item_node(item_index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut accessible_label = self.edit_menu_label(label);
+                    if !shortcut.is_empty() {
+                        accessible_label.push_str(&format!(", {shortcut}"));
+                    }
+                    if !enabled {
+                        accessible_label.push_str(", unavailable");
+                    }
+                    item.set_label(accessible_label);
+                    item.set_selected(item_index == self.edit_menu_selection);
+                    item.add_action(Action::Click);
+                    nodes.push((id, item));
+                    item_children.push(id);
+                    item_index += 1;
+                }
+            }
+            menu.set_children(item_children);
+            nodes.push((edit_menu_popup_node(), menu));
         }
         for (control, label) in [
             (

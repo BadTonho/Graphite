@@ -602,6 +602,19 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "workbench.action.replaceInFiles",
+        "Replace in files",
+        "Workbench",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.open_project_search_mode(true);
+            Ok(())
+        },
+    );
+    add(
+        registry,
         "graphite.action.toggleTheme",
         "Toggle theme",
         "Workbench",

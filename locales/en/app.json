@@ -271,5 +271,21 @@
   "file.workspace_opened": "Workspace opened",
   "file.remove_folder": "Remove Folder from Workspace",
   "file.folder_removed": "Workspace folder removed",
-  "file.revert_confirm_prompt": "Revert file: S save then revert, D discard and revert, Esc cancel"
+  "file.revert_confirm_prompt": "Revert file: S save then revert, D discard and revert, Esc cancel",
+  "edit.undo": "Undo",
+  "edit.redo": "Redo",
+  "edit.cut": "Cut",
+  "edit.copy": "Copy",
+  "edit.paste": "Paste",
+  "edit.find": "Find",
+  "edit.replace": "Replace",
+  "edit.find_in_files": "Find in Files",
+  "edit.replace_in_files": "Replace in Files",
+  "edit.toggle_line_comment": "Toggle Line Comment",
+  "edit.toggle_block_comment": "Toggle Block Comment",
+  "edit.emmet_expand": "Emmet: Expand Abbreviation",
+  "accessibility.unavailable": "unavailable",
+  "overlay.project_search.replace_prompt": "Replace: {replacement}  (Tab switches fields; Ctrl+Enter replaces all)",
+  "search.replace_failed": "Could not prepare replacements because the search results are invalid",
+  "search.replace_failed_detail": "Could not replace files: {error}"
 }

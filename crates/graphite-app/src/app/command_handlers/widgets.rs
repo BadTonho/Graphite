@@ -377,6 +377,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "projectSearch.toggleReplaceField",
+        "Toggle replacement field",
+        "Widgets",
+        WIDGET,
+        "projectSearchVisible && projectSearchReplace",
+        Some(WidgetKind::ProjectSearch),
+        project_search_close,
+    );
+    add(
+        registry,
+        "projectSearch.replaceAll",
+        "Replace all in files",
+        "Widgets",
+        WIDGET,
+        "projectSearchVisible && projectSearchReplace && searchHasItems",
+        Some(WidgetKind::ProjectSearch),
+        project_search_close,
+    );
+    add(
+        registry,
         "closeFindWidget",
         "Close find widget",
         "Widgets",

@@ -151,6 +151,16 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("down", "quickFix.next", "quickFixVisible"),
     ("enter", "quickFix.apply", "quickFixVisible"),
     ("escape", "projectSearch.close", "projectSearchVisible"),
+    (
+        "tab",
+        "projectSearch.toggleReplaceField",
+        "projectSearchVisible && projectSearchReplace",
+    ),
+    (
+        "ctrl+enter",
+        "projectSearch.replaceAll",
+        "projectSearchVisible && projectSearchReplace && searchHasItems",
+    ),
     ("enter", "projectSearch.accept", "projectSearchVisible"),
     ("up", "projectSearch.previous", "projectSearchVisible"),
     ("down", "projectSearch.next", "projectSearchVisible"),
@@ -336,6 +346,17 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     (
         "ctrl+shift+f",
         "workbench.action.findInFiles",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+shift+h",
+        "workbench.action.replaceInFiles",
+        "editorTextFocus",
+    ),
+    ("ctrl+;", "editor.action.commentLine", "editorTextFocus"),
+    (
+        "shift+alt+a",
+        "editor.action.blockComment",
         "editorTextFocus",
     ),
     (

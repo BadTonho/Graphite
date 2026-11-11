@@ -129,6 +129,9 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
                 main: text("main").ok(),
                 commands: vsix_commands(&m),
                 activity_bar: vsix_activity_bar(&m),
+                language_comments: vsix_language_comments(&m, |path| {
+                    json(zip, &format!("extension/{path}")).ok()
+                }),
                 contributions: m
                     .get("contributes")
                     .and_then(|v| v.as_object())
