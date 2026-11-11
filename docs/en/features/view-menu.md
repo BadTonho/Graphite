@@ -19,3 +19,16 @@ The Editor Layout submenu supports splitting up, down, left, or right; Single, t
 ## Keyboard and accessibility
 
 Use Up and Down to move through menu items, Right or Enter to open a submenu, Left to return, and Escape to close the current menu level. Menu items expose checked and unavailable states to accessibility clients. The menu labels and descriptions are localized in English and Brazilian Portuguese.
+
+## Layout buttons in the title bar
+
+Four buttons sit to the left of the window controls:
+
+| Button | Action | Shortcut |
+|---|---|---|
+| Customize Layout... | Opens the View menu under the button | — |
+| Toggle Primary Side Bar | Shows or hides the primary side bar | `Ctrl+B` |
+| Toggle Panel | Shows or hides the bottom panel | `Ctrl+J` |
+| Toggle Secondary Side Bar | Shows or hides the secondary side bar | `Ctrl+Alt+B` |
+
+The side bar and panel buttons are filled while their area is visible. Hover over a button to see its name and shortcut.

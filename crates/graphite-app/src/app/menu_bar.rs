@@ -146,9 +146,10 @@ impl MenuItemRectLike {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct TitlebarLayout {
+pub(crate) struct TitlebarLayout {
     icon: MenuItemRectLike,
     controls: TitlebarControlRects,
+    pub(crate) layout_controls: [(super::titlebar_layout_controls::LayoutControl, super::titlebar_layout_controls::Rect); 4],
     command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
@@ -191,7 +192,12 @@ impl TitlebarLayout {
                 height,
             },
         };
-        let right = controls.minimize.x - 5.0 * scale;
+        let layout_controls = super::titlebar_layout_controls::layout_control_rects(
+            controls.minimize.x,
+            height,
+            scale,
+        );
+        let right = layout_controls[0].1 .0 - 5.0 * scale;
         let center_x = width * 0.5;
         let max_field_width = ((right - center_x - 4.0 * scale) * 2.0).max(0.0);
         let preferred_field_width = (COMMAND_CENTER_WIDTH * scale)
@@ -273,6 +279,7 @@ impl TitlebarLayout {
         Self {
             icon,
             controls,
+            layout_controls,
             command_center,
             menus: menu_rects,
             overflowed,
@@ -427,7 +434,7 @@ impl App {
         (x, y, popup_width, height)
     }
 
-    fn titlebar_layout(&self, width: f32, char_width: f32) -> TitlebarLayout {
+    pub(crate) fn titlebar_layout(&self, width: f32, char_width: f32) -> TitlebarLayout {
         let scale = self.sidebar_scale_factor.max(0.5);
         let localized_widths = WorkbenchMenu::ALL.map(|menu| {
             self.t(menu.label_key()).chars().count() as f32 * char_width
@@ -527,6 +534,15 @@ impl App {
             return false;
         };
         let layout = self.titlebar_layout(width, self.font_size * 0.6);
+        if let Some(control) = super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y) {
+            let anchor = layout
+                .layout_controls
+                .iter()
+                .find(|(item, _)| *item == control)
+                .map_or(x, |(_, rect)| rect.0);
+            self.run_layout_control(control, anchor);
+            return true;
+        }
         let target = layout.controls.at(x, y);
         let Some(target) = target else { return false };
         self.titlebar_control_action(target);
@@ -1751,6 +1767,7 @@ impl App {
         self.draw_github_dialog(renderer);
         self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
+        self.draw_layout_controls(renderer, &layout.layout_controls, layout.height);
     }
 
     fn draw_command_center_controls(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {

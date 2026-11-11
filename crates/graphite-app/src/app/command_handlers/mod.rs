@@ -7,6 +7,7 @@ use super::*;
 pub(crate) mod configuration;
 mod editor;
 mod focus;
+mod layout;
 mod explorer;
 mod input;
 mod scm;
@@ -144,6 +145,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     scm::register(registry);
     explorer::register(registry);
     focus::register(registry);
+    layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [
         (

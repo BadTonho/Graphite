@@ -377,6 +377,9 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     ("f6", "workbench.action.focusNextRegion", "true"),
+    ("ctrl+b", "graphite.layout.togglePrimarySidebar", "true"),
+    ("ctrl+j", "graphite.layout.togglePanel", "true"),
+    ("ctrl+alt+b", "graphite.layout.toggleSecondarySidebar", "true"),
     ("shift+f6", "workbench.action.focusPreviousRegion", "true"),
     (
         "ctrl+t",
