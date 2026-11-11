@@ -4,12 +4,23 @@ use alacritty_terminal::{
     term::{cell::Cell, color::Colors, Config, Term},
     vte::ansi::{Color, NamedColor, Processor, Rgb},
 };
+use crate::terminal_shell::{integrated_shell, IntegratedShell, ShellEvent, ShellScanner};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+
+/// Most shell marks kept per session; older ones are dropped.
+const MAX_SHELL_MARKS: usize = 1000;
+
+/// A prompt or command-end event at an absolute row of the session's history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellMark {
+    pub row: i64,
+    pub event: ShellEvent,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct TerminalCell {
@@ -22,6 +33,12 @@ pub struct TerminalCell {
 
 #[derive(Debug, Clone, Default)]
 pub struct TerminalSnapshot {
+    /// Prompt and command-end marks (OSC 133), with absolute rows, oldest first.
+    pub marks: Vec<ShellMark>,
+    /// Absolute row shown at the top of the view; display row `r` is `top_row + r`.
+    pub top_row: i64,
+    /// Working directory reported by the shell (OSC 7), as a local path.
+    pub cwd: Option<String>,
     pub rows: Vec<Vec<TerminalCell>>,
     pub cursor: Option<(usize, usize)>,
     pub exit_code: Option<u32>,
@@ -37,6 +54,7 @@ enum WorkerMessage {
         pixel_height: u16,
     },
     Scroll(i32),
+    ScrollToRow(i64),
     Stop,
     PtyWrite(String),
 }
@@ -132,6 +150,23 @@ impl TerminalSession {
         {
             command.arg("-NoLogo");
         }
+        // Shell integration: make the shell report prompts, exit codes and its directory.
+        let user_script = profile.args.iter().any(|arg| {
+            arg.eq_ignore_ascii_case("-Command")
+                || arg.eq_ignore_ascii_case("-c")
+                || arg.eq_ignore_ascii_case("-File")
+        });
+        match integrated_shell(&profile.path) {
+            IntegratedShell::PowerShell if !user_script => {
+                command.arg("-NoExit");
+                command.arg("-Command");
+                command.arg(crate::terminal_shell::POWERSHELL_INTEGRATION);
+            }
+            IntegratedShell::Bash if !user_script => {
+                command.env("PROMPT_COMMAND", crate::terminal_shell::BASH_PROMPT_COMMAND);
+            }
+            _ => {}
+        }
         let mut child = pair.slave.spawn_command(command).map_err(|e| {
             translator.format(
                 "terminal.start_failed",
@@ -213,6 +248,11 @@ impl TerminalSession {
     pub fn scroll(&self, delta: i32) {
         let _ = self.sender.send(WorkerMessage::Scroll(delta));
     }
+
+    /// Scrolls the view so that absolute `row` is at its top (clamped to the history).
+    pub fn scroll_to_row(&self, row: i64) {
+        let _ = self.sender.send(WorkerMessage::ScrollToRow(row));
+    }
 }
 
 impl Drop for TerminalSession {
@@ -242,6 +282,7 @@ fn run_terminal_worker(
         TerminalEvents(sender.clone()),
     );
     let mut parser: Processor = Processor::new();
+    let mut scanner = ShellScanner::default();
     loop {
         if let Ok(Some(status)) = child.try_wait() {
             if let Ok(mut state) = snapshot.lock() {
@@ -256,7 +297,19 @@ fn run_terminal_worker(
                 let _ = writer.flush();
             }
             Ok(WorkerMessage::Output(bytes)) => {
-                parser.advance(&mut term, &bytes);
+                // Advance the terminal up to each shell sequence so marks record the exact row.
+                let mut done = 0;
+                for (offset, event) in scanner.feed(&bytes) {
+                    parser.advance(&mut term, &bytes[done..offset]);
+                    done = offset;
+                    record_shell_event(&term, event, &snapshot);
+                }
+                parser.advance(&mut term, &bytes[done..]);
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::ScrollToRow(row)) => {
+                scroll_to_row_in(&mut term, row);
                 publish_snapshot(&term, &snapshot);
                 wake();
             }
@@ -297,6 +350,37 @@ fn run_terminal_worker(
     }
 }
 
+/// Moves the view so that absolute `row` is at its top, clamped to the scrollback.
+fn scroll_to_row_in(term: &mut Term<TerminalEvents>, row: i64) {
+    let history = term.grid().history_size() as i64;
+    let current = term.grid().display_offset() as i64;
+    // Display offset that puts `row` at the top is history - row, kept within 0..=history.
+    let wanted = (history - row).clamp(0, history);
+    term.scroll_display(Scroll::Delta((wanted - current) as i32));
+}
+
+/// Stores a shell event at the cursor's absolute row (history rows included).
+fn record_shell_event(
+    term: &Term<TerminalEvents>,
+    event: ShellEvent,
+    snapshot: &Arc<Mutex<TerminalSnapshot>>,
+) {
+    let grid = term.grid();
+    let row = grid.history_size() as i64 + grid.cursor.point.line.0 as i64;
+    if let Ok(mut state) = snapshot.lock() {
+        match event {
+            ShellEvent::Cwd(path) => state.cwd = Some(path),
+            event => {
+                state.marks.push(ShellMark { row, event });
+                if state.marks.len() > MAX_SHELL_MARKS {
+                    let excess = state.marks.len() - MAX_SHELL_MARKS;
+                    state.marks.drain(..excess);
+                }
+            }
+        }
+    }
+}
+
 fn publish_snapshot(term: &Term<TerminalEvents>, snapshot: &Arc<Mutex<TerminalSnapshot>>) {
     let grid = term.grid();
     let offset = grid.display_offset() as i32;
@@ -321,6 +405,7 @@ fn publish_snapshot(term: &Term<TerminalEvents>, snapshot: &Arc<Mutex<TerminalSn
     }
     if let Ok(mut state) = snapshot.lock() {
         state.rows = rows;
+        state.top_row = grid.history_size() as i64 - offset as i64;
         let point = grid.cursor.point;
         let line = (point.line.0 + offset) as usize;
         state.cursor = (line < grid.screen_lines()).then_some((line, point.column.0));
@@ -422,6 +507,81 @@ fn default_shell() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truecolor_sequences_keep_their_exact_rgb_values() {
+        let (events, _rx) = mpsc::channel();
+        let mut term = Term::new(
+            Config::default(),
+            &TerminalSize {
+                rows: 3,
+                columns: 20,
+            },
+            TerminalEvents(events),
+        );
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, b"\x1b[38;2;10;200;30mG\x1b[48;2;1;2;3mB\x1b[0m");
+        let snapshot = Arc::new(Mutex::new(TerminalSnapshot::default()));
+        publish_snapshot(&term, &snapshot);
+        let state = snapshot.lock().unwrap();
+        assert_eq!(state.rows[0][0].foreground, [10, 200, 30]);
+        assert_eq!(state.rows[0][1].background, [1, 2, 3]);
+    }
+
+    #[test]
+    fn shell_marks_record_the_absolute_row_of_each_prompt_and_exit_code() {
+        let (events, _rx) = mpsc::channel();
+        let mut term = Term::new(
+            Config::default(),
+            &TerminalSize {
+                rows: 3,
+                columns: 20,
+            },
+            TerminalEvents(events),
+        );
+        let mut parser: Processor = Processor::new();
+        let mut scanner = ShellScanner::default();
+        let snapshot = Arc::new(Mutex::new(TerminalSnapshot::default()));
+        // Scrolls two lines into history, then reports the end of a command and a new prompt.
+        let bytes: &[u8] = b"a\r\nb\r\nc\r\nd\r\n\x1b]7;file://h/tmp\x07\x1b]133;D;3\x07\x1b]133;A\x07$ ";
+        let mut done = 0;
+        for (offset, event) in scanner.feed(bytes) {
+            parser.advance(&mut term, &bytes[done..offset]);
+            done = offset;
+            record_shell_event(&term, event, &snapshot);
+        }
+        parser.advance(&mut term, &bytes[done..]);
+        publish_snapshot(&term, &snapshot);
+
+        let history = term.grid().history_size() as i64;
+        let cursor_row = history + term.grid().cursor.point.line.0 as i64;
+        let state = snapshot.lock().unwrap();
+        assert_eq!(state.cwd.as_deref(), Some("/tmp"));
+        assert_eq!(
+            state.marks,
+            vec![
+                ShellMark {
+                    row: cursor_row,
+                    event: ShellEvent::CommandEnd(Some(3)),
+                },
+                ShellMark {
+                    row: cursor_row,
+                    event: ShellEvent::PromptStart,
+                },
+            ]
+        );
+        assert_eq!(state.top_row, history);
+        assert!(history > 0);
+        drop(state);
+
+        // Jumping to the first row shows the start of the scrollback; the view is clamped.
+        scroll_to_row_in(&mut term, 0);
+        publish_snapshot(&term, &snapshot);
+        assert_eq!(snapshot.lock().unwrap().top_row, 0);
+        scroll_to_row_in(&mut term, 10_000);
+        publish_snapshot(&term, &snapshot);
+        assert_eq!(snapshot.lock().unwrap().top_row, history);
+    }
 
     #[test]
     fn ansi_parser_preserves_terminal_text_and_color() {

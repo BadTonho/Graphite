@@ -2,6 +2,8 @@
   "command.actions.find": "Find",
   "command.category.developer": "Developer",
   "command.category.explorer": "Explorer",
+  "command.graphite.terminal.previousCommand": "Go to previous command",
+  "command.graphite.terminal.nextCommand": "Go to next command",
   "command.file.localHistory": "Open local history",
   "command.explorer.rename": "Rename",
   "command.explorer.delete": "Delete",

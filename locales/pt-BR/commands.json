@@ -1,6 +1,8 @@
 {
   "command.actions.find": "Localizar",
   "command.category.explorer": "Explorador",
+  "command.graphite.terminal.previousCommand": "Ir para o comando anterior",
+  "command.graphite.terminal.nextCommand": "Ir para o próximo comando",
   "command.file.localHistory": "Abrir histórico local",
   "command.explorer.rename": "Renomear",
   "command.explorer.delete": "Excluir",

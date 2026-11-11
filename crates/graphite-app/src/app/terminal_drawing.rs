@@ -256,6 +256,23 @@ fn draw_terminal_snapshot(
             renderer.draw_rect(x, y, 2.0, line_height, rgb(0xd4d4d4));
         }
     }
+    // Shell integration: a bar in the left margin at each finished command (green = success).
+    for mark in &snapshot.marks {
+        let crate::terminal_shell::ShellEvent::CommandEnd(code) = mark.event else {
+            continue;
+        };
+        let display_row = mark.row - snapshot.top_row;
+        if display_row < 0 || display_row as usize >= snapshot.rows.len() {
+            continue;
+        }
+        let y = top + line_height * display_row as f32;
+        let color = match code {
+            Some(0) => 0x0dbc79,
+            Some(_) => 0xf14c4c,
+            None => 0x858585,
+        };
+        renderer.draw_rect(left - 6.0, y, 3.0, line_height, rgb(color));
+    }
     if let Some(code) = snapshot.exit_code {
         let exited = translator.format("terminal.shell_exited", &[("code", &code)]);
         renderer.draw_text(&exited, left, top, rgb(0x858585));

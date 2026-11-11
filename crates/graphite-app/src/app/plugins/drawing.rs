@@ -1778,7 +1778,7 @@ fn is_https_url(value: &str) -> bool {
     reqwest::Url::parse(value).is_ok_and(|url| url.scheme() == "https" && url.host_str().is_some())
 }
 
-fn open_external_https(value: &str) {
+pub(crate) fn open_external_https(value: &str) {
     if !is_https_url(value) {
         return;
     }
