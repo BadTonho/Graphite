@@ -55,10 +55,27 @@ pub(super) struct ScmPanelLayout {
     pub branch_label: ScmRect,
     pub branch_picker: ScmRect,
     pub refresh: ScmRect,
+    pub repo_sync: ScmRect,
+    pub repo_pull_request: ScmRect,
+    pub repo_more: ScmRect,
     pub commit_field: ScmRect,
     pub commit_button: ScmRect,
     pub list_top: f32,
     pub list_rows: Vec<ScmListRow>,
+}
+
+/// History and stash buttons of the Changes header, placed left of its stage-all button.
+pub(super) fn changes_header_buttons(action: ScmRect, cell_width: f32) -> (ScmRect, ScmRect) {
+    let gap = cell_width * 0.5;
+    let stash = ScmRect {
+        x: action.x - gap - action.width,
+        ..action
+    };
+    let history = ScmRect {
+        x: stash.x - gap - stash.width,
+        ..action
+    };
+    (history, stash)
 }
 
 pub(super) fn scm_panel_layout(
@@ -91,6 +108,9 @@ pub(super) fn scm_panel_layout(
     let button_gap = (cell_width * 0.75).max(7.0);
     let refresh_x = right - button_width;
     let picker_x = refresh_x - button_gap - button_width;
+    let repo_more_x = right - button_width;
+    let repo_pr_x = repo_more_x - button_gap - button_width;
+    let repo_sync_x = repo_pr_x - button_gap - button_width;
     let action_width = cell_width * 2.0;
     let chevron_slot = cell_width * 1.6;
     let action_rect = |y| ScmRect {
@@ -184,7 +204,7 @@ pub(super) fn scm_panel_layout(
         repository_label: ScmRect {
             x: scm_file_label_x(icon_x, icon_size, icon_gap),
             y: repo_y,
-            width: right - scm_file_label_x(icon_x, icon_size, icon_gap),
+            width: repo_sync_x - button_gap * 0.5 - scm_file_label_x(icon_x, icon_size, icon_gap),
             height: row_height,
         },
         branch_row: full_row(branch_y),
@@ -209,6 +229,24 @@ pub(super) fn scm_panel_layout(
         refresh: ScmRect {
             x: refresh_x,
             y: branch_y,
+            width: button_width,
+            height: row_height,
+        },
+        repo_sync: ScmRect {
+            x: repo_sync_x,
+            y: repo_y,
+            width: button_width,
+            height: row_height,
+        },
+        repo_pull_request: ScmRect {
+            x: repo_pr_x,
+            y: repo_y,
+            width: button_width,
+            height: row_height,
+        },
+        repo_more: ScmRect {
+            x: repo_more_x,
+            y: repo_y,
             width: button_width,
             height: row_height,
         },
@@ -390,7 +428,7 @@ pub(crate) struct ConflictView {
 }
 
 impl App {
-    fn scm_workspace_root(&self) -> PathBuf {
+    pub(super) fn scm_workspace_root(&self) -> PathBuf {
         self.documents[self.active_document()]
             .buffer
             .path()
@@ -979,6 +1017,25 @@ impl App {
                 text,
             );
         }
+        if !self.scm_repositories_collapsed {
+            for (rect, glyph) in [
+                (layout.repo_sync, "⇅"),
+                (layout.repo_pull_request, "⇄"),
+                (layout.repo_more, "⋯"),
+            ] {
+                draw_scm_control_slot(
+                    renderer,
+                    rect,
+                    rect.contains(self.mouse.x as f32, self.mouse.y as f32),
+                );
+                renderer.draw_text(
+                    glyph,
+                    scm_centered_text_x(rect.x, rect.width, glyph, cell_width),
+                    rect.y + (row_h - line_height) * 0.5 + row_h * 0.08,
+                    dim,
+                );
+            }
+        }
         let branch = self
             .scm_snapshot
             .branch
@@ -1162,6 +1219,22 @@ impl App {
                         y + row_h * 0.12,
                         dim,
                     );
+                    if !staged {
+                        let (history, stash) = changes_header_buttons(row.action, cell_width);
+                        for (rect, glyph) in [(history, "↺"), (stash, "▤")] {
+                            draw_scm_control_slot(
+                                renderer,
+                                rect,
+                                rect.contains(self.mouse.x as f32, self.mouse.y as f32),
+                            );
+                            renderer.draw_text(
+                                glyph,
+                                scm_centered_text_x(rect.x, rect.width, glyph, cell_width),
+                                y + row_h * 0.12,
+                                dim,
+                            );
+                        }
+                    }
                 }
                 ScmListRowKind::File { index, staged } => {
                     let item = &self.scm_snapshot.files[index];

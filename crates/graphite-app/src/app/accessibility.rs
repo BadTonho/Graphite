@@ -332,6 +332,8 @@ pub(crate) enum UserEvent {
         diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,
     },
     ScmRefresh,
+    /// Result of loading the Git history for the history view.
+    ScmHistory(Result<String, String>),
     /// Progress of a GitHub sign-in running on a background thread.
     GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
     /// Re-checks open documents against disk after recently written files settle.

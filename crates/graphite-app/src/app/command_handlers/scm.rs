@@ -120,3 +120,43 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         graphite_scm_commit_prompt,
     );
 }
+
+fn scm_pull(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_scm_remote(crate::app::scm_remote_ui::RemoteOp::Pull);
+    Ok(())
+}
+
+fn scm_push(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_scm_remote(crate::app::scm_remote_ui::RemoteOp::Push);
+    Ok(())
+}
+
+fn scm_fetch(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_scm_remote(crate::app::scm_remote_ui::RemoteOp::Fetch);
+    Ok(())
+}
+
+fn scm_sync(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_scm_remote(crate::app::scm_remote_ui::RemoteOp::Sync);
+    Ok(())
+}
+
+fn scm_stash(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_scm_remote(crate::app::scm_remote_ui::RemoteOp::Stash);
+    Ok(())
+}
+
+fn scm_view_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_scm_history();
+    Ok(())
+}
+
+fn scm_create_pull_request(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_pull_request();
+    Ok(())
+}
+
+fn scm_more_actions(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_scm_more_menu();
+    Ok(())
+}

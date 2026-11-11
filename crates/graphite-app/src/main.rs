@@ -25,6 +25,7 @@ mod ports;
 mod previews;
 mod process_explorer;
 mod scm;
+mod scm_remote;
 mod terminal;
 mod terminal_links;
 mod terminal_shell;

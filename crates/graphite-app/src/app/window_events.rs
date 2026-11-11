@@ -583,6 +583,7 @@ impl App {
                 self.sync_external_changes();
             }
             UserEvent::ExternalChangeCheck => self.sync_external_changes(),
+            UserEvent::ScmHistory(result) => self.show_scm_history(result),
             UserEvent::GitHubAuth(event) => self.handle_github_auth_event(event),
             UserEvent::ScmSnapshot(snapshot) => {
                 self.accept_scm_snapshot(snapshot);
