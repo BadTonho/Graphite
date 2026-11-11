@@ -395,6 +395,10 @@ impl App {
                 config::load_dark_theme_from(&profile_root),
                 Ordering::Relaxed,
             );
+            app::theme::HIGH_CONTRAST.store(
+                config::load_high_contrast_from(&profile_root),
+                Ordering::Relaxed,
+            );
             match config::imported_theme_colors_in(&profile_root, &root, &translator) {
                 Ok(colors) => Theme::set_imported_colors(colors),
                 Err(error) => settings_error = Some(error),

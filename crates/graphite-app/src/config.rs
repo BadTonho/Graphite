@@ -38,6 +38,7 @@ pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, 
 use themes::theme_colors_from;
 pub use themes::{
     imported_theme_colors, imported_theme_colors_in, load_dark_theme, load_dark_theme_from,
+    load_high_contrast_from, save_high_contrast_in,
     save_dark_theme, save_dark_theme_in,
 };
 pub(crate) use view_layout::{

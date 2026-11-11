@@ -1,6 +1,9 @@
 {
   "command.actions.find": "Localizar",
   "command.category.explorer": "Explorador",
+  "command.workbench.action.focusNextRegion": "Focar a próxima região",
+  "command.workbench.action.focusPreviousRegion": "Focar a região anterior",
+  "command.workbench.action.toggleHighContrast": "Alternar alto contraste",
   "command.graphite.terminal.previousCommand": "Ir para o comando anterior",
   "command.graphite.terminal.nextCommand": "Ir para o próximo comando",
   "command.file.localHistory": "Abrir histórico local",

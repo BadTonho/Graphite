@@ -376,7 +376,8 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "graphite.scm.revertHunk",
         "editorTextFocus",
     ),
-    ("f6", "workbench.action.focusNextGroup", "editorTextFocus"),
+    ("f6", "workbench.action.focusNextRegion", "true"),
+    ("shift+f6", "workbench.action.focusPreviousRegion", "true"),
     (
         "ctrl+t",
         "workbench.action.showAllSymbols",
