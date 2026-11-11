@@ -15,6 +15,8 @@ O Graphite dobra código pela indentação. Uma linha abre uma dobra quando a pr
 
 Uma linha dobrada mostra ` …` depois do texto. As dobras são guardadas por view, então o mesmo documento pode estar dobrado de forma diferente em dois grupos.
 
+Cada aba tem um botão de fechar (×) na extremidade direita. Clique nele para fechar aquela aba, mesmo que ela não seja a ativa. Uma aba com alterações não salvas continua pedindo confirmação antes de fechar.
+
 Limitações nesta versão:
 
 - As dobras são apagadas quando o documento muda. Elas não são mantidas entre edições.
