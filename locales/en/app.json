@@ -544,5 +544,9 @@
   "settings_menu.file_icon_theme": "File Icon Theme",
   "settings_menu.product_icon_theme": "Product Icon Theme",
   "settings_menu.density_default": "Default",
-  "settings_menu.density_compact": "Compact"
+  "settings_menu.density_compact": "Compact",
+  "profile_menu.title": "Profiles",
+  "profile_menu.button_label": "Profile: {name}",
+  "profile_menu.create": "Create Profile...",
+  "profile_menu.unavailable": "Profiles are unavailable"
 }

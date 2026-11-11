@@ -36,6 +36,7 @@ mod phase4_tools;
 #[path = "../phase5.rs"]
 pub(crate) mod phase5;
 pub(crate) mod plugins;
+pub(crate) mod profile_menu;
 mod project_search;
 pub(super) mod quick_open;
 pub(crate) mod run_menu;

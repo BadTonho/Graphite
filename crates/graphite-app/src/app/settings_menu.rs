@@ -387,6 +387,7 @@ impl App {
     ) {
         self.activity_bar_menu = None;
         self.workbench_menu = None;
+        self.profile_menu = None;
         let rows = self.settings_menu_rows();
         let menu_height = PADDING * 2.0 + rows.iter().copied().map(row_height).sum::<f32>();
         let char_width = self

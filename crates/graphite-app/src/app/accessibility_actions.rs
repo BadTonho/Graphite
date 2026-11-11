@@ -19,12 +19,42 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
+        if request.target_node == super::accessibility::profile_button_node() {
+            if request.action == Action::Click {
+                if self.profile_menu.is_some() {
+                    self.profile_menu = None;
+                    return;
+                }
+                let (width, height, line_height) =
+                    self.gpu.as_ref().map_or((1200.0, 760.0, 20.0), |gpu| {
+                        let (width, height) = gpu.renderer.size();
+                        (width, height, gpu.renderer.line_height())
+                    });
+                if let Some((x, y, w, h)) = super::activity_bar::activity_bar_profile_button_rect(
+                    &self.activity_bar_preferences,
+                    width,
+                    height,
+                    self.top_menu_height(),
+                    line_height,
+                ) {
+                    self.open_profile_menu((x, y, w, h), width, height);
+                }
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::profile_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_profile_menu_accessibility_item(index);
+            }
+            return;
+        }
         if request.target_node == super::accessibility::settings_gear_node() {
             if request.action == Action::Click {
                 if self.settings_menu.is_some() {
                     self.settings_menu = None;
                     return;
                 }
+                self.profile_menu = None;
                 let (width, height, line_height) =
                     self.gpu.as_ref().map_or((1200.0, 760.0, 20.0), |gpu| {
                         let (width, height) = gpu.renderer.size();

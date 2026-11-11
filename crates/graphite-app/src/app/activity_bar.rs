@@ -875,7 +875,21 @@ impl App {
                 .as_ref()
                 .map_or(20.0, |gpu| gpu.renderer.line_height()),
         );
+        let profile = profile_button_rect(layout, gear);
+        if profile.contains(x, y) {
+            if self.profile_menu.is_some() {
+                self.profile_menu = None;
+            } else {
+                self.open_profile_menu(
+                    (profile.x, profile.y, profile.width, profile.height),
+                    width,
+                    height,
+                );
+            }
+            return true;
+        }
         if gear.contains(x, y) {
+            self.profile_menu = None;
             if self.settings_menu.is_some() {
                 self.settings_menu = None;
             } else {
@@ -926,6 +940,7 @@ impl App {
         {
             self.workbench_menu = None;
             self.settings_menu = None;
+            self.profile_menu = None;
             self.open_activity_bar_menu(x, y, width, height);
             return true;
         }
@@ -953,10 +968,14 @@ impl App {
         );
         let active = self.active_activity();
         let entries = self.visible_activity_items();
+        let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
+        let profile = profile_button_rect(layout, gear);
         for (index, entry) in entries.iter().enumerate() {
             let item = layout.item_rect(index);
-            let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
-            if item.y + item.height > height || item_overlaps(item, gear) {
+            if item.y + item.height > height
+                || item_overlaps(item, gear)
+                || item_overlaps(item, profile)
+            {
                 break;
             }
             let is_active = match entry {
@@ -1037,7 +1056,6 @@ impl App {
                 }
             }
         }
-        let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
         let gear_hovered = gear.contains(self.mouse.x as f32, self.mouse.y as f32);
         let gear_color = if gear_hovered {
             Theme::color(Theme::TEXT, 0xcccccc)
@@ -1063,8 +1081,30 @@ impl App {
             rgb(gear_color),
             rgb(gear_bg),
         );
+        let profile_hovered = profile.contains(self.mouse.x as f32, self.mouse.y as f32);
+        if profile_hovered {
+            renderer.draw_rect(
+                profile.x,
+                profile.y,
+                profile.width,
+                profile.height,
+                rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+            );
+        }
+        draw_profile_silhouette(
+            renderer,
+            profile.x + (profile.width - gear_size) * 0.5,
+            profile.y + (profile.height - gear_size) * 0.5,
+            gear_size,
+            rgb(if profile_hovered {
+                Theme::color(Theme::TEXT, 0xcccccc)
+            } else {
+                Theme::color(Theme::DIM, 0x858585)
+            }),
+        );
         self.draw_activity_bar_menu(renderer, height);
         self.draw_settings_menu(renderer, window_width, height);
+        self.draw_profile_menu(renderer, window_width, height);
     }
 
     pub(super) fn draw_activity_bar_menu(&self, renderer: &mut Renderer, window_height: f32) {
@@ -1261,6 +1301,36 @@ fn settings_gear_rect(
     }
 }
 
+fn profile_button_rect(layout: ActivityBarLayout, gear: MenuRect) -> MenuRect {
+    match layout.position {
+        ActivityBarPosition::Top | ActivityBarPosition::Bottom => MenuRect {
+            x: (gear.x - layout.item_size).max(0.0),
+            y: gear.y,
+            width: layout.item_size,
+            height: layout.item_size,
+        },
+        _ => MenuRect {
+            x: gear.x,
+            y: (gear.y - layout.item_size).max(layout.y),
+            width: layout.width,
+            height: layout.item_size,
+        },
+    }
+}
+
+pub(super) fn activity_bar_profile_button_rect(
+    preferences: &config::ActivityBarPreferences,
+    width: f32,
+    height: f32,
+    menu_bar_height: f32,
+    status_height: f32,
+) -> Option<(f32, f32, f32, f32)> {
+    let layout = ActivityBarLayout::new(preferences, width, height, menu_bar_height)?;
+    let gear = settings_gear_rect(layout, width, height, status_height);
+    let rect = profile_button_rect(layout, gear);
+    Some((rect.x, rect.y, rect.width, rect.height))
+}
+
 pub(super) fn activity_bar_settings_gear_rect(
     preferences: &config::ActivityBarPreferences,
     width: f32,
@@ -1326,6 +1396,34 @@ fn draw_settings_gear(
     );
 }
 
+fn draw_profile_silhouette(
+    renderer: &mut Renderer,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: graphite_render::Color,
+) {
+    let scale = size / 20.0;
+    for (dx, dy, width, height) in [
+        (8.0, 2.0, 4.0, 2.0),
+        (6.0, 4.0, 8.0, 2.0),
+        (6.0, 6.0, 8.0, 4.0),
+        (8.0, 10.0, 4.0, 2.0),
+        (6.0, 12.0, 8.0, 2.0),
+        (4.0, 14.0, 12.0, 2.0),
+        (2.0, 16.0, 16.0, 2.0),
+        (2.0, 18.0, 16.0, 2.0),
+    ] {
+        renderer.draw_rect(
+            x + dx * scale,
+            y + dy * scale,
+            width * scale,
+            height * scale,
+            color,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1347,6 +1445,51 @@ mod tests {
         assert_eq!(bottom.1, 732.0);
         preferences.position = ActivityBarPosition::Hidden;
         assert!(activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).is_none());
+    }
+
+    #[test]
+    fn profile_button_sits_before_gear_without_overlap_in_every_bar_position() {
+        let mut preferences = config::ActivityBarPreferences::default();
+        let gear =
+            activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        let profile =
+            activity_bar_profile_button_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert_eq!(profile.1 + profile.3, gear.1);
+        assert!(!item_overlaps(
+            MenuRect {
+                x: profile.0,
+                y: profile.1,
+                width: profile.2,
+                height: profile.3
+            },
+            MenuRect {
+                x: gear.0,
+                y: gear.1,
+                width: gear.2,
+                height: gear.3
+            },
+        ));
+
+        preferences.position = ActivityBarPosition::Top;
+        let gear =
+            activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        let profile =
+            activity_bar_profile_button_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert_eq!(profile.0 + profile.2, gear.0);
+        assert_eq!(profile.1, gear.1);
+
+        preferences.position = ActivityBarPosition::Bottom;
+        let gear =
+            activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        let profile =
+            activity_bar_profile_button_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert_eq!(profile.0 + profile.2, gear.0);
+        assert_eq!(profile.1, gear.1);
+
+        preferences.position = ActivityBarPosition::Hidden;
+        assert!(
+            activity_bar_profile_button_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).is_none()
+        );
     }
 
     #[test]
