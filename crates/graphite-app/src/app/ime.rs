@@ -22,6 +22,9 @@ impl App {
         } else if let Some(state) = &mut self.quick_open {
             state.query.push_str(text);
             self.request_quick_open();
+        } else if let Some(picker) = &mut self.go_picker {
+            picker.query.push_str(text);
+            picker.selected = 0;
         } else if let Some(search) = &mut self.local_search {
             if search.edit_replacement {
                 search.replacement.push_str(text);

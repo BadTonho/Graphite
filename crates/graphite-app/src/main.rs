@@ -3,6 +3,7 @@
 mod app;
 use app::accessibility::*;
 use app::drawing_helpers::*;
+use app::go_menu::GoPicker;
 use app::local_search::LocalSearch;
 use app::quick_open::QuickOpen;
 use app::theme::{Theme, DARK_THEME};
@@ -120,6 +121,11 @@ struct App {
     file_menu_submenu: Option<app::file_menu::FileMenuSubmenu>,
     edit_menu_selection: usize,
     selection_menu_selection: usize,
+    go_menu_selection: usize,
+    go_submenu: Option<app::go_menu::GoSubmenu>,
+    go_submenu_selection: usize,
+    go_picker: Option<GoPicker>,
+    go_picker_generation: u64,
     terminal_menu_selection: usize,
     help_menu_selection: usize,
     help_modal: Option<app::help_menu::HelpModal>,
@@ -496,6 +502,11 @@ impl App {
             file_menu_submenu: None,
             edit_menu_selection: 0,
             selection_menu_selection: 0,
+            go_menu_selection: 0,
+            go_submenu: None,
+            go_submenu_selection: 0,
+            go_picker: None,
+            go_picker_generation: 0,
             terminal_menu_selection: 0,
             help_menu_selection: 0,
             help_modal: None,

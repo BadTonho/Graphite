@@ -277,9 +277,7 @@ pub(super) fn workbench_action_next_editor(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.switch_recent_document(false);
-    };
+    app.switch_go_editor(false, false, false);
     Ok(())
 }
 
@@ -287,8 +285,68 @@ pub(super) fn workbench_action_previous_editor(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    app.switch_recent_document(true);
+    app.switch_go_editor(true, false, false);
     Ok(())
+}
+
+fn goto_line(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.go_picker = Some(crate::app::go_menu::GoPicker {
+        kind: crate::app::go_menu::GoPickerKind::LineColumn,
+        query: String::new(),
+        items: Vec::new(),
+        selected: 0,
+        loading: false,
+        generation: 0,
+        message: None,
+    });
+    Ok(())
+}
+fn focus_group_1(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_number(1);
+    Ok(())
+}
+fn focus_group_2(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_number(2);
+    Ok(())
+}
+fn focus_group_3(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_number(3);
+    Ok(())
+}
+fn focus_group_4(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_number(4);
+    Ok(())
+}
+fn focus_group_5(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_number(5);
+    Ok(())
+}
+fn focus_next_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_step(false);
+    Ok(())
+}
+fn focus_previous_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_group_step(true);
+    Ok(())
+}
+fn focus_left_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_adjacent_group(crate::app::go_menu::GoSubcommand::GroupLeft);
+    Ok(())
+}
+fn focus_right_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_adjacent_group(crate::app::go_menu::GoSubcommand::GroupRight);
+    Ok(())
+}
+fn focus_above_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_adjacent_group(crate::app::go_menu::GoSubcommand::GroupAbove);
+    Ok(())
+}
+fn focus_below_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_adjacent_group(crate::app::go_menu::GoSubcommand::GroupBelow);
+    Ok(())
+}
+fn unsupported_go(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    Err(CommandError::Disabled(app.t("go.unsupported").into()))
 }
 
 pub(super) fn workbench_action_reopen_closed_editor(
@@ -498,6 +556,224 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         workbench_action_quick_open,
     );
+    add(
+        registry,
+        "workbench.action.showAllSymbols",
+        "Go to Symbol in Workspace",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        |app, _| {
+            app.open_go_picker(crate::app::go_menu::GoPickerKind::WorkspaceSymbols);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.gotoSymbol",
+        "Go to Symbol in Editor",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        |app, _| {
+            app.open_go_picker(crate::app::go_menu::GoPickerKind::EditorSymbols);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.gotoLine",
+        "Go to Line/Column",
+        "Go",
+        VIEW,
+        "documentAvailable",
+        None,
+        goto_line,
+    );
+    add(
+        registry,
+        "workbench.action.nextUsedEditor",
+        "Next Used Editor",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(false, false, true);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.previousUsedEditor",
+        "Previous Used Editor",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(true, false, true);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.nextEditorInGroup",
+        "Next Editor in Group",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(false, true, false);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.previousEditorInGroup",
+        "Previous Editor in Group",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(true, true, false);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.nextUsedEditorInGroup",
+        "Next Used Editor in Group",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(false, true, true);
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "workbench.action.previousUsedEditorInGroup",
+        "Previous Used Editor in Group",
+        "Go",
+        ALL,
+        "true",
+        None,
+        |app, _| {
+            app.switch_go_editor(true, true, true);
+            Ok(())
+        },
+    );
+    let group_commands = [
+        (
+            "workbench.action.focusFirstGroup",
+            "Group 1",
+            focus_group_1 as Handler,
+        ),
+        (
+            "workbench.action.focusSecondGroup",
+            "Group 2",
+            focus_group_2 as Handler,
+        ),
+        (
+            "workbench.action.focusThirdGroup",
+            "Group 3",
+            focus_group_3 as Handler,
+        ),
+        (
+            "workbench.action.focusFourthGroup",
+            "Group 4",
+            focus_group_4 as Handler,
+        ),
+        (
+            "workbench.action.focusFifthGroup",
+            "Group 5",
+            focus_group_5 as Handler,
+        ),
+    ];
+    for (id, title, handler) in group_commands {
+        add(registry, id, title, "Go", ALL, "true", None, handler);
+    }
+    add(
+        registry,
+        "workbench.action.focusPreviousGroup",
+        "Previous Group",
+        "Go",
+        ALL,
+        "true",
+        None,
+        focus_previous_group,
+    );
+    add(
+        registry,
+        "workbench.action.focusLeftGroup",
+        "Group Left",
+        "Go",
+        ALL,
+        "true",
+        None,
+        focus_left_group,
+    );
+    add(
+        registry,
+        "workbench.action.focusRightGroup",
+        "Group Right",
+        "Go",
+        ALL,
+        "true",
+        None,
+        focus_right_group,
+    );
+    add(
+        registry,
+        "workbench.action.focusAboveGroup",
+        "Group Above",
+        "Go",
+        ALL,
+        "true",
+        None,
+        focus_above_group,
+    );
+    add(
+        registry,
+        "workbench.action.focusBelowGroup",
+        "Group Below",
+        "Go",
+        ALL,
+        "true",
+        None,
+        focus_below_group,
+    );
+    for (id, title) in [
+        (
+            "workbench.action.navigateToLastEditLocation",
+            "Last Edit Location",
+        ),
+        ("editor.action.goToDeclaration", "Go to Declaration"),
+        ("editor.action.goToTypeDefinition", "Go to Type Definition"),
+        ("editor.action.goToImplementation", "Go to Implementations"),
+        ("editor.action.goToReferences", "Go to References"),
+        ("editor.action.jumpToBracket", "Go to Bracket"),
+        ("workbench.action.nextChange", "Next Change"),
+        ("workbench.action.previousChange", "Previous Change"),
+    ] {
+        add(
+            registry,
+            id,
+            title,
+            "Go",
+            VIEW,
+            "false",
+            None,
+            unsupported_go,
+        );
+    }
     add(
         registry,
         "workbench.view.scm",

@@ -283,6 +283,79 @@ impl App {
                 );
             }
         }
+        if let Some(picker) = &self.go_picker {
+            let rows = self.go_picker_rows();
+            let shown = rows.len().min(8);
+            let height = lh * (shown as f32 + 1.8);
+            let x = editor_left;
+            let width = editor_width;
+            let y = ((h - height) * 0.22).max(lh);
+            r.draw_rect(
+                x,
+                y,
+                width,
+                height,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
+            let prompt = match picker.kind {
+                super::go_menu::GoPickerKind::LineColumn => {
+                    format!("{} {}", self.t("go.line_column_prompt"), picker.query)
+                }
+                _ => format!("{} {}", self.t("go.symbol_prompt"), picker.query),
+            };
+            r.draw_text(
+                &prompt,
+                x + PAD,
+                y + PAD,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            if picker.kind == super::go_menu::GoPickerKind::LineColumn {
+                r.draw_text(
+                    self.t("go.line_column_hint"),
+                    x + PAD,
+                    y + lh,
+                    rgb(Theme::color(Theme::DIM, 0x616161)),
+                );
+            } else if picker.loading || rows.is_empty() {
+                let message = if picker.loading {
+                    self.t("go.loading_symbols")
+                } else {
+                    picker
+                        .message
+                        .as_deref()
+                        .unwrap_or_else(|| self.t("go.no_symbols"))
+                };
+                r.draw_text(
+                    message,
+                    x + PAD,
+                    y + lh,
+                    rgb(Theme::color(Theme::DIM, 0x616161)),
+                );
+            }
+            let selected = picker.selected;
+            for (index, item) in rows.iter().take(8).enumerate() {
+                let row_y = y + lh * (index as f32 + 1.0);
+                if index == selected {
+                    r.draw_rect(
+                        x,
+                        row_y,
+                        width,
+                        lh,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                let relative = self.tree.relative_path(&item.path);
+                let label = format!("{}   {}:{}", item.name, relative.display(), item.line + 1);
+                let visible =
+                    Self::help_menu_visible_label(&label, cw, (width - PAD * 2.0).max(cw));
+                r.draw_text(
+                    &visible,
+                    x + PAD,
+                    row_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+        }
         if let Some(search) = &self.local_search {
             let height = if search.replace { lh * 3.5 } else { lh * 2.5 };
             let y = h - lh - height;

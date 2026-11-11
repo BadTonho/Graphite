@@ -93,6 +93,39 @@ pub(super) fn selection_menu_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABD8_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn go_menu_popup_node() -> NodeId {
+    NodeId(0xABD9_FFFF)
+}
+pub(super) fn go_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABD9_0000 + index as u64)
+}
+pub(super) fn go_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD9_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn go_submenu_node() -> NodeId {
+    NodeId(0xABDA_FFFF)
+}
+pub(super) fn go_submenu_item_node(index: usize) -> NodeId {
+    NodeId(0xABDA_0000 + index as u64)
+}
+pub(super) fn go_submenu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABDA_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn go_picker_node() -> NodeId {
+    NodeId(0xABDB_FFFF)
+}
+pub(super) fn go_picker_query_node() -> NodeId {
+    NodeId(0xABDC_FFFF)
+}
+pub(super) fn go_picker_item_node(index: usize) -> NodeId {
+    NodeId(0xABDD_0000 + index as u64)
+}
+pub(super) fn go_picker_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABDD_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn terminal_menu_popup_node() -> NodeId {
     NodeId(0xABD0_FFFF)
 }
@@ -270,6 +303,10 @@ pub(crate) enum UserEvent {
         generation: u64,
         paths: Vec<PathBuf>,
     },
+    GoSymbolsReady {
+        generation: u64,
+        items: Vec<super::go_menu::GoSymbolItem>,
+    },
 }
 
 pub(crate) struct AccessibilityActionQueue {
@@ -378,6 +415,11 @@ impl App {
             children.push(edit_menu_popup_node());
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Selection) {
             children.push(selection_menu_popup_node());
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Go) {
+            children.push(go_menu_popup_node());
+            if self.go_submenu.is_some() {
+                children.push(go_submenu_node());
+            }
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Terminal) {
             children.push(terminal_menu_popup_node());
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Help) {
@@ -393,6 +435,9 @@ impl App {
         }
         if self.help_modal.is_some() {
             children.push(help_modal_node());
+        }
+        if self.go_picker.is_some() {
+            children.push(go_picker_node());
         }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
@@ -553,6 +598,79 @@ impl App {
             }
             menu.set_children(children);
             nodes.push((selection_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Go) {
+            use super::go_menu::{GoMenuRow, GoSubmenuRow};
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.go"));
+            let mut children = Vec::new();
+            let mut index = 0;
+            for row in self.go_menu_rows() {
+                if let GoMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    submenu,
+                    ..
+                } = row
+                {
+                    let id = go_menu_item_node(index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut name = self.t(label).to_owned();
+                    if !shortcut.is_empty() {
+                        name.push_str(&format!(", {shortcut}"));
+                    }
+                    if !enabled {
+                        name.push_str(", unavailable");
+                    }
+                    if submenu.is_some() {
+                        name.push_str(", submenu");
+                    }
+                    item.set_label(name);
+                    item.set_selected(index == self.go_menu_selection);
+                    item.add_action(Action::Click);
+                    nodes.push((id, item));
+                    children.push(id);
+                    index += 1;
+                }
+            }
+            menu.set_children(children);
+            nodes.push((go_menu_popup_node(), menu));
+            if let Some(submenu_kind) = self.go_submenu {
+                let mut submenu = Node::new(Role::Menu);
+                submenu.set_label(self.t(match submenu_kind {
+                    super::go_menu::GoSubmenu::SwitchEditor => "go.switch_editor",
+                    super::go_menu::GoSubmenu::SwitchGroup => "go.switch_group",
+                }));
+                let mut children = Vec::new();
+                let mut index = 0;
+                for row in self.go_submenu_rows(submenu_kind) {
+                    if let GoSubmenuRow::Item {
+                        label,
+                        shortcut,
+                        enabled,
+                        ..
+                    } = row
+                    {
+                        let id = go_submenu_item_node(index);
+                        let mut item = Node::new(Role::MenuItem);
+                        let mut name = self.t(label).to_owned();
+                        if !shortcut.is_empty() {
+                            name.push_str(&format!(", {shortcut}"));
+                        }
+                        if !enabled {
+                            name.push_str(", unavailable");
+                        }
+                        item.set_label(name);
+                        item.set_selected(index == self.go_submenu_selection);
+                        item.add_action(Action::Click);
+                        nodes.push((id, item));
+                        children.push(id);
+                        index += 1;
+                    }
+                }
+                submenu.set_children(children);
+                nodes.push((go_submenu_node(), submenu));
+            }
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Terminal) {
             use super::terminal_menu::TerminalMenuRow;
             let rows = self.terminal_menu_rows();
@@ -802,6 +920,37 @@ impl App {
             dialog.set_children(dialog_children);
             nodes.push((help_modal_node(), dialog));
         }
+        if let Some(picker) = &self.go_picker {
+            let mut dialog = Node::new(Role::Dialog);
+            dialog.set_label(self.t(match picker.kind {
+                super::go_menu::GoPickerKind::LineColumn => "go.line_column_prompt",
+                _ => "go.symbol_prompt",
+            }));
+            let mut input = Node::new(Role::TextInput);
+            input.set_label(self.t(match picker.kind {
+                super::go_menu::GoPickerKind::LineColumn => "go.line_column_prompt",
+                _ => "go.symbol_prompt",
+            }));
+            input.set_value(picker.query.as_str());
+            input.add_action(Action::Focus);
+            nodes.push((go_picker_query_node(), input));
+            let mut children = vec![go_picker_query_node()];
+            for (index, item) in self.go_picker_rows().iter().take(100).enumerate() {
+                let mut button = Node::new(Role::Button);
+                button.set_label(format!(
+                    "{}, {}:{}",
+                    item.name,
+                    self.tree.relative_path(&item.path).display(),
+                    item.line + 1
+                ));
+                button.set_selected(index == picker.selected);
+                button.add_action(Action::Click);
+                nodes.push((go_picker_item_node(index), button));
+                children.push(go_picker_item_node(index));
+            }
+            dialog.set_children(children);
+            nodes.push((go_picker_node(), dialog));
+        }
         for (control, label) in [
             (
                 super::menu_bar::WindowControl::Minimize,
@@ -1035,7 +1184,9 @@ impl App {
             nodes,
             tree: Some(Tree::new(root)),
             tree_id: accesskit::TreeId::ROOT,
-            focus: if self.help_modal.is_some() {
+            focus: if self.go_picker.is_some() {
+                go_picker_query_node()
+            } else if self.help_modal.is_some() {
                 help_modal_node()
             } else if self.run_breakpoint_prompt.is_some() {
                 run_breakpoint_prompt_input_node()

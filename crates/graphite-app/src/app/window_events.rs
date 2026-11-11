@@ -657,6 +657,12 @@ impl App {
                     }
                 }
             }
+            UserEvent::GoSymbolsReady { generation, items } => {
+                self.accept_go_symbols(generation, items);
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
         }
     }
 }

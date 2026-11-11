@@ -133,6 +133,41 @@ impl EditorGroups {
     pub fn group_count(&self) -> usize {
         self.groups.len()
     }
+    pub(crate) fn ordered_group_ids(&self) -> Vec<u64> {
+        self.rectangles(GroupRect {
+            id: 0,
+            x: 0.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 700.0,
+        })
+        .into_iter()
+        .map(|rect| rect.id)
+        .collect()
+    }
+    pub(crate) fn ordered_view_ids(&self) -> Vec<ViewId> {
+        self.ordered_group_ids()
+            .into_iter()
+            .filter_map(|id| self.group(id))
+            .flat_map(|group| group.tabs.iter().map(|view| view.id))
+            .collect()
+    }
+    pub(crate) fn view_ids_in_group(&self, id: u64) -> Option<Vec<ViewId>> {
+        self.group(id)
+            .map(|group| group.tabs.iter().map(|view| view.id).collect())
+    }
+    pub(crate) fn focus_view(&mut self, id: ViewId) -> bool {
+        let Some(group_id) = self.group_for_view(id) else {
+            return false;
+        };
+        let group = self.group_mut(group_id).unwrap();
+        let Some(index) = group.tabs.iter().position(|view| view.id == id) else {
+            return false;
+        };
+        group.active = index;
+        self.focused = group_id;
+        true
+    }
     pub(crate) fn collapse_to_single_group(&mut self) {
         if self.groups.len() <= 1 {
             return;

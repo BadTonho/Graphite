@@ -20,6 +20,7 @@ mod editor_commands;
 pub(super) mod editor_groups;
 pub(crate) mod emmet;
 pub(crate) mod file_menu;
+pub(crate) mod go_menu;
 mod group_drawing;
 pub(crate) mod help_menu;
 mod i18n;
