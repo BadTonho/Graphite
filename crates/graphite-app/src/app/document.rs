@@ -57,6 +57,9 @@ impl App {
             self.status = path.display().to_string();
             return;
         }
+        if self.try_open_notebook_view(&path) {
+            return;
+        }
         match crate::file_format::read(&path, &self.translator) {
             Ok(decoded) => {
                 let mut buffer = Buffer::from_text(&path, &decoded.text);
@@ -132,10 +135,19 @@ impl App {
                 self.status = path.display().to_string();
             }
             Err(e) => {
-                self.status = self.tf(
-                    "document.open_failed",
-                    &[("path", &path.display()), ("error", &e)],
-                );
+                // Not text (binary, or not UTF-8): show the bytes in a read-only hex view.
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let text = super::custom_editors::hex_view(&bytes);
+                        self.open_read_only_view(path, &text);
+                    }
+                    Err(_) => {
+                        self.status = self.tf(
+                            "document.open_failed",
+                            &[("path", &path.display()), ("error", &e)],
+                        );
+                    }
+                }
             }
         }
     }

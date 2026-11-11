@@ -292,6 +292,7 @@
   "terminal.link.opened": "Opened {target}",
   "terminal.link.https_only": "Only https links open from the terminal",
   "terminal.link.not_found": "File not found: {path}",
+  "view.read_only": "Read-only view of {path}",
   "history.none":"No saved versions of this file yet",
   "external.reloaded":"Reloaded {count} file(s) changed on disk",
   "external.kept_edits": "{count} file(s) changed on disk; unsaved edits were kept",

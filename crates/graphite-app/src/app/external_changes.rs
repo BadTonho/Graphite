@@ -19,6 +19,11 @@ impl App {
         let mut kept_edits = 0usize;
         let mut unsettled = false;
         for tab in self.documents.iter() {
+            // Read-only documents are views (hex, notebook) or locked files: never replace them
+            // with the raw file contents.
+            if tab.buffer.is_read_only() {
+                continue;
+            }
             let Some(path) = tab.buffer.path().map(PathBuf::from) else {
                 continue;
             };

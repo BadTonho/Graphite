@@ -12,10 +12,11 @@ mod prompts;
 mod rpc;
 mod storage;
 mod testing;
+mod workbench;
 #[cfg(test)]
 mod tests;
 
-pub(super) struct Runtime {
+pub(crate) struct Runtime {
     session: Session,
     ready: bool,
     registered: BTreeSet<String>,
@@ -26,6 +27,7 @@ pub(super) struct Runtime {
     languages: languages::Languages,
     editor_commands: BTreeMap<u64, graphite_core_api::CommandTicket>,
     test_calls: BTreeSet<u64>,
+    workbench: workbench::Workbench,
 }
 
 impl Runtime {
@@ -166,6 +168,7 @@ impl App {
                 languages: Default::default(),
                 editor_commands: BTreeMap::new(),
                 test_calls: BTreeSet::new(),
+                workbench: Default::default(),
             });
         }
         let runtime = self.plugins.vsix.as_mut().unwrap();
@@ -283,6 +286,7 @@ impl App {
             self.reply_vsix_editor_commands(runtime)?;
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
+            self.refresh_vsix_outputs(runtime);
             if let (Some(handle), Some(webview)) =
                 (self.webview_handle.as_deref(), self.webview.as_ref())
             {

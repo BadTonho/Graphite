@@ -1,5 +1,6 @@
 //! Workspace folder model: a lazily-loaded file tree that respects `.gitignore`.
 
+mod find;
 mod quick_open;
 mod search;
 
