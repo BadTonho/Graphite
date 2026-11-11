@@ -57,6 +57,10 @@ pub(super) enum AfterSave {
     Window {
         execution: Option<u64>,
     },
+    Revert {
+        document: DocumentId,
+        execution: Option<u64>,
+    },
 }
 struct Batch {
     documents: Vec<DocumentId>,
@@ -224,6 +228,16 @@ impl App {
                 .iter()
                 .map(|d| (d.id, (d.buffer.revision(), (d.encoding, d.line_ending))))
                 .collect(),
+            AfterSave::Revert { document, .. } => self
+                .documents
+                .get(*document)
+                .map(|d| {
+                    HashMap::from([(
+                        *document,
+                        (d.buffer.revision(), (d.encoding, d.line_ending)),
+                    )])
+                })
+                .unwrap_or_default(),
             AfterSave::Close { .. } => documents
                 .iter()
                 .filter_map(|id| {
@@ -254,7 +268,7 @@ impl App {
         let owner = match &action {
             AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
             AfterSave::Close { execution, .. } => Some(*execution),
-            AfterSave::Window { execution } => *execution,
+            AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
             AfterSave::Workspace => None,
         };
         let requests: Vec<_> = documents

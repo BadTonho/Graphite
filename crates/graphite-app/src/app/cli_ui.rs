@@ -12,6 +12,34 @@ impl App {
         request: crate::cli::CliRequest,
         acknowledge: Option<std::sync::mpsc::Sender<()>>,
     ) {
+        if let crate::cli::CliAction::Open {
+            paths,
+            location: None,
+        } = &request.action
+        {
+            if paths.len() == 1
+                && paths[0]
+                    .extension()
+                    .is_some_and(|ext| ext == "code-workspace")
+            {
+                match Workspace::open_code_workspace(&paths[0]) {
+                    Ok(workspace) => {
+                        self.replace_workspace_roots(
+                            workspace.roots().to_vec(),
+                            Some(paths[0].clone()),
+                        );
+                        self.remember_recent_workspace(paths[0].clone());
+                    }
+                    Err(error) => {
+                        self.status = self.tf("file.workspace_open_failed", &[("error", &error)])
+                    }
+                }
+                if let Some(acknowledge) = acknowledge {
+                    let _ = acknowledge.send(());
+                }
+                return;
+            }
+        }
         if let crate::cli::CliAction::Open { paths, .. } = &request.action {
             let different = paths.iter().any(|path| {
                 path.is_dir() && path.canonicalize().ok() != self.tree.root().canonicalize().ok()

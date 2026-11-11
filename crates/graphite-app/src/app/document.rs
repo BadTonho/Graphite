@@ -75,7 +75,7 @@ impl App {
                 self.push_navigation_location();
                 let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
                 let relative = canonical
-                    .strip_prefix(self.tree.root())
+                    .strip_prefix(self.tree.root_for(&canonical))
                     .unwrap_or(&canonical)
                     .to_string_lossy()
                     .replace('\\', "/");

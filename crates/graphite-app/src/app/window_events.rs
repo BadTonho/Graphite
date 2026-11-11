@@ -4,6 +4,7 @@ impl ApplicationHandler<UserEvent> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let saving = self.saving.pending();
         self.poll_saves(std::time::Instant::now());
+        self.autosave_tick();
         if saving {
             if let Some(gpu) = &self.gpu {
                 gpu.window.request_redraw();
@@ -66,6 +67,11 @@ impl ApplicationHandler<UserEvent> for App {
                 host.state == graphite_extension_host::HostState::Starting
                     || !host.pending.is_empty()
             }) || !self.extension_host.incoming.is_empty());
+        let autosave_deadline = self
+            .autosave_deadlines
+            .values()
+            .map(|(_, deadline)| *deadline)
+            .min();
         event_loop.set_control_flow(
             if self.saving.pending()
                 || debug_pending
@@ -78,6 +84,8 @@ impl ApplicationHandler<UserEvent> for App {
                 ControlFlow::WaitUntil(
                     std::time::Instant::now() + std::time::Duration::from_millis(10),
                 )
+            } else if let Some(deadline) = autosave_deadline {
+                ControlFlow::WaitUntil(deadline)
             } else {
                 ControlFlow::Wait
             },

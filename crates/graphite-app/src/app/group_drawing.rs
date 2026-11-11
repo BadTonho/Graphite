@@ -203,7 +203,7 @@ impl App {
                 }
                 if let Some(path) = buffer.path() {
                     let relative = path
-                        .strip_prefix(self.tree.root())
+                        .strip_prefix(self.tree.root_for(path))
                         .unwrap_or(path)
                         .to_string_lossy()
                         .replace('\\', "/");

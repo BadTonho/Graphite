@@ -93,7 +93,7 @@ impl App {
             self.search_index = 0;
             return;
         }
-        let root = self.tree.root().to_path_buf();
+        let workspace = self.tree.workspace_snapshot();
         let overlays: std::collections::HashMap<PathBuf, String> = self
             .documents
             .iter()
@@ -123,16 +123,12 @@ impl App {
             None
         };
         std::thread::spawn(move || {
-            let results = Workspace::open(root)
-                .map(|workspace| {
-                    workspace.search_with_overlays(&query, &overlays, || {
-                        cancel.load(Ordering::Relaxed) != generation
-                            || job
-                                .as_ref()
-                                .is_some_and(|job| job.cancellation.is_cancelled())
-                    })
-                })
-                .unwrap_or_default();
+            let results = workspace.search_with_overlays(&query, &overlays, || {
+                cancel.load(Ordering::Relaxed) != generation
+                    || job
+                        .as_ref()
+                        .is_some_and(|job| job.cancellation.is_cancelled())
+            });
             let outcome = if cancel.load(Ordering::Relaxed) != generation {
                 Err(super::command_execution::CommandError::Cancelled)
             } else {

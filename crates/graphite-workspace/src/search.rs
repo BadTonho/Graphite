@@ -55,62 +55,64 @@ impl Workspace {
             .binary_detection(BinaryDetection::quit(b'\0'))
             .build();
         let mut results = Vec::new();
-        for entry in WalkBuilder::new(&self.root)
-            .standard_filters(true)
-            .hidden(false)
-            .require_git(false)
-            .filter_entry(|e| e.file_name() != ".git")
-            .build()
-            .filter_map(Result::ok)
-        {
-            if cancelled() {
-                break;
-            }
-            if !entry.file_type().is_some_and(|t| t.is_file()) {
-                continue;
-            }
-            let path = entry.into_path();
-            let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-            let mut file_results = Vec::new();
-            let mut sink = UTF8(|line_number, line: &str| {
+        for root in &self.roots {
+            for entry in WalkBuilder::new(root)
+                .standard_filters(true)
+                .hidden(false)
+                .require_git(false)
+                .filter_entry(|e| e.file_name() != ".git")
+                .build()
+                .filter_map(Result::ok)
+            {
                 if cancelled() {
-                    return Ok(false);
+                    break;
                 }
-                let line = line.trim_end_matches(['\r', '\n']);
-                for found in pattern.find_iter(line) {
-                    file_results.push(SearchResult {
-                        path: path.clone(),
-                        line: line_number as usize - 1,
-                        start: found.start(),
-                        end: found.end(),
-                        text: line.to_owned(),
-                    });
+                if !entry.file_type().is_some_and(|t| t.is_file()) {
+                    continue;
                 }
-                Ok(true)
-            });
-            let outcome = match overlays.get(&canonical) {
-                Some(text) => searcher.search_reader(
-                    &matcher,
-                    CancellableReader {
-                        source: text.as_bytes(),
-                        cancelled: &cancelled,
-                    },
-                    &mut sink,
-                ),
-                None => match std::fs::File::open(&path) {
-                    Ok(file) => searcher.search_reader(
+                let path = entry.into_path();
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                let mut file_results = Vec::new();
+                let mut sink = UTF8(|line_number, line: &str| {
+                    if cancelled() {
+                        return Ok(false);
+                    }
+                    let line = line.trim_end_matches(['\r', '\n']);
+                    for found in pattern.find_iter(line) {
+                        file_results.push(SearchResult {
+                            path: path.clone(),
+                            line: line_number as usize - 1,
+                            start: found.start(),
+                            end: found.end(),
+                            text: line.to_owned(),
+                        });
+                    }
+                    Ok(true)
+                });
+                let outcome = match overlays.get(&canonical) {
+                    Some(text) => searcher.search_reader(
                         &matcher,
                         CancellableReader {
-                            source: file,
+                            source: text.as_bytes(),
                             cancelled: &cancelled,
                         },
                         &mut sink,
                     ),
-                    Err(error) => Err(error),
-                },
-            };
-            if outcome.is_ok() {
-                results.extend(file_results);
+                    None => match std::fs::File::open(&path) {
+                        Ok(file) => searcher.search_reader(
+                            &matcher,
+                            CancellableReader {
+                                source: file,
+                                cancelled: &cancelled,
+                            },
+                            &mut sink,
+                        ),
+                        Err(error) => Err(error),
+                    },
+                };
+                if outcome.is_ok() {
+                    results.extend(file_results);
+                }
             }
         }
         results

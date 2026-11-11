@@ -63,6 +63,16 @@ pub(super) fn workbench_menu_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(WORKBENCH_MENU_BUTTON)? as usize;
     (index <= super::menu_bar::WorkbenchMenu::ALL.len()).then_some(index)
 }
+pub(super) fn file_menu_popup_node() -> NodeId {
+    NodeId(0xABCD_FFFF)
+}
+pub(super) fn file_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABCD_0000 + index as u64)
+}
+pub(super) fn file_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABCD_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
     let index = match control {
         super::menu_bar::WindowControl::Minimize => 0,
@@ -273,6 +283,9 @@ impl App {
             .then(activity_toolbar_node);
         let mut children = Vec::new();
         children.push(workbench_menu_bar_node());
+        if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::File) {
+            children.push(file_menu_popup_node());
+        }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
             window_control_node(super::menu_bar::WindowControl::MaximizeRestore),
@@ -318,6 +331,46 @@ impl App {
             button.set_selected(self.workbench_menu == Some(menu));
             button.add_action(Action::Click);
             nodes.push((workbench_menu_button_node(index), button));
+        }
+        if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::File) {
+            use super::file_menu::FileMenuRow;
+            let rows = self.file_menu_rows(self.file_menu_submenu);
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.file"));
+            let mut item_children = Vec::new();
+            let mut item_index = 0;
+            for row in rows {
+                if let FileMenuRow::Item {
+                    command,
+                    label,
+                    shortcut,
+                    enabled,
+                    checked,
+                    ..
+                } = row
+                {
+                    let id = file_menu_item_node(item_index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut accessible_label = self.file_menu_label(label, command);
+                    if !shortcut.is_empty() {
+                        accessible_label.push_str(&format!(", {shortcut}"));
+                    }
+                    if checked {
+                        accessible_label.push_str(", checked");
+                    }
+                    if !enabled {
+                        accessible_label.push_str(", unavailable");
+                    }
+                    item.set_label(accessible_label);
+                    item.set_selected(item_index == self.file_menu_selection);
+                    item.add_action(Action::Click);
+                    nodes.push((id, item));
+                    item_children.push(id);
+                    item_index += 1;
+                }
+            }
+            menu.set_children(item_children);
+            nodes.push((file_menu_popup_node(), menu));
         }
         for (control, label) in [
             (

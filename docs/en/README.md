@@ -17,6 +17,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [v0.4 — Git, advanced layout and tools](features/v0.4-git-layout.md)
   - [File icons](features/file-icons.md)
   - [Activity bar](features/activity-bar.md)
+  - [File menu and workspaces](features/file-menu.md)
   - [Localization](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)

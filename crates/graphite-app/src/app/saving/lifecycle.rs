@@ -19,9 +19,14 @@ pub(in crate::app) enum DiscardAction {
         execution: u64,
     },
     Workspace,
+    Revert {
+        document: DocumentId,
+        execution: Option<u64>,
+    },
 }
 pub(super) struct WorkspaceTransition {
-    pub request: crate::cli::CliRequest,
+    pub request: Option<crate::cli::CliRequest>,
+    pub menu_roots: Option<(Vec<PathBuf>, Option<PathBuf>)>,
     pub acknowledge: Option<mpsc::Sender<()>>,
     prepared: HashMap<PathBuf, Workspace>,
 }
@@ -56,9 +61,28 @@ impl App {
             }
         }
         self.saving.workspace = Some(WorkspaceTransition {
-            request,
+            request: Some(request),
+            menu_roots: None,
             acknowledge,
             prepared,
+        });
+        self.close_window_confirm = true;
+        self.status = self.t("workspace.switch_prompt").into();
+    }
+    pub(crate) fn defer_workspace_roots(
+        &mut self,
+        roots: Vec<PathBuf>,
+        workspace_file: Option<PathBuf>,
+    ) {
+        if self.saving.workspace.is_some() || self.close_window_confirm {
+            self.status = self.t("workspace.decision_pending").into();
+            return;
+        }
+        self.saving.workspace = Some(WorkspaceTransition {
+            request: None,
+            menu_roots: Some((roots, workspace_file)),
+            acknowledge: None,
+            prepared: HashMap::new(),
         });
         self.close_window_confirm = true;
         self.status = self.t("workspace.switch_prompt").into();
@@ -93,11 +117,15 @@ impl App {
     }
     pub(super) fn complete_workspace_transition(&mut self) {
         if let Some(transition) = self.saving.workspace.take() {
-            self.apply_prepared_cli_request(
-                transition.request,
-                transition.acknowledge,
-                transition.prepared,
-            );
+            if let Some(request) = transition.request {
+                self.apply_prepared_cli_request(
+                    request,
+                    transition.acknowledge,
+                    transition.prepared,
+                );
+            } else if let Some((roots, workspace_file)) = transition.menu_roots {
+                self.replace_workspace_roots(roots, workspace_file);
+            }
         }
     }
     pub(in crate::app) fn defer_discard(
@@ -191,6 +219,21 @@ impl App {
                         self.abort_workspace_transition(&error);
                     } else {
                         self.complete_workspace_transition();
+                    }
+                }
+                DiscardAction::Revert {
+                    document,
+                    execution,
+                } => {
+                    if let Err(error) = result {
+                        self.status = error.to_string();
+                    } else {
+                        self.reload_document_from_disk(document);
+                    }
+                    self.pending_revert_confirmation = None;
+                    self.close_window_confirm = false;
+                    if let Some(execution) = execution {
+                        self.finish_command(execution, Ok(serde_json::Value::Null));
                     }
                 }
             }

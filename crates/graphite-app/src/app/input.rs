@@ -15,6 +15,81 @@ impl App {
             return;
         }
         let ctrl = self.modifiers.control_key();
+        if self
+            .file_shortcut_chord
+            .is_some_and(|deadline| std::time::Instant::now() <= deadline)
+        {
+            self.file_shortcut_chord = None;
+            if ctrl
+                && event
+                    .text
+                    .as_deref()
+                    .is_some_and(|text| text.eq_ignore_ascii_case("o"))
+            {
+                self.open_folder_dialog();
+                return;
+            }
+            if ctrl
+                && event
+                    .text
+                    .as_deref()
+                    .is_some_and(|text| text.eq_ignore_ascii_case("s"))
+            {
+                if self.modifiers.shift_key() {
+                    self.open_preference_file("keybindings.json");
+                } else {
+                    self.run_ui_command("workbench.action.files.saveAll");
+                }
+                return;
+            }
+        } else {
+            self.file_shortcut_chord = None;
+        }
+        if ctrl && !self.editor_groups.active_view_mut().ime_composing {
+            if let Key::Character(key) = &event.logical_key {
+                match key.to_ascii_lowercase().as_str() {
+                    "k" if !self.modifiers.shift_key() => {
+                        self.file_shortcut_chord =
+                            Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+                        self.status = self.t("status.waiting_chord").into();
+                        return;
+                    }
+                    "n" if self.modifiers.shift_key() => {
+                        self.spawn_window(None);
+                        return;
+                    }
+                    "n" => {
+                        self.new_untitled_document();
+                        return;
+                    }
+                    "o" if !self.modifiers.shift_key() => {
+                        self.open_file_dialog();
+                        return;
+                    }
+                    "s" if self.modifiers.shift_key() => {
+                        self.save_as_dialog();
+                        return;
+                    }
+                    "s" if !self.modifiers.shift_key() => {
+                        if self.documents[self.active_document()]
+                            .buffer
+                            .path()
+                            .is_some()
+                        {
+                            self.run_ui_command("workbench.action.files.save");
+                        } else {
+                            self.save_as_dialog();
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            if matches!(event.logical_key, Key::Named(NamedKey::F4)) && !self.modifiers.alt_key() {
+                self.run_ui_command("workbench.action.closeActiveEditor");
+                return;
+            }
+        }
         if self.scm_commit_prompt {
             if ctrl && matches!(event.logical_key, Key::Named(NamedKey::Enter)) {
                 if !self.scm_commit_message.trim().is_empty() {

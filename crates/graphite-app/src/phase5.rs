@@ -143,6 +143,11 @@ impl Profiles {
     pub fn active(&self) -> &str {
         &self.active
     }
+    pub(crate) fn select_for_window(&mut self, profile: &str) -> Result<(), String> {
+        self.path(profile)?;
+        self.active = profile.to_owned();
+        Ok(())
+    }
     pub fn path(&self, profile: &str) -> Result<PathBuf, String> {
         validate_profile_name(profile)?;
         let path = self.root.join(profile);
@@ -228,6 +233,16 @@ impl App {
         let translator = self.translator;
         let workspace = self.tree.root().to_path_buf();
         self.profile_root = profile_root;
+        self.auto_save = fs::read(self.profile_root.join("files.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| value.get("autoSave").and_then(serde_json::Value::as_bool))
+            .unwrap_or(false);
+        self.autosave_deadlines.clear();
+        self.recent_workspaces = fs::read(self.profile_root.join("recent-workspaces.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
         self.sidebar_width = config::load_sidebar_width(&self.profile_root);
         self.refresh_plugins_for_profile();
         if let Some(host) = self.extension_host.supervisor.as_mut() {

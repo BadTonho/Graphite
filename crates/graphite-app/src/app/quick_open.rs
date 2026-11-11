@@ -25,7 +25,7 @@ impl App {
         let Some(proxy) = self.event_proxy.clone() else {
             return;
         };
-        let root = self.tree.root().to_path_buf();
+        let workspace = self.tree.workspace_snapshot();
         let cancel = self.search_cancel.clone();
         let tracked = self
             .command_runtime
@@ -38,16 +38,12 @@ impl App {
             None
         };
         std::thread::spawn(move || {
-            let paths = Workspace::open(root)
-                .map(|ws| {
-                    ws.fuzzy_files(&query, 100, || {
-                        cancel.load(Ordering::Relaxed) != generation
-                            || job
-                                .as_ref()
-                                .is_some_and(|job| job.cancellation.is_cancelled())
-                    })
-                })
-                .unwrap_or_default();
+            let paths = workspace.fuzzy_files(&query, 100, || {
+                cancel.load(Ordering::Relaxed) != generation
+                    || job
+                        .as_ref()
+                        .is_some_and(|job| job.cancellation.is_cancelled())
+            });
             let outcome = if cancel.load(Ordering::Relaxed) != generation {
                 Err(super::command_execution::CommandError::Cancelled)
             } else {

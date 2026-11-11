@@ -28,9 +28,10 @@ pub struct SearchResult {
     pub text: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Workspace {
-    root: PathBuf,
+    roots: Vec<PathBuf>,
+    workspace_file: Option<PathBuf>,
 }
 
 impl Workspace {
@@ -40,11 +41,145 @@ impl Workspace {
             return Err(WorkspaceError::NotADirectory(requested_root));
         }
         let root = requested_root.canonicalize().unwrap_or(requested_root);
-        Ok(Self { root })
+        Ok(Self {
+            roots: vec![root],
+            workspace_file: None,
+        })
+    }
+
+    pub fn from_roots(roots: impl IntoIterator<Item = PathBuf>) -> Result<Self, WorkspaceError> {
+        let mut canonical_roots = Vec::new();
+        for requested in roots {
+            if !requested.is_dir() {
+                return Err(WorkspaceError::NotADirectory(requested));
+            }
+            let root = requested.canonicalize().unwrap_or(requested);
+            if !canonical_roots.contains(&root) {
+                canonical_roots.push(root);
+            }
+        }
+        if canonical_roots.is_empty() {
+            return Err(WorkspaceError::NotADirectory(PathBuf::new()));
+        }
+        Ok(Self {
+            roots: canonical_roots,
+            workspace_file: None,
+        })
+    }
+
+    pub fn open_code_workspace(path: impl AsRef<Path>) -> Result<Self, String> {
+        let path = path.as_ref();
+        let source = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+        let value: serde_json::Value = serde_json::from_str(&source)
+            .map_err(|error| format!("invalid workspace file: {error}"))?;
+        let folders = value
+            .get("folders")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "workspace file must contain a folders array".to_owned())?;
+        let base = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .canonicalize()
+            .unwrap_or_else(|_| {
+                path.parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .to_path_buf()
+            });
+        let roots = folders
+            .iter()
+            .map(|folder| {
+                folder
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| "each workspace folder must have a path".to_owned())
+                    .map(|folder_path| {
+                        let folder_path = PathBuf::from(folder_path);
+                        if folder_path.is_absolute() {
+                            folder_path
+                        } else {
+                            base.join(folder_path)
+                        }
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut workspace = Self::from_roots(roots).map_err(|error| error.to_string())?;
+        workspace.workspace_file = Some(path.to_path_buf());
+        Ok(workspace)
+    }
+
+    pub fn save_code_workspace(&self, path: impl AsRef<Path>) -> Result<(), String> {
+        let path = path.as_ref();
+        let base = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .canonicalize()
+            .unwrap_or_else(|_| {
+                path.parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .to_path_buf()
+            });
+        let folders = self
+            .roots
+            .iter()
+            .map(|root| {
+                let path = root
+                    .strip_prefix(&base)
+                    .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| root.display().to_string());
+                serde_json::json!({"path": path})
+            })
+            .collect::<Vec<_>>();
+        let contents = serde_json::to_vec_pretty(&serde_json::json!({"folders": folders}))
+            .map_err(|error| error.to_string())?;
+        std::fs::write(path, contents).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub fn roots(&self) -> &[PathBuf] {
+        &self.roots
+    }
+
+    pub fn workspace_file(&self) -> Option<&Path> {
+        self.workspace_file.as_deref()
+    }
+
+    pub fn add_root(&mut self, root: impl AsRef<Path>) -> Result<bool, WorkspaceError> {
+        let requested = root.as_ref().to_path_buf();
+        if !requested.is_dir() {
+            return Err(WorkspaceError::NotADirectory(requested));
+        }
+        let root = requested.canonicalize().unwrap_or(requested);
+        if self.roots.contains(&root) {
+            return Ok(false);
+        }
+        self.roots.push(root);
+        Ok(true)
+    }
+
+    pub fn remove_root(&mut self, root: impl AsRef<Path>) -> bool {
+        if self.roots.len() <= 1 {
+            return false;
+        }
+        let requested_path = root.as_ref();
+        let requested = requested_path
+            .canonicalize()
+            .unwrap_or_else(|_| requested_path.to_path_buf());
+        let Some(index) = self
+            .roots
+            .iter()
+            .position(|existing| existing == &requested)
+        else {
+            return false;
+        };
+        self.roots.remove(index);
+        if self.roots.len() == 1 {
+            self.workspace_file = None;
+        }
+        true
     }
 
     pub fn root(&self) -> &Path {
-        &self.root
+        &self.roots[0]
     }
 
     /// Lists the direct children of `dir`, directories first, then alphabetical.
@@ -95,6 +230,44 @@ mod tests {
     #[test]
     fn rejects_non_directory() {
         assert!(Workspace::open("/definitely/not/here").is_err());
+    }
+
+    #[test]
+    fn code_workspace_round_trips_multiple_relative_roots() {
+        let dir =
+            std::env::temp_dir().join(format!("graphite_workspace_file_{}", std::process::id()));
+        let first = dir.join("first");
+        let second = dir.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("one.txt"), "needle one").unwrap();
+        std::fs::write(second.join("two.txt"), "needle two").unwrap();
+        let workspace = Workspace::from_roots([first.clone(), second.clone()]).unwrap();
+        let file = dir.join("project.code-workspace");
+        workspace.save_code_workspace(&file).unwrap();
+
+        let reopened = Workspace::open_code_workspace(&file).unwrap();
+        assert_eq!(reopened.roots(), workspace.roots());
+        let fuzzy = reopened.fuzzy_files("two", 10, || false);
+        assert_eq!(fuzzy.len(), 1);
+        assert_eq!(fuzzy[0].file_name().unwrap(), "two.txt");
+        assert_eq!(reopened.search("needle").len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn multi_root_workspace_can_remove_roots_but_keeps_one() {
+        let dir =
+            std::env::temp_dir().join(format!("graphite_workspace_remove_{}", std::process::id()));
+        let first = dir.join("first");
+        let second = dir.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let mut workspace = Workspace::from_roots([first.clone(), second.clone()]).unwrap();
+        assert!(workspace.remove_root(&first));
+        assert_eq!(workspace.roots().len(), 1);
+        assert!(!workspace.remove_root(&second));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

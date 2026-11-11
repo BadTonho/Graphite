@@ -299,6 +299,32 @@ fn quit(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandErro
     Ok(())
 }
 fn resolve_window(app: &mut App, save: bool, cancel: bool) -> Result<(), CommandError> {
+    if let Some(document) = app.pending_revert_confirmation.take() {
+        app.close_window_confirm = false;
+        let execution = app.command_runtime.pending_window_close.take();
+        if cancel {
+            if let Some(execution) = execution {
+                app.finish_command(execution, Err(CommandError::Cancelled));
+            }
+        } else if save {
+            app.save_batch(
+                vec![document],
+                super::super::saving::AfterSave::Revert {
+                    document,
+                    execution,
+                },
+            );
+        } else {
+            app.defer_discard(
+                vec![document],
+                super::super::saving::DiscardAction::Revert {
+                    document,
+                    execution,
+                },
+            );
+        }
+        return Ok(());
+    }
     if app.workspace_decision_pending() {
         app.resolve_workspace_save(save, cancel);
         return Ok(());

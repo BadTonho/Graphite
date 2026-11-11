@@ -19,6 +19,12 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
+        if let Some(index) = super::accessibility::file_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_file_menu_accessibility_item(index);
+            }
+            return;
+        }
         if id == 3 && request.action == Action::Click {
             self.run_ui_command("workbench.action.terminal.toggleTerminal");
             return;
