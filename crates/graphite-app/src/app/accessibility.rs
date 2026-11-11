@@ -332,6 +332,8 @@ pub(crate) enum UserEvent {
         diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,
     },
     ScmRefresh,
+    /// Re-checks open documents against disk after recently written files settle.
+    ExternalChangeCheck,
     ScmSnapshot(crate::scm::Snapshot),
     ScmOperationCompleted {
         message: String,

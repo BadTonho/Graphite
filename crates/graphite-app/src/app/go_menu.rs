@@ -801,7 +801,13 @@ impl App {
                     .get(picker.selected)
                     .cloned()
                 {
+                    // Saved versions open read-only so they cannot overwrite the history.
+                    let history = self.is_local_history_file(&item.path);
                     self.open_file(item.path);
+                    if history {
+                        let document = self.active_document();
+                        self.documents[document].buffer.set_read_only(true);
+                    }
                     self.editor_mut().set_cursor_line_col(item.line, 0);
                     self.reveal_cursor = true;
                 }

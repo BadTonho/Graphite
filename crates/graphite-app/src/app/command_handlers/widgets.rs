@@ -378,13 +378,30 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     add(
         registry,
         "projectSearch.toggleReplaceField",
-        "Toggle replacement field",
+        "Next search field",
         "Widgets",
         WIDGET,
-        "projectSearchVisible && projectSearchReplace",
+        "projectSearchVisible",
         Some(WidgetKind::ProjectSearch),
         project_search_close,
     );
+    for (id, title) in [
+        ("projectSearch.toggleRegex", "Toggle regex"),
+        ("projectSearch.toggleCase", "Toggle match case"),
+        ("projectSearch.toggleWholeWord", "Toggle whole word"),
+        ("projectSearch.toggleDetails", "Toggle search details"),
+    ] {
+        add(
+            registry,
+            id,
+            title,
+            "Widgets",
+            WIDGET,
+            "projectSearchVisible",
+            Some(WidgetKind::ProjectSearch),
+            project_search_close,
+        );
+    }
     add(
         registry,
         "projectSearch.replaceAll",

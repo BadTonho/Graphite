@@ -29,6 +29,7 @@ mod terminal;
 mod test_explorer;
 #[cfg(test)]
 mod test_support;
+mod file_nesting;
 mod tree;
 mod webview;
 
@@ -108,6 +109,13 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    /// Explorer entry selected by the last click; target of F2 and Delete.
+    explorer_selected: Option<PathBuf>,
+    /// Whether the explorer, rather than the editor, has keyboard focus.
+    explorer_focused: bool,
+    /// Entry pressed in the explorer, moved if the mouse is released on a folder.
+    explorer_drag: Option<PathBuf>,
+    explorer_prompt: Option<app::explorer_files::ExplorerPrompt>,
     titlebar_pointer_down: Option<(f32, f32)>,
     titlebar_drag_started: bool,
     last_titlebar_click: Option<std::time::Instant>,
@@ -162,6 +170,7 @@ struct App {
     search_query: Option<String>,
     search_replacement: Option<String>,
     search_editing_replacement: bool,
+    search_filters: app::project_search_filters::ProjectSearchFilters,
     search_results: Vec<SearchResult>,
     search_index: usize,
     search_generation: u64,
@@ -180,6 +189,11 @@ struct App {
     trim_trailing_whitespace: bool,
     format_on_save: bool,
     format_on_paste: bool,
+    /// `files.autoSave` from settings; `None` lets the File menu toggle decide.
+    auto_save_setting: Option<config::AutoSaveMode>,
+    auto_save_delay_ms: u64,
+    /// Document that was active at the last autosave check, for `onFocusChange`.
+    autosave_last_document: Option<DocumentId>,
     /// Buffer revision when the last formatting request was sent; edits made since then are not applied.
     lsp_format_revision: Option<u64>,
     rulers: Vec<usize>,
@@ -394,6 +408,8 @@ impl App {
                 trim_trailing_whitespace: false,
                 format_on_save: false,
                 format_on_paste: false,
+                auto_save: None,
+                auto_save_delay_ms: 1000,
                 rulers: Vec::new(),
                 word_wrap: false,
                 wrapping_indent: config::WrapIndent::Same,
@@ -411,6 +427,8 @@ impl App {
                         trim_trailing_whitespace: false,
                         format_on_save: false,
                         format_on_paste: false,
+                        auto_save: None,
+                        auto_save_delay_ms: 1000,
                         rulers: Vec::new(),
                         word_wrap: false,
                         wrapping_indent: config::WrapIndent::Same,
@@ -504,6 +522,10 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
+            explorer_selected: None,
+            explorer_focused: false,
+            explorer_drag: None,
+            explorer_prompt: None,
             titlebar_pointer_down: None,
             titlebar_drag_started: false,
             last_titlebar_click: None,
@@ -575,6 +597,7 @@ impl App {
             search_query: None,
             search_replacement: None,
             search_editing_replacement: false,
+            search_filters: Default::default(),
             search_results: Vec::new(),
             search_index: 0,
             search_generation: 0,
@@ -593,6 +616,9 @@ impl App {
             trim_trailing_whitespace: prefs.trim_trailing_whitespace,
             format_on_save: prefs.format_on_save,
             format_on_paste: prefs.format_on_paste,
+            auto_save_setting: prefs.auto_save,
+            auto_save_delay_ms: prefs.auto_save_delay_ms,
+            autosave_last_document: None,
             lsp_format_revision: None,
             rulers: prefs.rulers,
             word_wrap: prefs.word_wrap,

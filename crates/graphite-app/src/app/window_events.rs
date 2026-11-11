@@ -171,6 +171,7 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.process_accessibility_actions();
         match event {
+            WindowEvent::Focused(false) => self.autosave_window_lost_focus(),
             WindowEvent::CloseRequested => {
                 self.run_ui_command("workbench.action.quit");
             }
@@ -315,6 +316,10 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                if self.explorer_drag.is_some() {
+                    let row = self.explorer_row_at_mouse();
+                    self.finish_explorer_drag(row);
+                }
                 if self.titlebar_pointer_released() {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
@@ -573,7 +578,11 @@ impl App {
                     gpu.window.request_redraw();
                 }
             }
-            UserEvent::ScmRefresh => self.refresh_scm_async(),
+            UserEvent::ScmRefresh => {
+                self.refresh_scm_async();
+                self.sync_external_changes();
+            }
+            UserEvent::ExternalChangeCheck => self.sync_external_changes(),
             UserEvent::ScmSnapshot(snapshot) => {
                 self.accept_scm_snapshot(snapshot);
                 if let Some(gpu) = &self.gpu {

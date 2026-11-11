@@ -296,6 +296,10 @@ impl App {
             let first_row_y = sidebar_lh * 1.5;
             if my >= first_row_y {
                 let row = ((my - first_row_y) / sidebar_lh) as usize;
+                if let Some(entry) = self.tree.rows.get(row).map(|row| row.entry.path.clone()) {
+                    self.explorer_select(entry.clone());
+                    self.explorer_drag = Some(entry);
+                }
                 if let Some(path) = self.tree.activate(row) {
                     self.open_file_preview(path);
                 }
@@ -315,6 +319,7 @@ impl App {
             };
             self.focus_editor_group(rect.id);
             self.terminal_focused = false;
+            self.explorer_focused = false;
             let tab_strip = self.editor_tab_strip_height(lh);
             if self.view_preferences.minimap_visible
                 && mx >= rect.x + rect.width - 72.0_f32.min(rect.width * 0.22)

@@ -6,6 +6,7 @@ use super::context_keys::WidgetKind;
 use super::*;
 pub(crate) mod configuration;
 mod editor;
+mod explorer;
 mod input;
 mod scm;
 mod ui;
@@ -140,6 +141,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     widgets::register(registry);
     workbench::register(registry);
     scm::register(registry);
+    explorer::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [
         (

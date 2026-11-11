@@ -259,6 +259,8 @@ impl App {
             self.trim_trailing_whitespace = prefs.trim_trailing_whitespace;
             self.format_on_save = prefs.format_on_save;
             self.format_on_paste = prefs.format_on_paste;
+            self.auto_save_setting = prefs.auto_save;
+            self.auto_save_delay_ms = prefs.auto_save_delay_ms;
             self.rulers = prefs.rulers;
             self.word_wrap = prefs.word_wrap;
             self.wrapping_indent = prefs.wrapping_indent;

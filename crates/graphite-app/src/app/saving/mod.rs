@@ -130,6 +130,7 @@ impl SaveRuntime {
 }
 impl App {
     pub(crate) fn save_document(&mut self, document: DocumentId) -> u64 {
+        self.record_local_history(document);
         self.saving.next += 1;
         let id = self.saving.next;
         let mut origin =

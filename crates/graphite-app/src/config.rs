@@ -57,6 +57,27 @@ pub struct ImportReport {
     pub imported: usize,
     pub warnings: Vec<String>,
 }
+/// When dirty documents are saved automatically (`files.autoSave`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoSaveMode {
+    Off,
+    AfterDelay,
+    OnFocusChange,
+    OnWindowChange,
+}
+
+impl AutoSaveMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "off" => Some(Self::Off),
+            "afterDelay" => Some(Self::AfterDelay),
+            "onFocusChange" => Some(Self::OnFocusChange),
+            "onWindowChange" => Some(Self::OnWindowChange),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EditorPrefs {
     pub font_size: f32,
@@ -67,6 +88,9 @@ pub struct EditorPrefs {
     pub trim_trailing_whitespace: bool,
     pub format_on_save: bool,
     pub format_on_paste: bool,
+    /// `files.autoSave` when set in settings; otherwise the File menu toggle decides.
+    pub auto_save: Option<AutoSaveMode>,
+    pub auto_save_delay_ms: u64,
     pub rulers: Vec<usize>,
     pub word_wrap: bool,
     pub wrapping_indent: WrapIndent,
@@ -113,6 +137,23 @@ mod tests {
         fs::write(&workspace, r#"{"editor.formatOnSave":"yes"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).is_err());
         fs::write(&workspace, r#"{"editor.formatOnPaste":1}"#).unwrap();
+        assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
+    }
+
+    #[test]
+    fn auto_save_mode_and_delay_are_read_from_settings() {
+        let temp = crate::test_support::TempDir::new();
+        let workspace = temp.path().join("settings.json");
+        fs::write(
+            &workspace,
+            r#"{"files.autoSave":"onFocusChange","files.autoSaveDelay":250}"#,
+        )
+        .unwrap();
+        let prefs = settings::read_editor_prefs(&[workspace.clone()], &Translator::english())
+            .unwrap();
+        assert_eq!(prefs.auto_save, Some(AutoSaveMode::OnFocusChange));
+        assert_eq!(prefs.auto_save_delay_ms, 250);
+        fs::write(&workspace, r#"{"files.autoSave":"always"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
     }
 

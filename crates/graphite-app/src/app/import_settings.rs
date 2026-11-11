@@ -23,6 +23,8 @@ impl App {
         self.trim_trailing_whitespace = prefs.trim_trailing_whitespace;
         self.format_on_save = prefs.format_on_save;
         self.format_on_paste = prefs.format_on_paste;
+        self.auto_save_setting = prefs.auto_save;
+        self.auto_save_delay_ms = prefs.auto_save_delay_ms;
         self.rulers = prefs.rulers;
         self.reconfigure_wrapping(prefs.word_wrap, prefs.wrapping_indent);
         if let Some(gpu) = &mut self.gpu {

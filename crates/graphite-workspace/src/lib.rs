@@ -3,6 +3,8 @@
 mod quick_open;
 mod search;
 
+pub use search::{parse_glob_list, validate_search, SearchOptions};
+
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 

@@ -17,6 +17,14 @@ impl App {
         ) {
             return;
         }
+        if self.handle_explorer_prompt_key(
+            &event.logical_key,
+            (!self.modifiers.control_key() && !self.modifiers.alt_key())
+                .then_some(event.text.as_deref())
+                .flatten(),
+        ) {
+            return;
+        }
         if self.handle_breakpoint_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())
@@ -403,16 +411,7 @@ impl App {
             {
                 if let Some(text) = &event.text {
                     if !text.chars().any(char::is_control) {
-                        if self.search_editing_replacement {
-                            if let Some(replacement) = &mut self.search_replacement {
-                                replacement.push_str(text);
-                            }
-                        } else {
-                            if let Some(q) = &mut self.search_query {
-                                q.push_str(text);
-                            }
-                            self.start_project_search();
-                        }
+                        self.push_project_search_text(text);
                     }
                 }
             }
