@@ -297,7 +297,7 @@ impl App {
             if my >= first_row_y {
                 let row = ((my - first_row_y) / sidebar_lh) as usize;
                 if let Some(path) = self.tree.activate(row) {
-                    self.open_file(path);
+                    self.open_file_preview(path);
                 }
             }
         } else {
@@ -393,8 +393,7 @@ impl App {
                 }
                 return;
             }
-            let line = self.editor_groups.active_view_mut().scroll_line
-                + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
+            let line = self.editor_line_at_row(((my - rect.y - tab_strip).max(0.0) / lh) as usize);
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.multi_cursor_modifier_pressed() {
                 let b = self.editor();
@@ -433,8 +432,9 @@ impl App {
         let text_x = rect.x + self.gutter_width(cw);
         if self.view_preferences.column_selection_mode {
             if let Some((anchor_row, anchor_column)) = self.column_selection_anchor {
-                let row = self.editor_groups.active_view_mut().scroll_line
-                    + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize;
+                let row = self.editor_line_at_row(
+                    ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize,
+                );
                 let column = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
                 let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
                 let document = self.active_document();
@@ -481,9 +481,7 @@ impl App {
             );
             return;
         }
-        let line = (self.editor_groups.active_view_mut().scroll_line
-            + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize)
-            .min(self.documents[self.active_document()].buffer.len_lines() - 1);
+        let line = self.editor_line_at_row(((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize);
         let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
         let head = self.documents[self.active_document()]
             .buffer

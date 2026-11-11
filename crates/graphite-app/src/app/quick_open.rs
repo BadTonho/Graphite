@@ -112,7 +112,7 @@ impl App {
                 self.search_cancel
                     .store(self.search_generation, Ordering::Relaxed);
                 if let Some(path) = path {
-                    self.open_file(path);
+                    self.open_file_preview(path);
                 }
             }
             "quickOpen.next" if !state.paths.is_empty() => {

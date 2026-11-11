@@ -27,6 +27,8 @@ impl App {
         lh: f32,
         cw: f32,
     ) {
+        self.sync_active_folds();
+        self.sync_active_preview();
         for rect in rects {
             let (views, active) = self
                 .editor_groups
@@ -135,12 +137,20 @@ impl App {
                         icon_size,
                         rgb(icon.color),
                     );
+                    let label_color = if view.preview_revision.is_some() {
+                        Theme::color(Theme::DIM, 0x858585)
+                    } else {
+                        Theme::color(Theme::TEXT, 0x1e1e1e)
+                    };
                     r.draw_text(
                         &tab_label(tab, &self.translator),
                         x + PAD + lh,
                         rect.y + lh * 0.25,
-                        rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                        rgb(label_color),
                     );
+                    if view.pinned {
+                        r.draw_rect(x, rect.y, width, 2.0, rgb(0x0078d4));
+                    }
                     x += width;
                 }
                 self.draw_graphite_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
@@ -229,8 +239,11 @@ impl App {
                 draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
                 continue;
             }
-            for line in view.scroll_line..last {
-                let y = body_y + (line - view.scroll_line) as f32 * lh;
+            let folds = super::fold_commands::effective_folds(view, buffer.revision());
+            let fold_hidden = super::folding::hidden_ranges(buffer, folds, tab.indentation.tab_size);
+            let rows = super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
+            for (row, &line) in rows.iter().enumerate() {
+                let y = body_y + row as f32 * lh;
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
@@ -314,6 +327,17 @@ impl App {
                         1.0,
                         lh,
                         rgb(Theme::color(0x404040, 0xdddddd)),
+                    );
+                }
+                if folds.binary_search(&line).is_ok() {
+                    let width = display_line(text.trim_end_matches(['\r', '\n']), tab.indentation.tab_size)
+                        .chars()
+                        .count();
+                    r.draw_text(
+                        " …",
+                        text_x + width as f32 * cw,
+                        y,
+                        rgb(Theme::color(Theme::DIM, 0x858585)),
                     );
                 }
                 for &(match_line, column) in &bracket_match_cells {
@@ -418,9 +442,9 @@ impl App {
             for selection in &view.selection_state.selections() {
                 let head = selection.head.min(buffer.len_chars());
                 let line = buffer.rope().char_to_line(head);
-                if !(view.scroll_line..last).contains(&line) {
+                let Some(row) = rows.iter().position(|&shown| shown == line) else {
                     continue;
-                }
+                };
                 let prefix: String = buffer
                     .line(line)
                     .chars()
@@ -430,7 +454,7 @@ impl App {
                     .chars()
                     .count();
                 let x = text_x + column as f32 * cw;
-                let y = body_y + (line - view.scroll_line) as f32 * lh;
+                let y = body_y + row as f32 * lh;
                 r.draw_rect(x, y, 2.0, lh, rgb(Theme::color(Theme::CURSOR, 0x202020)));
                 if rect.id == self.editor_groups.focused()
                     && *selection == primary
