@@ -111,6 +111,8 @@ struct App {
     last_titlebar_click: Option<std::time::Instant>,
     activity_bar_preferences: config::ActivityBarPreferences,
     activity_bar_menu: Option<app::activity_bar::ActivityBarMenu>,
+    view_preferences: config::ViewLayoutPreferences,
+    view_menu: Option<app::view_menu::ViewMenuState>,
     workbench_menu: Option<app::menu_bar::WorkbenchMenu>,
     workbench_menu_overflow: bool,
     workbench_overflow_selection: usize,
@@ -308,6 +310,11 @@ impl App {
         } else {
             config::load_activity_bar_preferences(&profile_root)
         };
+        let view_preferences = if isolated {
+            config::ViewLayoutPreferences::default()
+        } else {
+            config::load_view_layout_preferences(&profile_root)
+        };
         let language_selection =
             (!isolated).then(|| config::language_selection_in(&profile_root, &root));
         let translator = graphite_i18n::Translator::new(
@@ -469,6 +476,8 @@ impl App {
             last_titlebar_click: None,
             activity_bar_preferences,
             activity_bar_menu: None,
+            view_preferences,
+            view_menu: None,
             workbench_menu: None,
             workbench_menu_overflow: false,
             workbench_overflow_selection: 0,

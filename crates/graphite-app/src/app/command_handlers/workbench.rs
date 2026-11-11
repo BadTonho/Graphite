@@ -50,6 +50,24 @@ pub(super) fn activity_bar_move_sidebar(
     Ok(())
 }
 
+pub(super) fn workbench_action_toggle_menu_bar(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.view_preferences.menu_bar_visible = !app.view_preferences.menu_bar_visible;
+    app.save_view_preferences_for_command();
+    Ok(())
+}
+
+pub(super) fn workbench_action_toggle_primary_sidebar(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.view_preferences.primary_sidebar_visible = !app.view_preferences.primary_sidebar_visible;
+    app.save_view_preferences_for_command();
+    Ok(())
+}
+
 pub(super) fn workbench_action_quick_open(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -489,6 +507,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         workbench_view_scm,
+    );
+    add(
+        registry,
+        "workbench.action.toggleMenuBar",
+        "Toggle Menu Bar",
+        "View",
+        ALL,
+        "true",
+        None,
+        workbench_action_toggle_menu_bar,
+    );
+    add(
+        registry,
+        "workbench.action.togglePrimarySideBar",
+        "Toggle Primary Side Bar",
+        "View",
+        ALL,
+        "true",
+        None,
+        workbench_action_toggle_primary_sidebar,
     );
     add(
         registry,

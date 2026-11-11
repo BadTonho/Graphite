@@ -7,6 +7,7 @@ mod sidebar_layout;
 mod snippets;
 mod theme_includes;
 mod themes;
+mod view_layout;
 #[cfg(test)]
 use import::import_from_with;
 pub use import::{import_vscode, import_vscode_to};
@@ -38,6 +39,10 @@ use themes::theme_colors_from;
 pub use themes::{
     imported_theme_colors, imported_theme_colors_in, load_dark_theme, load_dark_theme_from,
     save_dark_theme, save_dark_theme_in,
+};
+pub(crate) use view_layout::{
+    load_view_layout_preferences, save_view_layout_preferences, PanelPosition,
+    ViewLayoutPreferences, WhitespaceRendering,
 };
 
 use graphite_i18n::Translator;

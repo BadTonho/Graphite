@@ -32,7 +32,7 @@ impl App {
             }
             return;
         }
-        if my >= window_height - lh {
+        if self.view_preferences.status_bar_visible && !self.zen_mode && my >= window_height - lh {
             match self.status_segment_at(mx, cw) {
                 Some(super::phase4_tools::StatusSegment::Screencast) => {
                     self.run_ui_command("workbench.action.toggleScreencastMode")
@@ -74,7 +74,11 @@ impl App {
             return;
         }
 
-        if self.outline_visible && !self.zen_mode && mx >= window_width - 240.0 {
+        if self.outline_visible
+            && self.view_preferences.secondary_sidebar_visible
+            && !self.zen_mode
+            && mx >= window_width - 240.0
+        {
             if let Some(language) = self.documents[self.active_document()].language {
                 let text = self.documents[self.active_document()].buffer.text();
                 let row = ((my / lh) as isize - 1).max(0) as usize;
@@ -90,14 +94,20 @@ impl App {
             return;
         }
 
-        if self.terminal_visible {
-            let panel_top = window_height - lh - terminal_panel_height(window_height);
-            if my >= panel_top {
+        if self.terminal_visible && self.view_preferences.panel_visible {
+            let panel = self.panel_bounds(window_width, window_height, lh);
+            let panel_top = panel.y;
+            if mx >= panel.x
+                && mx < panel.x + panel.width
+                && my >= panel_top
+                && my < panel_top + panel.height
+            {
                 if my < panel_top + lh * 1.4 {
-                    self.terminal_problems = mx < sidebar_width + cw * 9.0;
+                    let panel_offset = mx - panel.x;
+                    self.terminal_problems = panel_offset < cw * 9.0;
                     self.terminal_focused = !self.terminal_problems;
-                    if !self.terminal_problems && mx >= sidebar_width + cw * 19.0 {
-                        let offset = mx - sidebar_width;
+                    if !self.terminal_problems && panel_offset >= cw * 19.0 {
+                        let offset = panel_offset;
                         if offset < cw * 34.0 {
                             self.run_ui_command("graphite.terminal.nextProfile");
                         } else if offset < cw * 38.0 {
@@ -111,7 +121,7 @@ impl App {
                         } else if offset < cw * 57.0 {
                             self.run_ui_command("graphite.terminal.scrollRight");
                         } else {
-                            let mut x = sidebar_width + cw * 57.0;
+                            let mut x = panel.x + cw * 57.0;
                             let mut selected = None;
                             for (index, name) in self
                                 .terminal_names
@@ -120,7 +130,7 @@ impl App {
                                 .skip(self.terminal_tab_offset)
                             {
                                 let tab_width = (name.chars().count() as f32 + 2.0) * cw * 1.25;
-                                if x + tab_width > window_width - PAD {
+                                if x + tab_width > panel.x + panel.width - PAD {
                                     break;
                                 }
                                 if mx >= x && mx < x + tab_width {
@@ -266,7 +276,22 @@ impl App {
             };
             self.focus_editor_group(rect.id);
             self.terminal_focused = false;
-            if my < rect.y + lh * 1.5 {
+            let tab_strip = self.editor_tab_strip_height(lh);
+            if self.view_preferences.minimap_visible
+                && mx >= rect.x + rect.width - 72.0_f32.min(rect.width * 0.22)
+                && my >= rect.y + tab_strip
+            {
+                let document = self.active_document();
+                let lines = self.documents[document].buffer.len_lines();
+                let visible = (rect.height / lh).max(1.0) as usize;
+                let ratio = ((my - rect.y - tab_strip) / (rect.height - tab_strip).max(1.0))
+                    .clamp(0.0, 1.0);
+                self.editor_groups.active_view_mut().scroll_line =
+                    ((lines.saturating_sub(visible)) as f32 * ratio) as usize;
+                self.reveal_cursor = false;
+                return;
+            }
+            if tab_strip > 0.0 && my < rect.y + tab_strip {
                 let mut x = rect.x;
                 let documents: Vec<_> = self
                     .editor_groups
@@ -298,7 +323,7 @@ impl App {
             let text_x = rect.x + self.gutter_width(cw);
             if self.word_wrap {
                 let row = self.editor_groups.active_view_mut().scroll_line
-                    + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
+                    + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
                 let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
                 let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
                 let document = self.active_document();
@@ -327,7 +352,7 @@ impl App {
                 return;
             }
             let line = self.editor_groups.active_view_mut().scroll_line
-                + ((my - rect.y - lh * 1.5).max(0.0) / lh) as usize;
+                + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.modifiers.alt_key() {
                 let b = self.editor();
@@ -359,10 +384,11 @@ impl App {
         let cw = gpu.renderer.char_width();
         let (width, height) = gpu.renderer.size();
         let rect = self.focused_group_rect(width, height, lh);
+        let tab_strip = self.editor_tab_strip_height(lh);
         let text_x = rect.x + self.gutter_width(cw);
         if self.word_wrap {
             let row = self.editor_groups.active_view_mut().scroll_line
-                + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize;
+                + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize;
             let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
             let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
             let document = self.active_document();
@@ -387,7 +413,7 @@ impl App {
             return;
         }
         let line = (self.editor_groups.active_view_mut().scroll_line
-            + ((self.mouse.y as f32 - rect.y - lh * 1.5).max(0.0) / lh) as usize)
+            + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize)
             .min(self.documents[self.active_document()].buffer.len_lines() - 1);
         let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
         let head = self.documents[self.active_document()]

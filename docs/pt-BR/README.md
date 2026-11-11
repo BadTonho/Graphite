@@ -19,6 +19,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Barra de atividades](features/activity-bar.md)
   - [Menu Arquivo e workspaces](features/file-menu.md)
   - [Menu Editar](features/edit-menu.md)
+  - [Menu Exibir e layout do ambiente](features/view-menu.md)
   - [Localização](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)

@@ -142,7 +142,7 @@ impl App {
                 AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
                 AfterSave::Close { execution, .. } => Some(*execution),
                 AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
-                AfterSave::Workspace => None,
+                AfterSave::Workspace | AfterSave::OpenEditorWindow { .. } => None,
             };
             if owner.is_some_and(|id| !self.command_runtime.pending.contains_key(&id)) {
                 continue;
@@ -268,6 +268,13 @@ impl App {
                     self.close_window_confirm = false;
                     if let Some(execution) = execution {
                         self.finish_command(execution, result);
+                    }
+                }
+                AfterSave::OpenEditorWindow { path, move_editor } => {
+                    if result.is_ok() {
+                        self.complete_editor_window(path, move_editor);
+                    } else if let Err(error) = &result {
+                        self.status = self.tf("save.cannot_close", &[("error", error)]);
                     }
                 }
                 AfterSave::Revert {

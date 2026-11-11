@@ -13,12 +13,25 @@ impl App {
         let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
             self.activity_bar_width_px()
         } else {
-            self.sidebar_width_px()
+            if self.view_preferences.primary_sidebar_visible {
+                self.sidebar_width_px()
+            } else {
+                self.activity_bar_width_px()
+            }
         };
         let editor_right = if self.activity_bar_preferences.primary_sidebar_right {
-            self.sidebar_width_px() - if self.outline_visible { 240.0 } else { 0.0 }
+            self.sidebar_width_px()
+                - if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
+                    240.0
+                } else {
+                    0.0
+                }
         } else {
-            w - if self.outline_visible { 240.0 } else { 0.0 }
+            w - if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
+                240.0
+            } else {
+                0.0
+            }
         };
         let editor_width = (editor_right - editor_left).max(0.0);
 
@@ -38,7 +51,8 @@ impl App {
             self.activity_bar_vertical_offset(),
         );
         // Sidebar
-        if !self.plugins.visible {
+        if !self.zen_mode && self.view_preferences.primary_sidebar_visible && !self.plugins.visible
+        {
             r.draw_rect(
                 ACTIVITY_BAR_WIDTH,
                 0.0,
@@ -128,20 +142,22 @@ impl App {
         let (cur_line, cur_col) = self.editor().cursor_line_col();
         // Status bar
         r.set_clip(None);
-        r.draw_rect(
-            0.0,
-            h - lh,
-            w,
-            lh,
-            rgb(Theme::color(Theme::STATUS, 0x005a9e)),
-        );
-        let prefix = self.status_bar_prefix();
-        r.draw_text(&prefix, 0.0, h - lh, rgb(0xffffff));
-        let mut status_x = prefix.chars().count() as f32 * cw;
-        for (_, label) in self.status_bar_segments() {
-            status_x += cw * 3.0;
-            r.draw_text(&label, status_x, h - lh, rgb(0xffffff));
-            status_x += label.chars().count() as f32 * cw;
+        if self.view_preferences.status_bar_visible && !self.zen_mode {
+            r.draw_rect(
+                0.0,
+                h - lh,
+                w,
+                lh,
+                rgb(Theme::color(Theme::STATUS, 0x005a9e)),
+            );
+            let prefix = self.status_bar_prefix();
+            r.draw_text(&prefix, 0.0, h - lh, rgb(0xffffff));
+            let mut status_x = prefix.chars().count() as f32 * cw;
+            for (_, label) in self.status_bar_segments() {
+                status_x += cw * 3.0;
+                r.draw_text(&label, status_x, h - lh, rgb(0xffffff));
+                status_x += label.chars().count() as f32 * cw;
+            }
         }
         if let Some(quick) = &self.quick_open {
             let count = quick.paths.len().min(8);
@@ -578,15 +594,17 @@ impl App {
                 );
             }
         }
-        if self.terminal_visible {
+        if !self.zen_mode && self.view_preferences.panel_visible && self.terminal_visible {
             self.draw_terminal_panel(r, w, h, lh, cw);
         }
         if self.zen_mode {
             r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));
         }
-        self.draw_phase4_overlays(r, w, h, lh);
-        self.draw_phase6_overlays(r, w, h, lh);
         if !self.zen_mode {
+            self.draw_phase4_overlays(r, w, h, lh);
+            self.draw_phase6_overlays(r, w, h, lh);
+        }
+        if !self.zen_mode && self.view_preferences.primary_sidebar_visible {
             let split = self.sidebar_width_px();
             let hovered =
                 !self.sidebar_resize_dragging && (self.mouse.x as f32 - split).abs() <= 4.0;

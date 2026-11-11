@@ -310,6 +310,9 @@ impl MenuItemRect {
 
 impl App {
     pub(crate) fn top_menu_height(&self) -> f32 {
+        if self.zen_mode {
+            return 0.0;
+        }
         // Match the tab strip's 1.5 line height, including display scaling.
         self.font_size * self.sidebar_scale_factor * 2.1
     }
@@ -334,6 +337,9 @@ impl App {
         width: f32,
         char_width: f32,
     ) -> Vec<WorkbenchMenu> {
+        if !self.view_preferences.menu_bar_visible {
+            return Vec::new();
+        }
         self.titlebar_layout(width, char_width)
             .menus
             .into_iter()
@@ -353,13 +359,14 @@ impl App {
     }
 
     fn view_menu_open_at(&mut self, x: f32, width: f32, height: f32) {
-        self.open_activity_bar_menu_at(x, self.top_menu_height(), width, height);
+        self.open_view_menu(x, self.top_menu_height(), width, height);
     }
 
     pub(crate) fn close_workbench_menu(&mut self) {
         self.workbench_menu = None;
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
+        self.view_menu = None;
     }
 
     pub(crate) fn dismiss_workbench_menu(&mut self) {
@@ -370,6 +377,7 @@ impl App {
         self.workbench_menu = Some(menu);
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
+        self.view_menu = None;
         if menu == WorkbenchMenu::File {
             self.file_menu_submenu = None;
             self.file_menu_selection = 0;
@@ -453,10 +461,11 @@ impl App {
         if layout.icon.contains(x, y) {
             return true;
         }
-        if layout
-            .menus
-            .iter()
-            .any(|item| item.contains(x, y, layout.height))
+        if self.view_preferences.menu_bar_visible
+            && layout
+                .menus
+                .iter()
+                .any(|item| item.contains(x, y, layout.height))
         {
             let _ = self.workbench_menu_click(x, y);
             return true;
@@ -524,12 +533,18 @@ impl App {
         let height = height as f32;
         let layout = self.titlebar_layout(width, char_width);
         if y < layout.height {
-            let selected = layout
-                .menus
-                .iter()
-                .copied()
-                .find(|item| item.contains(x, y, layout.height))
-                .map(|item| item.menu);
+            let selected = self
+                .view_preferences
+                .menu_bar_visible
+                .then(|| {
+                    layout
+                        .menus
+                        .iter()
+                        .copied()
+                        .find(|item| item.contains(x, y, layout.height))
+                        .map(|item| item.menu)
+                })
+                .flatten();
             match selected {
                 Some(WorkbenchMenu::More) => {
                     if self.workbench_menu == Some(WorkbenchMenu::More)
@@ -637,12 +652,8 @@ impl App {
                 }
             }
         } else if active == WorkbenchMenu::View {
-            if self.activity_bar_menu.is_some() {
-                self.handle_activity_bar_menu_click(x, y, width);
-                if self.activity_bar_menu.is_none() {
-                    self.close_workbench_menu();
-                }
-            } else {
+            let _ = self.view_menu_click(x, y);
+            if self.view_menu.is_none() {
                 self.close_workbench_menu();
             }
         } else {
@@ -708,7 +719,7 @@ impl App {
                     }
                 }
             } else if active == WorkbenchMenu::View {
-                self.activity_bar_menu_pointer_moved(x, y, width);
+                self.view_menu_pointer_moved(x, y);
             }
             return;
         }
@@ -737,13 +748,8 @@ impl App {
 
     pub(crate) fn workbench_menu_key(&mut self, key: &Key) -> bool {
         if let Some(active) = self.workbench_menu {
-            if active == WorkbenchMenu::View && self.activity_bar_menu.is_some() {
-                if self.activity_bar_menu_key(key) {
-                    if self.activity_bar_menu.is_none() {
-                        self.close_workbench_menu();
-                    }
-                    return true;
-                }
+            if active == WorkbenchMenu::View && self.view_menu.is_some() {
+                return self.view_menu_key(key);
             }
             if active == WorkbenchMenu::File {
                 match key {
@@ -926,6 +932,9 @@ impl App {
     }
 
     pub(crate) fn draw_workbench_menu(&self, renderer: &mut Renderer) {
+        if self.zen_mode {
+            return;
+        }
         let (width, _) = renderer.size();
         let line_height = renderer.line_height();
         let char_width = renderer.char_width();
@@ -945,7 +954,11 @@ impl App {
                 && layout.overflowed.contains(&menu)
                 && !self.workbench_menu_overflow
         });
-        for item in &layout.menus {
+        for item in layout
+            .menus
+            .iter()
+            .filter(|_| self.view_preferences.menu_bar_visible)
+        {
             let selected = self.workbench_menu == Some(item.menu)
                 || (item.menu == WorkbenchMenu::More && active_is_overflowed);
             let item_hovered = item.contains(self.mouse.x as f32, self.mouse.y as f32, menu_height);
@@ -1028,7 +1041,7 @@ impl App {
             }
         }
         if self.workbench_menu == Some(WorkbenchMenu::View) {
-            self.draw_activity_bar_menu(renderer, renderer.size().1 as f32);
+            self.draw_view_menu(renderer);
         }
 
         self.draw_titlebar_controls(renderer, layout.controls);
@@ -1542,21 +1555,35 @@ mod tests {
     }
 
     #[test]
-    fn view_menu_provides_activity_bar_recovery_when_the_rail_is_hidden() {
+    fn view_menu_is_separate_from_the_activity_context_menu_and_has_appearance_controls() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.activity_bar_preferences.position = crate::config::ActivityBarPosition::Hidden;
         app.workbench_menu = Some(WorkbenchMenu::View);
         app.view_menu_open(0.0, 800.0, 600.0);
-        let menu = app.activity_bar_menu.as_ref().unwrap();
-        assert!(menu.show_restore);
-        let restore_x = menu.x + 40.0;
-        let restore_y = menu.y + super::super::activity_bar::menu_rows(0, true)[7] + 1.0;
-        app.handle_activity_bar_menu_click(restore_x, restore_y, 800.0);
+        assert!(app.activity_bar_menu.is_none());
+        let menu = app.view_menu.as_ref().unwrap();
+        assert_eq!(menu.page, super::super::view_menu::ViewPage::Root);
+        let x = menu.x + 45.0;
+        let y = menu.y + 4.0 + 3.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        app.view_menu_click(x, y);
+        assert_eq!(
+            app.view_menu.as_ref().unwrap().page,
+            super::super::view_menu::ViewPage::Appearance
+        );
+        let menu = app.view_menu.as_ref().unwrap();
+        let y = menu.y + 4.0 + 11.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        app.view_menu_click(x, y);
+        assert_eq!(
+            app.view_menu.as_ref().unwrap().page,
+            super::super::view_menu::ViewPage::ActivityPosition
+        );
+        let menu = app.view_menu.as_ref().unwrap();
+        let y = menu.y + 4.0 + 0.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        app.view_menu_click(x, y);
         assert_eq!(
             app.activity_bar_preferences.position,
             crate::config::ActivityBarPosition::Default
         );
-        assert!(app.workbench_menu.is_none());
     }
 }

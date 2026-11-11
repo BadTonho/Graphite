@@ -43,6 +43,7 @@ mod terminal_drawing;
 mod terminal_input;
 mod terminal_ui;
 pub(super) mod theme;
+pub(crate) mod view_menu;
 mod visual_lines;
 mod window_events;
 mod workspace_edit;
