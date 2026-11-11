@@ -11,6 +11,21 @@ pub(crate) enum ProfileMenuRow {
     Separator,
     Create,
     Unavailable,
+    /// Start the GitHub sign-in of this profile.
+    GitHubSignIn,
+    /// The signed-in account; informational, not selectable.
+    GitHubAccount { login: String },
+    GitHubSignOut,
+}
+
+impl ProfileMenuRow {
+    /// Rows that can be chosen with the keyboard or the pointer's action.
+    fn is_selectable(&self) -> bool {
+        !matches!(
+            self,
+            ProfileMenuRow::Separator | ProfileMenuRow::Unavailable | ProfileMenuRow::GitHubAccount { .. }
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +92,16 @@ impl App {
         }
         if self.profiles.is_some() {
             rows.push(ProfileMenuRow::Create);
+            rows.push(ProfileMenuRow::Separator);
+            match &self.github_session {
+                Some(session) => {
+                    rows.push(ProfileMenuRow::GitHubAccount {
+                        login: session.login.clone(),
+                    });
+                    rows.push(ProfileMenuRow::GitHubSignOut);
+                }
+                None => rows.push(ProfileMenuRow::GitHubSignIn),
+            }
         }
 
         let char_width = self
@@ -87,10 +112,15 @@ impl App {
             .iter()
             .map(|row| {
                 let label = match row {
-                    ProfileMenuRow::Profile { name, .. } => name,
-                    ProfileMenuRow::Create => self.t("profile_menu.create"),
-                    ProfileMenuRow::Unavailable => self.t("profile_menu.unavailable"),
-                    ProfileMenuRow::Separator => "",
+                    ProfileMenuRow::Profile { name, .. } => name.clone(),
+                    ProfileMenuRow::Create => self.t("profile_menu.create").to_owned(),
+                    ProfileMenuRow::Unavailable => self.t("profile_menu.unavailable").to_owned(),
+                    ProfileMenuRow::Separator => String::new(),
+                    ProfileMenuRow::GitHubSignIn => self.t("github.sign_in").to_owned(),
+                    ProfileMenuRow::GitHubSignOut => self.t("github.sign_out").to_owned(),
+                    ProfileMenuRow::GitHubAccount { login } => {
+                        self.tf("github.signed_in_as", &[("login", login)])
+                    }
                 };
                 48.0 + label.chars().count() as f32 * char_width
             })
@@ -171,8 +201,7 @@ impl App {
             .iter()
             .enumerate()
             .filter_map(|(index, row)| {
-                (!matches!(row, ProfileMenuRow::Separator | ProfileMenuRow::Unavailable))
-                    .then_some(index)
+                row.is_selectable().then_some(index)
             })
             .collect::<Vec<_>>();
         let position = selectable
@@ -239,7 +268,17 @@ impl App {
                     }
                 }
             }
-            ProfileMenuRow::Separator | ProfileMenuRow::Unavailable => {}
+            ProfileMenuRow::GitHubSignIn => {
+                self.profile_menu = None;
+                self.start_github_sign_in();
+            }
+            ProfileMenuRow::GitHubSignOut => {
+                self.profile_menu = None;
+                self.sign_out_github();
+            }
+            ProfileMenuRow::Separator
+            | ProfileMenuRow::Unavailable
+            | ProfileMenuRow::GitHubAccount { .. } => {}
         }
     }
 
@@ -301,6 +340,31 @@ impl App {
                         dim,
                     );
                 }
+                ProfileMenuRow::GitHubSignIn | ProfileMenuRow::GitHubSignOut => {
+                    if menu.selected == index {
+                        renderer.draw_rect(
+                            x + 2.0,
+                            top,
+                            width - 4.0,
+                            row_h,
+                            rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+                        );
+                    }
+                    let label = if matches!(row, ProfileMenuRow::GitHubSignIn) {
+                        self.t("github.sign_in")
+                    } else {
+                        self.t("github.sign_out")
+                    };
+                    renderer.draw_text(label, x + 32.0, top + 5.0, text);
+                }
+                ProfileMenuRow::GitHubAccount { login } => {
+                    renderer.draw_text(
+                        &self.tf("github.signed_in_as", &[("login", login)]),
+                        x + 14.0,
+                        top + 5.0,
+                        dim,
+                    );
+                }
             }
             top += row_h;
         }
@@ -353,6 +417,37 @@ mod tests {
         app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
         app.profile_menu_key(&Key::Named(NamedKey::Escape));
         assert!(app.profile_menu.is_none());
+    }
+
+    #[test]
+    fn menu_offers_github_sign_in_then_the_account_and_sign_out() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let profiles = crate::app::phase5::Profiles::open(dir.path()).unwrap();
+        app.profile_root = profiles.path(profiles.active()).unwrap();
+        app.profiles = Some(profiles);
+
+        app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
+        let rows = app.profile_menu.as_ref().unwrap().rows.clone();
+        assert!(rows.contains(&ProfileMenuRow::GitHubSignIn));
+        assert!(!rows.iter().any(|row| matches!(row, ProfileMenuRow::GitHubSignOut)));
+
+        app.github_session = Some(graphite_auth::Session {
+            token: "gho_secret".into(),
+            login: "octocat".into(),
+            name: None,
+        });
+        app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
+        let rows = app.profile_menu.as_ref().unwrap().rows.clone();
+        assert!(rows.contains(&ProfileMenuRow::GitHubAccount {
+            login: "octocat".into(),
+        }));
+        assert!(rows.contains(&ProfileMenuRow::GitHubSignOut));
+        assert!(!rows.contains(&ProfileMenuRow::GitHubSignIn));
+
+        // Choosing sign-out clears the account in memory.
+        app.execute_profile_menu_row(ProfileMenuRow::GitHubSignOut);
+        assert!(app.github_session.is_none());
     }
 
     #[test]

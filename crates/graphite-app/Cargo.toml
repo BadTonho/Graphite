@@ -11,6 +11,7 @@ graphite-core-api = { path = "../graphite-core-api" }
 graphite-extension-host = { path = "../graphite-extension-host" }
 graphite-i18n = { path = "../graphite-i18n" }
 graphite-plugins = { path = "../graphite-plugins" }
+graphite-auth = { path = "../graphite-auth" }
 winit = "0.30"
 graphite-text = { path = "../graphite-text" }
 graphite-workspace = { path = "../graphite-workspace" }

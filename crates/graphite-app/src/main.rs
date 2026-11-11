@@ -118,6 +118,10 @@ struct App {
     /// Entry pressed in the explorer, moved if the mouse is released on a folder.
     explorer_drag: Option<PathBuf>,
     explorer_prompt: Option<app::explorer_files::ExplorerPrompt>,
+    /// Signed-in GitHub account of this profile, if any.
+    github_session: Option<graphite_auth::Session>,
+    /// A GitHub sign-in is waiting for the user to confirm the code.
+    github_sign_in_pending: bool,
     titlebar_pointer_down: Option<(f32, f32)>,
     titlebar_drag_started: bool,
     last_titlebar_click: Option<std::time::Instant>,
@@ -485,6 +489,11 @@ impl App {
             Some(watcher)
         });
         let initialization_ms = initialization_started.elapsed().as_secs_f64() * 1000.0;
+        let github_session = if isolated {
+            None
+        } else {
+            graphite_auth::load_session(&profile_root)
+        };
         let initial_document_id = next_document_id();
         Self {
             gpu: None,
@@ -532,6 +541,8 @@ impl App {
             explorer_focused: false,
             explorer_drag: None,
             explorer_prompt: None,
+            github_session,
+            github_sign_in_pending: false,
             titlebar_pointer_down: None,
             titlebar_drag_started: false,
             last_titlebar_click: None,

@@ -2951,6 +2951,7 @@ dependencies = [
  "arboard",
  "gix",
  "globset",
+ "graphite-auth",
  "graphite-core-api",
  "graphite-extension-host",
  "graphite-i18n",
@@ -2979,6 +2980,15 @@ dependencies = [
  "winresource",
  "wry",
  "zip",
+]
+
+[[package]]
+name = "graphite-auth"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

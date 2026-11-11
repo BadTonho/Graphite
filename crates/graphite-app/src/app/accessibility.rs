@@ -332,6 +332,8 @@ pub(crate) enum UserEvent {
         diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,
     },
     ScmRefresh,
+    /// Progress of a GitHub sign-in running on a background thread.
+    GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
     ScmSnapshot(crate::scm::Snapshot),
@@ -1326,6 +1328,15 @@ impl App {
                     }
                     super::profile_menu::ProfileMenuRow::Unavailable => {
                         (self.t("profile_menu.unavailable").to_owned(), false, true)
+                    }
+                    super::profile_menu::ProfileMenuRow::GitHubSignIn => {
+                        (self.t("github.sign_in").to_owned(), false, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::GitHubSignOut => {
+                        (self.t("github.sign_out").to_owned(), false, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::GitHubAccount { login } => {
+                        (self.tf("github.signed_in_as", &[("login", login)]), false, true)
                     }
                     super::profile_menu::ProfileMenuRow::Separator => continue,
                 };
