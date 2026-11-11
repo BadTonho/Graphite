@@ -43,6 +43,18 @@ impl App {
             }
             return;
         }
+        if let Some(index) = super::accessibility::help_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_help_menu_accessibility_item(index);
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::help_modal_action_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_help_modal_accessibility_action(index);
+            }
+            return;
+        }
         if id == 3 && request.action == Action::Click {
             self.run_ui_command("workbench.action.terminal.toggleTerminal");
             return;
@@ -71,6 +83,9 @@ impl App {
                             (width as f32, height as f32)
                         });
                         self.view_menu_open(0.0, width, height);
+                    }
+                    if menu == super::menu_bar::WorkbenchMenu::Help {
+                        self.help_menu_selection = 0;
                     }
                 }
             }

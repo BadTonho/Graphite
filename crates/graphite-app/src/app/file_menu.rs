@@ -874,7 +874,7 @@ impl App {
         }
     }
 
-    fn open_recent_workspace(&mut self, index: usize) {
+    pub(crate) fn open_recent_workspace(&mut self, index: usize) {
         let Some(path) = self.recent_workspaces.get(index).cloned() else {
             return;
         };

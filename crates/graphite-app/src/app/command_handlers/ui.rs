@@ -469,17 +469,20 @@ fn run_active_file_command(app: &mut App, _: &CommandInvocation) -> Result<(), C
     app.terminal_run_active_file().map_err(CommandError::Failed)
 }
 fn run_selected_text_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.terminal_run_selected_text().map_err(CommandError::Failed)
+    app.terminal_run_selected_text()
+        .map_err(CommandError::Failed)
 }
 fn pick_task_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.terminal_pick_task();
     Ok(())
 }
 fn show_running_tasks_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.terminal_show_running_tasks().map_err(CommandError::Failed)
+    app.terminal_show_running_tasks()
+        .map_err(CommandError::Failed)
 }
 fn restart_running_task_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.terminal_restart_running_task().map_err(CommandError::Failed)
+    app.terminal_restart_running_task()
+        .map_err(CommandError::Failed)
 }
 fn configure_tasks_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.open_task_configuration();

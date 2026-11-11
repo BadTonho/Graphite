@@ -2,6 +2,13 @@ use super::*;
 
 impl App {
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
+        if self.help_modal_key(
+            &event.logical_key,
+            event.text.as_deref(),
+            self.modifiers.control_key(),
+        ) {
+            return;
+        }
         if self.workbench_menu_key(&event.logical_key) {
             return;
         }
@@ -40,6 +47,15 @@ impl App {
                 } else {
                     self.run_ui_command("workbench.action.files.saveAll");
                 }
+                return;
+            }
+            if ctrl
+                && event
+                    .text
+                    .as_deref()
+                    .is_some_and(|text| text.eq_ignore_ascii_case("r"))
+            {
+                self.open_help_modal(super::help_menu::HelpPage::KeyboardShortcuts);
                 return;
             }
         } else {

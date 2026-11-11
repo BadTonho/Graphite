@@ -103,6 +103,29 @@ pub(super) fn view_menu_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABCF_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn help_menu_popup_node() -> NodeId {
+    NodeId(0xABD1_FFFF)
+}
+pub(super) fn help_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABD1_0000 + index as u64)
+}
+pub(super) fn help_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD1_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn help_modal_node() -> NodeId {
+    NodeId(0xABD2_FFFF)
+}
+pub(super) fn help_modal_action_node(index: usize) -> NodeId {
+    NodeId(0xABD3_0000 + index as u64)
+}
+pub(super) fn help_modal_action_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD3_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn help_modal_search_node() -> NodeId {
+    NodeId(0xABD4_FFFF)
+}
 pub(super) fn window_control_node(control: super::menu_bar::WindowControl) -> NodeId {
     let index = match control {
         super::menu_bar::WindowControl::Minimize => 0,
@@ -319,6 +342,11 @@ impl App {
             children.push(edit_menu_popup_node());
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Terminal) {
             children.push(terminal_menu_popup_node());
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Help) {
+            children.push(help_menu_popup_node());
+        }
+        if self.help_modal.is_some() {
+            children.push(help_modal_node());
         }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
@@ -509,6 +537,91 @@ impl App {
             }
             menu.set_children(item_children);
             nodes.push((view_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Help) {
+            use super::help_menu::HelpRow;
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.help"));
+            let mut item_children = Vec::new();
+            let mut index = 0;
+            for row in self.help_menu_rows() {
+                if let HelpRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } = row
+                {
+                    let id = help_menu_item_node(index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut name = self.t(label).to_owned();
+                    if !shortcut.is_empty() {
+                        name.push_str(&format!(", {shortcut}"));
+                    }
+                    item.set_label(name);
+                    item.set_selected(index == self.help_menu_selection);
+                    if enabled {
+                        item.add_action(Action::Click);
+                    }
+                    nodes.push((id, item));
+                    item_children.push(id);
+                    index += 1;
+                }
+            }
+            menu.set_children(item_children);
+            nodes.push((help_menu_popup_node(), menu));
+        }
+        if let Some(modal) = &self.help_modal {
+            let mut dialog = Node::new(Role::Dialog);
+            dialog.set_label(self.help_modal_accessible_label(modal));
+            let mut dialog_children = vec![help_modal_action_node(0)];
+            let mut actions = vec![self.t("help.close_button").to_owned()];
+            match modal.page {
+                super::help_menu::HelpPage::Welcome => {
+                    actions.extend([
+                        self.t("help.new_file").to_owned(),
+                        self.t("help.open_file").to_owned(),
+                        self.t("help.open_folder").to_owned(),
+                    ]);
+                    actions.extend(
+                        self.recent_workspaces
+                            .iter()
+                            .take(12)
+                            .map(|path| path.display().to_string()),
+                    );
+                }
+                super::help_menu::HelpPage::Playground => actions.extend([
+                    self.t("help.playground_rust").to_owned(),
+                    self.t("help.playground_javascript").to_owned(),
+                ]),
+                super::help_menu::HelpPage::Walkthrough => actions.extend([
+                    self.t("help.back").to_owned(),
+                    if modal.walkthrough_step >= 3 {
+                        self.t("help.finish").to_owned()
+                    } else {
+                        self.t("help.next").to_owned()
+                    },
+                ]),
+                super::help_menu::HelpPage::KeyboardShortcuts => {
+                    let search_id = help_modal_search_node();
+                    let mut search = Node::new(Role::TextInput);
+                    search.set_label(self.t("help.shortcuts_search"));
+                    search.set_value(modal.query.as_str());
+                    search.add_action(Action::Focus);
+                    nodes.push((search_id, search));
+                    dialog_children.push(search_id);
+                }
+                _ => {}
+            }
+            for (index, label) in actions.into_iter().enumerate() {
+                let id = help_modal_action_node(index);
+                let mut button = Node::new(Role::Button);
+                button.set_label(label);
+                button.add_action(Action::Click);
+                nodes.push((id, button));
+                dialog_children.push(id);
+            }
+            dialog.set_children(dialog_children);
+            nodes.push((help_modal_node(), dialog));
         }
         for (control, label) in [
             (
@@ -743,7 +856,9 @@ impl App {
             nodes,
             tree: Some(Tree::new(root)),
             tree_id: accesskit::TreeId::ROOT,
-            focus: if panel_focus {
+            focus: if self.help_modal.is_some() {
+                help_modal_node()
+            } else if panel_focus {
                 NodeId(5)
             } else {
                 editor_node(self.editor_groups.focused())

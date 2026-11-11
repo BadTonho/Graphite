@@ -385,6 +385,9 @@ impl App {
         if menu == WorkbenchMenu::Terminal {
             self.terminal_menu_selection = 0;
         }
+        if menu == WorkbenchMenu::Help {
+            self.help_menu_selection = 0;
+        }
         if menu == WorkbenchMenu::View {
             self.view_menu_open_at(anchor_x, width, height);
         }
@@ -575,6 +578,8 @@ impl App {
                             self.edit_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Terminal {
                             self.terminal_menu_selection = 0;
+                        } else if selected == WorkbenchMenu::Help {
+                            self.help_menu_selection = 0;
                         } else if selected == WorkbenchMenu::View {
                             self.view_menu_open_at(layout.menu_anchor(selected), width, height);
                         }
@@ -674,6 +679,21 @@ impl App {
             } else if x < popup_x || x >= popup_x + popup_width || y < layout.height {
                 self.close_workbench_menu();
             }
+        } else if active == WorkbenchMenu::Help {
+            let popup_width = self.help_menu_width(char_width, width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::Help)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            if let Some((command, enabled)) =
+                self.help_menu_command_at(x, y, popup_x, layout.height, popup_width)
+            {
+                if enabled {
+                    self.execute_help_command(command);
+                    self.close_workbench_menu();
+                }
+            } else if x < popup_x || x >= popup_x + popup_width || y < layout.height {
+                self.close_workbench_menu();
+            }
         } else if active == WorkbenchMenu::View {
             let _ = self.view_menu_click(x, y);
             if self.view_menu.is_none() {
@@ -748,6 +768,29 @@ impl App {
                     .clamp(0.0, (width - popup_width).max(0.0));
                 if x >= popup_x && x < popup_x + popup_width {
                     self.terminal_menu_pointer_selection(y, layout.height);
+                }
+            } else if active == WorkbenchMenu::Help {
+                let popup_width = self.help_menu_width(char_width, width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::Help)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                let mut top = layout.height + 4.0;
+                let mut item = 0;
+                for row in self.help_menu_rows() {
+                    match row {
+                        super::help_menu::HelpRow::Separator => top += 9.0,
+                        super::help_menu::HelpRow::Item { .. } => {
+                            if x >= popup_x
+                                && x < popup_x + popup_width
+                                && y >= top
+                                && y < top + 28.0
+                            {
+                                self.help_menu_selection = item;
+                            }
+                            top += 28.0;
+                            item += 1;
+                        }
+                    }
                 }
             } else if active == WorkbenchMenu::View {
                 self.view_menu_pointer_moved(x, y);
@@ -844,6 +887,33 @@ impl App {
                             self.execute_terminal_menu_command(command);
                             self.close_workbench_menu();
                         }
+                    }
+                    _ => return false,
+                }
+                return true;
+            }
+            if active == WorkbenchMenu::Help
+                && !matches!(
+                    key,
+                    Key::Named(NamedKey::ArrowLeft) | Key::Named(NamedKey::ArrowRight)
+                )
+            {
+                let count = self
+                    .help_menu_rows()
+                    .iter()
+                    .filter(|row| matches!(row, super::help_menu::HelpRow::Item { .. }))
+                    .count();
+                match key {
+                    Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
+                    Key::Named(NamedKey::ArrowDown) => {
+                        self.help_menu_selection =
+                            (self.help_menu_selection + 1).min(count.saturating_sub(1))
+                    }
+                    Key::Named(NamedKey::ArrowUp) => {
+                        self.help_menu_selection = self.help_menu_selection.saturating_sub(1)
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        self.activate_help_menu_accessibility_item(self.help_menu_selection)
                     }
                     _ => return false,
                 }
@@ -1073,6 +1143,8 @@ impl App {
                 self.draw_edit_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Terminal {
                 self.draw_terminal_menu(renderer, &layout);
+            } else if active == WorkbenchMenu::Help {
+                self.draw_help_menu(renderer, &layout);
             } else if active != WorkbenchMenu::View
                 && active != WorkbenchMenu::More
                 && !self.workbench_menu_overflow
@@ -1105,6 +1177,84 @@ impl App {
         }
 
         self.draw_titlebar_controls(renderer, layout.controls);
+    }
+
+    fn draw_help_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::help_menu::HelpRow;
+        let (window_width, _) = renderer.size();
+        let char_width = renderer.char_width();
+        let width = self.help_menu_width(char_width, window_width as f32);
+        let x = layout
+            .menu_anchor(WorkbenchMenu::Help)
+            .clamp(0.0, (window_width as f32 - width).max(0.0));
+        let y = layout.height;
+        let rows = self.help_menu_rows();
+        let height = rows
+            .iter()
+            .map(|row| {
+                if matches!(row, HelpRow::Separator) {
+                    9.0
+                } else {
+                    28.0
+                }
+            })
+            .sum::<f32>()
+            + 8.0;
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let hover = rgb(Theme::color(Theme::ACTIVE_ROW, 0x3f3f46));
+        renderer.draw_rect(x, y, width, height, border);
+        renderer.draw_rect(x + 1.0, y + 1.0, width - 2.0, height - 2.0, bg);
+        let mut top = y + 4.0;
+        let mut item = 0;
+        for row in rows {
+            match row {
+                HelpRow::Separator => {
+                    renderer.draw_rect(x + 8.0, top + 4.0, width - 16.0, 1.0, border);
+                    top += 9.0
+                }
+                HelpRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } => {
+                    if item == self.help_menu_selection {
+                        renderer.draw_rect(x + 2.0, top, width - 4.0, 28.0, hover);
+                    }
+                    let shortcut_width = char_width * shortcut.chars().count() as f32;
+                    let label_width = (width
+                        - 30.0
+                        - 14.0
+                        - if shortcut.is_empty() {
+                            0.0
+                        } else {
+                            shortcut_width + 14.0
+                        })
+                    .max(0.0);
+                    let visible_label =
+                        Self::help_menu_visible_label(self.t(label), char_width, label_width);
+                    renderer.draw_text(
+                        &visible_label,
+                        x + 30.0,
+                        top + 6.0,
+                        if enabled { text } else { dim },
+                    );
+                    if !shortcut.is_empty() && shortcut_width + 14.0 <= width - 30.0 {
+                        renderer.draw_text(
+                            shortcut,
+                            x + width - shortcut_width - 14.0,
+                            top + 6.0,
+                            dim,
+                        );
+                    }
+                    top += 28.0;
+                    item += 1;
+                }
+            }
+        }
     }
 
     fn draw_file_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
