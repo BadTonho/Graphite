@@ -15,7 +15,9 @@ impl App {
         if self.plugin_commit_text(text) {
             return;
         }
-        if self.terminal_focused {
+        if self.command_center.is_some() {
+            self.command_center_ime_commit(text);
+        } else if self.terminal_focused {
             if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                 terminal.input(text.as_bytes().to_vec());
             }

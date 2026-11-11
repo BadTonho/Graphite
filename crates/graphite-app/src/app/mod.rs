@@ -4,6 +4,7 @@ mod accessibility_actions;
 pub(crate) mod activity_bar;
 pub(crate) mod cli_ui;
 mod clipboard;
+pub(crate) mod command_center;
 pub(crate) mod command_execution;
 mod command_handlers;
 pub(crate) mod command_palette;
