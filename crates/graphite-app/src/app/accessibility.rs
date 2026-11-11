@@ -15,6 +15,7 @@ const ACTIVITY_BUTTON: u64 = 7;
 const WORKBENCH_MENU_BAR: u64 = 20;
 const WORKBENCH_MENU_BUTTON: u64 = 21;
 const WINDOW_CONTROL_BUTTON: u64 = 30;
+const SETTINGS_GEAR: u64 = 0xABDE_FFFE;
 
 fn node_id(kind: u64, group: u64, value: u64) -> NodeId {
     NodeId((kind << KIND_SHIFT) | ((group & GROUP_MASK) << GROUP_SHIFT) | (value & VALUE_MASK))
@@ -52,6 +53,29 @@ pub(super) fn line_target(id: NodeId) -> Option<(u64, usize)> {
 }
 pub(super) fn activity_toolbar_node() -> NodeId {
     NodeId(ACTIVITY_TOOLBAR)
+}
+pub(super) fn settings_gear_node() -> NodeId {
+    NodeId(SETTINGS_GEAR)
+}
+pub(super) fn settings_menu_popup_node() -> NodeId {
+    NodeId(0xABDE_FFFF)
+}
+pub(super) fn settings_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABDE_0000 + index as u64)
+}
+pub(super) fn settings_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABDE_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
+pub(super) fn settings_submenu_popup_node() -> NodeId {
+    NodeId(0xABDF_FFFF)
+}
+pub(super) fn settings_submenu_item_node(index: usize) -> NodeId {
+    NodeId(0xABDF_0000 + index as u64)
+}
+pub(super) fn settings_submenu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABDF_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
 }
 pub(super) fn workbench_menu_bar_node() -> NodeId {
     NodeId(WORKBENCH_MENU_BAR)
@@ -435,6 +459,16 @@ impl App {
         }
         if self.help_modal.is_some() {
             children.push(help_modal_node());
+        }
+        if self.settings_menu.is_some() {
+            children.push(settings_menu_popup_node());
+            if self
+                .settings_menu
+                .as_ref()
+                .is_some_and(|menu| menu.submenu.is_some())
+            {
+                children.push(settings_submenu_popup_node());
+            }
         }
         if self.go_picker.is_some() {
             children.push(go_picker_node());
@@ -1002,9 +1036,30 @@ impl App {
             node.set_children(
                 builtins
                     .chain(plugins.map(|entry| plugin_activity_node(&entry.key)))
+                    .chain(std::iter::once(settings_gear_node()))
                     .collect::<Vec<_>>(),
             );
             nodes.push((activity_toolbar_node(), node));
+            let mut gear = Node::new(Role::Button);
+            gear.set_label(self.t("settings_menu.gear_label"));
+            gear.add_action(Action::Click);
+            if let Some((x, y, width, height)) =
+                super::activity_bar::activity_bar_settings_gear_rect(
+                    &self.activity_bar_preferences,
+                    width,
+                    height,
+                    self.top_menu_height(),
+                    line_height,
+                )
+            {
+                gear.set_bounds(accesskit::Rect {
+                    x0: x as f64,
+                    y0: y as f64,
+                    x1: (x + width) as f64,
+                    y1: (y + height) as f64,
+                });
+            }
+            nodes.push((settings_gear_node(), gear));
             let active = self.active_activity();
             for activity in Activity::ALL.into_iter().filter(|activity| {
                 !self
@@ -1034,6 +1089,84 @@ impl App {
                 button.set_selected(self.active_plugin_activity.as_deref() == Some(&entry.key));
                 button.add_action(Action::Click);
                 nodes.push((plugin_activity_node(&entry.key), button));
+            }
+        }
+        if let Some(menu) = &self.settings_menu {
+            let rows = self.settings_menu_rows();
+            let item_nodes = rows
+                .iter()
+                .enumerate()
+                .filter_map(|(index, row)| match row {
+                    super::settings_menu::SettingsMenuRow::Item {
+                        label,
+                        shortcut,
+                        enabled,
+                        submenu,
+                        ..
+                    } => {
+                        let mut item = Node::new(Role::MenuItem);
+                        let mut accessible_label = self.t(label).to_string();
+                        if !shortcut.is_empty() {
+                            accessible_label.push_str(&format!(", {shortcut}"));
+                        }
+                        if submenu.is_some() {
+                            accessible_label.push_str(", submenu");
+                        }
+                        item.set_label(accessible_label);
+                        if !enabled {
+                            item.set_disabled();
+                        }
+                        item.add_action(Action::Click);
+                        Some((settings_menu_item_node(index), item))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let mut popup = Node::new(Role::Menu);
+            popup.set_label(self.t("settings_menu.gear_label"));
+            popup.set_children(item_nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>());
+            nodes.push((settings_menu_popup_node(), popup));
+            nodes.extend(item_nodes);
+            if let Some(submenu) = menu.submenu {
+                let rows = self.settings_submenu_rows(submenu, &menu.profiles);
+                let item_nodes = rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, row)| match row {
+                        super::settings_menu::SettingsSubmenuRow::Item {
+                            label,
+                            shortcut,
+                            enabled,
+                            checked,
+                            ..
+                        } => {
+                            let mut item = Node::new(Role::MenuItem);
+                            let mut accessible_label = label.clone();
+                            if !shortcut.is_empty() {
+                                accessible_label.push_str(&format!(", {shortcut}"));
+                            }
+                            item.set_label(accessible_label);
+                            if !enabled {
+                                item.set_disabled();
+                            }
+                            item.set_selected(*checked);
+                            item.add_action(Action::Click);
+                            Some((settings_submenu_item_node(index), item))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let mut popup = Node::new(Role::Menu);
+                popup.set_label(self.t(match submenu {
+                    super::settings_menu::SettingsSubmenu::Profiles => "settings_menu.profiles",
+                    super::settings_menu::SettingsSubmenu::Themes => "settings_menu.themes",
+                    super::settings_menu::SettingsSubmenu::Density => {
+                        "settings_menu.layout_density"
+                    }
+                }));
+                popup.set_children(item_nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>());
+                nodes.push((settings_submenu_popup_node(), popup));
+                nodes.extend(item_nodes);
             }
         }
         for (index, rect) in rects.iter().enumerate() {

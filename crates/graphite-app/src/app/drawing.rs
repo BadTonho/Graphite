@@ -10,6 +10,7 @@ impl App {
         let r = &mut gpu.renderer;
         let (w, h) = r.size();
         let (lh, cw) = (r.line_height(), r.char_width());
+        let sidebar_lh = self.sidebar_density_line_height(lh);
         let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
             self.activity_bar_width_px()
         } else {
@@ -71,7 +72,7 @@ impl App {
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
             for (i, row) in self.tree.rows.iter().enumerate() {
-                let y = lh * 1.5 + i as f32 * lh;
+                let y = sidebar_lh * 1.5 + i as f32 * sidebar_lh;
                 if y > h {
                     break;
                 }
@@ -85,15 +86,15 @@ impl App {
                         ACTIVITY_BAR_WIDTH,
                         y,
                         sidebar_width - ACTIVITY_BAR_WIDTH,
-                        lh,
+                        sidebar_lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
                 }
                 let indent = ACTIVITY_BAR_WIDTH + PAD + row.depth as f32 * cw * 2.0;
                 let chevron_slot = cw * 1.8;
-                let icon_slot = lh;
-                let icon_size = (lh * 0.85).round();
-                let chevron_size = (lh * 0.72).round();
+                let icon_slot = sidebar_lh;
+                let icon_size = (sidebar_lh * 0.85).round();
+                let chevron_size = (sidebar_lh * 0.72).round();
                 if row.entry.is_dir {
                     let chevron = if row.expanded {
                         crate::file_icons::CHEVRON_DOWN
@@ -103,7 +104,7 @@ impl App {
                     r.draw_icon(
                         chevron,
                         indent + (chevron_slot - chevron_size) * 0.5,
-                        y + (lh - chevron_size) * 0.5,
+                        y + (sidebar_lh - chevron_size) * 0.5,
                         chevron_size,
                         rgb(Theme::color(Theme::DIM, 0x616161)),
                     );
@@ -112,7 +113,7 @@ impl App {
                 r.draw_icon(
                     row.icon.glyph,
                     icon_x + (icon_slot - icon_size) * 0.5,
-                    y + (lh - icon_size) * 0.5,
+                    y + (sidebar_lh - icon_size) * 0.5,
                     icon_size,
                     rgb(row.icon.color),
                 );
@@ -127,11 +128,11 @@ impl App {
         if self.zen_mode {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));
         } else {
-            self.draw_plugins_sidebar(r, h, lh, cw);
+            self.draw_plugins_sidebar(r, h, sidebar_lh, cw);
             if self.scm_visible {
-                self.draw_scm_sidebar(r, h, lh, cw);
+                self.draw_scm_sidebar(r, h, sidebar_lh, cw);
             }
-            self.draw_plugin_activity_sidebar(r, h, lh, cw);
+            self.draw_plugin_activity_sidebar(r, h, sidebar_lh, cw);
         }
         r.pop_translation();
 

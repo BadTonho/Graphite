@@ -19,6 +19,42 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
+        if request.target_node == super::accessibility::settings_gear_node() {
+            if request.action == Action::Click {
+                if self.settings_menu.is_some() {
+                    self.settings_menu = None;
+                    return;
+                }
+                let (width, height, line_height) =
+                    self.gpu.as_ref().map_or((1200.0, 760.0, 20.0), |gpu| {
+                        let (width, height) = gpu.renderer.size();
+                        (width, height, gpu.renderer.line_height())
+                    });
+                if let Some((x, y, w, h)) = super::activity_bar::activity_bar_settings_gear_rect(
+                    &self.activity_bar_preferences,
+                    width,
+                    height,
+                    self.top_menu_height(),
+                    line_height,
+                ) {
+                    self.open_settings_menu((x, y, w, h), width, height);
+                }
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::settings_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_settings_menu_accessibility_item(index);
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::settings_submenu_item_target(request.target_node)
+        {
+            if request.action == Action::Click {
+                self.activate_settings_submenu_accessibility_item(index);
+            }
+            return;
+        }
         if let Some(index) = super::accessibility::file_menu_item_target(request.target_node) {
             if request.action == Action::Click {
                 self.activate_file_menu_accessibility_item(index);

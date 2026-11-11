@@ -195,6 +195,13 @@ impl ApplicationHandler<UserEvent> for App {
                         position.y as f32,
                         window_width,
                     );
+                    let window_height = self.gpu.as_ref().map_or(0.0, |gpu| gpu.renderer.size().1);
+                    self.settings_menu_pointer_moved(
+                        position.x as f32,
+                        position.y as f32,
+                        window_width,
+                        window_height,
+                    );
                 }
                 if self.titlebar_pointer_moved(position.x as f32, position.y as f32) {
                     if let Some(gpu) = &self.gpu {

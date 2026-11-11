@@ -721,7 +721,7 @@ impl App {
         self.open_file(path);
     }
 
-    fn open_snippet_configuration(&mut self) {
+    pub(crate) fn open_snippet_configuration(&mut self) {
         if let Err(error) = std::fs::create_dir_all(self.profile_root.join("snippets")) {
             self.status = error.to_string();
             return;
@@ -747,7 +747,7 @@ impl App {
         self.open_file(path);
     }
 
-    fn set_theme(&mut self, dark: bool) {
+    pub(crate) fn set_theme(&mut self, dark: bool) {
         DARK_THEME.store(dark, std::sync::atomic::Ordering::Relaxed);
         config::save_dark_theme_in(&self.profile_root, dark);
     }

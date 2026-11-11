@@ -574,6 +574,7 @@ impl App {
                         self.workbench_menu_overflow = true;
                         self.workbench_overflow_selection = 0;
                         self.activity_bar_menu = None;
+                        self.settings_menu = None;
                     }
                 }
                 Some(selected) => {
@@ -583,6 +584,7 @@ impl App {
                         self.workbench_menu = Some(selected);
                         self.workbench_menu_overflow = false;
                         self.activity_bar_menu = None;
+                        self.settings_menu = None;
                         if selected == WorkbenchMenu::File {
                             self.file_menu_submenu = None;
                             self.file_menu_selection = 0;
