@@ -33,9 +33,8 @@ impl App {
             } else {
                 search.query.push_str(text);
             }
-        } else if let Some(query) = &mut self.search_query {
-            query.push_str(text);
-            self.start_project_search();
+        } else if self.search_query.is_some() {
+            self.push_project_search_text(text);
         } else if let Some(query) = &mut self.snippet_query {
             query.push_str(text);
         } else {

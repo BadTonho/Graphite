@@ -338,7 +338,7 @@ impl App {
         self.reveal_cursor = true;
     }
 
-    fn open_locations_picker(&mut self, items: Vec<GoSymbolItem>) {
+    pub(crate) fn open_locations_picker(&mut self, items: Vec<GoSymbolItem>) {
         self.command_palette = None;
         self.quick_open = None;
         self.local_search = None;

@@ -465,9 +465,17 @@ impl App {
                     ("count", &self.search_results.len()),
                 ],
             );
+            let flags = self.search_filters.flags_label();
+            let label = if flags.is_empty() {
+                label
+            } else {
+                format!("{label}  [{flags}]")
+            };
             let replacement_row = self.search_replacement.is_some();
-            let height =
-                lh * (self.search_results.len().min(6) as f32 + 1.2 + replacement_row as u8 as f32);
+            let details_rows = if self.search_filters.details { 2.0 } else { 0.0 };
+            // Rows above the results: replacement and filter fields when shown.
+            let rows_above = replacement_row as u8 as f32 + details_rows;
+            let height = lh * (self.search_results.len().min(6) as f32 + 1.2 + rows_above);
             r.draw_rect(
                 editor_left,
                 h - lh - height,
@@ -493,6 +501,19 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }
+            if self.search_filters.details {
+                let include = self.tf(
+                    "overlay.project_search.include",
+                    &[("filter", &self.search_filters.include)],
+                );
+                let exclude = self.tf(
+                    "overlay.project_search.exclude",
+                    &[("filter", &self.search_filters.exclude)],
+                );
+                let base = h - lh - height + PAD + lh * (1.0 + replacement_row as u8 as f32);
+                r.draw_text(&include, editor_left + PAD, base, rgb(Theme::color(Theme::TEXT, 0x1e1e1e)));
+                r.draw_text(&exclude, editor_left + PAD, base + lh, rgb(Theme::color(Theme::TEXT, 0x1e1e1e)));
+            }
             let start = self
                 .search_index
                 .saturating_sub(5)
@@ -505,8 +526,7 @@ impl App {
                 .take(6)
                 .enumerate()
             {
-                let y =
-                    h - lh - height + lh * (visible_i as f32 + 1.0 + replacement_row as u8 as f32);
+                let y = h - lh - height + lh * (visible_i as f32 + 1.0 + rows_above);
                 if i == self.search_index {
                     r.draw_rect(
                         editor_left,

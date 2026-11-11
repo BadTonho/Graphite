@@ -297,6 +297,14 @@ impl super::App {
             self.search_replacement.is_some().to_string(),
         );
         global.insert(
+            "projectSearchDetails".into(),
+            self.search_filters.details.to_string(),
+        );
+        global.insert(
+            "explorerHasSelection".into(),
+            self.explorer_has_selection().to_string(),
+        );
+        global.insert(
             "quickOpenHasItems".into(),
             self.quick_open
                 .as_ref()
@@ -340,6 +348,7 @@ impl super::App {
                         "editorTextFocus".into(),
                         (view.id == focused
                             && !self.terminal_focused
+                            && !self.explorer_focused
                             && !overlays
                             && !plugin_keyboard)
                             .to_string(),

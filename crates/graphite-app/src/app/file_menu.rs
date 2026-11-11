@@ -896,37 +896,6 @@ impl App {
         }
     }
 
-    pub(crate) fn autosave_tick(&mut self) {
-        if !self.auto_save {
-            self.autosave_deadlines.clear();
-            return;
-        }
-        let now = std::time::Instant::now();
-        let mut due = Vec::new();
-        for document in self.documents.iter() {
-            if !document.is_dirty()
-                || document.buffer.path().is_none()
-                || document.buffer.is_read_only()
-            {
-                self.autosave_deadlines.remove(&document.id);
-                continue;
-            }
-            let revision = document.buffer.revision();
-            let deadline = self
-                .autosave_deadlines
-                .entry(document.id)
-                .or_insert((revision, now + std::time::Duration::from_secs(1)));
-            if deadline.0 != revision {
-                *deadline = (revision, now + std::time::Duration::from_secs(1));
-            } else if now >= deadline.1 && !self.saving.document_pending(document.id) {
-                due.push(document.id);
-                deadline.1 = now + std::time::Duration::from_secs(3600);
-            }
-        }
-        for document in due {
-            self.save_document(document);
-        }
-    }
 }
 
 #[cfg(test)]

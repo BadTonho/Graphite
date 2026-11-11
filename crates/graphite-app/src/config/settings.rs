@@ -12,6 +12,8 @@ pub fn project_settings(value: &Value, translator: &Translator) -> (Value, Vec<S
         "files.trimTrailingWhitespace",
         "editor.formatOnSave",
         "editor.formatOnPaste",
+        "files.autoSave",
+        "files.autoSaveDelay",
         "editor.rulers",
         "editor.wordWrap",
         "editor.wrappingIndent",
@@ -208,6 +210,8 @@ pub(super) fn read_editor_prefs(
         trim_trailing_whitespace: false,
         format_on_save: false,
         format_on_paste: false,
+        auto_save: None,
+        auto_save_delay_ms: 1000,
         rulers: Vec::new(),
         word_wrap: false,
         wrapping_indent: WrapIndent::Same,
@@ -327,6 +331,17 @@ pub(super) fn read_editor_prefs(
             prefs.format_on_paste = value
                 .as_bool()
                 .ok_or_else(|| invalid("editor.formatOnPaste", path))?;
+        }
+        if let Some(value) = value.get("files.autoSave") {
+            let text = value.as_str().unwrap_or_default();
+            prefs.auto_save = Some(
+                AutoSaveMode::parse(text).ok_or_else(|| invalid("files.autoSave", path))?,
+            );
+        }
+        if let Some(value) = value.get("files.autoSaveDelay") {
+            prefs.auto_save_delay_ms = value
+                .as_u64()
+                .ok_or_else(|| invalid("files.autoSaveDelay", path))?;
         }
         if let Some(value) = value.get("editor.rulers") {
             let values = value

@@ -20,6 +20,7 @@ impl App {
         self.search_index = 0;
         self.search_replacement = replace.then(String::new);
         self.search_editing_replacement = false;
+        self.search_filters.focus = Default::default();
         self.status = self.t("status.project_search.prompt").into();
     }
 
@@ -44,19 +45,12 @@ impl App {
                 self.close_project_search();
                 self.status = self.t("search.closed").into();
             }
-            "projectSearch.deleteLeft" => {
-                if self.search_editing_replacement {
-                    if let Some(replacement) = &mut self.search_replacement {
-                        replacement.pop();
-                    }
-                } else if let Some(query) = &mut self.search_query {
-                    query.pop();
-                    self.start_project_search();
-                }
-            }
-            "projectSearch.toggleReplaceField" if self.search_replacement.is_some() => {
-                self.search_editing_replacement = !self.search_editing_replacement;
-            }
+            "projectSearch.deleteLeft" => self.delete_project_search_left(),
+            "projectSearch.toggleReplaceField" => self.cycle_search_focus(),
+            "projectSearch.toggleRegex"
+            | "projectSearch.toggleCase"
+            | "projectSearch.toggleWholeWord" => self.toggle_project_search_option(command),
+            "projectSearch.toggleDetails" => self.toggle_project_search_details(),
             "projectSearch.replaceAll" if self.search_replacement.is_some() => {
                 self.replace_project_search_all();
             }
@@ -111,11 +105,13 @@ impl App {
                         .ok()
                         .map(|file| file.text)
                 });
+            // Compare with the text the search matched (case and regex options can differ from the query).
             let matches = current
                 .as_deref()
                 .and_then(|text| text.lines().nth(hit.line))
                 .and_then(|line| line.get(hit.start..hit.end))
-                .is_some_and(|matched| matched == query);
+                .zip(hit.text.get(hit.start..hit.end))
+                .is_some_and(|(now, matched)| now == matched);
             if !matches {
                 self.status = self.t("search.replace_failed").into();
                 return;
@@ -196,6 +192,13 @@ impl App {
             self.search_index = 0;
             return;
         }
+        let options = self.search_filters.options();
+        if let Err(error) = graphite_workspace::validate_search(&query, &options) {
+            self.search_results.clear();
+            self.search_index = 0;
+            self.status = self.tf("search.invalid_options", &[("error", &error)]);
+            return;
+        }
         let workspace = self.tree.workspace_snapshot();
         let overlays: std::collections::HashMap<PathBuf, String> = self
             .documents
@@ -226,7 +229,7 @@ impl App {
             None
         };
         std::thread::spawn(move || {
-            let results = workspace.search_with_overlays(&query, &overlays, || {
+            let results = workspace.search_with_options(&query, &options, &overlays, || {
                 cancel.load(Ordering::Relaxed) != generation
                     || job
                         .as_ref()

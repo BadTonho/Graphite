@@ -10,6 +10,10 @@ pub struct TreeRow {
     pub expanded: bool,
     pub icon: FileIcon,
     pub workspace_root: bool,
+    /// A companion file shown under its parent (file nesting).
+    pub nested: bool,
+    /// Number of companion files nested under this row.
+    pub nested_count: usize,
 }
 
 #[cfg(test)]
@@ -133,6 +137,11 @@ impl FileTree {
         Workspace::open_code_workspace(path)
     }
 
+    /// Re-lists the folders after files were created, renamed, moved or deleted.
+    pub fn refresh(&mut self) {
+        self.rebuild();
+    }
+
     pub fn replace_workspace(&mut self, workspace: Workspace) {
         self.workspace = workspace;
         self.expanded.clear();
@@ -174,6 +183,8 @@ impl FileTree {
                     expanded,
                     icon: crate::file_icons::for_entry("", true, expanded),
                     workspace_root: true,
+                    nested: false,
+                    nested_count: 0,
                 });
                 if expanded {
                     self.collect(&root, 1, &mut rows);
@@ -186,20 +197,89 @@ impl FileTree {
     }
 
     fn collect(&self, dir: &std::path::Path, depth: usize, out: &mut Vec<TreeRow>) {
-        for entry in self.workspace.list_dir(dir) {
-            let expanded = entry.is_dir && self.expanded.contains(&entry.path);
-            let path = entry.path.clone();
-            let icon = crate::file_icons::for_entry(&entry.name, entry.is_dir, expanded);
-            out.push(TreeRow {
-                entry,
-                depth,
-                expanded,
-                icon,
-                workspace_root: false,
-            });
-            if expanded {
-                self.collect(&path, depth + 1, out);
+        let entries = self.workspace.list_dir(dir);
+        // Companion files (e.g. `app.js` under `app.ts`) are listed under their parent.
+        let flags: Vec<(&str, bool)> = entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.is_dir))
+            .collect();
+        let parents = crate::file_nesting::nesting_parents(&flags);
+        let mut companions: Vec<Vec<usize>> = vec![Vec::new(); entries.len()];
+        for (child, parent) in parents.iter().enumerate() {
+            if let Some(parent) = parent {
+                companions[*parent].push(child);
             }
         }
+        for (index, entry) in entries.iter().enumerate() {
+            if parents[index].is_some() {
+                continue;
+            }
+            self.push_row(entry, depth, false, companions[index].len(), out);
+            for &child in &companions[index] {
+                self.push_row(&entries[child], depth + 1, true, 0, out);
+            }
+        }
+    }
+
+    fn push_row(
+        &self,
+        entry: &Entry,
+        depth: usize,
+        nested: bool,
+        nested_count: usize,
+        out: &mut Vec<TreeRow>,
+    ) {
+        let expanded = entry.is_dir && self.expanded.contains(&entry.path);
+        let icon = crate::file_icons::for_entry(&entry.name, entry.is_dir, expanded);
+        out.push(TreeRow {
+            entry: entry.clone(),
+            depth,
+            expanded,
+            icon,
+            workspace_root: false,
+            nested,
+            nested_count,
+        });
+        if expanded {
+            self.collect(&entry.path, depth + 1, out);
+        }
+    }
+}
+
+#[cfg(test)]
+mod nesting_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn companion_files_are_listed_under_their_parent() {
+        let temp = crate::test_support::TempDir::new();
+        let root = temp.path();
+        fs::write(root.join("app.ts"), "").unwrap();
+        fs::write(root.join("app.js"), "").unwrap();
+        fs::write(root.join("app.d.ts"), "").unwrap();
+        fs::write(root.join("main.rs"), "").unwrap();
+        let tree = FileTree::new(Workspace::open(root).unwrap());
+        let names: Vec<(&str, usize, bool, usize)> = tree
+            .rows
+            .iter()
+            .map(|row| {
+                (
+                    row.entry.name.as_str(),
+                    row.depth,
+                    row.nested,
+                    row.nested_count,
+                )
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("app.ts", 0, false, 2),
+                ("app.d.ts", 1, true, 0),
+                ("app.js", 1, true, 0),
+                ("main.rs", 0, false, 0),
+            ]
+        );
     }
 }

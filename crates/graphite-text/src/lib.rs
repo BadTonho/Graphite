@@ -199,6 +199,11 @@ impl Buffer {
         self.path.as_deref()
     }
 
+    /// Points the buffer at a new file after the file was renamed or moved on disk.
+    pub fn set_path(&mut self, path: impl Into<PathBuf>) {
+        self.path = Some(path.into());
+    }
+
     /// Increments on every edit; use it to invalidate caches derived from the text.
     pub fn revision(&self) -> u64 {
         self.revision
