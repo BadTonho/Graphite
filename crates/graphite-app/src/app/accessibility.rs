@@ -83,6 +83,16 @@ pub(super) fn edit_menu_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABCE_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn terminal_menu_popup_node() -> NodeId {
+    NodeId(0xABD0_FFFF)
+}
+pub(super) fn terminal_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xABD0_0000 + index as u64)
+}
+pub(super) fn terminal_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xABD0_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn view_menu_popup_node() -> NodeId {
     NodeId(0xABCF_FFFF)
 }
@@ -307,6 +317,8 @@ impl App {
             children.push(file_menu_popup_node());
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Edit) {
             children.push(edit_menu_popup_node());
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Terminal) {
+            children.push(terminal_menu_popup_node());
         }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
@@ -428,6 +440,40 @@ impl App {
             }
             menu.set_children(item_children);
             nodes.push((edit_menu_popup_node(), menu));
+        } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::Terminal) {
+            use super::terminal_menu::TerminalMenuRow;
+            let rows = self.terminal_menu_rows();
+            let mut menu = Node::new(Role::Menu);
+            menu.set_label(self.t("menubar.terminal"));
+            let mut item_children = Vec::new();
+            let mut item_index = 0;
+            for row in rows {
+                if let TerminalMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } = row
+                {
+                    let id = terminal_menu_item_node(item_index);
+                    let mut item = Node::new(Role::MenuItem);
+                    let mut accessible_label = self.t(label).to_owned();
+                    if !shortcut.is_empty() {
+                        accessible_label.push_str(&format!(", {shortcut}"));
+                    }
+                    if !enabled {
+                        accessible_label.push_str(", unavailable");
+                    }
+                    item.set_label(accessible_label);
+                    item.set_selected(item_index == self.terminal_menu_selection);
+                    item.add_action(Action::Click);
+                    nodes.push((id, item));
+                    item_children.push(id);
+                    item_index += 1;
+                }
+            }
+            menu.set_children(item_children);
+            nodes.push((terminal_menu_popup_node(), menu));
         } else if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::View) {
             let mut menu = Node::new(Role::Menu);
             menu.set_label(self.t("menubar.view"));

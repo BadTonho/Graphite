@@ -48,6 +48,7 @@ impl App {
         };
         let matchers = task.problem_matcher.clone();
         self.task_cancel = Some(cancel);
+        self.task_running_label = Some(task.label.clone());
         self.task_output.clear();
         self.task_diagnostics.clear();
         self.terminal_status = None;
@@ -92,6 +93,7 @@ impl App {
             })
             .map_err(|error| {
                 self.task_cancel = None;
+                self.task_running_label = None;
                 format!("Cannot start task worker: {error}")
             })?;
         Ok(())

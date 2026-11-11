@@ -31,6 +31,12 @@ impl App {
             }
             return;
         }
+        if let Some(index) = super::accessibility::terminal_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_terminal_menu_accessibility_item(index);
+            }
+            return;
+        }
         if let Some(index) = super::accessibility::view_menu_item_target(request.target_node) {
             if request.action == Action::Click {
                 self.activate_view_menu_accessibility_item(index);

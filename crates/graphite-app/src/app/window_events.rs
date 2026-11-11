@@ -549,12 +549,18 @@ impl App {
                 diagnostics,
             } => {
                 self.task_cancel = None;
+                self.task_running_label = None;
                 self.task_diagnostics = diagnostics;
                 self.status = match result {
                     Ok(0) => "Task completed successfully".into(),
                     Ok(code) => format!("Task exited with code {code}"),
                     Err(error) => format!("Task failed: {error}"),
                 };
+                if let Some(label) = self.task_restart_pending.take() {
+                    if let Err(error) = self.run_task(&label) {
+                        self.status = error;
+                    }
+                }
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
                 }

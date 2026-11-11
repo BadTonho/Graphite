@@ -20,6 +20,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Menu Arquivo e workspaces](features/file-menu.md)
   - [Menu Editar](features/edit-menu.md)
   - [Menu Exibir e layout do ambiente](features/view-menu.md)
+  - [Menu Terminal](features/terminal-menu.md)
   - [Localização](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)

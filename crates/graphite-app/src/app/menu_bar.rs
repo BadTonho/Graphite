@@ -382,6 +382,9 @@ impl App {
             self.file_menu_submenu = None;
             self.file_menu_selection = 0;
         }
+        if menu == WorkbenchMenu::Terminal {
+            self.terminal_menu_selection = 0;
+        }
         if menu == WorkbenchMenu::View {
             self.view_menu_open_at(anchor_x, width, height);
         }
@@ -570,6 +573,8 @@ impl App {
                             self.file_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Edit {
                             self.edit_menu_selection = 0;
+                        } else if selected == WorkbenchMenu::Terminal {
+                            self.terminal_menu_selection = 0;
                         } else if selected == WorkbenchMenu::View {
                             self.view_menu_open_at(layout.menu_anchor(selected), width, height);
                         }
@@ -590,6 +595,9 @@ impl App {
                 let selected = layout.overflowed[index];
                 self.workbench_menu = Some(selected);
                 self.workbench_menu_overflow = false;
+                if selected == WorkbenchMenu::Terminal {
+                    self.terminal_menu_selection = 0;
+                }
                 if selected == WorkbenchMenu::View {
                     self.view_menu_open_at(popup.x, width, height);
                 }
@@ -650,6 +658,21 @@ impl App {
                 if !in_submenu {
                     self.close_workbench_menu();
                 }
+            }
+        } else if active == WorkbenchMenu::Terminal {
+            let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::Terminal)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            if let Some((command, enabled)) =
+                self.terminal_menu_command_at(x, y, popup_x, layout.height)
+            {
+                if enabled {
+                    self.execute_terminal_menu_command(command);
+                    self.close_workbench_menu();
+                }
+            } else if x < popup_x || x >= popup_x + popup_width || y < layout.height {
+                self.close_workbench_menu();
             }
         } else if active == WorkbenchMenu::View {
             let _ = self.view_menu_click(x, y);
@@ -718,6 +741,14 @@ impl App {
                         self.file_menu_selection = 0;
                     }
                 }
+            } else if active == WorkbenchMenu::Terminal {
+                let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::Terminal)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                if x >= popup_x && x < popup_x + popup_width {
+                    self.terminal_menu_pointer_selection(y, layout.height);
+                }
             } else if active == WorkbenchMenu::View {
                 self.view_menu_pointer_moved(x, y);
             }
@@ -739,6 +770,9 @@ impl App {
                 self.workbench_menu = Some(item.menu);
                 self.workbench_menu_overflow = false;
                 self.activity_bar_menu = None;
+                if item.menu == WorkbenchMenu::Terminal {
+                    self.terminal_menu_selection = 0;
+                }
                 if item.menu == WorkbenchMenu::View {
                     self.view_menu_open_at(item.x, width, height);
                 }
@@ -788,6 +822,27 @@ impl App {
                                     self.close_workbench_menu();
                                 }
                             }
+                        }
+                    }
+                    _ => return false,
+                }
+                return true;
+            }
+            // Left/Right fall through to the shared titlebar cycling below.
+            if active == WorkbenchMenu::Terminal
+                && !matches!(
+                    key,
+                    Key::Named(NamedKey::ArrowLeft) | Key::Named(NamedKey::ArrowRight)
+                )
+            {
+                match key {
+                    Key::Named(NamedKey::Escape) => self.close_workbench_menu(),
+                    Key::Named(NamedKey::ArrowDown) => self.terminal_menu_move_selection(1),
+                    Key::Named(NamedKey::ArrowUp) => self.terminal_menu_move_selection(-1),
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        if let Some((command, true)) = self.terminal_menu_selected() {
+                            self.execute_terminal_menu_command(command);
+                            self.close_workbench_menu();
                         }
                     }
                     _ => return false,
@@ -883,6 +938,9 @@ impl App {
                     self.workbench_menu_overflow = false;
                     self.activity_bar_menu = None;
                     let selected = entries[next];
+                    if selected == WorkbenchMenu::Terminal {
+                        self.terminal_menu_selection = 0;
+                    }
                     if selected == WorkbenchMenu::View {
                         let (width, height, char_width) = self.gpu.as_ref().map_or(
                             (1200.0, 760.0, self.font_size * 0.6),
@@ -1013,6 +1071,8 @@ impl App {
                 self.draw_file_menu(renderer, &layout);
             } else if active == WorkbenchMenu::Edit {
                 self.draw_edit_menu(renderer, &layout);
+            } else if active == WorkbenchMenu::Terminal {
+                self.draw_terminal_menu(renderer, &layout);
             } else if active != WorkbenchMenu::View
                 && active != WorkbenchMenu::More
                 && !self.workbench_menu_overflow
@@ -1236,6 +1296,73 @@ impl App {
                         submenu_item_index += 1;
                         y += 26.0;
                     }
+                }
+            }
+        }
+    }
+
+    fn draw_terminal_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::terminal_menu::TerminalMenuRow;
+        let (width, _) = renderer.size();
+        let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width as f32);
+        let popup_x = layout
+            .menu_anchor(WorkbenchMenu::Terminal)
+            .clamp(0.0, width as f32 - popup_width);
+        let popup_y = layout.height;
+        let rows = self.terminal_menu_rows();
+        let popup_height = rows
+            .iter()
+            .map(|row| Self::terminal_menu_row_height(*row))
+            .sum::<f32>()
+            + 8.0;
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        renderer.draw_rect(popup_x, popup_y, popup_width, popup_height, border);
+        renderer.draw_rect(
+            popup_x + 1.0,
+            popup_y + 1.0,
+            popup_width - 2.0,
+            popup_height - 2.0,
+            background,
+        );
+        let mut y = popup_y + 4.0;
+        let mut item_index = 0;
+        for row in rows {
+            match row {
+                TerminalMenuRow::Separator => {
+                    renderer.draw_rect(popup_x + 8.0, y + 4.0, popup_width - 16.0, 1.0, border);
+                    y += Self::terminal_menu_row_height(row);
+                }
+                TerminalMenuRow::Item {
+                    label,
+                    shortcut,
+                    enabled,
+                    ..
+                } => {
+                    if item_index == self.terminal_menu_selection {
+                        renderer.draw_rect(popup_x + 2.0, y, popup_width - 4.0, 26.0, selected);
+                    }
+                    renderer.draw_text(
+                        self.t(label),
+                        popup_x + 30.0,
+                        y + 5.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    if !shortcut.is_empty() {
+                        renderer.draw_text(
+                            shortcut,
+                            popup_x + popup_width
+                                - 12.0
+                                - shortcut.chars().count() as f32 * renderer.char_width(),
+                            y + 5.0,
+                            dim,
+                        );
+                    }
+                    item_index += 1;
+                    y += Self::terminal_menu_row_height(row);
                 }
             }
         }

@@ -729,7 +729,7 @@ impl App {
         self.open_preference_file("snippets.json");
     }
 
-    fn open_task_configuration(&mut self) {
+    pub(crate) fn open_task_configuration(&mut self) {
         let path = self.tree.root().join(".vscode").join("tasks.json");
         if let Some(parent) = path.parent() {
             if let Err(error) = std::fs::create_dir_all(parent) {
