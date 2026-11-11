@@ -21,11 +21,10 @@ impl App {
             self.debug_panel_visible = true;
             return Ok(());
         }
-        if self.debug.launch_configs.is_empty() {
-            self.debug
-                .refresh_configs(self.tree.root())
-                .map_err(|error| error.to_string())?;
-        }
+        self.debug.launch_configs.clear();
+        self.debug
+            .refresh_configs(self.tree.root())
+            .map_err(|error| error.to_string())?;
         let config = self
             .debug
             .launch_configs
@@ -67,7 +66,11 @@ impl App {
             .ok_or("Breakpoints require a saved file")?
             .to_path_buf();
         let line = self.editor().cursor_line_col().0 as u32 + 1;
-        let points = self.debug.breakpoints.entry(path.clone()).or_default();
+        let points = self
+            .debug
+            .breakpoints
+            .entry(path.to_path_buf())
+            .or_default();
         if let Some(index) = points
             .iter()
             .position(|point| point["line"].as_u64() == Some(line as u64))
@@ -86,18 +89,31 @@ impl App {
     }
 
     pub(crate) fn configure_breakpoint(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        if !self.workspace_trusted() {
-            return Err(
-                "Workspace is restricted; trust it before configuring debug breakpoints".into(),
-            );
-        }
         let path = self.documents[self.active_document()]
             .buffer
             .path()
             .ok_or("Breakpoints require a saved file")?
             .to_path_buf();
         let line = self.editor().cursor_line_col().0 as u32 + 1;
-        let points = self.debug.breakpoints.entry(path.clone()).or_default();
+        self.configure_breakpoint_at(&path, line, value)
+    }
+
+    pub(crate) fn configure_breakpoint_at(
+        &mut self,
+        path: &std::path::Path,
+        line: u32,
+        value: &serde_json::Value,
+    ) -> Result<(), String> {
+        if !self.workspace_trusted() {
+            return Err(
+                "Workspace is restricted; trust it before configuring debug breakpoints".into(),
+            );
+        }
+        let points = self
+            .debug
+            .breakpoints
+            .entry(path.to_path_buf())
+            .or_default();
         points.retain(|point| point["line"].as_u64() != Some(line as u64));
         let mut breakpoint = serde_json::Map::new();
         breakpoint.insert("line".into(), serde_json::json!(line));
@@ -158,6 +174,38 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
             "graphite.debug.configureBreakpoint",
             "Configure Breakpoint (JSON)",
             16,
+        ),
+        (
+            "workbench.debug.action.openConfiguration",
+            "Open Configurations",
+            20,
+        ),
+        (
+            "workbench.debug.action.addConfiguration",
+            "Add Configuration",
+            21,
+        ),
+        (
+            "graphite.debug.conditionalBreakpoint",
+            "Conditional Breakpoint",
+            22,
+        ),
+        ("graphite.debug.editBreakpoint", "Edit Breakpoint", 23),
+        ("graphite.debug.logpoint", "Logpoint", 24),
+        (
+            "graphite.debug.enableAllBreakpoints",
+            "Enable All Breakpoints",
+            25,
+        ),
+        (
+            "graphite.debug.disableAllBreakpoints",
+            "Disable All Breakpoints",
+            26,
+        ),
+        (
+            "graphite.debug.removeAllBreakpoints",
+            "Remove All Breakpoints",
+            27,
         ),
         ("graphite.debug.evaluate", "Evaluate Debug Expression", 8),
         ("graphite.tests.open", "Open Test Explorer", 9),
@@ -233,13 +281,47 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
                 app.preview_zoom(1.0 / 1.2);
                 Ok(())
             },
+            20 => |app, _| {
+                app.open_debug_configuration(false);
+                Ok(())
+            },
+            21 => |app, _| {
+                app.open_debug_configuration(true);
+                Ok(())
+            },
+            22 => |app, _| {
+                app.execute_run_menu_command(
+                    super::run_menu::RunMenuCommand::ConditionalBreakpoint,
+                );
+                Ok(())
+            },
+            23 => |app, _| {
+                app.execute_run_menu_command(super::run_menu::RunMenuCommand::EditBreakpoint);
+                Ok(())
+            },
+            24 => |app, _| {
+                app.execute_run_menu_command(super::run_menu::RunMenuCommand::Logpoint);
+                Ok(())
+            },
+            25 => |app, _| {
+                app.set_all_breakpoints_enabled(true);
+                Ok(())
+            },
+            26 => |app, _| {
+                app.set_all_breakpoints_enabled(false);
+                Ok(())
+            },
+            27 => |app, _| {
+                app.remove_all_breakpoints();
+                Ok(())
+            },
             _ => |app, _| app.refresh_local_ports().map_err(CommandError::Failed),
         };
         registry
             .register(super::command_registry::CommandDescriptor {
                 id,
                 title,
-                category: if action < 9 {
+                category: if action < 9 || (20..=27).contains(&action) {
                     "Debug"
                 } else if action == 9 {
                     "Testing"
@@ -263,5 +345,33 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
                 handler,
             })
             .expect("unique phase 6 command");
+    }
+
+    for (id, title) in [
+        ("workbench.action.debug.run", "Run Without Debugging"),
+        ("graphite.debug.inlineBreakpoint", "Inline Breakpoint"),
+        ("graphite.debug.functionBreakpoint", "Function Breakpoint"),
+        ("graphite.debug.triggeredBreakpoint", "Triggered Breakpoint"),
+        (
+            "debug.installAdditionalDebuggers",
+            "Install Additional Debuggers",
+        ),
+    ] {
+        registry
+            .register(super::command_registry::CommandDescriptor {
+                id,
+                title,
+                category: "Debug",
+                targets: &[
+                    super::command_registry::TargetKind::Global,
+                    super::command_registry::TargetKind::View,
+                ],
+                enablement: "false",
+                menu_when: None,
+                arguments: super::command_registry::ArgumentKind::None,
+                widget: None,
+                handler: |_, _| Ok(()),
+            })
+            .expect("unique unavailable debug command");
     }
 }

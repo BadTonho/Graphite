@@ -37,6 +37,18 @@ impl App {
             }
             return;
         }
+        if let Some(index) = super::accessibility::run_menu_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_run_menu_accessibility_item(index, false);
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::run_breakpoint_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.activate_run_menu_accessibility_item(index, true);
+            }
+            return;
+        }
         if let Some(index) = super::accessibility::view_menu_item_target(request.target_node) {
             if request.action == Action::Click {
                 self.activate_view_menu_accessibility_item(index);
@@ -86,6 +98,9 @@ impl App {
                     }
                     if menu == super::menu_bar::WorkbenchMenu::Help {
                         self.help_menu_selection = 0;
+                    }
+                    if menu == super::menu_bar::WorkbenchMenu::Run {
+                        self.open_run_menu();
                     }
                 }
             }

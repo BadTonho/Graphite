@@ -137,6 +137,7 @@ pub struct DebugRuntime {
     pub variables: Vec<(String, String, Option<i64>)>,
     pub watches: Vec<String>,
     pub breakpoints: BTreeMap<PathBuf, Vec<Value>>,
+    pub breakpoints_disabled: bool,
     pub launch_configs: Vec<LaunchConfig>,
     pub active_config: Option<LaunchConfig>,
     initialize_seq: Option<i64>,
@@ -284,6 +285,11 @@ impl DebugRuntime {
     ) -> Result<(), DebugError> {
         self.breakpoints
             .insert(source.to_path_buf(), breakpoints.clone());
+        let breakpoints = if self.breakpoints_disabled {
+            Vec::new()
+        } else {
+            breakpoints
+        };
         let seq = self
             .session
             .as_mut()
