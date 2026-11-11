@@ -548,5 +548,10 @@
   "profile_menu.title": "Perfis",
   "profile_menu.button_label": "Perfil: {name}",
   "profile_menu.create": "Criar Perfil...",
-  "profile_menu.unavailable": "Perfis indisponíveis"
+  "profile_menu.unavailable": "Perfis indisponíveis",
+  "command_center.placeholder": "Pesquisar arquivos, comandos, símbolos...",
+  "command_center.accessible_label": "Pesquisa de acesso rápido",
+  "command_center.back": "Voltar",
+  "command_center.forward": "Avançar",
+  "command_center.suggestions": "Sugestões de acesso rápido"
 }

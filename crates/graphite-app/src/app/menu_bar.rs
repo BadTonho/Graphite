@@ -10,6 +10,9 @@ const TITLEBAR_ICON_SIZE: f32 = 20.0;
 const TITLEBAR_CONTROL_WIDTH: f32 = 46.0;
 const TITLEBAR_RESIZE_EDGE: f32 = 6.0;
 const OVERFLOW_ROW_HEIGHT: f32 = 28.0;
+const COMMAND_CENTER_WIDTH: f32 = 420.0;
+const COMMAND_CENTER_MIN_WIDTH: f32 = 64.0;
+const COMMAND_CENTER_BUTTON_WIDTH: f32 = 32.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WorkbenchMenu {
@@ -86,6 +89,34 @@ struct TitlebarControlRects {
     close: MenuItemRectLike,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CommandCenterRects {
+    back: MenuItemRectLike,
+    forward: MenuItemRectLike,
+    field: MenuItemRectLike,
+}
+
+impl CommandCenterRects {
+    fn at(self, x: f32, y: f32) -> Option<CommandCenterAction> {
+        if self.back.contains(x, y) {
+            Some(CommandCenterAction::Back)
+        } else if self.forward.contains(x, y) {
+            Some(CommandCenterAction::Forward)
+        } else if self.field.contains(x, y) {
+            Some(CommandCenterAction::Search)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommandCenterAction {
+    Back,
+    Forward,
+    Search,
+}
+
 impl TitlebarControlRects {
     fn at(self, x: f32, y: f32) -> Option<WindowControl> {
         if self.minimize.contains(x, y) {
@@ -118,6 +149,7 @@ impl MenuItemRectLike {
 struct TitlebarLayout {
     icon: MenuItemRectLike,
     controls: TitlebarControlRects,
+    command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
     height: f32,
@@ -160,9 +192,45 @@ impl TitlebarLayout {
             },
         };
         let right = controls.minimize.x - 5.0 * scale;
+        let center_x = width * 0.5;
+        let max_field_width = ((right - center_x - 4.0 * scale) * 2.0).max(0.0);
+        let preferred_field_width = (COMMAND_CENTER_WIDTH * scale)
+            .min(width * 0.4)
+            .min(max_field_width);
+        let minimum_field_width = COMMAND_CENTER_MIN_WIDTH * scale.min(1.0);
+        let field_width = if max_field_width >= minimum_field_width {
+            preferred_field_width.max(minimum_field_width)
+        } else {
+            max_field_width
+        };
+        let field = MenuItemRectLike {
+            x: center_x - field_width * 0.5,
+            y: (height - 26.0 * scale) * 0.5,
+            width: field_width,
+            height: (26.0 * scale).min(height),
+        };
+        let button_width = COMMAND_CENTER_BUTTON_WIDTH * scale;
+        let button_height = field.height;
+        let left_space = (field.x - (icon.x + icon.width) - 10.0 * scale).max(0.0);
+        let button_width = button_width.min((left_space * 0.5).max(0.0));
+        let command_center = CommandCenterRects {
+            back: MenuItemRectLike {
+                x: field.x - button_width * 2.0,
+                y: field.y,
+                width: button_width,
+                height: button_height,
+            },
+            forward: MenuItemRectLike {
+                x: field.x - button_width,
+                y: field.y,
+                width: button_width,
+                height: button_height,
+            },
+            field,
+        };
         let mut menu_rects = Vec::new();
         let widths = localized_widths.to_vec();
-        let available = (right - MENU_START_X * scale).max(0.0);
+        let available = (command_center.back.x - 5.0 * scale - MENU_START_X * scale).max(0.0);
         let total: f32 = widths.iter().sum();
         let overflow_width =
             (4.0 * char_width + MENU_HORIZONTAL_PADDING * 2.0 * scale).max(38.0 * scale);
@@ -192,10 +260,11 @@ impl TitlebarLayout {
         }
         let overflowed = WorkbenchMenu::ALL[visible_count..].to_vec();
         if !overflowed.is_empty() {
+            let menu_right = command_center.back.x - 5.0 * scale;
             let more = MenuItemRect {
                 menu: WorkbenchMenu::More,
                 x,
-                width: overflow_width.min((right - x).max(0.0)),
+                width: overflow_width.min((menu_right - x).max(0.0)),
             };
             if more.width > 0.0 {
                 menu_rects.push(more);
@@ -204,6 +273,7 @@ impl TitlebarLayout {
         Self {
             icon,
             controls,
+            command_center,
             menus: menu_rects,
             overflowed,
             height,
@@ -290,6 +360,9 @@ fn resize_direction_for_titlebar(
     if on_top_edge
         && !on_corner
         && (layout.icon.contains(x, y)
+            || layout.command_center.back.contains(x, y)
+            || layout.command_center.forward.contains(x, y)
+            || layout.command_center.field.contains(x, y)
             || layout
                 .menus
                 .iter()
@@ -315,6 +388,43 @@ impl App {
         }
         // Match the tab strip's 1.5 line height, including display scaling.
         self.font_size * self.sidebar_scale_factor * 2.1
+    }
+
+    pub(crate) fn command_center_rects(
+        &self,
+        width: f32,
+        char_width: f32,
+    ) -> (
+        (f32, f32, f32, f32),
+        (f32, f32, f32, f32),
+        (f32, f32, f32, f32),
+    ) {
+        let layout = self.titlebar_layout(width, char_width);
+        let rect = |rect: MenuItemRectLike| (rect.x, rect.y, rect.width, rect.height);
+        (
+            rect(layout.command_center.back),
+            rect(layout.command_center.forward),
+            rect(layout.command_center.field),
+        )
+    }
+
+    pub(crate) fn command_center_popup_bounds(
+        &self,
+        width: f32,
+        char_width: f32,
+        line_height: f32,
+        rows: usize,
+    ) -> (f32, f32, f32, f32) {
+        let layout = self.titlebar_layout(width, char_width);
+        let popup_width = (layout.command_center.field.width + 120.0 * self.sidebar_scale_factor)
+            .max(300.0 * self.sidebar_scale_factor)
+            .min((width - 8.0).max(0.0));
+        let x = (layout.command_center.field.x + layout.command_center.field.width * 0.5
+            - popup_width * 0.5)
+            .clamp(4.0, (width - popup_width - 4.0).max(4.0));
+        let y = layout.height;
+        let height = line_height * (rows.min(8) as f32 + 1.5);
+        (x, y, popup_width, height)
     }
 
     fn titlebar_layout(&self, width: f32, char_width: f32) -> TitlebarLayout {
@@ -378,6 +488,9 @@ impl App {
     }
 
     fn activate_menu(&mut self, menu: WorkbenchMenu, anchor_x: f32, width: f32, height: f32) {
+        if self.command_center.is_some() {
+            self.close_command_center();
+        }
         self.workbench_menu = Some(menu);
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
@@ -493,6 +606,26 @@ impl App {
             return true;
         }
 
+        match layout.command_center.at(x, y) {
+            Some(CommandCenterAction::Back) => {
+                if self.can_navigate_history(-1) {
+                    self.run_ui_command("workbench.action.navigateBack");
+                }
+                return true;
+            }
+            Some(CommandCenterAction::Forward) => {
+                if self.can_navigate_history(1) {
+                    self.run_ui_command("workbench.action.navigateForward");
+                }
+                return true;
+            }
+            Some(CommandCenterAction::Search) => {
+                self.open_command_center();
+                return true;
+            }
+            None => {}
+        }
+
         let now = std::time::Instant::now();
         let double_click = self
             .last_titlebar_click
@@ -541,7 +674,33 @@ impl App {
         }
         let gpu = self.gpu.as_ref()?;
         let layout = self.titlebar_layout(gpu.renderer.size().0, gpu.renderer.char_width());
+        if layout.command_center.field.contains(x, y) {
+            return Some(winit::window::CursorIcon::Text);
+        }
+        if layout.command_center.back.contains(x, y) || layout.command_center.forward.contains(x, y)
+        {
+            return Some(winit::window::CursorIcon::Pointer);
+        }
         (y < layout.height).then_some(winit::window::CursorIcon::Default)
+    }
+
+    pub(crate) fn can_navigate_history(&self, direction: isize) -> bool {
+        let Some(index) = self.navigation_history_index else {
+            return false;
+        };
+        if direction < 0 {
+            (0..index).rev().any(|candidate| {
+                self.documents
+                    .resolve(self.navigation_history[candidate].0)
+                    .is_some()
+            })
+        } else {
+            ((index + 1)..self.navigation_history.len()).any(|candidate| {
+                self.documents
+                    .resolve(self.navigation_history[candidate].0)
+                    .is_some()
+            })
+        }
     }
 
     pub(crate) fn workbench_menu_click(&mut self, x: f32, y: f32) -> bool {
@@ -1587,7 +1746,80 @@ impl App {
         }
 
         self.draw_run_breakpoint_prompt(renderer);
+        self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
+    }
+
+    fn draw_command_center_controls(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        let center = layout.command_center;
+        let text = rgb(Theme::color(Theme::TEXT, 0xcccccc));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let hover = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        for (rect, enabled, glyph) in [
+            (center.back, self.can_navigate_history(-1), "←"),
+            (center.forward, self.can_navigate_history(1), "→"),
+        ] {
+            if rect.contains(self.mouse.x as f32, self.mouse.y as f32) {
+                renderer.draw_rect(rect.x, rect.y, rect.width, rect.height, hover);
+            }
+            let color = if enabled { text } else { dim };
+            renderer.draw_text(
+                glyph,
+                rect.x + (rect.width - renderer.char_width()) * 0.5,
+                rect.y + (rect.height - renderer.line_height()) * 0.5,
+                color,
+            );
+        }
+        let active = self.command_center.is_some();
+        let focused = center
+            .field
+            .contains(self.mouse.x as f32, self.mouse.y as f32);
+        let border = if active {
+            rgb(0x007acc)
+        } else if focused {
+            rgb(Theme::color(Theme::DIM, 0x777777))
+        } else {
+            rgb(Theme::color(Theme::DIM, 0x454545))
+        };
+        renderer.draw_rect(
+            center.field.x,
+            center.field.y,
+            center.field.width,
+            center.field.height,
+            border,
+        );
+        renderer.draw_rect(
+            center.field.x + 1.0,
+            center.field.y + 1.0,
+            (center.field.width - 2.0).max(0.0),
+            (center.field.height - 2.0).max(0.0),
+            rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
+        );
+        let value = self
+            .command_center
+            .as_ref()
+            .map(|center| center.query.as_str())
+            .filter(|query| !query.is_empty())
+            .unwrap_or_else(|| self.t("command_center.placeholder"));
+        let value_width = (center.field.width - 18.0).max(0.0);
+        let visible = value
+            .chars()
+            .rev()
+            .take((value_width / renderer.char_width().max(1.0)) as usize)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        renderer.draw_text(
+            &visible,
+            center.field.x + 9.0,
+            center.field.y + (center.field.height - renderer.line_height()) * 0.5,
+            if self.command_center.is_some() || value != self.t("command_center.placeholder") {
+                text
+            } else {
+                dim
+            },
+        );
     }
 
     fn draw_run_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
@@ -2573,7 +2805,23 @@ mod tests {
                 assert!(pair[0].x + pair[0].width <= pair[1].x);
             }
             let last = layout.menus.last().unwrap();
-            assert!(last.x + last.width <= layout.controls.minimize.x);
+            assert!(last.x + last.width <= layout.command_center.back.x);
+            assert!(
+                layout.command_center.back.x + layout.command_center.back.width
+                    <= layout.command_center.forward.x
+            );
+            assert!(
+                layout.command_center.forward.x + layout.command_center.forward.width
+                    <= layout.command_center.field.x
+            );
+            assert_eq!(
+                layout.command_center.field.x + layout.command_center.field.width * 0.5,
+                width * 0.5
+            );
+            assert!(
+                layout.command_center.field.x + layout.command_center.field.width
+                    <= layout.controls.minimize.x
+            );
             assert!(
                 layout.controls.minimize.x + layout.controls.minimize.width
                     <= layout.controls.maximize.x
@@ -2588,19 +2836,37 @@ mod tests {
 
     #[test]
     fn narrow_titlebar_moves_remaining_menus_into_a_bounded_overflow_menu() {
-        let layout = layout(600.0, 1.0);
-        let more = layout
+        let layout_600 = layout(600.0, 1.0);
+        let more = layout_600
             .more_rect()
             .expect("narrow layout should expose More");
-        assert!(!layout.overflowed.is_empty());
+        assert!(!layout_600.overflowed.is_empty());
         assert_eq!(
-            layout.overflowed.len() + layout.menus.len() - 1,
+            layout_600.overflowed.len() + layout_600.menus.len() - 1,
             WorkbenchMenu::ALL.len()
         );
-        assert!(more.x + more.width <= layout.controls.minimize.x);
-        let popup = layout.overflow_popup(8.0, 600.0);
+        assert!(more.x + more.width <= layout_600.command_center.back.x);
+        let popup = layout_600.overflow_popup(8.0, 600.0);
         assert!(popup.x >= 0.0);
         assert!(popup.x + popup.width <= 600.0);
+        for width in [320.0, 280.0] {
+            let layout = layout(width, 1.0);
+            if let Some(more) = layout.more_rect() {
+                assert!(more.x + more.width <= layout.command_center.back.x);
+            }
+            assert!(
+                layout.command_center.back.x + layout.command_center.back.width
+                    <= layout.command_center.forward.x
+            );
+            assert!(
+                layout.command_center.forward.x + layout.command_center.forward.width
+                    <= layout.command_center.field.x
+            );
+            assert!(
+                layout.command_center.field.x + layout.command_center.field.width
+                    <= layout.controls.minimize.x
+            );
+        }
     }
 
     #[test]

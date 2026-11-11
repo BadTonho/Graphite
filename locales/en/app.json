@@ -548,5 +548,10 @@
   "profile_menu.title": "Profiles",
   "profile_menu.button_label": "Profile: {name}",
   "profile_menu.create": "Create Profile...",
-  "profile_menu.unavailable": "Profiles are unavailable"
+  "profile_menu.unavailable": "Profiles are unavailable",
+  "command_center.placeholder": "Search files, commands, symbols...",
+  "command_center.accessible_label": "Quick access search",
+  "command_center.back": "Go back",
+  "command_center.forward": "Go forward",
+  "command_center.suggestions": "Quick access suggestions"
 }

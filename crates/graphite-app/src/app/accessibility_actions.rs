@@ -19,6 +19,30 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
+        if request.target_node == super::accessibility::command_center_back_node() {
+            if request.action == Action::Click && self.can_navigate_history(-1) {
+                self.run_ui_command("workbench.action.navigateBack");
+            }
+            return;
+        }
+        if request.target_node == super::accessibility::command_center_forward_node() {
+            if request.action == Action::Click && self.can_navigate_history(1) {
+                self.run_ui_command("workbench.action.navigateForward");
+            }
+            return;
+        }
+        if request.target_node == super::accessibility::command_center_search_node() {
+            if matches!(request.action, Action::Click | Action::Focus) {
+                self.open_command_center();
+            }
+            return;
+        }
+        if let Some(index) = super::accessibility::command_center_item_target(request.target_node) {
+            if request.action == Action::Click {
+                self.command_center_activate_index(index);
+            }
+            return;
+        }
         if request.target_node == super::accessibility::profile_button_node() {
             if request.action == Action::Click {
                 if self.profile_menu.is_some() {

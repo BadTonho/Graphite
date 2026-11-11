@@ -121,37 +121,7 @@ impl App {
                 palette.query.pop();
                 palette.selected = 0;
             }
-            Key::Named(NamedKey::Enter) => {
-                let selected = palette
-                    .items
-                    .iter()
-                    .filter(|item| matches(item, &palette.query))
-                    .nth(palette.selected)
-                    .filter(|item| item.enabled || item.id.starts_with("graphite.vsix:"))
-                    .map(|item| item.id.clone());
-                let answer = palette
-                    .extension_prompt
-                    .as_ref()
-                    .map(|_| (palette.query.clone(), selected.clone()));
-                self.command_palette = None;
-                if let Some(answer) = answer {
-                    self.answer_vsix_prompt(Some(answer));
-                    return;
-                }
-                if let Some(id) = selected {
-                    if let Some(command) = id.strip_prefix("graphite.vsix:") {
-                        if let Err(error) = self.run_vsix_command(command) {
-                            self.status = error;
-                        }
-                    } else if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
-                        if let Err(error) = self.run_task(label) {
-                            self.status = error;
-                        }
-                    } else {
-                        self.run_ui_command(&id);
-                    }
-                }
-            }
+            Key::Named(NamedKey::Enter) => self.execute_command_palette_selection(),
             _ if !self.modifiers.control_key() && !self.modifiers.alt_key() => {
                 if let Some(text) = event
                     .text
@@ -180,8 +150,43 @@ impl App {
             .min(matching.len().saturating_sub(8));
         matching.into_iter().skip(start).take(8).collect()
     }
+
+    pub(crate) fn execute_command_palette_selection(&mut self) {
+        let Some(palette) = self.command_palette.as_ref() else {
+            return;
+        };
+        let selected = palette
+            .items
+            .iter()
+            .filter(|item| matches(item, &palette.query))
+            .nth(palette.selected)
+            .filter(|item| item.enabled || item.id.starts_with("graphite.vsix:"))
+            .map(|item| item.id.clone());
+        let answer = palette
+            .extension_prompt
+            .as_ref()
+            .map(|_| (palette.query.clone(), selected.clone()));
+        self.command_palette = None;
+        if let Some(answer) = answer {
+            self.answer_vsix_prompt(Some(answer));
+            return;
+        }
+        if let Some(id) = selected {
+            if let Some(command) = id.strip_prefix("graphite.vsix:") {
+                if let Err(error) = self.run_vsix_command(command) {
+                    self.status = error;
+                }
+            } else if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
+                if let Err(error) = self.run_task(label) {
+                    self.status = error;
+                }
+            } else {
+                self.run_ui_command(&id);
+            }
+        }
+    }
 }
-fn matches(item: &PaletteItem, query: &str) -> bool {
+pub(super) fn matches(item: &PaletteItem, query: &str) -> bool {
     let query = query.to_lowercase();
     query.is_empty()
         || item.title.to_lowercase().contains(&query)

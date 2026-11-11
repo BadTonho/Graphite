@@ -164,6 +164,25 @@ pub(super) fn go_picker_item_target(id: NodeId) -> Option<usize> {
     let index = id.0.checked_sub(0xABDD_0000)? as usize;
     (index < 0xFFFF).then_some(index)
 }
+pub(super) fn command_center_back_node() -> NodeId {
+    NodeId(0xAC20_FFFD)
+}
+pub(super) fn command_center_forward_node() -> NodeId {
+    NodeId(0xAC20_FFFE)
+}
+pub(super) fn command_center_search_node() -> NodeId {
+    NodeId(0xAC20_FFFF)
+}
+pub(super) fn command_center_popup_node() -> NodeId {
+    NodeId(0xAC21_FFFF)
+}
+pub(super) fn command_center_item_node(index: usize) -> NodeId {
+    NodeId(0xAC21_0000 + index as u64)
+}
+pub(super) fn command_center_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xAC21_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
+}
 pub(super) fn terminal_menu_popup_node() -> NodeId {
     NodeId(0xABD0_FFFF)
 }
@@ -487,8 +506,11 @@ impl App {
         if self.profile_menu.is_some() {
             children.push(profile_menu_popup_node());
         }
-        if self.go_picker.is_some() {
+        if self.go_picker.is_some() && self.command_center.is_none() {
             children.push(go_picker_node());
+        }
+        if self.command_center.is_some() {
+            children.push(command_center_popup_node());
         }
         children.extend([
             window_control_node(super::menu_bar::WindowControl::Minimize),
@@ -523,7 +545,68 @@ impl App {
                 workbench_menu_button_node(index)
             })
             .collect::<Vec<_>>();
-        menu_bar.set_children(menu_ids.clone());
+        let (back_rect, forward_rect, search_rect) = self.command_center_rects(
+            width,
+            self.gpu
+                .as_ref()
+                .map_or(self.font_size * 0.6, |gpu| gpu.renderer.char_width()),
+        );
+        for (id, label, rect, enabled) in [
+            (
+                command_center_back_node(),
+                "command_center.back",
+                back_rect,
+                self.can_navigate_history(-1),
+            ),
+            (
+                command_center_forward_node(),
+                "command_center.forward",
+                forward_rect,
+                self.can_navigate_history(1),
+            ),
+        ] {
+            let mut button = Node::new(Role::Button);
+            button.set_label(self.t(label));
+            if enabled {
+                button.add_action(Action::Click);
+            } else {
+                button.set_disabled();
+            }
+            button.set_bounds(accesskit::Rect {
+                x0: rect.0 as f64,
+                y0: rect.1 as f64,
+                x1: (rect.0 + rect.2) as f64,
+                y1: (rect.1 + rect.3) as f64,
+            });
+            nodes.push((id, button));
+        }
+        let mut search = Node::new(Role::TextInput);
+        search.set_label(self.t("command_center.accessible_label"));
+        search.set_value(
+            self.command_center
+                .as_ref()
+                .map_or("", |center| center.query.as_str()),
+        );
+        search.add_action(Action::Focus);
+        search.add_action(Action::Click);
+        search.set_bounds(accesskit::Rect {
+            x0: search_rect.0 as f64,
+            y0: search_rect.1 as f64,
+            x1: (search_rect.0 + search_rect.2) as f64,
+            y1: (search_rect.1 + search_rect.3) as f64,
+        });
+        nodes.push((command_center_search_node(), search));
+        menu_bar.set_children(
+            menu_ids
+                .iter()
+                .copied()
+                .chain([
+                    command_center_back_node(),
+                    command_center_forward_node(),
+                    command_center_search_node(),
+                ])
+                .collect::<Vec<_>>(),
+        );
         nodes.push((workbench_menu_bar_node(), menu_bar));
         for menu in menu_items {
             let index = super::menu_bar::WorkbenchMenu::ALL
@@ -971,7 +1054,11 @@ impl App {
             dialog.set_children(dialog_children);
             nodes.push((help_modal_node(), dialog));
         }
-        if let Some(picker) = &self.go_picker {
+        if let Some(picker) = self
+            .go_picker
+            .as_ref()
+            .filter(|_| self.command_center.is_none())
+        {
             let mut dialog = Node::new(Role::Dialog);
             dialog.set_label(self.t(match picker.kind {
                 super::go_menu::GoPickerKind::LineColumn => "go.line_column_prompt",
@@ -1001,6 +1088,24 @@ impl App {
             }
             dialog.set_children(children);
             nodes.push((go_picker_node(), dialog));
+        }
+        if self.command_center.is_some() {
+            let rows = self.command_center_rows();
+            let selected = self.command_center_selected_index();
+            let mut children = Vec::new();
+            for (index, title) in rows.iter().enumerate() {
+                let id = command_center_item_node(index);
+                let mut item = Node::new(Role::Button);
+                item.set_label(title.as_str());
+                item.set_selected(selected == Some(index));
+                item.add_action(Action::Click);
+                nodes.push((id, item));
+                children.push(id);
+            }
+            let mut dialog = Node::new(Role::Dialog);
+            dialog.set_label(self.t("command_center.suggestions"));
+            dialog.set_children(children);
+            nodes.push((command_center_popup_node(), dialog));
         }
         for (control, label) in [
             (
@@ -1386,7 +1491,9 @@ impl App {
             nodes,
             tree: Some(Tree::new(root)),
             tree_id: accesskit::TreeId::ROOT,
-            focus: if self.go_picker.is_some() {
+            focus: if self.command_center.is_some() {
+                command_center_search_node()
+            } else if self.go_picker.is_some() {
                 go_picker_query_node()
             } else if self.help_modal.is_some() {
                 help_modal_node()

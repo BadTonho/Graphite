@@ -2,6 +2,7 @@
 
 mod app;
 use app::accessibility::*;
+use app::command_center::CommandCenter;
 use app::drawing_helpers::*;
 use app::go_menu::GoPicker;
 use app::local_search::LocalSearch;
@@ -164,6 +165,7 @@ struct App {
     local_search: Option<LocalSearch>,
     quick_open: Option<QuickOpen>,
     command_palette: Option<app::command_palette::CommandPalette>,
+    command_center: Option<CommandCenter>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
     snippet_load_warnings: Vec<String>,
@@ -564,6 +566,7 @@ impl App {
             local_search: None,
             quick_open: None,
             command_palette: None,
+            command_center: None,
             snippet_query: None,
             snippets,
             snippet_load_warnings,

@@ -26,6 +26,9 @@ impl App {
         if self.settings_menu_key(&event.logical_key) {
             return;
         }
+        if self.handle_command_center_key(&event.logical_key, event.text.as_deref()) {
+            return;
+        }
         if self.activity_bar_menu_key(&event.logical_key) {
             return;
         }

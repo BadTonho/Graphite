@@ -163,11 +163,16 @@ impl App {
         if let Some(quick) = &self.quick_open {
             let count = quick.paths.len().min(8);
             let height = lh * (count as f32 + 1.5);
-            let y = lh * 1.5;
+            let (x, y, width) = if self.command_center.is_some() {
+                let (x, y, width, _) = self.command_center_popup_bounds(w as f32, cw, lh, count);
+                (x, y, width)
+            } else {
+                (editor_left, lh * 1.5, editor_width)
+            };
             r.draw_rect(
-                editor_left,
+                x,
                 y,
-                editor_width,
+                width,
                 height,
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
@@ -179,7 +184,7 @@ impl App {
                         ("preedit", &self.editor_groups.active_view().ime_preedit),
                     ],
                 ),
-                editor_left + PAD,
+                x + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -198,9 +203,9 @@ impl App {
                 let item_y = y + lh * (row as f32 + 1.0);
                 if i == quick.index {
                     r.draw_rect(
-                        editor_left,
+                        x,
                         item_y,
-                        editor_width,
+                        width,
                         lh,
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
@@ -210,14 +215,14 @@ impl App {
                 let icon_size = (lh * 0.85).round();
                 r.draw_icon(
                     icon.glyph,
-                    editor_left + PAD,
+                    x + PAD,
                     item_y + (lh - icon_size) * 0.5,
                     icon_size,
                     rgb(icon.color),
                 );
                 r.draw_text(
                     &relative.display().to_string(),
-                    editor_left + PAD + lh + 4.0,
+                    x + PAD + lh + 4.0,
                     item_y,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
@@ -226,9 +231,13 @@ impl App {
         if let Some(palette) = &self.command_palette {
             let rows = self.command_palette_rows();
             let height = lh * (rows.len().min(8) as f32 + 1.5);
-            let y = lh * 1.5;
-            let x = editor_left;
-            let width = editor_width;
+            let (x, y, width) = if self.command_center.is_some() {
+                let (x, y, width, _) =
+                    self.command_center_popup_bounds(w as f32, cw, lh, rows.len());
+                (x, y, width)
+            } else {
+                (editor_left, lh * 1.5, editor_width)
+            };
             r.draw_rect(
                 x,
                 y,
@@ -288,9 +297,12 @@ impl App {
             let rows = self.go_picker_rows();
             let shown = rows.len().min(8);
             let height = lh * (shown as f32 + 1.8);
-            let x = editor_left;
-            let width = editor_width;
-            let y = ((h - height) * 0.22).max(lh);
+            let (x, y, width) = if self.command_center.is_some() {
+                let (x, y, width, _) = self.command_center_popup_bounds(w as f32, cw, lh, shown);
+                (x, y, width)
+            } else {
+                (editor_left, ((h - height) * 0.22).max(lh), editor_width)
+            };
             r.draw_rect(
                 x,
                 y,
