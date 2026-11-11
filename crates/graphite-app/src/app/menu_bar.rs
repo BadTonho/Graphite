@@ -366,6 +366,8 @@ impl App {
         self.workbench_menu = None;
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
+        self.settings_menu = None;
+        self.profile_menu = None;
         self.view_menu = None;
         self.run_breakpoint_submenu = false;
         self.go_submenu = None;
@@ -379,6 +381,8 @@ impl App {
         self.workbench_menu = Some(menu);
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
+        self.settings_menu = None;
+        self.profile_menu = None;
         self.view_menu = None;
         if menu == WorkbenchMenu::File {
             self.file_menu_submenu = None;
@@ -575,6 +579,7 @@ impl App {
                         self.workbench_overflow_selection = 0;
                         self.activity_bar_menu = None;
                         self.settings_menu = None;
+                        self.profile_menu = None;
                     }
                 }
                 Some(selected) => {
@@ -585,6 +590,7 @@ impl App {
                         self.workbench_menu_overflow = false;
                         self.activity_bar_menu = None;
                         self.settings_menu = None;
+                        self.profile_menu = None;
                         if selected == WorkbenchMenu::File {
                             self.file_menu_submenu = None;
                             self.file_menu_selection = 0;
@@ -1044,11 +1050,15 @@ impl App {
                     self.workbench_menu_overflow = true;
                     self.workbench_overflow_selection = 0;
                     self.activity_bar_menu = None;
+                    self.settings_menu = None;
+                    self.profile_menu = None;
                 }
             } else if item.menu != active || self.workbench_menu_overflow {
                 self.workbench_menu = Some(item.menu);
                 self.workbench_menu_overflow = false;
                 self.activity_bar_menu = None;
+                self.settings_menu = None;
+                self.profile_menu = None;
                 if item.menu == WorkbenchMenu::Run {
                     self.open_run_menu();
                 }
@@ -1395,6 +1405,8 @@ impl App {
                     self.workbench_menu = Some(entries[next]);
                     self.workbench_menu_overflow = false;
                     self.activity_bar_menu = None;
+                    self.settings_menu = None;
+                    self.profile_menu = None;
                     let selected = entries[next];
                     if selected == WorkbenchMenu::Selection {
                         self.selection_menu_selection = 0;

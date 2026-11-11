@@ -16,6 +16,7 @@ const WORKBENCH_MENU_BAR: u64 = 20;
 const WORKBENCH_MENU_BUTTON: u64 = 21;
 const WINDOW_CONTROL_BUTTON: u64 = 30;
 const SETTINGS_GEAR: u64 = 0xABDE_FFFE;
+const PROFILE_BUTTON: u64 = 0xAC10_FFFE;
 
 fn node_id(kind: u64, group: u64, value: u64) -> NodeId {
     NodeId((kind << KIND_SHIFT) | ((group & GROUP_MASK) << GROUP_SHIFT) | (value & VALUE_MASK))
@@ -56,6 +57,19 @@ pub(super) fn activity_toolbar_node() -> NodeId {
 }
 pub(super) fn settings_gear_node() -> NodeId {
     NodeId(SETTINGS_GEAR)
+}
+pub(super) fn profile_button_node() -> NodeId {
+    NodeId(PROFILE_BUTTON)
+}
+pub(super) fn profile_menu_popup_node() -> NodeId {
+    NodeId(0xAC10_FFFF)
+}
+pub(super) fn profile_menu_item_node(index: usize) -> NodeId {
+    NodeId(0xAC10_0000 + index as u64)
+}
+pub(super) fn profile_menu_item_target(id: NodeId) -> Option<usize> {
+    let index = id.0.checked_sub(0xAC10_0000)? as usize;
+    (index < 0xFFFF).then_some(index)
 }
 pub(super) fn settings_menu_popup_node() -> NodeId {
     NodeId(0xABDE_FFFF)
@@ -469,6 +483,9 @@ impl App {
             {
                 children.push(settings_submenu_popup_node());
             }
+        }
+        if self.profile_menu.is_some() {
+            children.push(profile_menu_popup_node());
         }
         if self.go_picker.is_some() {
             children.push(go_picker_node());
@@ -1036,10 +1053,31 @@ impl App {
             node.set_children(
                 builtins
                     .chain(plugins.map(|entry| plugin_activity_node(&entry.key)))
+                    .chain(std::iter::once(profile_button_node()))
                     .chain(std::iter::once(settings_gear_node()))
                     .collect::<Vec<_>>(),
             );
             nodes.push((activity_toolbar_node(), node));
+            let mut profile_button = Node::new(Role::Button);
+            profile_button.set_label(self.profile_button_accessible_label());
+            profile_button.add_action(Action::Click);
+            if let Some((x, y, width, height)) =
+                super::activity_bar::activity_bar_profile_button_rect(
+                    &self.activity_bar_preferences,
+                    width,
+                    height,
+                    self.top_menu_height(),
+                    line_height,
+                )
+            {
+                profile_button.set_bounds(accesskit::Rect {
+                    x0: x as f64,
+                    y0: y as f64,
+                    x1: (x + width) as f64,
+                    y1: (y + height) as f64,
+                });
+            }
+            nodes.push((profile_button_node(), profile_button));
             let mut gear = Node::new(Role::Button);
             gear.set_label(self.t("settings_menu.gear_label"));
             gear.add_action(Action::Click);
@@ -1168,6 +1206,37 @@ impl App {
                 nodes.push((settings_submenu_popup_node(), popup));
                 nodes.extend(item_nodes);
             }
+        }
+        if let Some(menu) = &self.profile_menu {
+            let mut item_nodes = Vec::new();
+            for (index, row) in menu.rows.iter().enumerate() {
+                let (label, selected, disabled) = match row {
+                    super::profile_menu::ProfileMenuRow::Profile { name, active } => {
+                        (name.clone(), *active, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::Create => {
+                        (self.t("profile_menu.create").to_owned(), false, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::Unavailable => {
+                        (self.t("profile_menu.unavailable").to_owned(), false, true)
+                    }
+                    super::profile_menu::ProfileMenuRow::Separator => continue,
+                };
+                let mut item = Node::new(Role::MenuItem);
+                item.set_label(label);
+                item.set_selected(selected);
+                if disabled {
+                    item.set_disabled();
+                } else {
+                    item.add_action(Action::Click);
+                }
+                item_nodes.push((profile_menu_item_node(index), item));
+            }
+            let mut popup = Node::new(Role::Menu);
+            popup.set_label(self.t("profile_menu.title"));
+            popup.set_children(item_nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>());
+            nodes.push((profile_menu_popup_node(), popup));
+            nodes.extend(item_nodes);
         }
         for (index, rect) in rects.iter().enumerate() {
             let (views, active) = self

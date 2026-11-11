@@ -544,5 +544,9 @@
   "settings_menu.file_icon_theme": "Tema de Ícones de Arquivo",
   "settings_menu.product_icon_theme": "Tema de Ícones do Produto",
   "settings_menu.density_default": "Padrão",
-  "settings_menu.density_compact": "Compacta"
+  "settings_menu.density_compact": "Compacta",
+  "profile_menu.title": "Perfis",
+  "profile_menu.button_label": "Perfil: {name}",
+  "profile_menu.create": "Criar Perfil...",
+  "profile_menu.unavailable": "Perfis indisponíveis"
 }

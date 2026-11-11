@@ -22,6 +22,18 @@ impl App {
             return;
         }
 
+        if self.profile_menu.is_some() {
+            if self.profile_menu_contains(mx, my) {
+                self.profile_menu_click(mx, my);
+                return;
+            }
+            if !self.zen_mode && self.activity_bar_contains(mx, my) {
+                self.activity_bar_click_at(mx, my);
+                return;
+            }
+            self.profile_menu = None;
+        }
+
         if self.settings_menu.is_some() {
             if self.settings_menu_contains(mx, my, window_width as f32, window_height as f32) {
                 self.settings_menu_click(mx, my, window_width as f32, window_height as f32);
