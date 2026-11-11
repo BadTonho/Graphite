@@ -7,7 +7,10 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 pub(super) enum Provider {
+    /// `textDocument/willSaveWaitUntil` from the language server.
     Lsp { instance: u64 },
+    /// `textDocument/formatting` from the language server (`editor.formatOnSave`).
+    LspFormat { instance: u64 },
     Host { session: u64, resource: u64 },
 }
 enum Reply {
@@ -35,6 +38,9 @@ impl App {
             .and_then(|path| self.lsp_manager.server_instance_for(path))
         {
             remaining.push_back(Provider::Lsp { instance });
+            if self.format_on_save {
+                remaining.push_back(Provider::LspFormat { instance });
+            }
         }
         let language = super::super::services::snapshot_document(document, doc)
             .ok()
@@ -58,7 +64,7 @@ impl App {
     }
     fn stop_participant(&mut self, waiting: &Waiting, path: &Path) {
         match waiting.provider {
-            Provider::Lsp { instance } => {
+            Provider::Lsp { instance } | Provider::LspFormat { instance } => {
                 if self.lsp_manager.server_instance_for(path) == Some(instance) {
                     self.lsp_manager.cancel_request(path, waiting.id);
                 }
@@ -113,7 +119,7 @@ impl App {
             }
             if let Some(waiting) = active.participants.waiting.take() {
                 let current = match waiting.provider {
-                    Provider::Lsp { instance } => {
+                    Provider::Lsp { instance } | Provider::LspFormat { instance } => {
                         self.lsp_manager.server_instance_for(&active.snapshot.path)
                             == Some(instance)
                     }
@@ -184,17 +190,30 @@ impl App {
                 let invocation = self.saving.invocation;
                 let deadline = now + Duration::from_secs(1);
                 let request = match &provider {
-                    Provider::Lsp { instance } => {
+                    Provider::Lsp { instance } | Provider::LspFormat { instance } => {
                         let (sender, receiver) = mpsc::channel();
                         // Separate namespace from UI request IDs; the local invocation owns cancellation.
                         let id = u64::MAX - invocation;
-                        if self.lsp_manager.server_instance_for(&active.snapshot.path)
+                        let format = matches!(provider, Provider::LspFormat { .. });
+                        // The server only knows the buffer as last synchronized; formatting
+                        // edits computed against it cannot be applied to altered text.
+                        let stale = format
+                            && active.snapshot.text != self.documents[document].buffer.text();
+                        if stale {
+                            Err(ServiceError::StaleDocument)
+                        } else if self.lsp_manager.server_instance_for(&active.snapshot.path)
                             == Some(*instance)
                             && self.lsp_manager.before_save(
                                 &active.snapshot.path,
                                 id,
                                 1,
                                 deadline,
+                                format.then(|| {
+                                    crate::lsp::LspManager::formatting_options(
+                                        self.tab_size,
+                                        self.insert_spaces,
+                                    )
+                                }),
                                 sender,
                             )
                         {

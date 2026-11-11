@@ -214,6 +214,12 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     ("ctrl+.", "editor.action.quickFix", "editorTextFocus"),
+    (
+        "ctrl+k ctrl+f",
+        "editor.action.formatSelection",
+        "editorTextFocus",
+    ),
+    ("ctrl+shift+r", "editor.action.refactor", "editorTextFocus"),
     ("ctrl+z", "undo", "editorTextFocus"),
     ("ctrl+y", "redo", "editorTextFocus"),
     ("ctrl+a", "editor.action.selectAll", "editorTextFocus"),

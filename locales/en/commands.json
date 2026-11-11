@@ -55,6 +55,8 @@
   "command.editor.action.selectHighlights": "Select highlights",
   "command.editor.action.showHover": "Show hover",
   "command.editor.action.formatDocument": "Format document",
+  "command.editor.action.formatSelection": "Format selection",
+  "command.editor.action.refactor": "Refactor",
   "command.editor.action.smartSelect.expand": "Expand",
   "command.editor.action.smartSelect.shrink": "Shrink",
   "command.editor.action.sortLinesAscending": "Sort lines ascending",

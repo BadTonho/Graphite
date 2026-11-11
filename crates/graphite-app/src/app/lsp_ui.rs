@@ -338,6 +338,7 @@ impl App {
                 actions,
                 error,
             } if (tracked || request_id == self.lsp_request_id) => {
+                let refactor = self.lsp_refactor_request.take() == Some(request_id);
                 self.quick_fix_actions = actions;
                 self.quick_fix_index = 0;
                 self.quick_fix_visible = true;
@@ -345,9 +346,21 @@ impl App {
                     self.quick_fix_visible = false;
                     translator.format("lsp.quick_fix.request_failed", &[("error", &error)])
                 } else if self.quick_fix_actions.is_empty() {
-                    translator.text("lsp.quick_fix.none").into()
+                    translator
+                        .text(if refactor {
+                            "lsp.refactor.none"
+                        } else {
+                            "lsp.quick_fix.none"
+                        })
+                        .into()
                 } else {
-                    translator.text("lsp.quick_fix.prompt").into()
+                    translator
+                        .text(if refactor {
+                            "lsp.refactor.prompt"
+                        } else {
+                            "lsp.quick_fix.prompt"
+                        })
+                        .into()
                 };
             }
             LspUiEvent::JsonDiagnostics {
@@ -503,6 +516,7 @@ impl App {
             &path,
             diagnostic.range,
             vec![diagnostic],
+            vec!["quickfix"],
             self.lsp_request_id,
         );
         if !sent {
@@ -510,6 +524,41 @@ impl App {
                 self.t("lsp.unavailable").into(),
             ));
         }
+    }
+
+    /// Lists refactorings for the selection (or the caret's line) in the quick-fix popup.
+    pub(crate) fn request_refactors(&mut self) -> bool {
+        let Some((path, _)) = self.active_lsp_position() else {
+            self.status = self.t("lsp.save_for_features").into();
+            return false;
+        };
+        if !self.lsp_manager.supports_path(&path) {
+            self.status = self.t("lsp.not_configured").into();
+            return false;
+        }
+        self.lsp_request_id = self.lsp_request_id.wrapping_add(1);
+        self.context_keys
+            .close_widget(super::context_keys::WidgetKind::QuickFix);
+        self.quick_fix_actions.clear();
+        self.quick_fix_index = 0;
+        self.quick_fix_visible = true;
+        self.lsp_refactor_request = Some(self.lsp_request_id);
+        self.status = self.t("lsp.refactor.loading").into();
+        self.track_lsp_command(self.lsp_request_id, &path);
+        let sent = self.lsp_manager.request_code_actions(
+            &path,
+            self.lsp_selection_range(),
+            Vec::new(),
+            vec!["refactor"],
+            self.lsp_request_id,
+        );
+        if !sent {
+            self.lsp_refactor_request = None;
+            self.fail_current_command(super::command_execution::CommandError::Failed(
+                self.t("lsp.unavailable").into(),
+            ));
+        }
+        sent
     }
 
     pub(crate) fn request_lsp(&mut self, kind: &str) {

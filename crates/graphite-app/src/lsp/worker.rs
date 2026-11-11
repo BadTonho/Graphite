@@ -99,7 +99,7 @@ pub(super) fn run_server(
                     "hover": {},
                     "definition": {},
                     "inlayHint": { "dynamicRegistration": false },
-                    "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix"] } } },
+                    "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite"] } } },
                     "publishDiagnostics": { "relatedInformation": true }
                 }
             },
@@ -338,6 +338,7 @@ pub(super) fn run_server(
                         uri,
                         reason,
                         deadline,
+                        format,
                         reply,
                     } => {
                         if std::time::Instant::now() >= deadline {
@@ -345,24 +346,39 @@ pub(super) fn run_server(
                             continue;
                         }
                         let mut messages = Vec::new();
-                        if save_capabilities.will_save {
-                            messages.push(Message::Notification(Notification {
-                                method: "textDocument/willSave".into(),
-                                params: json!({"textDocument":{"uri":uri},"reason":reason}),
-                            }));
-                        }
-                        if save_capabilities.wait_until {
+                        if let Some(options) = format {
                             let id = next_id;
                             next_id += 1;
-                            pending.insert(id, (request_id, "willSaveWaitUntil"));
+                            pending.insert(id, (request_id, "formatOnSave"));
                             save_replies.insert(id, (reply, deadline));
                             messages.push(Message::Request(Request {
                                 id: RequestId::from(id),
-                                method: "textDocument/willSaveWaitUntil".into(),
-                                params: json!({"textDocument":{"uri":uri},"reason":reason}),
+                                method: "textDocument/formatting".into(),
+                                params: json!({
+                                    "textDocument": { "uri": uri },
+                                    "options": options
+                                }),
                             }));
                         } else {
-                            let _ = reply.send(Ok(Vec::new()));
+                            if save_capabilities.will_save {
+                                messages.push(Message::Notification(Notification {
+                                    method: "textDocument/willSave".into(),
+                                    params: json!({"textDocument":{"uri":uri},"reason":reason}),
+                                }));
+                            }
+                            if save_capabilities.wait_until {
+                                let id = next_id;
+                                next_id += 1;
+                                pending.insert(id, (request_id, "willSaveWaitUntil"));
+                                save_replies.insert(id, (reply, deadline));
+                                messages.push(Message::Request(Request {
+                                    id: RequestId::from(id),
+                                    method: "textDocument/willSaveWaitUntil".into(),
+                                    params: json!({"textDocument":{"uri":uri},"reason":reason}),
+                                }));
+                            } else {
+                                let _ = reply.send(Ok(Vec::new()));
+                            }
                         }
                         messages
                     }
@@ -467,6 +483,7 @@ pub(super) fn run_server(
                         uri,
                         range,
                         diagnostics,
+                        only,
                     } => {
                         let id = next_id;
                         next_id += 1;
@@ -477,7 +494,7 @@ pub(super) fn run_server(
                             params: json!({
                                 "textDocument": { "uri": uri },
                                 "range": range,
-                                "context": { "diagnostics": diagnostics, "only": ["quickfix"], "triggerKind": 1 }
+                                "context": { "diagnostics": diagnostics, "only": only, "triggerKind": 1 }
                             }),
                         })]
                     }

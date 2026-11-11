@@ -144,6 +144,9 @@ enum LspCommand {
         uri: String,
         reason: u32,
         deadline: std::time::Instant,
+        /// `Some(options)` asks for `textDocument/formatting` (format on save)
+        /// instead of `textDocument/willSaveWaitUntil`.
+        format: Option<Value>,
         reply: Sender<graphite_core_api::ServiceResult<Vec<graphite_core_api::TextEdit>>>,
     },
     Save {
@@ -176,6 +179,8 @@ enum LspCommand {
         uri: String,
         range: Range,
         diagnostics: Vec<Diagnostic>,
+        /// Code action kinds requested from the server, e.g. `quickfix` or `refactor`.
+        only: Vec<&'static str>,
     },
     Query {
         request_id: u64,
@@ -388,6 +393,7 @@ impl LspManager {
         request_id: u64,
         reason: u32,
         deadline: std::time::Instant,
+        format: Option<Value>,
         reply: Sender<graphite_core_api::ServiceResult<Vec<graphite_core_api::TextEdit>>>,
     ) -> bool {
         self.send(
@@ -397,6 +403,7 @@ impl LspManager {
                 uri: String::new(),
                 reason,
                 deadline,
+                format,
                 reply,
             },
         )
@@ -437,6 +444,11 @@ impl LspManager {
     /// URI the server knows for an open document.
     pub fn document_uri(&self, path: &Path) -> Option<String> {
         self.documents.get(path).cloned()
+    }
+
+    /// `FormattingOptions` for `textDocument/formatting` and `rangeFormatting`.
+    pub fn formatting_options(tab_size: usize, insert_spaces: bool) -> Value {
+        json!({ "tabSize": tab_size, "insertSpaces": insert_spaces })
     }
 
     /// Sends a generic LSP request whose result is delivered as `LspUiEvent::Query`.
@@ -493,6 +505,7 @@ impl LspManager {
         path: &Path,
         range: Range,
         diagnostics: Vec<Diagnostic>,
+        only: Vec<&'static str>,
         request_id: u64,
     ) -> bool {
         self.send(
@@ -502,6 +515,7 @@ impl LspManager {
                 uri: String::new(),
                 range,
                 diagnostics,
+                only,
             },
         )
     }

@@ -572,6 +572,181 @@ fn save_participant_edits_are_staged_utf16_and_did_save_uses_written_text() {
 }
 
 #[test]
+fn format_selection_requests_range_formatting_for_the_selection_and_applies_the_result() {
+    let (_dir, mut app, messages, _path) = fixture();
+    app.editor_mut().set_selection(0, 2);
+    while messages.try_recv().is_ok() {}
+    let _ticket = app.execute_command(request(&app, "editor.action.formatSelection"));
+    let WorkerMessage::Command(LspCommand::Query {
+        method, kind, params, ..
+    }) = messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected rangeFormatting query")
+    };
+    assert_eq!(method, "textDocument/rangeFormatting");
+    assert_eq!(kind, "rangeFormatting");
+    assert_eq!(params["range"]["start"]["character"], json!(0));
+    assert_eq!(params["range"]["end"]["character"], json!(2));
+    assert_eq!(params["options"]["tabSize"], json!(app.tab_size));
+
+    app.handle_lsp_query(
+        "rangeFormatting",
+        json!([{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+            "newText": "X"
+        }]),
+    );
+    assert_eq!(app.editor().text(), "Xbc");
+    assert_eq!(app.status, app.t("lsp.format.done"));
+
+    app.handle_lsp_query("rangeFormatting", Value::Null);
+    assert_eq!(app.status, app.t("lsp.format.unchanged"));
+    assert_eq!(app.editor().text(), "Xbc");
+}
+
+#[test]
+fn formatting_result_is_dropped_when_the_document_changed_while_the_server_worked() {
+    let (_dir, mut app, messages, _path) = fixture();
+    while messages.try_recv().is_ok() {}
+    assert!(app.lsp_format_chars(0, 2));
+    let WorkerMessage::Command(LspCommand::Query { params, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected rangeFormatting query")
+    };
+    assert_eq!(params["range"]["end"]["character"], json!(2));
+
+    app.editor_mut().insert("z");
+    app.handle_lsp_query(
+        "rangeFormatting",
+        json!([{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+            "newText": "X"
+        }]),
+    );
+    assert_eq!(app.editor().text(), "zabc");
+    assert_eq!(app.status, app.t("lsp.format.stale"));
+}
+
+#[test]
+fn refactor_request_asks_for_refactor_actions_without_diagnostics() {
+    let (_dir, mut app, messages, _path) = fixture();
+    while messages.try_recv().is_ok() {}
+    let _ticket = app.execute_command(request(&app, "editor.action.refactor"));
+    let WorkerMessage::Command(LspCommand::CodeActions {
+        only, diagnostics, ..
+    }) = messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected codeAction request")
+    };
+    assert_eq!(only, vec!["refactor"]);
+    assert!(diagnostics.is_empty());
+    assert!(app.quick_fix_visible);
+    assert!(app.lsp_refactor_request.is_some());
+}
+
+/// Next participant request, skipping the cancel notices that finished participants send.
+fn next_participant(messages: &Receiver<WorkerMessage>) -> WorkerMessage {
+    loop {
+        let message = messages.recv_timeout(Duration::from_secs(1)).unwrap();
+        if !matches!(message, WorkerMessage::Command(LspCommand::Cancel { .. })) {
+            return message;
+        }
+    }
+}
+
+#[test]
+fn format_on_save_requests_formatting_after_willsave_and_applies_its_edits() {
+    let (_dir, mut app, messages, path) = fixture();
+    app.format_on_save = true;
+    while messages.try_recv().is_ok() {}
+    let document = app.active_document();
+    app.save_document(document);
+    let now = std::time::Instant::now();
+    app.poll_saves(now);
+    let WorkerMessage::Command(LspCommand::BeforeSave {
+        format: None,
+        reply,
+        ..
+    }) = next_participant(&messages)
+    else {
+        panic!("expected willSaveWaitUntil participant first")
+    };
+    reply.send(Ok(Vec::new())).unwrap();
+    app.poll_saves(now);
+    let WorkerMessage::Command(LspCommand::BeforeSave {
+        format: Some(options),
+        reply,
+        ..
+    }) = next_participant(&messages)
+    else {
+        panic!("expected formatting participant second")
+    };
+    assert_eq!(options["tabSize"], json!(app.tab_size));
+    assert_eq!(options["insertSpaces"], json!(app.insert_spaces));
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 0,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 1,
+            },
+            text: "X".into(),
+        }]))
+        .unwrap();
+    app.wait_for_saves();
+    app.wait_for_saves();
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "Xbc");
+}
+
+#[test]
+fn format_on_save_is_skipped_when_an_earlier_participant_changed_the_text() {
+    let (_dir, mut app, messages, path) = fixture();
+    app.format_on_save = true;
+    app.editor_mut().insert("🌎");
+    while messages.try_recv().is_ok() {}
+    let document = app.active_document();
+    app.save_document(document);
+    let now = std::time::Instant::now();
+    app.poll_saves(now);
+    let WorkerMessage::Command(LspCommand::BeforeSave { reply, .. }) =
+        messages.recv_timeout(Duration::from_secs(1)).unwrap()
+    else {
+        panic!("expected participant")
+    };
+    reply
+        .send(Ok(vec![graphite_core_api::TextEdit {
+            start: graphite_core_api::Position {
+                line: 0,
+                character: 2,
+            },
+            end: graphite_core_api::Position {
+                line: 0,
+                character: 2,
+            },
+            text: "!".into(),
+        }]))
+        .unwrap();
+    app.poll_saves(now);
+    // The server never sees the willSave edit, so formatting is not requested for it.
+    while let Ok(message) = messages.try_recv() {
+        assert!(!matches!(
+            message,
+            WorkerMessage::Command(LspCommand::BeforeSave {
+                format: Some(_),
+                ..
+            })
+        ));
+    }
+    app.wait_for_saves();
+    app.wait_for_saves();
+    assert!(std::fs::read_to_string(path).unwrap().contains('!'));
+}
+
+#[test]
 fn stale_lsp_participant_preserves_typing_and_timeout_sends_cancel_request() {
     let (_dir, mut app, messages, path) = fixture();
     let document = app.active_document();

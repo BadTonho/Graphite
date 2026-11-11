@@ -22,7 +22,7 @@ impl WorkspaceService for App {
         let effective = serde_json::json!({
             "editor.fontSize":self.font_size,"editor.tabSize":self.tab_size,"editor.insertSpaces":self.insert_spaces,
             "editor.detectIndentation":self.detect_indentation,"editor.wordWrap":if self.word_wrap{"on"}else{"off"},
-            "editor.rulers":self.rulers,"files.trimTrailingWhitespace":self.trim_trailing_whitespace,
+            "editor.rulers":self.rulers,"files.trimTrailingWhitespace":self.trim_trailing_whitespace,"editor.formatOnSave":self.format_on_save,"editor.formatOnPaste":self.format_on_paste,
             "files.readonlyInclude":self.read_only_patterns,
             "editor.wrappingIndent":match self.wrapping_indent{config::WrapIndent::None=>"none",config::WrapIndent::Same=>"same",config::WrapIndent::Indent=>"indent",config::WrapIndent::DeepIndent=>"deepIndent"},
         });
