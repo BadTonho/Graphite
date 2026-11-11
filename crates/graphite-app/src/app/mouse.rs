@@ -234,6 +234,20 @@ impl App {
                     self.scm_staged_collapsed,
                     self.scm_changes_collapsed,
                 );
+                if !self.scm_repositories_collapsed {
+                    if layout.repo_sync.contains(local_x, local_y) {
+                        self.run_scm_remote(super::scm_remote_ui::RemoteOp::Sync);
+                        return;
+                    }
+                    if layout.repo_pull_request.contains(local_x, local_y) {
+                        self.open_pull_request();
+                        return;
+                    }
+                    if layout.repo_more.contains(local_x, local_y) {
+                        self.open_scm_more_menu();
+                        return;
+                    }
+                }
                 if layout.repository_header.contains(local_x, local_y) {
                     self.scm_repositories_collapsed = !self.scm_repositories_collapsed;
                     return;
@@ -267,6 +281,20 @@ impl App {
                 {
                     match row.kind {
                         ScmListRowKind::Section { staged, .. } => {
+                            if !staged {
+                                let (history, stash) = super::scm_ui::changes_header_buttons(
+                                    row.action,
+                                    cw,
+                                );
+                                if history.contains(local_x, local_y) {
+                                    self.open_scm_history();
+                                    return;
+                                }
+                                if stash.contains(local_x, local_y) {
+                                    self.run_scm_remote(super::scm_remote_ui::RemoteOp::Stash);
+                                    return;
+                                }
+                            }
                             if row.action.contains(local_x, local_y) {
                                 self.perform_scm_action(if staged {
                                     ScmAction::UnstageAll
