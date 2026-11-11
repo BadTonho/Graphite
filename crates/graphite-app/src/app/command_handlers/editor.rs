@@ -219,6 +219,70 @@ pub(super) fn editor_action_remove_duplicate_lines(
     Ok(())
 }
 
+pub(super) fn editor_action_join_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().join_lines();
+    Ok(())
+}
+
+pub(super) fn editor_action_go_to_references(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_references();
+    Ok(())
+}
+
+pub(super) fn editor_action_go_to_implementations(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_implementations();
+    Ok(())
+}
+
+pub(super) fn editor_action_peek_definition(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_peek_definition();
+    Ok(())
+}
+
+pub(super) fn editor_action_rename(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_rename();
+    Ok(())
+}
+
+pub(super) fn editor_action_trigger_parameter_hints(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_signature_help();
+    Ok(())
+}
+
+pub(super) fn graphite_lsp_show_call_hierarchy(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_call_hierarchy();
+    Ok(())
+}
+
+pub(super) fn graphite_lsp_show_type_hierarchy(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_type_hierarchy();
+    Ok(())
+}
+
 pub(super) fn undo(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
     {
         app.editor_mut().undo();
@@ -674,6 +738,23 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         editor_action_remove_duplicate_lines,
     );
+    add(
+        registry,
+        "editor.action.joinLines",
+        "Join lines",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_join_lines,
+    );
+    add(registry, "editor.action.goToReferences", "Go to References", "Go", VIEW, "true", None, editor_action_go_to_references);
+    add(registry, "editor.action.goToImplementation", "Go to Implementations", "Go", VIEW, "true", None, editor_action_go_to_implementations);
+    add(registry, "editor.action.peekDefinition", "Peek Definition", "Go", VIEW, "true", None, editor_action_peek_definition);
+    add(registry, "editor.action.rename", "Rename Symbol", "Editor", VIEW, "editorWritable", None, editor_action_rename);
+    add(registry, "editor.action.triggerParameterHints", "Trigger Parameter Hints", "Editor", VIEW, "true", None, editor_action_trigger_parameter_hints);
+    add(registry, "graphite.lsp.showCallHierarchy", "Show Call Hierarchy", "Go", VIEW, "true", None, graphite_lsp_show_call_hierarchy);
+    add(registry, "graphite.lsp.showTypeHierarchy", "Show Type Hierarchy", "Go", VIEW, "true", None, graphite_lsp_show_type_hierarchy);
     add(
         registry, "undo", "Undo", "Editor", VIEW, "canUndo", None, undo,
     );

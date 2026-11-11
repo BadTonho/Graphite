@@ -145,12 +145,33 @@ pub(super) fn dispatch_server_message(
                         error: response_error,
                     });
                 }
+                kind if QUERY_KINDS.contains(&kind) => {
+                    let _ = event_tx.send(LspUiEvent::Query {
+                        request_id,
+                        kind,
+                        result,
+                    });
+                }
                 _ => {}
             }
         }
         _ => {}
     }
 }
+
+/// Response kinds delivered generically as `LspUiEvent::Query`.
+const QUERY_KINDS: &[&str] = &[
+    "references",
+    "implementation",
+    "signatureHelp",
+    "rename",
+    "prepareCallHierarchy",
+    "callHierarchyIncoming",
+    "callHierarchyOutgoing",
+    "prepareTypeHierarchy",
+    "typeHierarchySupertypes",
+    "typeHierarchySubtypes",
+];
 
 fn valid_response(kind: &str, value: &Value) -> bool {
     if value.is_null() {

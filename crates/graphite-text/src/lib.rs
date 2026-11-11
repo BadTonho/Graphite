@@ -6,6 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod brackets;
+pub use brackets::{bracket_levels, matching_bracket};
 mod edit;
 mod editor;
 pub use editor::{

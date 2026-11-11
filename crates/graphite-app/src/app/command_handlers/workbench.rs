@@ -757,8 +757,6 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
         ("editor.action.goToDeclaration", "Go to Declaration"),
         ("editor.action.goToTypeDefinition", "Go to Type Definition"),
-        ("editor.action.goToImplementation", "Go to Implementations"),
-        ("editor.action.goToReferences", "Go to References"),
         ("editor.action.jumpToBracket", "Go to Bracket"),
         ("workbench.action.nextChange", "Next Change"),
         ("workbench.action.previousChange", "Previous Change"),

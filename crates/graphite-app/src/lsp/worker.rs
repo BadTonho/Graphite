@@ -409,6 +409,21 @@ pub(super) fn run_server(
                             .unwrap_or_default(),
                         })]
                     }
+                    LspCommand::Query {
+                        request_id,
+                        method,
+                        kind,
+                        params,
+                    } => {
+                        let id = next_id;
+                        next_id += 1;
+                        pending.insert(id, (request_id, kind));
+                        vec![Message::Request(Request {
+                            id: RequestId::from(id),
+                            method: method.into(),
+                            params,
+                        })]
+                    }
                     LspCommand::Hover {
                         request_id,
                         uri,

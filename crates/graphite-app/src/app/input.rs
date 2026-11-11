@@ -9,6 +9,14 @@ impl App {
         ) {
             return;
         }
+        if self.handle_rename_prompt_key(
+            &event.logical_key,
+            (!self.modifiers.control_key() && !self.modifiers.alt_key())
+                .then_some(event.text.as_deref())
+                .flatten(),
+        ) {
+            return;
+        }
         if self.handle_breakpoint_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())

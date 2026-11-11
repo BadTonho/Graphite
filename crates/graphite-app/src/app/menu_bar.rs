@@ -1746,6 +1746,7 @@ impl App {
         }
 
         self.draw_run_breakpoint_prompt(renderer);
+        self.draw_rename_prompt(renderer);
         self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
     }
@@ -1995,6 +1996,36 @@ impl App {
                 }
             }
         }
+    }
+
+    pub(crate) fn draw_rename_prompt(&self, renderer: &mut Renderer) {
+        let Some(prompt) = &self.rename_prompt else {
+            return;
+        };
+        let (width, height) = renderer.size();
+        let cw = renderer.char_width();
+        let panel_width = (width as f32 * 0.72)
+            .clamp(360.0, 700.0)
+            .min((width as f32 - 24.0).max(0.0));
+        let panel_height = 120.0;
+        let x = ((width as f32 - panel_width) * 0.5).max(12.0);
+        let y = ((height as f32 - panel_height) * 0.5).max(12.0);
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        renderer.draw_rect(x, y, panel_width, panel_height, border);
+        renderer.draw_rect(x + 1.0, y + 1.0, (panel_width - 2.0).max(0.0), panel_height - 2.0, bg);
+        renderer.draw_text(self.t("lsp.rename.prompt"), x + 16.0, y + 18.0, text);
+        let max_chars = ((panel_width - 32.0) / cw.max(1.0)).floor() as usize;
+        let input = Self::help_menu_visible_label(
+            &format!("{}▏", prompt.value),
+            cw,
+            (max_chars as f32 * cw).max(0.0),
+        );
+        renderer.draw_rect(x + 12.0, y + 48.0, panel_width - 24.0, 28.0, border);
+        renderer.draw_text(&input, x + 18.0, y + 54.0, text);
+        renderer.draw_text(self.t("lsp.rename.hint"), x + 16.0, y + 90.0, dim);
     }
 
     fn draw_run_breakpoint_prompt(&self, renderer: &mut Renderer) {

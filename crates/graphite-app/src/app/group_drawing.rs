@@ -199,6 +199,19 @@ impl App {
             let cur_line = buffer.rope().char_to_line(cursor);
             let visible = ((body_height / lh) as usize).max(1);
             let last = (view.scroll_line + visible).min(buffer.len_lines());
+            let levels_end = if last < buffer.len_lines() {
+                buffer.line_start_char(last)
+            } else {
+                buffer.len_chars()
+            };
+            let bracket_levels = graphite_text::bracket_levels(buffer.rope(), levels_end);
+            let mut bracket_match_cells = Vec::new();
+            if let Some((a, b)) = graphite_text::matching_bracket(buffer.rope(), cursor) {
+                for index in [a, b] {
+                    let line = buffer.rope().char_to_line(index);
+                    bracket_match_cells.push((line, index - buffer.line_start_char(line)));
+                }
+            }
             for x in super::layout::ruler_positions(&self.rulers, text_x, cw, right) {
                 r.draw_rect(
                     x,
@@ -221,6 +234,14 @@ impl App {
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
+                let first_bracket = bracket_levels.partition_point(|(index, _)| *index < line_start);
+                let bracket_overlays: Vec<(usize, graphite_syntax::Class)> = bracket_levels[first_bracket..]
+                    .iter()
+                    .take_while(|(index, _)| *index < line_end)
+                    .map(|&(index, level)| {
+                        (index - line_start, super::drawing_helpers::bracket_class(level))
+                    })
+                    .collect();
                 for selection in &view.selection_state.selections() {
                     let start = selection.anchor.min(selection.head).max(line_start);
                     let end = selection.anchor.max(selection.head).min(line_end);
@@ -286,10 +307,37 @@ impl App {
                     y,
                     rgb(color),
                 );
+                for column in super::drawing_helpers::indent_guide_columns(&text, tab.indentation.tab_size) {
+                    r.draw_rect(
+                        text_x + column as f32 * cw,
+                        y,
+                        1.0,
+                        lh,
+                        rgb(Theme::color(0x404040, 0xdddddd)),
+                    );
+                }
+                for &(match_line, column) in &bracket_match_cells {
+                    if match_line == line {
+                        let prefix: String = text.chars().take(column).collect();
+                        let x = display_line(&prefix, tab.indentation.tab_size).chars().count();
+                        r.draw_rect(
+                            text_x + x as f32 * cw,
+                            y,
+                            cw,
+                            lh,
+                            rgb(Theme::color(0xc8d8f0, 0x3a3d41)),
+                        );
+                    }
+                }
+                let merged = super::drawing_helpers::overlay_classes(
+                    &text,
+                    spans_for(&tab.highlights, line),
+                    &bracket_overlays,
+                );
                 draw_code_line(
                     r,
                     &text,
-                    spans_for(&tab.highlights, line),
+                    &merged,
                     text_x,
                     y,
                     cw,

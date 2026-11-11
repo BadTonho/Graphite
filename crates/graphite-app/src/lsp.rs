@@ -116,6 +116,11 @@ pub enum LspUiEvent {
         request_id: u64,
         items: Vec<CompletionItem>,
     },
+    Query {
+        request_id: u64,
+        kind: &'static str,
+        result: Value,
+    },
 }
 
 #[derive(Debug)]
@@ -172,6 +177,12 @@ enum LspCommand {
         range: Range,
         diagnostics: Vec<Diagnostic>,
     },
+    Query {
+        request_id: u64,
+        method: &'static str,
+        kind: &'static str,
+        params: Value,
+    },
     Cancel {
         request_id: u64,
     },
@@ -192,6 +203,7 @@ impl LspCommand {
             | Self::Hover { request_id, .. }
             | Self::InlayHints { request_id, .. }
             | Self::CodeActions { request_id, .. }
+            | Self::Query { request_id, .. }
             | Self::ExecuteCommand { request_id, .. } => Some(*request_id),
             _ => None,
         }
@@ -422,6 +434,31 @@ impl LspManager {
         )
     }
 
+    /// URI the server knows for an open document.
+    pub fn document_uri(&self, path: &Path) -> Option<String> {
+        self.documents.get(path).cloned()
+    }
+
+    /// Sends a generic LSP request whose result is delivered as `LspUiEvent::Query`.
+    pub fn request_query(
+        &self,
+        path: &Path,
+        request_id: u64,
+        kind: &'static str,
+        method: &'static str,
+        params: Value,
+    ) -> bool {
+        self.send(
+            path,
+            LspCommand::Query {
+                request_id,
+                method,
+                kind,
+                params,
+            },
+        )
+    }
+
     pub fn request_hover(&self, path: &Path, position: Position, request_id: u64) -> bool {
         self.send(
             path,
@@ -536,6 +573,7 @@ impl LspManager {
             | LspCommand::Hover { uri: target, .. }
             | LspCommand::InlayHints { uri: target, .. }
             | LspCommand::CodeActions { uri: target, .. } => *target = uri.clone(),
+            LspCommand::Query { .. } => {}
             _ => return false,
         }
         server.sender.send(WorkerMessage::Command(command)).is_ok()
