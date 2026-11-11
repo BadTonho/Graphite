@@ -140,6 +140,12 @@ impl App {
                 && my >= panel_top
                 && my < panel_top + panel.height
             {
+                if self.modifiers.control_key()
+                    && my >= panel_top + lh * 1.4
+                    && self.open_terminal_link_at(mx, my, panel.x, panel_top, lh, cw)
+                {
+                    return;
+                }
                 if my < panel_top + lh * 1.4 {
                     let panel_offset = mx - panel.x;
                     self.terminal_problems = panel_offset < cw * 9.0;

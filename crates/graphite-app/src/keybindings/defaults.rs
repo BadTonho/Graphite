@@ -174,6 +174,8 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "projectSearchVisible",
     ),
     ("ctrl+p", "workbench.action.quickOpen", "!terminalFocus"),
+    ("ctrl+up", "graphite.terminal.previousCommand", "terminalFocus"),
+    ("ctrl+down", "graphite.terminal.nextCommand", "terminalFocus"),
     ("ctrl+f", "actions.find", "editorTextFocus"),
     (
         "ctrl+h",

@@ -26,6 +26,8 @@ mod previews;
 mod process_explorer;
 mod scm;
 mod terminal;
+mod terminal_links;
+mod terminal_shell;
 mod test_explorer;
 #[cfg(test)]
 mod test_support;

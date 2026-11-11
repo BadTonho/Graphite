@@ -10,7 +10,7 @@ use graphite_plugins::{
 use std::{collections::BTreeMap, sync::mpsc, time::Instant};
 mod accessibility;
 mod actions;
-mod drawing;
+pub(crate) mod drawing;
 mod layout;
 mod panel;
 mod runtime;

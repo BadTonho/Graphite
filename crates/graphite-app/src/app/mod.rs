@@ -47,6 +47,7 @@ pub(super) mod project_search_filters;
 mod external_changes;
 mod autosave;
 mod local_history;
+mod terminal_navigation;
 pub(super) mod explorer_files;
 pub(super) mod quick_open;
 pub(crate) mod run_menu;

@@ -171,6 +171,20 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             terminal_profile as Handler,
         ),
         (
+            "graphite.terminal.previousCommand",
+            "Go to previous command",
+            None,
+            "true",
+            terminal_previous_command as Handler,
+        ),
+        (
+            "graphite.terminal.nextCommand",
+            "Go to next command",
+            None,
+            "true",
+            terminal_next_command as Handler,
+        ),
+        (
             "graphite.terminal.scrollLeft",
             "Scroll terminal tabs left",
             None,
@@ -493,6 +507,14 @@ fn configure_default_build_task_command(
     _: &CommandInvocation,
 ) -> Result<(), CommandError> {
     app.open_task_configuration();
+    Ok(())
+}
+fn terminal_previous_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.jump_terminal_prompt(false);
+    Ok(())
+}
+fn terminal_next_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.jump_terminal_prompt(true);
     Ok(())
 }
 fn terminal_left(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
