@@ -88,6 +88,9 @@ impl App {
         if let Some(result) = testing::dispatch(self, runtime, actor, method, args) {
             return result.map_err(|error| error.to_owned());
         }
+        if let Some(result) = workbench::dispatch(self, runtime, actor, method, args) {
+            return result;
+        }
         if let Some(result) = languages::language_rpc(&mut runtime.languages, actor, method, args) {
             return result;
         }

@@ -7,6 +7,8 @@ pub(crate) enum StatusSegment {
     LineEnding,
     Indentation,
     Screencast,
+    /// A status bar item created by an extension.
+    Extension,
 }
 
 impl App {
@@ -76,6 +78,17 @@ impl App {
                 ),
             ),
         ]
+        .into_iter()
+        .chain(
+            self.plugins
+                .vsix
+                .as_ref()
+                .map(|runtime| runtime.workbench_status_texts())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|text| (StatusSegment::Extension, text)),
+        )
+        .collect()
     }
 
     pub(crate) fn status_segment_at(&self, x: f32, char_width: f32) -> Option<StatusSegment> {

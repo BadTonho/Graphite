@@ -119,6 +119,7 @@ fn fixture(path: &PathBuf, version: &str) {
             {"command":"phase5.start","title":"Phase 5 start"},
             {"command":"phase5.pending","title":"Phase 5 pending"},
             {"command":"phase5.crash","title":"Phase 5 crash"},
+            {"command":"phase5.workbench","title":"Phase 5 workbench"},
         ]}
     });
     archive
@@ -234,4 +235,48 @@ fn official_host_runs_local_vsix_services_and_invalidates_sessions() {
         .run_vsix_command_in("test.phase5:phase5.pending", Some(runtime_path))
         .unwrap_err()
         .contains("approve"));
+}
+
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_bridges_output_status_bar_file_search_and_links() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("fixture.vsix");
+    fixture(&package, "1.0.0");
+    store.install(&package).unwrap();
+    store.enable("test.phase5", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    let file = dir.path().join("sample.txt");
+    std::fs::write(&file, "sample").unwrap();
+    app.open_file(file);
+    app.run_vsix_command_in("test.phase5:phase5.workbench", Some(runtime_path))
+        .unwrap();
+    wait_for(&mut app, |app| {
+        app.plugins
+            .vsix
+            .as_ref()
+            .is_some_and(|runtime| runtime.workbench_status_texts().contains(&"Phase 5 status".to_owned()))
+    });
+    wait_for(&mut app, |app| {
+        app.documents
+            .iter()
+            .any(|tab| tab.buffer.text().contains("workbench line"))
+    });
+    wait_for(&mut app, finished);
+    assert!(!app.status.contains("findFiles missing"), "{}", app.status);
+    assert!(!app.status.contains("asExternalUri changed"), "{}", app.status);
+    let view = app
+        .documents
+        .iter()
+        .find(|tab| tab.buffer.text().contains("workbench line"))
+        .unwrap();
+    assert!(view.buffer.is_read_only());
 }

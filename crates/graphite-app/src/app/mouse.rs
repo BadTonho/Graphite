@@ -72,6 +72,7 @@ impl App {
         }
         if self.view_preferences.status_bar_visible && !self.zen_mode && my >= window_height - lh {
             match self.status_segment_at(mx, cw) {
+                Some(super::phase4_tools::StatusSegment::Extension) => {}
                 Some(super::phase4_tools::StatusSegment::Screencast) => {
                     self.run_ui_command("workbench.action.toggleScreencastMode")
                 }

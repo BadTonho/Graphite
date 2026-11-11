@@ -16,7 +16,7 @@ mod panel;
 mod runtime;
 #[cfg(test)]
 mod tests;
-mod vsix;
+pub(crate) mod vsix;
 use layout::PluginsTab;
 pub(crate) use vsix::VsixLanguageFeature;
 
@@ -60,7 +60,7 @@ pub(crate) struct Plugins {
     trust_generation: u64,
     errors: BTreeMap<String, String>,
     temporary: Option<PathBuf>,
-    vsix: Option<vsix::Runtime>,
+    pub(crate) vsix: Option<vsix::Runtime>,
     vsix_generation: u64,
 }
 

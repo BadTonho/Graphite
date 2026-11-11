@@ -45,6 +45,18 @@ exports.activate = context => {
             const result = await vscode.window.showInputBox({ prompt: 'Revoke trust while waiting' });
             await vscode.window.activeTextEditor.edit(edit => edit.insert(first.start, result ?? 'stale'));
         }),
+        vscode.commands.registerCommand('phase5.workbench', async () => {
+            const channel = vscode.window.createOutputChannel('Phase 5 log');
+            channel.appendLine('workbench line');
+            channel.show(true);
+            const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+            item.text = 'Phase 5 status';
+            item.show();
+            const found = await vscode.workspace.findFiles('**/*.txt', '**/ignored/**', 10);
+            if (!found.some(uri => uri.fsPath.endsWith('sample.txt'))) throw new Error('findFiles missing sample');
+            const external = await vscode.env.asExternalUri(vscode.Uri.parse('https://example.com/'));
+            if (!external.toString().startsWith('https://')) throw new Error('asExternalUri changed the link');
+        }),
         vscode.commands.registerCommand('phase5.crash', () => process.kill(process.pid)),
     );
 };
