@@ -15,6 +15,7 @@ mod document;
 mod drawing;
 pub(super) mod drawing_helpers;
 pub(crate) mod edit_menu;
+pub(crate) mod terminal_menu;
 mod editor_commands;
 #[allow(dead_code)]
 pub(super) mod editor_groups;

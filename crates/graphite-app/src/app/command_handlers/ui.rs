@@ -115,6 +115,55 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             terminal_split as Handler,
         ),
         (
+            "graphite.terminal.runActiveFile",
+            "Run active file in terminal",
+            None,
+            "true",
+            run_active_file_command as Handler,
+        ),
+        (
+            "graphite.terminal.runSelectedText",
+            "Run selected text in terminal",
+            None,
+            "true",
+            run_selected_text_command as Handler,
+        ),
+        (
+            "graphite.tasks.pick",
+            "Run task",
+            None,
+            "true",
+            pick_task_command as Handler,
+        ),
+        (
+            "graphite.tasks.showRunning",
+            "Show running tasks",
+            None,
+            "true",
+            show_running_tasks_command as Handler,
+        ),
+        (
+            "graphite.tasks.restartRunning",
+            "Restart running task",
+            None,
+            "true",
+            restart_running_task_command as Handler,
+        ),
+        (
+            "graphite.tasks.configure",
+            "Configure tasks",
+            None,
+            "true",
+            configure_tasks_command as Handler,
+        ),
+        (
+            "graphite.tasks.configureDefaultBuild",
+            "Configure default build task",
+            None,
+            "true",
+            configure_default_build_task_command as Handler,
+        ),
+        (
             "graphite.terminal.nextProfile",
             "Next terminal profile",
             None,
@@ -414,6 +463,33 @@ fn terminal_split(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErr
 }
 fn terminal_profile(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.cycle_terminal_profile();
+    Ok(())
+}
+fn run_active_file_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.terminal_run_active_file().map_err(CommandError::Failed)
+}
+fn run_selected_text_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.terminal_run_selected_text().map_err(CommandError::Failed)
+}
+fn pick_task_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.terminal_pick_task();
+    Ok(())
+}
+fn show_running_tasks_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.terminal_show_running_tasks().map_err(CommandError::Failed)
+}
+fn restart_running_task_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.terminal_restart_running_task().map_err(CommandError::Failed)
+}
+fn configure_tasks_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_task_configuration();
+    Ok(())
+}
+fn configure_default_build_task_command(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.open_task_configuration();
     Ok(())
 }
 fn terminal_left(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
