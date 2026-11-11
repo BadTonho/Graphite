@@ -606,7 +606,7 @@ impl App {
         true
     }
 
-    fn save_activity_bar_preferences(&mut self) {
+    pub(crate) fn save_activity_bar_preferences(&mut self) {
         if self.profiles.is_some() {
             if let Err(error) = config::save_activity_bar_preferences(
                 &self.profile_root,
@@ -867,11 +867,27 @@ impl App {
         ) else {
             return false;
         };
-        let Some((_, selected)) = entries
-            .iter()
-            .enumerate()
-            .find(|(index, _)| layout.item_rect(*index).contains(x, y))
-        else {
+        let gear = settings_gear_rect(
+            layout,
+            width,
+            height,
+            self.gpu
+                .as_ref()
+                .map_or(20.0, |gpu| gpu.renderer.line_height()),
+        );
+        if gear.contains(x, y) {
+            if self.settings_menu.is_some() {
+                self.settings_menu = None;
+            } else {
+                self.open_settings_menu((gear.x, gear.y, gear.width, gear.height), width, height);
+            }
+            return true;
+        }
+        let Some((_, selected)) = entries.iter().enumerate().find(|(index, _)| {
+            let rect = layout.item_rect(*index);
+            rect.contains(x, y)
+                && !gear.contains(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5)
+        }) else {
             return false;
         };
         match selected {
@@ -909,6 +925,7 @@ impl App {
             .is_some_and(|layout| layout.contains(x, y))
         {
             self.workbench_menu = None;
+            self.settings_menu = None;
             self.open_activity_bar_menu(x, y, width, height);
             return true;
         }
@@ -938,7 +955,8 @@ impl App {
         let entries = self.visible_activity_items();
         for (index, entry) in entries.iter().enumerate() {
             let item = layout.item_rect(index);
-            if item.y + item.height > height {
+            let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
+            if item.y + item.height > height || item_overlaps(item, gear) {
                 break;
             }
             let is_active = match entry {
@@ -1019,7 +1037,34 @@ impl App {
                 }
             }
         }
+        let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
+        let gear_hovered = gear.contains(self.mouse.x as f32, self.mouse.y as f32);
+        let gear_color = if gear_hovered {
+            Theme::color(Theme::TEXT, 0xcccccc)
+        } else {
+            Theme::color(Theme::DIM, 0x858585)
+        };
+        let gear_size = 20.0;
+        let gear_x = gear.x + (gear.width - gear_size) * 0.5;
+        let gear_y = gear.y + (gear.height - gear_size) * 0.5;
+        let gear_bg = if gear_hovered {
+            Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+        } else {
+            Theme::color(Theme::ACTIVITY_BAR, 0xe8e8e8)
+        };
+        if gear_hovered {
+            renderer.draw_rect(gear.x, gear.y, gear.width, gear.height, rgb(gear_bg));
+        }
+        draw_settings_gear(
+            renderer,
+            gear_x,
+            gear_y,
+            gear_size,
+            rgb(gear_color),
+            rgb(gear_bg),
+        );
         self.draw_activity_bar_menu(renderer, height);
+        self.draw_settings_menu(renderer, window_width, height);
     }
 
     pub(super) fn draw_activity_bar_menu(&self, renderer: &mut Renderer, window_height: f32) {
@@ -1194,9 +1239,115 @@ impl App {
     }
 }
 
+fn settings_gear_rect(
+    layout: ActivityBarLayout,
+    width: f32,
+    height: f32,
+    status_height: f32,
+) -> MenuRect {
+    match layout.position {
+        ActivityBarPosition::Top | ActivityBarPosition::Bottom => MenuRect {
+            x: (width - layout.item_size - 4.0).max(0.0),
+            y: layout.y,
+            width: layout.item_size,
+            height: layout.item_size,
+        },
+        _ => MenuRect {
+            x: layout.x,
+            y: (height - status_height - layout.item_size).max(layout.y),
+            width: layout.width,
+            height: layout.item_size,
+        },
+    }
+}
+
+pub(super) fn activity_bar_settings_gear_rect(
+    preferences: &config::ActivityBarPreferences,
+    width: f32,
+    height: f32,
+    menu_bar_height: f32,
+    status_height: f32,
+) -> Option<(f32, f32, f32, f32)> {
+    let layout = ActivityBarLayout::new(preferences, width, height, menu_bar_height)?;
+    let rect = settings_gear_rect(layout, width, height, status_height);
+    Some((rect.x, rect.y, rect.width, rect.height))
+}
+
+fn item_overlaps(a: MenuRect, b: MenuRect) -> bool {
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+fn draw_settings_gear(
+    renderer: &mut Renderer,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: graphite_render::Color,
+    background: graphite_render::Color,
+) {
+    let scale = size / 20.0;
+    let teeth = [
+        (8.0, 0.0, 4.0, 5.0),
+        (8.0, 15.0, 4.0, 5.0),
+        (0.0, 8.0, 5.0, 4.0),
+        (15.0, 8.0, 5.0, 4.0),
+    ];
+    for (dx, dy, width, height) in teeth {
+        renderer.draw_rect(
+            x + dx * scale,
+            y + dy * scale,
+            width * scale,
+            height * scale,
+            color,
+        );
+    }
+    let disk_rows = [
+        (6.0, 4.0, 8.0),
+        (4.0, 6.0, 12.0),
+        (4.0, 8.0, 12.0),
+        (4.0, 10.0, 12.0),
+        (6.0, 12.0, 8.0),
+    ];
+    for (dx, dy, width) in disk_rows {
+        renderer.draw_rect(
+            x + dx * scale,
+            y + dy * scale,
+            width * scale,
+            2.0 * scale,
+            color,
+        );
+    }
+    renderer.draw_rect(
+        x + 7.0 * scale,
+        y + 7.0 * scale,
+        6.0 * scale,
+        6.0 * scale,
+        background,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_gear_is_pinned_to_each_visible_activity_bar_and_hidden_with_it() {
+        let mut preferences = config::ActivityBarPreferences::default();
+        let vertical =
+            activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert_eq!(vertical.0, 0.0);
+        assert_eq!(vertical.1 + vertical.3, 780.0);
+        preferences.position = ActivityBarPosition::Top;
+        let top = activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert!(top.0 + top.2 <= 1000.0);
+        assert_eq!(top.1, 24.0);
+        preferences.position = ActivityBarPosition::Bottom;
+        let bottom =
+            activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).unwrap();
+        assert_eq!(bottom.1, 732.0);
+        preferences.position = ActivityBarPosition::Hidden;
+        assert!(activity_bar_settings_gear_rect(&preferences, 1000.0, 800.0, 24.0, 20.0).is_none());
+    }
 
     #[test]
     fn hit_testing_maps_each_vertical_slot() {

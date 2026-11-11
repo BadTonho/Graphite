@@ -24,7 +24,7 @@ pub use settings::{
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
 pub(crate) use sidebar_layout::{
     load_activity_bar_preferences, save_activity_bar_preferences, ActivityBarPosition,
-    ActivityBarPreferences, ActivityBarSize,
+    ActivityBarPreferences, ActivityBarSize, LayoutDensity,
 };
 pub(crate) use sidebar_layout::{load_sidebar_width, save_sidebar_width};
 pub(crate) use sidebar_layout::{

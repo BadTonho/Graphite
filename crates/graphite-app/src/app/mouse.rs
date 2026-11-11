@@ -22,6 +22,18 @@ impl App {
             return;
         }
 
+        if self.settings_menu.is_some() {
+            if self.settings_menu_contains(mx, my, window_width as f32, window_height as f32) {
+                self.settings_menu_click(mx, my, window_width as f32, window_height as f32);
+                return;
+            }
+            if !self.zen_mode && self.activity_bar_contains(mx, my) {
+                self.activity_bar_click_at(mx, my);
+                return;
+            }
+            self.settings_menu = None;
+        }
+
         if self.workbench_menu_click(mx, my) {
             return;
         }
@@ -180,7 +192,7 @@ impl App {
             if self.scm_visible {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);
-                let row_h = lh.max(18.0);
+                let row_h = self.sidebar_density_line_height(lh).max(18.0);
                 let layout = scm_panel_layout(
                     &self.scm_snapshot,
                     sidebar_width,
@@ -260,9 +272,10 @@ impl App {
                 }
                 return;
             }
-            let first_row_y = lh * 1.5;
+            let sidebar_lh = self.sidebar_density_line_height(lh);
+            let first_row_y = sidebar_lh * 1.5;
             if my >= first_row_y {
-                let row = ((my - first_row_y) / lh) as usize;
+                let row = ((my - first_row_y) / sidebar_lh) as usize;
                 if let Some(path) = self.tree.activate(row) {
                     self.open_file(path);
                 }

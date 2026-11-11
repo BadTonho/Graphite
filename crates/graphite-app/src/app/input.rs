@@ -20,6 +20,9 @@ impl App {
         if self.workbench_menu_key(&event.logical_key) {
             return;
         }
+        if self.settings_menu_key(&event.logical_key) {
+            return;
+        }
         if self.activity_bar_menu_key(&event.logical_key) {
             return;
         }
