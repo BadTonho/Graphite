@@ -114,6 +114,14 @@ struct App {
     workbench_menu: Option<app::menu_bar::WorkbenchMenu>,
     workbench_menu_overflow: bool,
     workbench_overflow_selection: usize,
+    file_menu_selection: usize,
+    file_menu_submenu: Option<app::file_menu::FileMenuSubmenu>,
+    auto_save: bool,
+    autosave_deadlines: HashMap<DocumentId, (u64, std::time::Instant)>,
+    file_shortcut_chord: Option<std::time::Instant>,
+    pending_revert_confirmation: Option<DocumentId>,
+    current_workspace_file: Option<PathBuf>,
+    recent_workspaces: Vec<PathBuf>,
     active_plugin_activity: Option<String>,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
@@ -264,15 +272,29 @@ impl App {
                 .expect("failed to create LSP event thread");
         }
         let config_root = config::app_config_dir();
-        let profiles = if isolated {
+        let mut profiles = if isolated {
             None
         } else {
             app::phase5::Profiles::open(&config_root).ok()
         };
+        if let (Some(profiles), Ok(profile)) =
+            (profiles.as_mut(), std::env::var("GRAPHITE_STARTUP_PROFILE"))
+        {
+            let _ = profiles.select_for_window(&profile);
+        }
         let profile_root = profiles
             .as_ref()
             .and_then(|profiles| profiles.path(profiles.active()).ok())
             .unwrap_or_else(|| config_root.clone());
+        let auto_save = std::fs::read(profile_root.join("files.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| value.get("autoSave").and_then(serde_json::Value::as_bool))
+            .unwrap_or(false);
+        let recent_workspaces = std::fs::read(profile_root.join("recent-workspaces.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Vec<PathBuf>>(&bytes).ok())
+            .unwrap_or_default();
         let sidebar_width = if isolated {
             config::DEFAULT_SIDEBAR_WIDTH
         } else {
@@ -447,6 +469,14 @@ impl App {
             workbench_menu: None,
             workbench_menu_overflow: false,
             workbench_overflow_selection: 0,
+            file_menu_selection: 0,
+            file_menu_submenu: None,
+            auto_save,
+            autosave_deadlines: HashMap::new(),
+            file_shortcut_chord: None,
+            pending_revert_confirmation: None,
+            current_workspace_file: None,
+            recent_workspaces,
             active_plugin_activity: None,
             workspace_trust: if isolated {
                 None
@@ -651,7 +681,8 @@ fn main() {
         }
     };
     let ipc_server_child = std::env::var_os("GRAPHITE_IPC_SERVER_CHILD").is_some();
-    if !ipc_server_child && !simulate_host {
+    let force_new_window = std::env::var_os("GRAPHITE_NEW_WINDOW").is_some();
+    if !ipc_server_child && !simulate_host && !force_new_window {
         match cli::send_to_existing(&request, &cli_translator) {
             Ok(true) => return,
             Ok(false) => {}

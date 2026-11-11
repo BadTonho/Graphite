@@ -390,8 +390,16 @@ pub(crate) struct ConflictView {
 }
 
 impl App {
+    fn scm_workspace_root(&self) -> PathBuf {
+        self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(|path| self.tree.root_for(path).to_path_buf())
+            .unwrap_or_else(|| self.tree.root().to_path_buf())
+    }
+
     pub(crate) fn refresh_scm_async(&mut self) {
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         if let Some(proxy) = self.event_proxy.clone() {
             std::thread::Builder::new()
                 .name("graphite-scm-status".into())
@@ -423,7 +431,7 @@ impl App {
         self.scm_snapshot
             .files
             .get(self.scm_selected)
-            .map(|item| self.tree.root().join(&item.path))
+            .map(|item| self.scm_workspace_root().join(&item.path))
     }
 
     pub(crate) fn open_branch_picker(&mut self) {
@@ -451,7 +459,7 @@ impl App {
             return;
         };
         self.branch_picker = false;
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let open_paths = self
             .documents
             .iter()
@@ -512,7 +520,7 @@ impl App {
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = self.t("scm.error.actions_need_loop").into();
             self.fail_current_command(CommandError::Failed(self.status.clone()));
@@ -692,7 +700,7 @@ impl App {
             self.status = self.t("scm.diff.save_first").into();
             return;
         };
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
             self.fail_current_command(CommandError::Failed(
                 self.t("scm.error.no_event_loop").into(),
@@ -754,7 +762,7 @@ impl App {
     }
 
     pub(crate) fn stage_saved_conflict(&mut self, path: &Path) {
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let is_conflict = self
             .scm_snapshot
             .files
@@ -789,7 +797,7 @@ impl App {
         let Some(path) = self.scm_selected_path() else {
             return;
         };
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
             self.fail_current_command(CommandError::Failed(
                 self.t("scm.error.no_event_loop").into(),
@@ -849,7 +857,7 @@ impl App {
             self.conflict_view = Some(conflict);
             return;
         };
-        let root = self.tree.root().to_path_buf();
+        let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
             self.fail_current_command(CommandError::Failed(
                 self.t("scm.error.no_event_loop").into(),
@@ -947,12 +955,11 @@ impl App {
             repo_header_y,
             text,
         );
-        let repo_name = self
-            .tree
-            .root()
+        let repo_root = self.scm_workspace_root();
+        let repo_name = repo_root
             .file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or_else(|| self.tree.root().to_str().unwrap_or("Workspace"));
+            .unwrap_or_else(|| repo_root.to_str().unwrap_or("Workspace"));
         if !self.scm_repositories_collapsed {
             let icon_size = layout.repository_icon.width;
             renderer.draw_icon(

@@ -9,6 +9,7 @@ pub struct TreeRow {
     pub depth: usize,
     pub expanded: bool,
     pub icon: FileIcon,
+    pub workspace_root: bool,
 }
 
 #[cfg(test)]
@@ -51,6 +52,7 @@ pub struct FileTree {
     workspace: Workspace,
     expanded: HashSet<PathBuf>,
     pub rows: Vec<TreeRow>,
+    pub(crate) show_workspace_roots: bool,
 }
 
 impl FileTree {
@@ -59,6 +61,7 @@ impl FileTree {
             workspace,
             expanded: HashSet::new(),
             rows: Vec::new(),
+            show_workspace_roots: false,
         };
         tree.rebuild();
         tree
@@ -73,6 +76,61 @@ impl FileTree {
     }
     pub fn root(&self) -> &std::path::Path {
         self.workspace.root()
+    }
+
+    pub fn roots(&self) -> &[PathBuf] {
+        self.workspace.roots()
+    }
+
+    pub fn workspace_snapshot(&self) -> Workspace {
+        self.workspace.clone()
+    }
+
+    pub fn is_in_workspace(&self, path: &std::path::Path) -> bool {
+        self.workspace
+            .roots()
+            .iter()
+            .any(|root| path.starts_with(root))
+    }
+
+    pub fn root_for(&self, path: &std::path::Path) -> &std::path::Path {
+        self.workspace
+            .roots()
+            .iter()
+            .filter(|root| path.starts_with(root))
+            .max_by_key(|root| root.components().count())
+            .map_or(self.workspace.root(), PathBuf::as_path)
+    }
+
+    pub fn relative_path(&self, path: &std::path::Path) -> PathBuf {
+        path.strip_prefix(self.root_for(path))
+            .unwrap_or(path)
+            .to_path_buf()
+    }
+
+    pub fn add_workspace_root(
+        &mut self,
+        path: PathBuf,
+    ) -> Result<bool, graphite_workspace::WorkspaceError> {
+        let added = self.workspace.add_root(path)?;
+        if added {
+            self.show_workspace_roots = true;
+            self.rebuild();
+        }
+        Ok(added)
+    }
+
+    pub fn remove_workspace_root(&mut self, path: &std::path::Path) -> bool {
+        let removed = self.workspace.remove_root(path);
+        if removed {
+            self.expanded.remove(path);
+            self.rebuild();
+        }
+        removed
+    }
+
+    pub fn open_workspace_file(path: &std::path::Path) -> Result<Workspace, String> {
+        Workspace::open_code_workspace(path)
     }
 
     pub fn replace_workspace(&mut self, workspace: Workspace) {
@@ -97,8 +155,33 @@ impl FileTree {
 
     fn rebuild(&mut self) {
         let mut rows = Vec::new();
-        let root = self.workspace.root().to_path_buf();
-        self.collect(&root, 0, &mut rows);
+        let roots = self.workspace.roots().to_vec();
+        self.show_workspace_roots = roots.len() > 1;
+        for root in roots {
+            if self.show_workspace_roots {
+                let name = root
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| root.display().to_string());
+                let expanded = self.expanded.contains(&root);
+                rows.push(TreeRow {
+                    entry: Entry {
+                        path: root.clone(),
+                        name,
+                        is_dir: true,
+                    },
+                    depth: 0,
+                    expanded,
+                    icon: crate::file_icons::for_entry("", true, expanded),
+                    workspace_root: true,
+                });
+                if expanded {
+                    self.collect(&root, 1, &mut rows);
+                }
+            } else {
+                self.collect(&root, 0, &mut rows);
+            }
+        }
         self.rows = rows;
     }
 
@@ -112,6 +195,7 @@ impl FileTree {
                 depth,
                 expanded,
                 icon,
+                workspace_root: false,
             });
             if expanded {
                 self.collect(&path, depth + 1, out);

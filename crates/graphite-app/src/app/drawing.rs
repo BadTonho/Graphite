@@ -47,7 +47,11 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             r.draw_text(
-                &self.tree.root_name().to_uppercase(),
+                &if self.tree.roots().len() > 1 {
+                    self.t("workspace.multi_root_title").to_uppercase()
+                } else {
+                    self.tree.root_name().to_uppercase()
+                },
                 ACTIVITY_BAR_WIDTH + PAD,
                 lh * 0.25,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
@@ -184,7 +188,7 @@ impl App {
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
                 }
-                let relative = path.strip_prefix(self.tree.root()).unwrap_or(path);
+                let relative = self.tree.relative_path(path);
                 let icon = crate::file_icons::for_path(path);
                 let icon_size = (lh * 0.85).round();
                 r.draw_icon(
@@ -395,11 +399,8 @@ impl App {
                         rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
                 }
-                let rel = hit
-                    .path
-                    .strip_prefix(self.tree.root())
-                    .unwrap_or(&hit.path)
-                    .display();
+                let relative_path = self.tree.relative_path(&hit.path);
+                let rel = relative_path.display();
                 let row = format!("{}:{}  {}", rel, hit.line + 1, hit.text);
                 r.draw_text(
                     &row,

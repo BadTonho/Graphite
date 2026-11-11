@@ -17,6 +17,7 @@ mod editor_commands;
 #[allow(dead_code)]
 pub(super) mod editor_groups;
 pub(crate) mod emmet;
+pub(crate) mod file_menu;
 mod group_drawing;
 mod i18n;
 mod ime;

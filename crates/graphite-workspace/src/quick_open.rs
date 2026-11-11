@@ -10,28 +10,30 @@ impl Workspace {
     ) -> Vec<PathBuf> {
         let query = query.to_lowercase();
         let mut results = Vec::new();
-        for entry in WalkBuilder::new(&self.root)
-            .standard_filters(true)
-            .hidden(false)
-            .require_git(false)
-            .filter_entry(|e| e.file_name() != ".git")
-            .build()
-            .filter_map(Result::ok)
-        {
-            if cancelled() {
-                break;
-            }
-            if !entry.file_type().is_some_and(|t| t.is_file()) {
-                continue;
-            }
-            let path = entry.into_path();
-            let relative = path
-                .strip_prefix(&self.root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if let Some(score) = fuzzy_score(&relative, &query) {
-                results.push((score, relative, path));
+        for root in &self.roots {
+            for entry in WalkBuilder::new(root)
+                .standard_filters(true)
+                .hidden(false)
+                .require_git(false)
+                .filter_entry(|e| e.file_name() != ".git")
+                .build()
+                .filter_map(Result::ok)
+            {
+                if cancelled() {
+                    break;
+                }
+                if !entry.file_type().is_some_and(|t| t.is_file()) {
+                    continue;
+                }
+                let path = entry.into_path();
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if let Some(score) = fuzzy_score(&relative, &query) {
+                    results.push((score, relative, path));
+                }
             }
         }
         results.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));

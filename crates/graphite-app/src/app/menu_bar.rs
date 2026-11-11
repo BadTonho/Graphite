@@ -370,6 +370,10 @@ impl App {
         self.workbench_menu = Some(menu);
         self.workbench_menu_overflow = false;
         self.activity_bar_menu = None;
+        if menu == WorkbenchMenu::File {
+            self.file_menu_submenu = None;
+            self.file_menu_selection = 0;
+        }
         if menu == WorkbenchMenu::View {
             self.view_menu_open_at(anchor_x, width, height);
         }
@@ -546,7 +550,10 @@ impl App {
                         self.workbench_menu = Some(selected);
                         self.workbench_menu_overflow = false;
                         self.activity_bar_menu = None;
-                        if selected == WorkbenchMenu::View {
+                        if selected == WorkbenchMenu::File {
+                            self.file_menu_submenu = None;
+                            self.file_menu_selection = 0;
+                        } else if selected == WorkbenchMenu::View {
                             self.view_menu_open_at(layout.menu_anchor(selected), width, height);
                         }
                     }
@@ -572,6 +579,46 @@ impl App {
                 return true;
             }
             self.close_workbench_menu();
+        } else if active == WorkbenchMenu::File {
+            let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width);
+            let popup_x = layout
+                .menu_anchor(WorkbenchMenu::File)
+                .clamp(0.0, (width - popup_width).max(0.0));
+            let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width);
+            let submenu_x = if popup_x + popup_width + submenu_width <= width {
+                popup_x + popup_width
+            } else {
+                (popup_x - submenu_width).max(0.0)
+            };
+            if let Some((command, submenu, enabled)) =
+                self.file_menu_command_at(x, y, popup_x, submenu_x)
+            {
+                if !enabled {
+                    return true;
+                }
+                if let Some(submenu) = submenu {
+                    self.file_menu_submenu = Some(submenu);
+                    self.file_menu_selection = 0;
+                } else {
+                    self.execute_file_menu_command(command);
+                    self.close_workbench_menu();
+                }
+            } else {
+                let rows = self.file_menu_rows(self.file_menu_submenu);
+                let popup_height = rows
+                    .iter()
+                    .map(|row| Self::file_menu_row_height(*row))
+                    .sum::<f32>()
+                    + 8.0;
+                let in_submenu = self.file_menu_submenu.is_some()
+                    && x >= submenu_x
+                    && x < submenu_x + submenu_width
+                    && y >= layout.height
+                    && y < layout.height + popup_height.max(250.0);
+                if !in_submenu {
+                    self.close_workbench_menu();
+                }
+            }
         } else if active == WorkbenchMenu::View {
             if self.activity_bar_menu.is_some() {
                 self.handle_activity_bar_menu_click(x, y, width);
@@ -611,7 +658,31 @@ impl App {
             return;
         }
         if y >= layout.height {
-            if active == WorkbenchMenu::View {
+            if active == WorkbenchMenu::File {
+                let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width);
+                let popup_x = layout
+                    .menu_anchor(WorkbenchMenu::File)
+                    .clamp(0.0, (width - popup_width).max(0.0));
+                let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width);
+                let submenu_x = if popup_x + popup_width + submenu_width <= width {
+                    popup_x + popup_width
+                } else {
+                    (popup_x - submenu_width).max(0.0)
+                };
+                let in_submenu = self.file_menu_submenu.is_some()
+                    && x >= submenu_x
+                    && x < submenu_x + submenu_width;
+                if in_submenu {
+                    self.file_menu_pointer_selection(y, self.file_menu_submenu);
+                } else if x >= popup_x && x < popup_x + popup_width {
+                    self.file_menu_pointer_selection(y, None);
+                    let hovered = self.file_menu_command_at(x, y, popup_x, submenu_x);
+                    self.file_menu_submenu = hovered.and_then(|(_, submenu, _)| submenu);
+                    if self.file_menu_submenu.is_some() {
+                        self.file_menu_selection = 0;
+                    }
+                }
+            } else if active == WorkbenchMenu::View {
                 self.activity_bar_menu_pointer_moved(x, y, width);
             }
             return;
@@ -648,6 +719,49 @@ impl App {
                     }
                     return true;
                 }
+            }
+            if active == WorkbenchMenu::File {
+                match key {
+                    Key::Named(NamedKey::Escape) => {
+                        if self.file_menu_submenu.take().is_some() {
+                            self.file_menu_selection = 0;
+                        } else {
+                            self.close_workbench_menu();
+                        }
+                    }
+                    Key::Named(NamedKey::ArrowDown) => self.file_menu_move_selection(1),
+                    Key::Named(NamedKey::ArrowUp) => self.file_menu_move_selection(-1),
+                    Key::Named(NamedKey::ArrowRight) => {
+                        if let Some((_, Some(submenu), _)) = self.file_menu_selected() {
+                            self.file_menu_submenu = Some(submenu);
+                            self.file_menu_selection = 0;
+                        } else if self.file_menu_submenu.is_none() {
+                            self.workbench_menu = Some(WorkbenchMenu::Edit);
+                        }
+                    }
+                    Key::Named(NamedKey::ArrowLeft) => {
+                        if self.file_menu_submenu.take().is_some() {
+                            self.file_menu_selection = 0;
+                        } else {
+                            self.workbench_menu = Some(WorkbenchMenu::Help);
+                        }
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        if let Some((command, submenu, enabled)) = self.file_menu_selected() {
+                            if enabled {
+                                if let Some(submenu) = submenu {
+                                    self.file_menu_submenu = Some(submenu);
+                                    self.file_menu_selection = 0;
+                                } else {
+                                    self.execute_file_menu_command(command);
+                                    self.close_workbench_menu();
+                                }
+                            }
+                        }
+                    }
+                    _ => return false,
+                }
+                return true;
             }
             if active == WorkbenchMenu::More && self.workbench_menu_overflow {
                 let layout = self.gpu.as_ref().map(|gpu| {
@@ -745,6 +859,8 @@ impl App {
                         );
                         let anchor = self.titlebar_layout(width, char_width).menu_anchor(active);
                         self.activate_menu(active, anchor, width, height);
+                    } else if active == WorkbenchMenu::File {
+                        self.file_menu_selection = 0;
                     }
                 }
                 _ => return false,
@@ -754,6 +870,8 @@ impl App {
         if matches!(key, Key::Named(NamedKey::F10)) {
             self.workbench_menu = Some(WorkbenchMenu::File);
             self.workbench_menu_overflow = false;
+            self.file_menu_submenu = None;
+            self.file_menu_selection = 0;
             return true;
         }
         false
@@ -830,7 +948,9 @@ impl App {
         }
 
         if let Some(active) = self.workbench_menu {
-            if active != WorkbenchMenu::View
+            if active == WorkbenchMenu::File {
+                self.draw_file_menu(renderer, &layout);
+            } else if active != WorkbenchMenu::View
                 && active != WorkbenchMenu::More
                 && !self.workbench_menu_overflow
             {
@@ -862,6 +982,221 @@ impl App {
         }
 
         self.draw_titlebar_controls(renderer, layout.controls);
+    }
+
+    fn draw_file_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        use super::file_menu::FileMenuRow;
+        let (width, _) = renderer.size();
+        let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width as f32);
+        let popup_x = layout
+            .menu_anchor(WorkbenchMenu::File)
+            .clamp(0.0, width as f32 - popup_width);
+        let popup_y = layout.height;
+        let rows = self.file_menu_rows(None);
+        let main_selected_command = match self.file_menu_submenu {
+            Some(super::file_menu::FileMenuSubmenu::NewWindowProfile) => {
+                Some(super::file_menu::FileMenuCommand::NewWindowProfile)
+            }
+            Some(super::file_menu::FileMenuSubmenu::OpenRecent) => {
+                Some(super::file_menu::FileMenuCommand::OpenRecent)
+            }
+            Some(_) => Some(super::file_menu::FileMenuCommand::Preferences),
+            None => self.file_menu_selected().map(|(command, _, _)| command),
+        };
+        let main_selected_index = rows
+            .iter()
+            .filter_map(|row| match row {
+                FileMenuRow::Item { command, .. } => Some(*command),
+                FileMenuRow::Separator => None,
+            })
+            .position(|command| Some(command) == main_selected_command);
+        let popup_height = rows
+            .iter()
+            .map(|row| Self::file_menu_row_height(*row))
+            .sum::<f32>()
+            + 8.0;
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        renderer.draw_rect(popup_x, popup_y, popup_width, popup_height, border);
+        renderer.draw_rect(
+            popup_x + 1.0,
+            popup_y + 1.0,
+            popup_width - 2.0,
+            popup_height - 2.0,
+            background,
+        );
+        let mut y = popup_y + 4.0;
+        let mut item_index = 0;
+        for row in rows.iter().copied() {
+            match row {
+                FileMenuRow::Separator => {
+                    renderer.draw_rect(popup_x + 8.0, y + 4.0, popup_width - 16.0, 1.0, border);
+                    y += Self::file_menu_row_height(row);
+                }
+                FileMenuRow::Item {
+                    command,
+                    label,
+                    shortcut,
+                    submenu,
+                    enabled,
+                    checked,
+                } => {
+                    if Some(item_index) == main_selected_index {
+                        renderer.draw_rect(popup_x + 2.0, y, popup_width - 4.0, 26.0, selected);
+                    }
+                    if checked {
+                        renderer.draw_text("✓", popup_x + 9.0, y + 5.0, foreground);
+                    }
+                    let label = fit_file_menu_label(
+                        self.file_menu_label(label, command),
+                        ((popup_width
+                            - 50.0
+                            - if shortcut.is_empty() {
+                                12.0
+                            } else {
+                                shortcut.chars().count() as f32 * renderer.char_width() + 42.0
+                            })
+                            / renderer.char_width())
+                        .floor()
+                        .max(1.0) as usize,
+                    );
+                    renderer.draw_text(
+                        &label,
+                        popup_x + 30.0,
+                        y + 5.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    if !shortcut.is_empty() {
+                        let x = popup_x + popup_width
+                            - 12.0
+                            - shortcut.chars().count() as f32 * renderer.char_width();
+                        renderer.draw_text(shortcut, x, y + 5.0, dim);
+                    }
+                    if submenu.is_some() {
+                        renderer.draw_text("›", popup_x + popup_width - 18.0, y + 4.0, dim);
+                    }
+                    item_index += 1;
+                    y += 26.0;
+                }
+            }
+        }
+        if self.file_menu_submenu.is_some() {
+            let submenu_rows = self.file_menu_rows(self.file_menu_submenu);
+            let submenu_height = submenu_rows
+                .iter()
+                .map(|row| Self::file_menu_row_height(*row))
+                .sum::<f32>()
+                + 8.0;
+            let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width as f32);
+            let submenu_x = if popup_x + popup_width + submenu_width <= width as f32 {
+                popup_x + popup_width
+            } else {
+                (popup_x - submenu_width).max(0.0)
+            };
+            renderer.draw_rect(submenu_x, popup_y, submenu_width, submenu_height, border);
+            renderer.draw_rect(
+                submenu_x + 1.0,
+                popup_y + 1.0,
+                submenu_width - 2.0,
+                submenu_height - 2.0,
+                background,
+            );
+            let mut y = popup_y + 4.0;
+            let mut submenu_item_index = 0;
+            for row in submenu_rows.iter().copied() {
+                match row {
+                    FileMenuRow::Separator => {
+                        renderer.draw_rect(
+                            submenu_x + 8.0,
+                            y + 4.0,
+                            submenu_width - 16.0,
+                            1.0,
+                            border,
+                        );
+                        y += Self::file_menu_row_height(row);
+                    }
+                    FileMenuRow::Item {
+                        command,
+                        label,
+                        shortcut,
+                        submenu,
+                        enabled,
+                        checked,
+                    } => {
+                        if submenu_item_index == self.file_menu_selection {
+                            renderer.draw_rect(
+                                submenu_x + 2.0,
+                                y,
+                                submenu_width - 4.0,
+                                26.0,
+                                selected,
+                            );
+                        }
+                        if checked {
+                            renderer.draw_text("✓", submenu_x + 9.0, y + 5.0, foreground);
+                        }
+                        let label = fit_file_menu_label(
+                            self.file_menu_label(label, command),
+                            ((submenu_width
+                                - 50.0
+                                - if shortcut.is_empty() {
+                                    12.0
+                                } else {
+                                    shortcut.chars().count() as f32 * renderer.char_width() + 42.0
+                                })
+                                / renderer.char_width())
+                            .floor()
+                            .max(1.0) as usize,
+                        );
+                        renderer.draw_text(
+                            &label,
+                            submenu_x + 30.0,
+                            y + 5.0,
+                            if enabled { foreground } else { dim },
+                        );
+                        if !shortcut.is_empty() {
+                            renderer.draw_text(
+                                shortcut,
+                                submenu_x + submenu_width
+                                    - 12.0
+                                    - shortcut.chars().count() as f32 * renderer.char_width(),
+                                y + 5.0,
+                                dim,
+                            );
+                        }
+                        if submenu.is_some() {
+                            renderer.draw_text("›", submenu_x + submenu_width - 18.0, y + 4.0, dim);
+                        }
+                        submenu_item_index += 1;
+                        y += 26.0;
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn file_menu_label(
+        &self,
+        key: &'static str,
+        command: super::file_menu::FileMenuCommand,
+    ) -> String {
+        use super::file_menu::FileMenuCommand as C;
+        match command {
+            C::SwitchProfile(index) => self
+                .user_profiles()
+                .ok()
+                .and_then(|profiles| profiles.get(index).cloned())
+                .unwrap_or_default(),
+            C::RecentPath(index) => self
+                .recent_workspaces
+                .get(index)
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            _ => self.t(key).to_owned(),
+        }
     }
 
     fn draw_titlebar_controls(&self, renderer: &mut Renderer, controls: TitlebarControlRects) {
@@ -932,6 +1267,17 @@ fn draw_outline_rect(
 fn char_width_center(renderer: &Renderer, character: char) -> f32 {
     let _ = character;
     renderer.char_width() * 0.5
+}
+
+fn fit_file_menu_label(label: String, max_chars: usize) -> String {
+    let chars = label.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        label
+    } else if max_chars <= 1 {
+        "…".into()
+    } else {
+        chars[..max_chars - 1].iter().collect::<String>() + "…"
+    }
 }
 
 fn draw_brand_icon(renderer: &mut Renderer, rect: MenuItemRectLike) {

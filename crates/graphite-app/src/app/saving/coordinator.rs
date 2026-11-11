@@ -141,7 +141,7 @@ impl App {
             let owner = match &batch.action {
                 AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
                 AfterSave::Close { execution, .. } => Some(*execution),
-                AfterSave::Window { execution } => *execution,
+                AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
                 AfterSave::Workspace => None,
             };
             if owner.is_some_and(|id| !self.command_runtime.pending.contains_key(&id)) {
@@ -266,6 +266,19 @@ impl App {
                         self.status = self.tf("save.cannot_close", &[("error", error)]);
                     }
                     self.close_window_confirm = false;
+                    if let Some(execution) = execution {
+                        self.finish_command(execution, result);
+                    }
+                }
+                AfterSave::Revert {
+                    document,
+                    execution,
+                } => {
+                    if result.is_ok() {
+                        self.reload_document_from_disk(document);
+                    }
+                    self.close_window_confirm = false;
+                    self.pending_revert_confirmation = None;
                     if let Some(execution) = execution {
                         self.finish_command(execution, result);
                     }
