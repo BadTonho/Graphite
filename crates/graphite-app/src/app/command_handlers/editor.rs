@@ -283,6 +283,31 @@ pub(super) fn graphite_lsp_show_type_hierarchy(
     Ok(())
 }
 
+pub(super) fn editor_fold(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.fold_at_cursor();
+    Ok(())
+}
+
+pub(super) fn editor_unfold(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.unfold_at_cursor();
+    Ok(())
+}
+
+pub(super) fn editor_fold_all(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.fold_all();
+    Ok(())
+}
+
+pub(super) fn editor_toggle_pin_tab(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.toggle_pin_active_view();
+    Ok(())
+}
+
+pub(super) fn editor_unfold_all(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.unfold_all();
+    Ok(())
+}
+
 pub(super) fn undo(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
     {
         app.editor_mut().undo();
@@ -761,6 +786,11 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     add(
         registry, "redo", "Redo", "Editor", VIEW, "canRedo", None, redo,
     );
+    add(registry, "editor.fold", "Fold", "Editor", VIEW, "true", None, editor_fold);
+    add(registry, "editor.unfold", "Unfold", "Editor", VIEW, "true", None, editor_unfold);
+    add(registry, "editor.foldAll", "Fold All", "Editor", VIEW, "true", None, editor_fold_all);
+    add(registry, "editor.unfoldAll", "Unfold All", "Editor", VIEW, "true", None, editor_unfold_all);
+    add(registry, "editor.action.togglePinTab", "Pin or Unpin Tab", "Editor", VIEW, "true", None, editor_toggle_pin_tab);
     add(
         registry,
         "editor.action.commentLine",

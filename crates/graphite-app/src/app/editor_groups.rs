@@ -27,6 +27,15 @@ pub(crate) struct View {
     pub smart_selection_history: Vec<Selection>,
     pub smart_selection_guard: Option<(DocumentId, u64, Selection)>,
     pub scroll_line: usize,
+    /// Start lines of collapsed fold regions in this view, sorted ascending.
+    pub folded: Vec<usize>,
+    /// Document revision the fold list was built against; a change clears the folds.
+    pub folded_revision: u64,
+    /// Pinned tabs stay open when a preview opens and sort before unpinned tabs.
+    pub pinned: bool,
+    /// Set while the view is a preview tab: the document revision when it was opened.
+    /// Any later edit makes the tab permanent.
+    pub preview_revision: Option<u64>,
 }
 
 pub(crate) struct ClosedTab {
@@ -80,6 +89,10 @@ impl EditorGroups {
             smart_selection_history: Vec::new(),
             smart_selection_guard: None,
             scroll_line: 0,
+            folded: Vec::new(),
+            folded_revision: 0,
+            pinned: false,
+            preview_revision: None,
         };
         Self {
             groups: vec![Group {
@@ -280,6 +293,10 @@ impl EditorGroups {
                 smart_selection_history: Vec::new(),
                 smart_selection_guard: None,
                 scroll_line: 0,
+                folded: Vec::new(),
+                folded_revision: 0,
+                pinned: false,
+                preview_revision: None,
             });
         }
     }
@@ -294,6 +311,22 @@ impl EditorGroups {
         self.focused = id;
         true
     }
+    /// Moves pinned tabs before unpinned ones, keeping their relative order and the active tab.
+    pub(crate) fn order_group_tabs(&mut self, group: u64) {
+        let Some(group) = self.group_mut(group) else {
+            return;
+        };
+        let active_id = group.tabs.get(group.active).map(|view| view.id);
+        group.tabs.sort_by_key(|view| !view.pinned);
+        if let Some(id) = active_id {
+            group.active = group
+                .tabs
+                .iter()
+                .position(|view| view.id == id)
+                .unwrap_or(0);
+        }
+    }
+
     pub fn activate_document(
         &mut self,
         document: DocumentId,
@@ -314,6 +347,10 @@ impl EditorGroups {
                 smart_selection_history: Vec::new(),
                 smart_selection_guard: None,
                 scroll_line,
+                folded: Vec::new(),
+                folded_revision: 0,
+                pinned: false,
+                preview_revision: None,
             });
             group.active = group.tabs.len() - 1;
         }
