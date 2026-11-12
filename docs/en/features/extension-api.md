@@ -21,6 +21,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | File watchers | `workspace.createFileSystemWatcher` receives create, change and delete events for the whole workspace (except inside `node_modules`) and for folders the extension registers outside it. |
 | Clipboard | `env.clipboard.readText` and `writeText`. |
 | `workspace.fs` | Answered by the extension host directly on the local disk; it does not go through Graphite. |
+| Text decorations | `window.createTextEditorDecorationType` and `TextEditor.setDecorations` draw background colors, borders (`border`, `outline`), whole-line marks and `after` text at the end of a line, with `dark` and `light` variants. Colors can be hex, `rgb()`/`rgba()` or common theme colors. Fonts, gutter icons, overview ruler marks, `before` text and hover messages are ignored, and decorations are not drawn in word-wrap mode yet. Ranges are not adjusted while the document is edited; the extension normally sets them again. |
 | Webview | One webview panel, HTML content, messages both ways. |
 
 ## Declarative contributions

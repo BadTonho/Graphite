@@ -5,11 +5,13 @@ use graphite_extension_host::code_oss::Session;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
+mod decorations;
 mod documents;
 mod file_events;
 mod language_results;
 mod languages;
 pub(crate) use file_events::{changes as file_changes, FileChange};
+pub(crate) use decorations::LineMark as DecorationMark;
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
@@ -35,6 +37,7 @@ pub(crate) struct Runtime {
     workbench: workbench::Workbench,
     terminals: terminals::Terminals,
     watches: file_events::Watches,
+    decorations: decorations::Decorations,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -180,6 +183,7 @@ impl App {
                 workbench: Default::default(),
                 terminals: Default::default(),
                 watches: Default::default(),
+                decorations: Default::default(),
                 unsupported: BTreeSet::new(),
             });
         }

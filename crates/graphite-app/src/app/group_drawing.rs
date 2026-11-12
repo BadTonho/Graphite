@@ -270,6 +270,10 @@ impl App {
                 draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
                 continue;
             }
+            let decoration_uri = buffer
+                .path()
+                .and_then(|path| graphite_core_api::DocumentUri::from_path(path).ok())
+                .map(|uri| uri.as_str().to_owned());
             let folds = super::fold_commands::effective_folds(view, buffer.revision());
             let fold_hidden = super::folding::hidden_ranges(buffer, folds, tab.indentation.tab_size);
             let rows = super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
@@ -286,6 +290,17 @@ impl App {
                         (index - line_start, super::drawing_helpers::bracket_class(level))
                     })
                     .collect();
+                if let Some(uri) = &decoration_uri {
+                    self.draw_line_decorations(
+                        r,
+                        super::decoration_drawing::DecorationLayer::Under,
+                        uri,
+                        line,
+                        &text,
+                        tab.indentation.tab_size,
+                        (text_x, y, cw, lh, right),
+                    );
+                }
                 for selection in &view.selection_state.selections() {
                     let start = selection.anchor.min(selection.head).max(line_start);
                     let end = selection.anchor.max(selection.head).min(line_end);
@@ -398,6 +413,17 @@ impl App {
                     cw,
                     tab.indentation.tab_size,
                 );
+                if let Some(uri) = &decoration_uri {
+                    self.draw_line_decorations(
+                        r,
+                        super::decoration_drawing::DecorationLayer::Over,
+                        uri,
+                        line,
+                        &text,
+                        tab.indentation.tab_size,
+                        (text_x, y, cw, lh, right),
+                    );
+                }
                 if self.view_preferences.whitespace != config::WhitespaceRendering::None {
                     draw_whitespace_markers(
                         r,

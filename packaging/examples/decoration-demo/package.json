@@ -1,0 +1,16 @@
+{
+  "publisher": "graphite-demo",
+  "name": "decoration-demo",
+  "displayName": "Graphite decoration demo",
+  "description": "Highlights TODO and error lines to check text decorations in Graphite.",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.100.0" },
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "graphiteDemo.decorate", "title": "Graphite Demo: Decorate editor" },
+      { "command": "graphiteDemo.clear", "title": "Graphite Demo: Clear decorations" }
+    ]
+  }
+}

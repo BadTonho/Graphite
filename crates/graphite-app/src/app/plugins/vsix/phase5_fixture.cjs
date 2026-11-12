@@ -127,6 +127,19 @@ exports.activate = context => {
             watcher.dispose();
             if (!uri.fsPath.endsWith('new.watched')) throw new Error('watcher reported ' + uri.fsPath);
         }),
+        vscode.commands.registerCommand('phase5.decorate', () => {
+            const type = vscode.window.createTextEditorDecorationType({
+                backgroundColor: '#ff000080',
+                border: '1px solid #00ff00',
+                after: { contentText: ' note', color: '#888888' },
+            });
+            const editor = vscode.window.activeTextEditor;
+            editor.setDecorations(type, [new vscode.Range(0, 1, 0, 4)]);
+            editor.setDecorations(
+                vscode.window.createTextEditorDecorationType({ isWholeLine: true, backgroundColor: { id: 'editorError.background' } }),
+                [{ range: new vscode.Range(0, 0, 0, 1), renderOptions: { after: { contentText: ' instance' } } }],
+            );
+        }),
         vscode.commands.registerCommand('phase5.terminal', async () => {
             const windows = process.platform === 'win32';
             const terminal = vscode.window.createTerminal({

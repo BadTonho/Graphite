@@ -88,6 +88,9 @@ impl App {
         if let Some(result) = testing::dispatch(self, runtime, actor, method, args) {
             return result.map_err(|error| error.to_owned());
         }
+        if let Some(result) = decorations::dispatch(runtime, actor, method, args) {
+            return result;
+        }
         if let Some(result) = file_events::dispatch(runtime, actor, method, args) {
             return result;
         }
