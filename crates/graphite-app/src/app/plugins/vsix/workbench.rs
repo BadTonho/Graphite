@@ -20,18 +20,30 @@ pub(super) struct OutputChannel {
 pub(super) struct Workbench {
     outputs: BTreeMap<String, OutputChannel>,
     next_output: u64,
-    status: BTreeMap<String, String>,
+    status: BTreeMap<String, StatusItem>,
+}
+
+/// A status bar item created by an extension.
+struct StatusItem {
+    text: String,
+    /// Command to run when the item is clicked.
+    command: Option<String>,
 }
 
 impl Workbench {
     /// Texts of the status bar items that extensions created, in id order.
     pub(super) fn status_texts(&self) -> Vec<String> {
-        self.status.values().cloned().collect()
+        self.status.values().map(|item| item.text.clone()).collect()
+    }
+
+    /// Command of the `index`-th item, in the same order as [`Self::status_texts`].
+    pub(super) fn status_command(&self, index: usize) -> Option<String> {
+        self.status.values().nth(index)?.command.clone()
     }
 }
 
 /// Local path of a URI given either as a string or as a serialized `file` URI object.
-fn file_path(value: &Value) -> Option<PathBuf> {
+pub(super) fn file_path(value: &Value) -> Option<PathBuf> {
     if let Some(uri) = value.as_str() {
         return crate::lsp::uri_to_path(uri);
     }
@@ -44,7 +56,7 @@ fn file_path(value: &Value) -> Option<PathBuf> {
 }
 
 /// Serialized `file` URI for a local path, in the shape the extension host revives.
-fn file_uri(path: &Path) -> Value {
+pub(super) fn file_uri(path: &Path) -> Value {
     let text = path.to_string_lossy().replace('\\', "/");
     // Windows canonical paths carry the verbatim prefix `\\?\`, which is not part of the URI.
     let text = text.strip_prefix("//?/").unwrap_or(&text).to_owned();
@@ -57,7 +69,7 @@ fn file_uri(path: &Path) -> Value {
 }
 
 /// Glob patterns from a string, an object with `pattern`, or an array of either.
-fn patterns(value: &Value) -> Vec<String> {
+pub(super) fn patterns(value: &Value) -> Vec<String> {
     match value {
         Value::String(pattern) => vec![pattern.clone()],
         Value::Object(_) => value["pattern"]
@@ -143,9 +155,17 @@ pub(super) fn dispatch(
                 Some(other) => other.to_string(),
                 None => String::new(),
             };
-            // Arguments: entry id, item id, extension id, name, text, tooltip, ...
-            let label = text(4).to_owned();
-            runtime.workbench.status.insert(id, label);
+            // Arguments: entry id, item id, extension id, name, text, tooltip,
+            // tooltip provider flag, command, ...
+            let item = StatusItem {
+                text: text(4).to_owned(),
+                command: args
+                    .get(7)
+                    .and_then(|command| command["id"].as_str())
+                    .filter(|command| !command.is_empty())
+                    .map(str::to_owned),
+            };
+            runtime.workbench.status.insert(id, item);
             Ok(Value::Null)
         }
         ("MainThreadStatusBar", "$disposeEntry") => {
@@ -183,6 +203,33 @@ fn read_output(path: &Path) -> String {
 }
 
 impl App {
+    /// Runs the command of the `index`-th extension status bar item: an extension command if
+    /// one with that id is registered, otherwise a Graphite command.
+    pub(crate) fn run_vsix_status_item(&mut self, index: usize) {
+        let Some(command) = self
+            .plugins
+            .vsix
+            .as_ref()
+            .and_then(|runtime| runtime.workbench.status_command(index))
+        else {
+            return;
+        };
+        let registered = self
+            .plugins
+            .vsix
+            .as_ref()
+            .is_some_and(|runtime| runtime.registered.contains(&command));
+        if registered {
+            if let Err(error) = self.run_vsix_command(&format!(":{command}")) {
+                self.status = error;
+            }
+        } else if crate::app::command_registry::registry().get(&command).is_some() {
+            self.run_ui_command(&command);
+        } else {
+            self.status = format!("Unknown command: {command}");
+        }
+    }
+
     /// Whether a read-only view of this output log is open.
     pub(super) fn output_view_open(&self, path: &Path) -> bool {
         self.documents.id_for_path(path).is_some()

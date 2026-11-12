@@ -6,6 +6,15 @@ pub(crate) enum Feature {
     Completion,
     Hover,
     Format,
+    Definition,
+    Declaration,
+    Implementation,
+    TypeDefinition,
+    References,
+    DocumentSymbols,
+    CodeActions,
+    Rename,
+    SignatureHelp,
 }
 
 struct Provider {
@@ -20,6 +29,8 @@ struct Request {
     document: DocumentSnapshot,
     cursor: usize,
     deadline: Instant,
+    /// Text the request was made with (the new name of a rename).
+    argument: Option<String>,
 }
 
 #[derive(Default)]
@@ -50,10 +61,39 @@ impl Languages {
 
 impl App {
     pub(crate) fn request_vsix_language(&mut self, feature: Feature) -> bool {
+        self.request_vsix_language_with(feature, None)
+    }
+
+    /// Whether an active extension provider could answer `feature` for the current document.
+    pub(crate) fn has_vsix_language_provider(&self, feature: Feature) -> bool {
+        let Some(runtime) = self.plugins.vsix.as_ref() else {
+            return false;
+        };
+        if !runtime.ready || !self.vsix_workspace_trusted() {
+            return false;
+        }
+        let id = self.active_document();
+        let Ok(document) = crate::app::services::snapshot_document(id, &self.documents[id]) else {
+            return false;
+        };
+        runtime.languages.providers.values().any(|provider| {
+            provider.feature == feature
+                && provider
+                    .selector
+                    .iter()
+                    .any(|selector| matches_document(selector, &document))
+        })
+    }
+
+    pub(crate) fn request_vsix_language_with(
+        &mut self,
+        feature: Feature,
+        argument: Option<String>,
+    ) -> bool {
         let Some(mut runtime) = self.plugins.vsix.take() else {
             return false;
         };
-        let result = self.start_vsix_language_request(&mut runtime, feature);
+        let result = self.start_vsix_language_request(&mut runtime, feature, argument);
         self.plugins.vsix = Some(runtime);
         match result {
             Ok(started) => started,
@@ -64,7 +104,12 @@ impl App {
         }
     }
 
-    fn start_vsix_language_request(&self, runtime: &mut Runtime, feature: Feature) -> Result<bool> {
+    fn start_vsix_language_request(
+        &self,
+        runtime: &mut Runtime,
+        feature: Feature,
+        argument: Option<String>,
+    ) -> Result<bool> {
         if !runtime.ready || !self.vsix_workspace_trusted() {
             return Ok(false);
         }
@@ -85,6 +130,20 @@ impl App {
         let position = documents::position(&document.text, cursor);
         let position = json!({"lineNumber":position.line + 1, "column":position.character + 1});
         let uri = json!({"$graphiteUri":document.uri});
+        let selection = self.editor().selections().first().map(|selection| {
+            let (start, end) = (
+                selection.anchor.min(selection.head),
+                selection.anchor.max(selection.head),
+            );
+            let (start, end) = (
+                documents::position(&document.text, start),
+                documents::position(&document.text, end),
+            );
+            json!({
+                "startLineNumber": start.line + 1, "startColumn": start.character + 1,
+                "endLineNumber": end.line + 1, "endColumn": end.character + 1,
+            })
+        });
         let (method, args) = match feature {
             Feature::Completion => (
                 "$provideCompletionItems",
@@ -94,6 +153,30 @@ impl App {
             Feature::Format => (
                 "$provideDocumentFormattingEdits",
                 json!([handle, uri, {"tabSize":self.tab_size,"insertSpaces":self.insert_spaces}]),
+            ),
+            Feature::Definition => ("$provideDefinition", json!([handle, uri, position])),
+            Feature::Declaration => ("$provideDeclaration", json!([handle, uri, position])),
+            Feature::Implementation => ("$provideImplementation", json!([handle, uri, position])),
+            Feature::TypeDefinition => ("$provideTypeDefinition", json!([handle, uri, position])),
+            Feature::References => (
+                "$provideReferences",
+                json!([handle, uri, position, {"includeDeclaration":true}]),
+            ),
+            Feature::DocumentSymbols => ("$provideDocumentSymbols", json!([handle, uri])),
+            Feature::CodeActions => (
+                "$provideCodeActions",
+                json!([handle, uri, selection.unwrap_or_else(|| json!({
+                    "startLineNumber": position["lineNumber"], "startColumn": position["column"],
+                    "endLineNumber": position["lineNumber"], "endColumn": position["column"],
+                })), {"trigger": 1}]),
+            ),
+            Feature::Rename => (
+                "$provideRenameEdits",
+                json!([handle, uri, position, argument.clone().unwrap_or_default()]),
+            ),
+            Feature::SignatureHelp => (
+                "$provideSignatureHelp",
+                json!([handle, uri, position, {"triggerKind":1, "isRetrigger":false}]),
             ),
         };
         if let Some(previous) = runtime.languages.request.take() {
@@ -111,6 +194,7 @@ impl App {
             document,
             cursor,
             deadline: Instant::now() + Duration::from_secs(10),
+            argument,
         });
         Ok(true)
     }
@@ -182,9 +266,74 @@ impl App {
                     .collect();
                 self.completion_index = 0;
             }
+            Feature::Definition | Feature::Declaration | Feature::TypeDefinition => {
+                self.show_lsp_locations(&language_results::locations(result), "lsp.definition.none");
+            }
+            Feature::Implementation => {
+                self.show_lsp_locations(
+                    &language_results::locations(result),
+                    "lsp.implementation.none",
+                );
+            }
+            Feature::References => {
+                self.show_lsp_locations(&language_results::locations(result), "lsp.references.none");
+            }
+            Feature::DocumentSymbols => self.show_vsix_symbols(&request.document, result),
+            Feature::CodeActions => {
+                let actions = language_results::code_actions(result)
+                    .into_iter()
+                    .filter_map(|action| serde_json::from_value(action).ok())
+                    .map(lsp_types::CodeActionOrCommand::CodeAction)
+                    .collect();
+                self.quick_fix_actions = actions;
+                self.quick_fix_index = 0;
+                self.quick_fix_visible = true;
+            }
+            Feature::Rename => self.finish_vsix_rename(result),
+            Feature::SignatureHelp => {
+                self.handle_lsp_query("signatureHelp", language_results::signature_help(result));
+            }
             Feature::Format => {}
         }
         Ok(())
+    }
+
+    fn show_vsix_symbols(&mut self, document: &DocumentSnapshot, result: &Value) {
+        let Ok(path) = document.uri.to_path() else {
+            return;
+        };
+        let items = language_results::symbols(result)
+            .into_iter()
+            .map(|(name, scope, line)| crate::app::go_menu::GoSymbolItem {
+                path: path.clone(),
+                line,
+                name,
+                scope,
+            })
+            .collect::<Vec<_>>();
+        self.open_go_picker(crate::app::go_menu::GoPickerKind::EditorSymbols);
+        let empty = self.t("go.no_symbols").to_owned();
+        if let Some(picker) = &mut self.go_picker {
+            picker.message = items.is_empty().then_some(empty);
+            picker.items = items;
+        }
+    }
+
+    fn finish_vsix_rename(&mut self, result: &Value) {
+        if let Some(reason) = result["rejectReason"].as_str() {
+            self.status = reason.to_owned();
+            return;
+        }
+        let edit = language_results::workspace_edit_changes(result)
+            .and_then(|edit| serde_json::from_value::<lsp_types::WorkspaceEdit>(edit).ok());
+        let Some(edit) = edit else {
+            self.status = self.t("lsp.rename.none").into();
+            return;
+        };
+        match self.apply_workspace_edit(edit) {
+            Ok(()) => self.status = self.t("lsp.rename.done").into(),
+            Err(error) => self.status = error,
+        }
     }
 
     pub(crate) fn vsix_diagnostics(
@@ -221,6 +370,23 @@ pub(super) fn language_rpc(
             ("MainThreadLanguageFeatures", "$registerHoverProvider") => Feature::Hover,
             ("MainThreadLanguageFeatures", "$registerCompletionsProvider") => Feature::Completion,
             ("MainThreadLanguageFeatures", "$registerDocumentFormattingSupport") => Feature::Format,
+            ("MainThreadLanguageFeatures", "$registerDefinitionSupport") => Feature::Definition,
+            ("MainThreadLanguageFeatures", "$registerDeclarationSupport") => Feature::Declaration,
+            ("MainThreadLanguageFeatures", "$registerImplementationSupport") => {
+                Feature::Implementation
+            }
+            ("MainThreadLanguageFeatures", "$registerTypeDefinitionSupport") => {
+                Feature::TypeDefinition
+            }
+            ("MainThreadLanguageFeatures", "$registerReferenceSupport") => Feature::References,
+            ("MainThreadLanguageFeatures", "$registerDocumentSymbolProvider") => {
+                Feature::DocumentSymbols
+            }
+            ("MainThreadLanguageFeatures", "$registerCodeActionSupport") => Feature::CodeActions,
+            ("MainThreadLanguageFeatures", "$registerRenameSupport") => Feature::Rename,
+            ("MainThreadLanguageFeatures", "$registerSignatureHelpProvider") => {
+                Feature::SignatureHelp
+            }
             ("MainThreadLanguageFeatures", "$unregister") => {
                 languages
                     .providers

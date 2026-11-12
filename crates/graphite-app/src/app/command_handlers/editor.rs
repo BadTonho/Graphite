@@ -397,8 +397,38 @@ pub(super) fn editor_action_reveal_definition(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    app.request_lsp("definition");
+    if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Definition) {
+        app.request_lsp("definition");
+    }
     Ok(())
+}
+
+/// Declarations and type definitions are answered only by extension providers.
+fn vsix_only_navigation(
+    app: &mut App,
+    feature: crate::app::plugins::VsixLanguageFeature,
+) -> Result<(), CommandError> {
+    if app.request_vsix_language(feature) {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(
+            "No active VSIX provider matches this document".into(),
+        ))
+    }
+}
+
+pub(super) fn editor_action_go_to_declaration(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    vsix_only_navigation(app, crate::app::plugins::VsixLanguageFeature::Declaration)
+}
+
+pub(super) fn editor_action_go_to_type_definition(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    vsix_only_navigation(app, crate::app::plugins::VsixLanguageFeature::TypeDefinition)
 }
 
 pub(super) fn editor_action_show_hover(
@@ -806,6 +836,8 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         editor_action_join_lines,
     );
+    add(registry, "editor.action.goToDeclaration", "Go to Declaration", "Go", VIEW, "true", None, editor_action_go_to_declaration);
+    add(registry, "editor.action.goToTypeDefinition", "Go to Type Definition", "Go", VIEW, "true", None, editor_action_go_to_type_definition);
     add(registry, "editor.action.goToReferences", "Go to References", "Go", VIEW, "true", None, editor_action_go_to_references);
     add(registry, "editor.action.goToImplementation", "Go to Implementations", "Go", VIEW, "true", None, editor_action_go_to_implementations);
     add(registry, "editor.action.peekDefinition", "Peek Definition", "Go", VIEW, "true", None, editor_action_peek_definition);

@@ -67,6 +67,9 @@ impl App {
     }
 
     pub(crate) fn lsp_references(&mut self) {
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::References) {
+            return;
+        }
         self.lsp_send_at_caret(
             "references",
             "textDocument/references",
@@ -75,10 +78,16 @@ impl App {
     }
 
     pub(crate) fn lsp_implementations(&mut self) {
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::Implementation) {
+            return;
+        }
         self.lsp_send_at_caret("implementation", "textDocument/implementation", None);
     }
 
     pub(crate) fn lsp_signature_help(&mut self) {
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::SignatureHelp) {
+            return;
+        }
         self.lsp_send_at_caret("signatureHelp", "textDocument/signatureHelp", None);
     }
 
@@ -154,6 +163,12 @@ impl App {
     fn send_rename(&mut self, prompt: RenamePrompt) {
         if prompt.value.trim().is_empty() {
             self.status = self.t("lsp.rename.empty").into();
+            return;
+        }
+        if self.request_vsix_language_with(
+            super::plugins::VsixLanguageFeature::Rename,
+            Some(prompt.value.clone()),
+        ) {
             return;
         }
         let Some(uri) = self.lsp_manager.document_uri(&prompt.path) else {
@@ -318,7 +333,7 @@ impl App {
         }
     }
 
-    fn show_lsp_locations(&mut self, result: &Value, none_key: &str) {
+    pub(crate) fn show_lsp_locations(&mut self, result: &Value, none_key: &str) {
         let mut items = locations_from(result);
         match items.len() {
             0 => self.status = self.t(none_key).into(),

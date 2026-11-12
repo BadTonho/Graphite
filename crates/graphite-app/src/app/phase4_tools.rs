@@ -7,8 +7,8 @@ pub(crate) enum StatusSegment {
     LineEnding,
     Indentation,
     Screencast,
-    /// A status bar item created by an extension.
-    Extension,
+    /// A status bar item created by an extension (its position among the extension items).
+    Extension(usize),
 }
 
 impl App {
@@ -86,7 +86,8 @@ impl App {
                 .map(|runtime| runtime.workbench_status_texts())
                 .unwrap_or_default()
                 .into_iter()
-                .map(|text| (StatusSegment::Extension, text)),
+                .enumerate()
+                .map(|(index, text)| (StatusSegment::Extension(index), text)),
         )
         .collect()
     }

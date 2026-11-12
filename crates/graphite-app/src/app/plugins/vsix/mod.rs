@@ -6,12 +6,15 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
 mod documents;
+mod language_results;
 mod languages;
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
 mod storage;
+mod terminals;
 mod testing;
+mod text_search;
 mod workbench;
 #[cfg(test)]
 mod tests;
@@ -28,6 +31,9 @@ pub(crate) struct Runtime {
     editor_commands: BTreeMap<u64, graphite_core_api::CommandTicket>,
     test_calls: BTreeSet<u64>,
     workbench: workbench::Workbench,
+    terminals: terminals::Terminals,
+    /// Unsupported `actor.method` calls already logged this session.
+    unsupported: BTreeSet<String>,
 }
 
 impl Runtime {
@@ -169,6 +175,8 @@ impl App {
                 editor_commands: BTreeMap::new(),
                 test_calls: BTreeSet::new(),
                 workbench: Default::default(),
+                terminals: Default::default(),
+                unsupported: BTreeSet::new(),
             });
         }
         let runtime = self.plugins.vsix.as_mut().unwrap();
@@ -287,6 +295,7 @@ impl App {
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
             self.refresh_vsix_outputs(runtime);
+            self.sync_vsix_terminals(runtime)?;
             if let (Some(handle), Some(webview)) =
                 (self.webview_handle.as_deref(), self.webview.as_ref())
             {

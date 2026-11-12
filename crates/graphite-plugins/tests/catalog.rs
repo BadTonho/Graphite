@@ -38,7 +38,7 @@ fn server(
 #[test]
 fn search_topic_pagination_cache_and_release_asset_selection() {
     let body = r#"{"items":[{"full_name":"author/plugin","description":"Example","stargazers_count":3,"html_url":"https://github.com/author/plugin"}]}"#;
-    let release = r#"{"draft":false,"prerelease":false,"assets":[{"name":"one.graphite-plugin","size":1,"browser_download_url":"https://github.com/one"},{"name":"two.vsix","size":2,"browser_download_url":"https://github.com/two"},{"name":"source.zip","size":2,"browser_download_url":"https://github.com/three"}]}"#;
+    let release = r#"{"tag_name":"v1.0.0","draft":false,"prerelease":false,"assets":[{"name":"one.graphite-plugin","size":1,"browser_download_url":"https://github.com/one"},{"name":"two.vsix","size":2,"browser_download_url":"https://github.com/two"},{"name":"source.zip","size":2,"browser_download_url":"https://github.com/three"}]}"#;
     let (base, log, join) = server(vec![
         (200, String::new(), body.into()),
         (200, String::new(), body.into()),
@@ -77,7 +77,7 @@ fn missing_release_and_rate_limit_are_reported_and_backoff_prevents_requests() {
 
 #[test]
 fn release_without_supported_assets_is_listed_as_empty() {
-    let release = r#"{"draft":false,"prerelease":false,"assets":[{"name":"source.zip","size":2,"browser_download_url":"https://github.com/three"}]}"#;
+    let release = r#"{"tag_name":"v1.0.0","draft":false,"prerelease":false,"assets":[{"name":"source.zip","size":2,"browser_download_url":"https://github.com/three"}]}"#;
     let (base, _, join) = server(vec![(200, String::new(), release.into())]);
     let mut catalog = Catalog::with_base(&base).unwrap();
     assert!(catalog.assets("author/plugin").unwrap().is_empty());
