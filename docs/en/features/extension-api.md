@@ -18,6 +18,9 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Files | `workspace.findFiles` with include and exclude globs and a result limit, honoring ignore files. `workspace.findTextInFiles` (a proposed API: the extension must list `findTextInFiles` in `enabledApiProposals`) searches the workspace with the project search engine, with regex, case, whole-word and glob options, and stops after 5 seconds. |
 | Progress | `withProgress` titles and messages appear in the status bar. |
 | Terminal | `window.createTerminal` (with `name`, `shellPath`, `shellArgs`, `cwd`) opens a Graphite terminal tab. `sendText`, `show`, `hide`, `dispose` and `onDidCloseTerminal` with the exit code work. |
+| File watchers | `workspace.createFileSystemWatcher` receives create, change and delete events for the whole workspace (except inside `node_modules`) and for folders the extension registers outside it. |
+| Clipboard | `env.clipboard.readText` and `writeText`. |
+| `workspace.fs` | Answered by the extension host directly on the local disk; it does not go through Graphite. |
 | Webview | One webview panel, HTML content, messages both ways. |
 
 ## Declarative contributions
@@ -31,7 +34,9 @@ A VSIX without a Node.js entry point (themes, snippets, language packs) runs no 
 | `viewsContainers.activitybar` | Containers appear in the activity bar. |
 | `snippets` | Snippet files are loaded for enabled extensions, scoped to the contributing language. A user or project snippet with the same prefix and scope overrides them. |
 
-Themes, keybindings, grammars and icon themes are listed in the package but not applied yet.
+| `themes` | Color themes are imported into the profile and selected with `workbench.colorTheme`, by label or id. Disabling the extension removes them. |
+
+Keybindings, grammars and icon themes are listed in the package but not applied yet.
 
 ## Not yet
 

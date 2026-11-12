@@ -130,6 +130,7 @@ impl App {
                     }
                     self.plugins.installed = records;
                     self.reload_extension_snippets();
+                    self.sync_extension_themes();
                     if self.active_plugin_activity.as_ref().is_some_and(|active| {
                         !self
                             .plugin_activity_entries()

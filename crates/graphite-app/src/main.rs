@@ -492,6 +492,12 @@ impl App {
                         .map_or(true, |event| scm::is_relevant_watch_event(event))
                     {
                         let _ = proxy.send_event(UserEvent::ScmRefresh);
+                        if let Ok(event) = &result {
+                            let changes = app::plugins::file_changes(event);
+                            if !changes.is_empty() {
+                                let _ = proxy.send_event(UserEvent::FileEvents(changes));
+                            }
+                        }
                     }
                 })
                 .ok()?;

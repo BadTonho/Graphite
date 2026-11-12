@@ -149,6 +149,13 @@ pub(super) fn dispatch(
             }
         }
         ("MainThreadOutputService", "$close") => Ok(Value::Null),
+        ("MainThreadClipboard", "$readText") => Ok(json!(arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.get_text())
+            .unwrap_or_default())),
+        ("MainThreadClipboard", "$writeText") => arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text(0).to_owned()))
+            .map(|()| Value::Null)
+            .map_err(|error| error.to_string()),
         ("MainThreadStatusBar", "$setEntry") => {
             let id = match args.first() {
                 Some(Value::String(id)) => id.clone(),

@@ -118,6 +118,15 @@ exports.activate = context => {
         vscode.commands.registerCommand('phase5.statusclick', () => {
             vscode.window.showInformationMessage('status clicked');
         }),
+        vscode.commands.registerCommand('phase5.watch', async () => {
+            const folder = vscode.workspace.workspaceFolders[0];
+            const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '*.watched'));
+            const created = new Promise(resolve => watcher.onDidCreate(uri => resolve(uri)));
+            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('watcher event missing')), 20000));
+            const uri = await Promise.race([created, timeout]);
+            watcher.dispose();
+            if (!uri.fsPath.endsWith('new.watched')) throw new Error('watcher reported ' + uri.fsPath);
+        }),
         vscode.commands.registerCommand('phase5.terminal', async () => {
             const windows = process.platform === 'win32';
             const terminal = vscode.window.createTerminal({

@@ -582,6 +582,7 @@ impl App {
                 self.refresh_scm_async();
                 self.sync_external_changes();
             }
+            UserEvent::FileEvents(changes) => self.forward_vsix_file_events(&changes),
             UserEvent::ExternalChangeCheck => self.sync_external_changes(),
             UserEvent::ScmHistory(result) => self.show_scm_history(result),
             UserEvent::GitHubAuth(event) => self.handle_github_auth_event(event),

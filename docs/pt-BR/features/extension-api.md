@@ -18,6 +18,9 @@ Extensões VSIX rodam no extension host oficial do Code OSS 1.145.2, em um proce
 | Arquivos | `workspace.findFiles` com globs de inclusão e exclusão e limite de resultados, respeitando arquivos de ignore. `workspace.findTextInFiles` (API proposta: a extensão deve listar `findTextInFiles` em `enabledApiProposals`) busca no workspace com o mecanismo de busca de projeto, com opções de regex, maiúsculas, palavra inteira e globs, e para após 5 segundos. |
 | Progresso | Títulos e mensagens de `withProgress` aparecem na barra de status. |
 | Terminal | `window.createTerminal` (com `name`, `shellPath`, `shellArgs`, `cwd`) abre uma aba de terminal do Graphite. `sendText`, `show`, `hide`, `dispose` e `onDidCloseTerminal` com o código de saída funcionam. |
+| Observadores de arquivos | `workspace.createFileSystemWatcher` recebe eventos de criação, alteração e exclusão do workspace inteiro (exceto dentro de `node_modules`) e das pastas que a extensão registra fora dele. |
+| Área de transferência | `env.clipboard.readText` e `writeText`. |
+| `workspace.fs` | Respondido pelo próprio extension host direto no disco local; não passa pelo Graphite. |
 | Webview | Um painel webview, conteúdo HTML, mensagens nos dois sentidos. |
 
 ## Contribuições declarativas
@@ -31,7 +34,9 @@ Um VSIX sem ponto de entrada Node.js (temas, snippets, pacotes de idioma) não e
 | `viewsContainers.activitybar` | Os contêineres aparecem na barra de atividades. |
 | `snippets` | Os arquivos de snippets são carregados para extensões habilitadas, com escopo na linguagem contribuinte. Um snippet do usuário ou do projeto com o mesmo prefixo e escopo os substitui. |
 
-Temas, atalhos de teclado, gramáticas e temas de ícones constam no pacote, mas ainda não são aplicados.
+| `themes` | Os temas de cores são importados para o perfil e selecionados com `workbench.colorTheme`, por rótulo ou id. Desabilitar a extensão os remove. |
+
+Atalhos de teclado, gramáticas e temas de ícones constam no pacote, mas ainda não são aplicados.
 
 ## Ainda não
 
