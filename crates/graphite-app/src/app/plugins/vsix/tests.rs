@@ -121,6 +121,7 @@ fn fixture(path: &PathBuf, version: &str) {
             {"command":"phase5.crash","title":"Phase 5 crash"},
             {"command":"phase5.workbench","title":"Phase 5 workbench"},
             {"command":"phase5.terminal","title":"Phase 5 terminal"},
+            {"command":"phase5.watch","title":"Phase 5 watch"},
         ]}
     });
     archive
@@ -478,4 +479,46 @@ fn compatibility_survey() {
         report.push_str(&format!("{line}\t{version}\t{}\t{}\n", clean(&result), unsupported));
         std::fs::write(out.join("report.tsv"), &report).unwrap();
     }
+}
+
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_delivers_file_events_to_watchers() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let mut app = App::new_with_options(work.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("fixture.vsix");
+    fixture(&package, "1.0.0");
+    store.install(&package).unwrap();
+    store.enable("test.phase5", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    app.run_vsix_command_in("test.phase5:phase5.watch", Some(runtime_path))
+        .unwrap();
+    // The extension attaches its listener some time after the command starts, so the event is
+    // sent repeatedly until the command finishes. Changes outside the workspace reach nobody.
+    let created = work.join("new.watched");
+    std::fs::write(&created, "x").unwrap();
+    let outside = dir.path().join("elsewhere.watched");
+    let deadline = Instant::now() + Duration::from_secs(35);
+    loop {
+        app.poll_plugins();
+        if finished(&app) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{}", app.status);
+        app.forward_vsix_file_events(&[
+            (FileChange::Created, outside.clone()),
+            (FileChange::Created, created.clone()),
+        ]);
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(!app.status.contains("watcher"), "{}", app.status);
 }

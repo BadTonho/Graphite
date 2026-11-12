@@ -18,7 +18,7 @@ mod runtime;
 mod tests;
 pub(crate) mod vsix;
 use layout::PluginsTab;
-pub(crate) use vsix::VsixLanguageFeature;
+pub(crate) use vsix::{file_changes, FileChange, VsixLanguageFeature};
 
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),

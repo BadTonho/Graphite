@@ -35,6 +35,18 @@ pub(crate) use sidebar_layout::{
 use snippets::expand_snippet;
 pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
 pub(crate) use snippets::parse_snippet_file;
+
+/// Imports the themes a VSIX contributes (`contributes.themes`) from its extracted `package`
+/// folder into `destination`, where `workbench.colorTheme` can select them by label or id.
+pub(crate) fn import_extension_themes(
+    package: &Path,
+    destination: &Path,
+    translator: &Translator,
+) -> ImportReport {
+    let mut report = ImportReport::default();
+    import_themes::import_extension(package, destination, &mut report, translator);
+    report
+}
 #[cfg(test)]
 use themes::theme_colors_from;
 pub use themes::{

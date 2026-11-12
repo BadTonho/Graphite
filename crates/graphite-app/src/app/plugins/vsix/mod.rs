@@ -6,8 +6,10 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
 mod documents;
+mod file_events;
 mod language_results;
 mod languages;
+pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
@@ -32,6 +34,7 @@ pub(crate) struct Runtime {
     test_calls: BTreeSet<u64>,
     workbench: workbench::Workbench,
     terminals: terminals::Terminals,
+    watches: file_events::Watches,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -176,6 +179,7 @@ impl App {
                 test_calls: BTreeSet::new(),
                 workbench: Default::default(),
                 terminals: Default::default(),
+                watches: Default::default(),
                 unsupported: BTreeSet::new(),
             });
         }

@@ -332,6 +332,8 @@ pub(crate) enum UserEvent {
         diagnostics: Vec<crate::app::phase5::TaskDiagnostic>,
     },
     ScmRefresh,
+    /// Workspace file changes, for the file watchers of extensions.
+    FileEvents(Vec<(crate::app::plugins::FileChange, std::path::PathBuf)>),
     /// Result of loading the Git history for the history view.
     ScmHistory(Result<String, String>),
     /// Progress of a GitHub sign-in running on a background thread.
