@@ -462,6 +462,21 @@ impl App {
     }
 
     pub(crate) fn request_quick_fixes(&mut self) {
+        // An extension's code actions apply to any cursor position, so they need no
+        // diagnostic. A configured language server keeps its own quick fixes.
+        let served_by_server = self.documents[self.command_document()]
+            .buffer
+            .path()
+            .is_some_and(|path| self.lsp_manager.supports_path(path));
+        if !served_by_server
+            && self.request_vsix_language(super::plugins::VsixLanguageFeature::CodeActions)
+        {
+            self.quick_fix_actions.clear();
+            self.quick_fix_index = 0;
+            self.quick_fix_visible = true;
+            self.status = self.t("lsp.quick_fix.loading").into();
+            return;
+        }
         let Some(diagnostic) = self.documents[self.command_document()]
             .diagnostics
             .iter()

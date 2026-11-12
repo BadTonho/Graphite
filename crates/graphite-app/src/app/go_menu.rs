@@ -432,28 +432,36 @@ impl App {
                 label: "go.declaration",
                 shortcut: "",
                 command: C::Declaration,
-                enabled: false,
+                enabled: self.has_vsix_language_provider(
+                    crate::app::plugins::VsixLanguageFeature::Declaration,
+                ),
                 submenu: None,
             },
             I {
                 label: "go.type_definition",
                 shortcut: "",
                 command: C::TypeDefinition,
-                enabled: false,
+                enabled: self.has_vsix_language_provider(
+                    crate::app::plugins::VsixLanguageFeature::TypeDefinition,
+                ),
                 submenu: None,
             },
             I {
                 label: "go.implementations",
                 shortcut: "Ctrl+F12",
                 command: C::Implementations,
-                enabled: false,
+                enabled: self.has_vsix_language_provider(
+                    crate::app::plugins::VsixLanguageFeature::Implementation,
+                ),
                 submenu: None,
             },
             I {
                 label: "go.references",
                 shortcut: "Shift+F12",
                 command: C::References,
-                enabled: false,
+                enabled: self.has_vsix_language_provider(
+                    crate::app::plugins::VsixLanguageFeature::References,
+                ),
                 submenu: None,
             },
             S,
@@ -834,10 +842,6 @@ impl App {
             GoMenuCommand::Back => self.run_ui_command("workbench.action.navigateBack"),
             GoMenuCommand::Forward => self.run_ui_command("workbench.action.navigateForward"),
             GoMenuCommand::LastEdit
-            | GoMenuCommand::Declaration
-            | GoMenuCommand::TypeDefinition
-            | GoMenuCommand::Implementations
-            | GoMenuCommand::References
             | GoMenuCommand::Bracket
             | GoMenuCommand::NextChange
             | GoMenuCommand::PreviousChange => {}
@@ -855,6 +859,12 @@ impl App {
             }
             GoMenuCommand::EditorSymbols => self.run_ui_command("workbench.action.gotoSymbol"),
             GoMenuCommand::Definition => self.run_ui_command("editor.action.revealDefinition"),
+            GoMenuCommand::Implementations => {
+                self.run_ui_command("editor.action.goToImplementation")
+            }
+            GoMenuCommand::References => self.run_ui_command("editor.action.goToReferences"),
+            GoMenuCommand::Declaration => self.run_ui_command("editor.action.goToDeclaration"),
+            GoMenuCommand::TypeDefinition => self.run_ui_command("editor.action.goToTypeDefinition"),
             GoMenuCommand::GoToLine => self.run_ui_command("workbench.action.gotoLine"),
             GoMenuCommand::NextProblem => self.run_ui_command("editor.action.marker.next"),
             GoMenuCommand::PreviousProblem => self.run_ui_command("editor.action.marker.prev"),

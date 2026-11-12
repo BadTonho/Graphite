@@ -17,6 +17,58 @@ exports.activate = context => {
                 vscode.TextEdit.replace(document.lineAt(0).range, 'Formatted'),
             ],
         }),
+        vscode.languages.registerDefinitionProvider(selector, {
+            provideDefinition: document => new vscode.Location(document.uri, new vscode.Range(0, 1, 0, 3)),
+        }),
+        vscode.languages.registerDeclarationProvider(selector, {
+            provideDeclaration: document => new vscode.Location(document.uri, new vscode.Range(0, 2, 0, 3)),
+        }),
+        vscode.languages.registerImplementationProvider(selector, {
+            provideImplementation: document => [
+                new vscode.Location(document.uri, new vscode.Range(0, 0, 0, 1)),
+                new vscode.Location(document.uri, new vscode.Range(0, 3, 0, 4)),
+            ],
+        }),
+        vscode.languages.registerTypeDefinitionProvider(selector, {
+            provideTypeDefinition: document => new vscode.Location(document.uri, new vscode.Range(0, 3, 0, 4)),
+        }),
+        vscode.languages.registerReferenceProvider(selector, {
+            provideReferences: document => [
+                new vscode.Location(document.uri, new vscode.Range(0, 0, 0, 1)),
+                new vscode.Location(document.uri, new vscode.Range(0, 2, 0, 3)),
+            ],
+        }),
+        vscode.languages.registerDocumentSymbolProvider(selector, {
+            provideDocumentSymbols: document => [new vscode.DocumentSymbol(
+                'Outer', 'detail', vscode.SymbolKind.Class,
+                new vscode.Range(0, 0, 0, 6), new vscode.Range(0, 0, 0, 3),
+            )],
+        }),
+        vscode.languages.registerCodeActionsProvider(selector, {
+            provideCodeActions: document => {
+                const action = new vscode.CodeAction('Uppercase first line', vscode.CodeActionKind.QuickFix);
+                action.edit = new vscode.WorkspaceEdit();
+                action.edit.replace(document.uri, document.lineAt(0).range, document.lineAt(0).text.toUpperCase());
+                return [action];
+            },
+        }),
+        vscode.languages.registerRenameProvider(selector, {
+            provideRenameEdits: (document, position, newName) => {
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(document.uri, document.lineAt(0).range, newName);
+                return edit;
+            },
+        }),
+        vscode.languages.registerSignatureHelpProvider(selector, {
+            provideSignatureHelp: () => {
+                const help = new vscode.SignatureHelp();
+                const signature = new vscode.SignatureInformation('call(first, second)');
+                signature.parameters = [new vscode.ParameterInformation('first'), new vscode.ParameterInformation('second')];
+                help.signatures = [signature];
+                help.activeParameter = 1;
+                return help;
+            },
+        }),
         vscode.commands.registerCommand('phase5.start', async () => {
             const document = vscode.window.activeTextEditor.document;
             const folder = vscode.workspace.getWorkspaceFolder(document.uri);
@@ -51,11 +103,40 @@ exports.activate = context => {
             channel.show(true);
             const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
             item.text = 'Phase 5 status';
+            item.command = 'phase5.statusclick';
             item.show();
             const found = await vscode.workspace.findFiles('**/*.txt', '**/ignored/**', 10);
             if (!found.some(uri => uri.fsPath.endsWith('sample.txt'))) throw new Error('findFiles missing sample');
+            const hits = [];
+            await vscode.workspace.findTextInFiles({ pattern: 'sample' }, { include: '**/*.txt' }, hit => hits.push(hit));
+            if (!hits.some(hit => hit.uri.fsPath.endsWith('sample.txt') && hit.preview.text.includes('sample'))) {
+                throw new Error('findTextInFiles missing sample');
+            }
             const external = await vscode.env.asExternalUri(vscode.Uri.parse('https://example.com/'));
             if (!external.toString().startsWith('https://')) throw new Error('asExternalUri changed the link');
+        }),
+        vscode.commands.registerCommand('phase5.statusclick', () => {
+            vscode.window.showInformationMessage('status clicked');
+        }),
+        vscode.commands.registerCommand('phase5.terminal', async () => {
+            const windows = process.platform === 'win32';
+            const terminal = vscode.window.createTerminal({
+                name: 'Phase 5 terminal',
+                shellPath: windows ? 'cmd.exe' : '/bin/sh',
+                shellArgs: windows ? ['/C', 'exit 3'] : ['-c', 'exit 3'],
+            });
+            const closed = new Promise(resolve => {
+                const listener = vscode.window.onDidCloseTerminal(closedTerminal => {
+                    if (closedTerminal === terminal) {
+                        listener.dispose();
+                        resolve(closedTerminal.exitStatus);
+                    }
+                });
+            });
+            terminal.sendText('echo ignored', true);
+            terminal.show(true);
+            const status = await closed;
+            if (!status || status.code !== 3) throw new Error('Terminal exit status missing');
         }),
         vscode.commands.registerCommand('phase5.crash', () => process.kill(process.pid)),
     );

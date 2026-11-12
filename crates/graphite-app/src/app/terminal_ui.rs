@@ -26,22 +26,46 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| self.t("terminal.no_profiles").to_owned()));
         };
-        let Some(proxy) = self.event_proxy.clone() else {
-            return Err(self.t("terminal.unavailable").to_owned());
+        self.spawn_terminal_profile(&profile, None, None)
+    }
+
+    /// Starts a terminal for `profile` in `directory` (the workspace root by default). A fixed
+    /// `title` names the tab; otherwise tabs are numbered after the profile.
+    pub(crate) fn spawn_terminal_profile(
+        &mut self,
+        profile: &crate::config::TerminalProfile,
+        directory: Option<&Path>,
+        title: Option<&str>,
+    ) -> Result<usize, String> {
+        let wake: Arc<dyn Fn() + Send + Sync> = match self.event_proxy.clone() {
+            Some(proxy) => Arc::new(move || {
+                let _ = proxy.send_event(UserEvent::TerminalWake);
+            }),
+            // Tests have no event loop to wake; terminals are polled directly.
+            #[cfg(test)]
+            None => Arc::new(|| {}),
+            #[cfg(not(test))]
+            None => return Err(self.t("terminal.unavailable").to_owned()),
         };
-        let wake = Arc::new(move || {
-            let _ = proxy.send_event(UserEvent::TerminalWake);
-        });
-        let session =
-            TerminalSession::start_profile(self.tree.root(), &profile, wake, self.translator)?;
-        let count = self
-            .terminal_names
-            .iter()
-            .filter(|name| name.starts_with(&profile.name))
-            .count()
-            + 1;
-        self.terminal_names
-            .push(format!("{} {count}", profile.name));
+        let session = TerminalSession::start_profile(
+            directory.unwrap_or_else(|| self.tree.root()),
+            profile,
+            wake,
+            self.translator,
+        )?;
+        let name = match title {
+            Some(title) => title.to_owned(),
+            None => {
+                let count = self
+                    .terminal_names
+                    .iter()
+                    .filter(|name| name.starts_with(&profile.name))
+                    .count()
+                    + 1;
+                format!("{} {count}", profile.name)
+            }
+        };
+        self.terminal_names.push(name);
         self.terminals.push(session);
         self.terminal_sizes.push((0, 0));
         let index = self.terminals.len() - 1;
@@ -116,6 +140,10 @@ impl App {
         let index = self
             .focused_terminal
             .min(self.terminals.len().saturating_sub(1));
+        self.close_terminal_at(index);
+    }
+
+    pub(crate) fn close_terminal_at(&mut self, index: usize) {
         if index >= self.terminals.len() {
             return;
         }

@@ -88,6 +88,12 @@ impl App {
         if let Some(result) = testing::dispatch(self, runtime, actor, method, args) {
             return result.map_err(|error| error.to_owned());
         }
+        if let Some(result) = text_search::dispatch(self, runtime, actor, method, args) {
+            return result;
+        }
+        if let Some(result) = terminals::dispatch(self, runtime, actor, method, args) {
+            return result;
+        }
         if let Some(result) = workbench::dispatch(self, runtime, actor, method, args) {
             return result;
         }
@@ -224,10 +230,62 @@ impl App {
             | ("MainThreadExtensionService", "$setPerformanceMarks")
             | ("MainThreadConsole", "$logExtensionHostMessage")
             | ("MainThreadFileSystem", "$ensureActivation")
+            | ("MainThreadDebugService", "$registerDebugTypes")
+            | ("MainThreadTask", "$registerSupportedExecutions" | "$registerTaskSystem")
             | ("MainThreadLogger", "$registerLogger" | "$deregisterLogger")
             | ("MainThreadProgress", "$progressEnd")
             | ("MainThreadTelemetry", "$publicLog" | "$publicLog2") => Ok(Value::Null),
-            _ => Err(format!("Graphite does not support {actor}.{method}")),
+            _ => {
+                self.record_unsupported_vsix_call(runtime, actor, method);
+                if is_silent_registration(method) {
+                    Ok(Value::Null)
+                } else {
+                    Err(format!("Graphite does not support {actor}.{method}"))
+                }
+            }
         }
+    }
+
+    /// Notes each unsupported `actor.method` once per session in
+    /// `<profile>/code-oss/unsupported-api.log`, so compatibility gaps can be measured.
+    fn record_unsupported_vsix_call(&self, runtime: &mut Runtime, actor: &str, method: &str) {
+        let call = format!("{actor}.{method}");
+        if !runtime.unsupported.insert(call.clone()) {
+            return;
+        }
+        let directory = self.profile_root.join("code-oss");
+        if std::fs::create_dir_all(&directory).is_err() {
+            return;
+        }
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(directory.join("unsupported-api.log"))
+        {
+            let _ = writeln!(file, "{call}");
+        }
+    }
+}
+
+/// Registrations of capabilities Graphite does not implement. The host sends many of them while
+/// starting, and an extension cannot act on a refusal, so they are accepted without an error.
+fn is_silent_registration(method: &str) -> bool {
+    ["$register", "$unregister", "$emit"]
+        .iter()
+        .any(|prefix| method.starts_with(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_capability_registrations_are_accepted_silently() {
+        assert!(is_silent_registration("$registerTextSearchProvider"));
+        assert!(is_silent_registration("$unregisterCommand"));
+        assert!(is_silent_registration("$emitCodeLensEvent"));
+        assert!(!is_silent_registration("$executeTask"));
+        assert!(!is_silent_registration("$tryApplyEdits"));
     }
 }

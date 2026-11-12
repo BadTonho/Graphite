@@ -86,7 +86,11 @@ impl EventListener for TerminalEvents {
     }
 }
 
+static NEXT_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 pub struct TerminalSession {
+    /// Stable identity: tab indexes shift when terminals close, this never does.
+    id: u64,
     sender: Sender<WorkerMessage>,
     snapshot: Arc<Mutex<TerminalSnapshot>>,
     worker: Option<JoinHandle<()>>,
@@ -222,10 +226,15 @@ impl TerminalSession {
             })
             .map_err(|e| e.to_string())?;
         Ok(Self {
+            id: NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             sender,
             snapshot,
             worker: Some(worker),
         })
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     pub fn snapshot(&self) -> TerminalSnapshot {
@@ -283,13 +292,19 @@ fn run_terminal_worker(
     );
     let mut parser: Processor = Processor::new();
     let mut scanner = ShellScanner::default();
+    // After the process exits its output may still be queued, so the worker keeps draining
+    // until the queue stays idle for one polling interval; stopping at the exit would drop
+    // the output of short commands.
+    let mut exited = false;
     loop {
-        if let Ok(Some(status)) = child.try_wait() {
-            if let Ok(mut state) = snapshot.lock() {
-                state.exit_code = Some(status.exit_code());
+        if !exited {
+            if let Ok(Some(status)) = child.try_wait() {
+                if let Ok(mut state) = snapshot.lock() {
+                    state.exit_code = Some(status.exit_code());
+                }
+                wake();
+                exited = true;
             }
-            wake();
-            break;
         }
         match receiver.recv_timeout(std::time::Duration::from_millis(30)) {
             Ok(WorkerMessage::Input(bytes)) => {
@@ -345,7 +360,11 @@ fn run_terminal_worker(
                 let _ = child.wait();
                 break;
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if exited {
+                    break;
+                }
+            }
         }
     }
 }

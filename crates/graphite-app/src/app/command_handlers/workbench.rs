@@ -578,7 +578,10 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         |app, _| {
-            app.open_go_picker(crate::app::go_menu::GoPickerKind::EditorSymbols);
+            if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::DocumentSymbols)
+            {
+                app.open_go_picker(crate::app::go_menu::GoPickerKind::EditorSymbols);
+            }
             Ok(())
         },
     );
@@ -755,8 +758,6 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.navigateToLastEditLocation",
             "Last Edit Location",
         ),
-        ("editor.action.goToDeclaration", "Go to Declaration"),
-        ("editor.action.goToTypeDefinition", "Go to Type Definition"),
         ("editor.action.jumpToBracket", "Go to Bracket"),
         ("workbench.action.nextChange", "Next Change"),
         ("workbench.action.previousChange", "Previous Change"),

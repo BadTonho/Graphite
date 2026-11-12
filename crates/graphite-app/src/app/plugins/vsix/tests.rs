@@ -115,11 +115,12 @@ fn fixture(path: &PathBuf, version: &str) {
     let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let manifest = json!({
         "publisher":"test", "name":"phase5", "version":version, "engines":{"vscode":"^1.100.0"},
-        "main":"index.js", "contributes":{"commands":[
+        "main":"index.js", "enabledApiProposals":["findTextInFiles"], "contributes":{"commands":[
             {"command":"phase5.start","title":"Phase 5 start"},
             {"command":"phase5.pending","title":"Phase 5 pending"},
             {"command":"phase5.crash","title":"Phase 5 crash"},
             {"command":"phase5.workbench","title":"Phase 5 workbench"},
+            {"command":"phase5.terminal","title":"Phase 5 terminal"},
         ]}
     });
     archive
@@ -272,6 +273,7 @@ fn official_host_bridges_output_status_bar_file_search_and_links() {
     });
     wait_for(&mut app, finished);
     assert!(!app.status.contains("findFiles missing"), "{}", app.status);
+    assert!(!app.status.contains("findTextInFiles"), "{}", app.status);
     assert!(!app.status.contains("asExternalUri changed"), "{}", app.status);
     let view = app
         .documents
@@ -279,4 +281,112 @@ fn official_host_bridges_output_status_bar_file_search_and_links() {
         .find(|tab| tab.buffer.text().contains("workbench line"))
         .unwrap();
     assert!(view.buffer.is_read_only());
+    // Clicking the extension's status bar item runs its command.
+    app.run_vsix_status_item(0);
+    wait_for(&mut app, finished);
+    assert_eq!(app.status, "status clicked");
+}
+
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_answers_navigation_symbols_actions_rename_and_signature() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("fixture.vsix");
+    fixture(&package, "1.0.0");
+    store.install(&package).unwrap();
+    store.enable("test.phase5", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    let file = dir.path().join("sample.txt");
+    std::fs::write(&file, "sample").unwrap();
+    app.open_file(file.clone());
+    // Running any command activates the extension, which registers its providers.
+    app.run_vsix_command_in("test.phase5:phase5.workbench", Some(runtime_path))
+        .unwrap();
+    wait_for(&mut app, finished);
+    wait_for(&mut app, |app| {
+        app.has_vsix_language_provider(VsixLanguageFeature::SignatureHelp)
+            && app.has_vsix_language_provider(VsixLanguageFeature::Rename)
+    });
+
+    // The activating command shows its output channel; return to the sample document.
+    app.open_file(file);
+    for feature in [
+        VsixLanguageFeature::Definition,
+        VsixLanguageFeature::Declaration,
+        VsixLanguageFeature::TypeDefinition,
+    ] {
+        assert!(app.request_vsix_language(feature));
+        wait_for(&mut app, finished);
+        assert!(!app.status.contains("not support"), "{}", app.status);
+    }
+
+    for (feature, count) in [
+        (VsixLanguageFeature::References, 2),
+        (VsixLanguageFeature::Implementation, 2),
+    ] {
+        app.go_picker = None;
+        assert!(app.request_vsix_language(feature));
+        wait_for(&mut app, finished);
+        assert_eq!(app.go_picker.as_ref().unwrap().items.len(), count);
+    }
+
+    assert!(app.request_vsix_language(VsixLanguageFeature::DocumentSymbols));
+    wait_for(&mut app, finished);
+    let picker = app.go_picker.as_ref().unwrap();
+    assert_eq!(picker.items[0].name, "Outer");
+
+    assert!(app.request_vsix_language(VsixLanguageFeature::SignatureHelp));
+    wait_for(&mut app, finished);
+    assert!(
+        app.hover_text.as_deref().unwrap_or_default().contains("call(first, second)"),
+        "{:?}",
+        app.hover_text
+    );
+
+    assert!(app.request_vsix_language(VsixLanguageFeature::CodeActions));
+    wait_for(&mut app, finished);
+    assert!(app.quick_fix_visible);
+    assert_eq!(app.quick_fix_actions.len(), 1);
+    app.apply_quick_fix();
+    assert_eq!(app.editor().text(), "SAMPLE", "{}", app.status);
+
+    assert!(app.request_vsix_language_with(VsixLanguageFeature::Rename, Some("renamed".into())));
+    wait_for(&mut app, finished);
+    assert_eq!(app.editor().text(), "renamed", "{}", app.status);
+    app.run_ui_command("undo");
+    assert_eq!(app.editor().text(), "SAMPLE");
+}
+
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_creates_terminals_and_reports_their_exit() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("fixture.vsix");
+    fixture(&package, "1.0.0");
+    store.install(&package).unwrap();
+    store.enable("test.phase5", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    app.run_vsix_command_in("test.phase5:phase5.terminal", Some(runtime_path))
+        .unwrap();
+    wait_for(&mut app, finished);
+    assert!(!app.status.contains("Terminal exit"), "{}", app.status);
+    assert!(!app.status.contains("not support"), "{}", app.status);
+    assert_eq!(app.terminal_names, ["Phase 5 terminal"]);
+    assert!(app.terminal_visible);
 }
