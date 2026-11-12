@@ -10,6 +10,29 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Whether a file-system event can change what the SCM view shows. Reading files (inotify
+/// reports `Access` events) and Git's own bookkeeping inside `.git` (index and lock files,
+/// rewritten by every status refresh) must not trigger another refresh, or the refresh
+/// feeds itself. Build output under `target` is ignored for the same reason.
+pub(crate) fn is_relevant_watch_event(event: &notify::Event) -> bool {
+    use notify::EventKind;
+    if matches!(event.kind, EventKind::Access(_)) {
+        return false;
+    }
+    event.paths.is_empty() || event.paths.iter().any(|path| is_relevant_watch_path(path))
+}
+
+fn is_relevant_watch_path(path: &Path) -> bool {
+    let names: Vec<_> = path.components().map(|part| part.as_os_str()).collect();
+    if let Some(git) = names.iter().position(|name| *name == ".git") {
+        // Branch switches and commits move HEAD or refs; everything else is Git internals.
+        return names.get(git + 1).is_some_and(|name| {
+            *name == "HEAD" || *name == "refs" || *name == "packed-refs"
+        });
+    }
+    !names.iter().any(|name| *name == "target")
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct FileStatus {
     pub path: PathBuf,
@@ -1038,5 +1061,21 @@ mod tests {
             diff_line_changes("gone\n", ""),
             vec![(0, LineChange::Deleted)]
         );
+    }
+
+    #[test]
+    fn watch_events_ignore_reads_git_internals_and_build_output() {
+        use notify::{event::AccessKind, Event, EventKind};
+        let modify = |path: &str| {
+            Event::new(EventKind::Modify(notify::event::ModifyKind::Any)).add_path(path.into())
+        };
+        assert!(is_relevant_watch_event(&modify("/w/src/main.rs")));
+        assert!(is_relevant_watch_event(&modify("/w/.git/HEAD")));
+        assert!(is_relevant_watch_event(&modify("/w/.git/refs/heads/main")));
+        assert!(!is_relevant_watch_event(&modify("/w/.git/index")));
+        assert!(!is_relevant_watch_event(&modify("/w/.git/index.lock")));
+        assert!(!is_relevant_watch_event(&modify("/w/target/debug/graphite")));
+        let read = Event::new(EventKind::Access(AccessKind::Any)).add_path("/w/src/a.rs".into());
+        assert!(!is_relevant_watch_event(&read));
     }
 }
