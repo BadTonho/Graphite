@@ -263,10 +263,11 @@ fn official_host_bridges_output_status_bar_file_search_and_links() {
     app.run_vsix_command_in("test.phase5:phase5.workbench", Some(runtime_path))
         .unwrap();
     wait_for(&mut app, |app| {
-        app.plugins
-            .vsix
-            .as_ref()
-            .is_some_and(|runtime| runtime.workbench_status_texts().contains(&"Phase 5 status".to_owned()))
+        app.plugins.vsix.as_ref().is_some_and(|runtime| {
+            runtime
+                .workbench_status_texts()
+                .contains(&"Phase 5 status".to_owned())
+        })
     });
     wait_for(&mut app, |app| {
         app.documents
@@ -276,7 +277,11 @@ fn official_host_bridges_output_status_bar_file_search_and_links() {
     wait_for(&mut app, finished);
     assert!(!app.status.contains("findFiles missing"), "{}", app.status);
     assert!(!app.status.contains("findTextInFiles"), "{}", app.status);
-    assert!(!app.status.contains("asExternalUri changed"), "{}", app.status);
+    assert!(
+        !app.status.contains("asExternalUri changed"),
+        "{}",
+        app.status
+    );
     let view = app
         .documents
         .iter()
@@ -348,7 +353,10 @@ fn official_host_answers_navigation_symbols_actions_rename_and_signature() {
     assert!(app.request_vsix_language(VsixLanguageFeature::SignatureHelp));
     wait_for(&mut app, finished);
     assert!(
-        app.hover_text.as_deref().unwrap_or_default().contains("call(first, second)"),
+        app.hover_text
+            .as_deref()
+            .unwrap_or_default()
+            .contains("call(first, second)"),
         "{:?}",
         app.hover_text
     );
@@ -403,8 +411,8 @@ fn official_host_creates_terminals_and_reports_their_exit() {
 #[ignore = "network survey; requires the packaged Code OSS runtime"]
 fn compatibility_survey() {
     let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
-    let list = std::fs::read_to_string(std::env::var_os("GRAPHITE_TEST_COMPAT_LIST").unwrap())
-        .unwrap();
+    let list =
+        std::fs::read_to_string(std::env::var_os("GRAPHITE_TEST_COMPAT_LIST").unwrap()).unwrap();
     let out = PathBuf::from(std::env::var_os("GRAPHITE_TEST_COMPAT_OUT").unwrap());
     std::fs::create_dir_all(&out).unwrap();
     let registry = graphite_plugins::open_vsx::Registry::new().unwrap();
@@ -421,7 +429,13 @@ fn compatibility_survey() {
         let (version, result, unsupported) = (|| -> (String, String, String) {
             let metadata = match registry.download_latest(namespace, name, &package) {
                 Ok(metadata) => metadata,
-                Err(error) => return (String::new(), format!("download failed: {error}"), String::new()),
+                Err(error) => {
+                    return (
+                        String::new(),
+                        format!("download failed: {error}"),
+                        String::new(),
+                    )
+                }
             };
             let version = metadata.version;
             let mut app = App::new_with_options(dir.path().join("work"), None, true);
@@ -445,7 +459,11 @@ fn compatibility_survey() {
                 _ => None,
             };
             let Some(command) = command else {
-                return (version, "no entry point or commands (declarative only)".into(), String::new());
+                return (
+                    version,
+                    "no entry point or commands (declarative only)".into(),
+                    String::new(),
+                );
             };
             store.enable(&id, true).unwrap();
             app.plugins.store = Some(store.clone());
@@ -472,12 +490,17 @@ fn compatibility_survey() {
             } else {
                 format!("ran `{command}`: {}", app.status)
             };
-            let log = std::fs::read_to_string(app.profile_root.join("code-oss/unsupported-api.log"))
-                .unwrap_or_default();
+            let log =
+                std::fs::read_to_string(app.profile_root.join("code-oss/unsupported-api.log"))
+                    .unwrap_or_default();
             (version, outcome, log.lines().collect::<Vec<_>>().join(","))
         })();
         let clean = |text: &str| text.replace(['\t', '\n', '\r'], " ");
-        report.push_str(&format!("{line}\t{version}\t{}\t{}\n", clean(&result), unsupported));
+        report.push_str(&format!(
+            "{line}\t{version}\t{}\t{}\n",
+            clean(&result),
+            unsupported
+        ));
         std::fs::write(out.join("report.tsv"), &report).unwrap();
     }
 }
@@ -550,11 +573,16 @@ fn official_host_sends_text_decorations_for_the_active_editor() {
     let uri = uri.as_str().to_owned();
     app.run_vsix_command_in("test.phase5:phase5.decorate", Some(runtime_path))
         .unwrap();
-    wait_for(&mut app, |app| app.vsix_line_decorations(&uri, 0, true).len() == 2);
+    wait_for(&mut app, |app| {
+        app.vsix_line_decorations(&uri, 0, true).len() == 2
+    });
     let marks = app.vsix_line_decorations(&uri, 0, true);
     let ranged = marks.iter().find(|mark| !mark.whole_line).unwrap();
     assert_eq!((ranged.start, ranged.end), (Some(1), Some(4)));
-    assert!(ranged.look.background.is_some_and(|color| color[0] > 0.9 && color[3] < 0.6));
+    assert!(ranged
+        .look
+        .background
+        .is_some_and(|color| color[0] > 0.9 && color[3] < 0.6));
     assert!(ranged.look.border.is_some());
     assert_eq!(ranged.after.as_ref().unwrap().text, " note");
     let whole = marks.iter().find(|mark| mark.whole_line).unwrap();

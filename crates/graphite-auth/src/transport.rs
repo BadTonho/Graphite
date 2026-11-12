@@ -54,7 +54,10 @@ impl Transport for ReqwestTransport {
             .send()
             .map_err(|error| error.to_string())?;
         if !response.status().is_success() {
-            return Err(format!("GitHub rejected the request ({})", response.status()));
+            return Err(format!(
+                "GitHub rejected the request ({})",
+                response.status()
+            ));
         }
         Self::json(response)
     }

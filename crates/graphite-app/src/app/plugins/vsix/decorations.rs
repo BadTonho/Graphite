@@ -64,7 +64,9 @@ pub(super) struct Decorations {
 }
 
 fn hex_byte(digits: &str) -> Option<f32> {
-    u8::from_str_radix(digits, 16).ok().map(|value| f32::from(value) / 255.0)
+    u8::from_str_radix(digits, 16)
+        .ok()
+        .map(|value| f32::from(value) / 255.0)
 }
 
 /// Color from `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb(...)`, `rgba(...)` or a theme color
@@ -77,11 +79,20 @@ pub(crate) fn parse_color(value: &Value) -> Option<Color> {
     if let Some(hex) = text.strip_prefix('#') {
         let digits: Vec<String> = match hex.len() {
             3 | 4 => hex.chars().map(|ch| format!("{ch}{ch}")).collect(),
-            6 | 8 => hex.as_bytes().chunks(2).map(|pair| String::from_utf8_lossy(pair).into_owned()).collect(),
+            6 | 8 => hex
+                .as_bytes()
+                .chunks(2)
+                .map(|pair| String::from_utf8_lossy(pair).into_owned())
+                .collect(),
             _ => return None,
         };
         let channel = |index: usize| hex_byte(digits.get(index)?);
-        return Some([channel(0)?, channel(1)?, channel(2)?, channel(3).unwrap_or(1.0)]);
+        return Some([
+            channel(0)?,
+            channel(1)?,
+            channel(2)?,
+            channel(3).unwrap_or(1.0),
+        ]);
     }
     let inner = text
         .strip_prefix("rgba(")
@@ -143,7 +154,10 @@ fn border_color(options: &Value) -> Option<Color> {
         if let Some(color) = parse_color(&Value::String(rest)) {
             return Some(color);
         }
-        if let Some(color) = text.split_whitespace().find_map(|part| parse_color(&Value::String(part.into()))) {
+        if let Some(color) = text
+            .split_whitespace()
+            .find_map(|part| parse_color(&Value::String(part.into())))
+        {
             return Some(color);
         }
     }
@@ -155,8 +169,15 @@ fn after(options: &Value) -> Option<After> {
         .iter()
         .map(|key| &options[key])
         .find(|content| content["contentText"].is_string())?;
-    let text: String = content["contentText"].as_str()?.chars().take(AFTER_LIMIT).collect();
-    (!text.is_empty()).then(|| After { text, color: parse_color(&content["color"]) })
+    let text: String = content["contentText"]
+        .as_str()?
+        .chars()
+        .take(AFTER_LIMIT)
+        .collect();
+    (!text.is_empty()).then(|| After {
+        text,
+        color: parse_color(&content["color"]),
+    })
 }
 
 /// A look from one set of render options (the base style or its `dark`/`light` variant).
@@ -220,7 +241,10 @@ impl Decorations {
                 continue;
             };
             let look = if dark { &style.dark } else { &style.light };
-            for mark in marks.iter().filter(|mark| mark.start.0 <= line && line <= mark.end.0) {
+            for mark in marks
+                .iter()
+                .filter(|mark| mark.start.0 <= line && line <= mark.end.0)
+            {
                 let last = line == mark.end.0;
                 let instance = mark.after.clone().filter(|_| last);
                 let after = instance.or_else(|| look.after.clone().filter(|_| last));
@@ -240,7 +264,12 @@ impl Decorations {
 }
 
 /// Answers the decoration requests of `MainThreadTextEditors`, or returns `None`.
-pub(super) fn dispatch(runtime: &mut Runtime, actor: &str, method: &str, args: &[Value]) -> Option<Result<Value>> {
+pub(super) fn dispatch(
+    runtime: &mut Runtime,
+    actor: &str,
+    method: &str,
+    args: &[Value],
+) -> Option<Result<Value>> {
     if actor != "MainThreadTextEditors" {
         return None;
     }
@@ -273,7 +302,11 @@ pub(super) fn dispatch(runtime: &mut Runtime, actor: &str, method: &str, args: &
                         let instance = after(options)
                             .or_else(|| after(&options["dark"]))
                             .or_else(|| after(&options["light"]));
-                        Some(Mark { start, end, after: instance })
+                        Some(Mark {
+                            start,
+                            end,
+                            after: instance,
+                        })
                     })
                     .take(MARK_LIMIT)
                     .collect();
@@ -283,7 +316,8 @@ pub(super) fn dispatch(runtime: &mut Runtime, actor: &str, method: &str, args: &
             _ => Err("Invalid decorations".to_owned()),
         },
         // Flat `[startLine, startColumn, endLine, endColumn, ...]`, 1-based.
-        "$trySetDecorationsFast" => match (text(0), text(1), args.get(2).and_then(Value::as_array)) {
+        "$trySetDecorationsFast" => match (text(0), text(1), args.get(2).and_then(Value::as_array))
+        {
             (Some(editor), Some(key), Some(numbers)) => {
                 let numbers: Vec<u32> = numbers
                     .iter()
@@ -312,7 +346,12 @@ pub(super) fn dispatch(runtime: &mut Runtime, actor: &str, method: &str, args: &
 
 impl App {
     /// Decorations to draw on `line` of the document with this URI.
-    pub(crate) fn vsix_line_decorations(&self, uri: &str, line: usize, dark: bool) -> Vec<LineMark> {
+    pub(crate) fn vsix_line_decorations(
+        &self,
+        uri: &str,
+        line: usize,
+        dark: bool,
+    ) -> Vec<LineMark> {
         self.plugins
             .vsix
             .as_ref()
@@ -338,8 +377,14 @@ mod tests {
         assert_eq!(parse_color(&json!("#f00")), Some([1.0, 0.0, 0.0, 1.0]));
         let half = parse_color(&json!("#00000080")).unwrap();
         assert!((half[3] - 128.0 / 255.0).abs() < 1e-6);
-        assert_eq!(parse_color(&json!("rgba(255, 0, 0, 0.5)")), Some([1.0, 0.0, 0.0, 0.5]));
-        assert_eq!(parse_color(&json!("rgb(0, 255, 0)")), Some([0.0, 1.0, 0.0, 1.0]));
+        assert_eq!(
+            parse_color(&json!("rgba(255, 0, 0, 0.5)")),
+            Some([1.0, 0.0, 0.0, 0.5])
+        );
+        assert_eq!(
+            parse_color(&json!("rgb(0, 255, 0)")),
+            Some([0.0, 1.0, 0.0, 1.0])
+        );
         assert!(parse_color(&json!({"id": "editorError.foreground"})).is_some());
         assert!(parse_color(&json!({"id": "unknown.color"})).is_none());
         assert!(parse_color(&json!("#12")).is_none());
@@ -349,12 +394,18 @@ mod tests {
 
     #[test]
     fn borders_use_the_color_part_of_css_shorthand() {
-        assert_eq!(border_color(&json!({"border": "1px solid #00ff00"})), Some([0.0, 1.0, 0.0, 1.0]));
+        assert_eq!(
+            border_color(&json!({"border": "1px solid #00ff00"})),
+            Some([0.0, 1.0, 0.0, 1.0])
+        );
         assert_eq!(
             border_color(&json!({"outline": "2px dashed rgba(0, 0, 255, 1)"})),
             Some([0.0, 0.0, 1.0, 1.0])
         );
-        assert_eq!(border_color(&json!({"borderColor": "#ff0000"})), Some([1.0, 0.0, 0.0, 1.0]));
+        assert_eq!(
+            border_color(&json!({"borderColor": "#ff0000"})),
+            Some([1.0, 0.0, 0.0, 1.0])
+        );
         assert_eq!(border_color(&json!({"border": "1px solid"})), None);
     }
 
@@ -375,7 +426,11 @@ mod tests {
         decorations.set(
             "file:///a.txt",
             "type",
-            vec![Mark { start: (1, 3), end: (3, 5), after: None }],
+            vec![Mark {
+                start: (1, 3),
+                end: (3, 5),
+                after: None,
+            }],
         );
         let first = &decorations.on_line("file:///a.txt", 1, true)[0];
         assert_eq!((first.start, first.end), (Some(3), None));
@@ -390,25 +445,53 @@ mod tests {
 
     #[test]
     fn after_text_appears_only_on_the_last_line_and_instances_override_the_type() {
-        let mut decorations = registered(json!({"after": {"contentText": " type", "color": "#888888"}}));
+        let mut decorations =
+            registered(json!({"after": {"contentText": " type", "color": "#888888"}}));
         decorations.set(
             "e",
             "type",
             vec![
-                Mark { start: (0, 0), end: (1, 2), after: None },
-                Mark { start: (4, 0), end: (4, 3), after: Some(After { text: " instance".into(), color: None }) },
+                Mark {
+                    start: (0, 0),
+                    end: (1, 2),
+                    after: None,
+                },
+                Mark {
+                    start: (4, 0),
+                    end: (4, 3),
+                    after: Some(After {
+                        text: " instance".into(),
+                        color: None,
+                    }),
+                },
             ],
         );
         assert_eq!(decorations.on_line("e", 0, true)[0].after, None);
-        assert_eq!(decorations.on_line("e", 1, true)[0].after.as_ref().unwrap().text, " type");
-        assert_eq!(decorations.on_line("e", 4, true)[0].after.as_ref().unwrap().text, " instance");
+        assert_eq!(
+            decorations.on_line("e", 1, true)[0]
+                .after
+                .as_ref()
+                .unwrap()
+                .text,
+            " type"
+        );
+        assert_eq!(
+            decorations.on_line("e", 4, true)[0]
+                .after
+                .as_ref()
+                .unwrap()
+                .text,
+            " instance"
+        );
     }
 
     #[test]
     fn dispatch_registers_types_sets_marks_and_removes_them() {
         let mut decorations = Decorations::default();
         // Exercise the pure parts through the same parsing the requests use.
-        decorations.styles.insert("k".into(), style(&json!({"backgroundColor": "#112233"})));
+        decorations
+            .styles
+            .insert("k".into(), style(&json!({"backgroundColor": "#112233"})));
         let flat: Vec<u32> = vec![1, 1, 1, 4, 0, 1, 1, 2];
         let marks: Vec<Mark> = flat
             .chunks_exact(4)
@@ -430,9 +513,13 @@ mod tests {
 
     #[test]
     fn range_coordinates_are_one_based_and_validated() {
-        let range = json!({"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 5});
+        let range =
+            json!({"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 5});
         assert_eq!(zero_based(&range), Some(((1, 0), (1, 4))));
-        assert!(zero_based(&json!({"startLineNumber": 0, "startColumn": 1, "endLineNumber": 1, "endColumn": 1})).is_none());
+        assert!(zero_based(
+            &json!({"startLineNumber": 0, "startColumn": 1, "endLineNumber": 1, "endColumn": 1})
+        )
+        .is_none());
         assert!(zero_based(&json!({})).is_none());
     }
 }

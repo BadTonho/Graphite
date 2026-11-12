@@ -1,10 +1,10 @@
+use crate::terminal_shell::{integrated_shell, IntegratedShell, ShellEvent, ShellScanner};
 use alacritty_terminal::{
     event::{Event, EventListener},
     grid::{Dimensions, Scroll},
     term::{cell::Cell, color::Colors, Config, Term},
     vte::ansi::{Color, NamedColor, Processor, Rgb},
 };
-use crate::terminal_shell::{integrated_shell, IntegratedShell, ShellEvent, ShellScanner};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -562,7 +562,8 @@ mod tests {
         let mut scanner = ShellScanner::default();
         let snapshot = Arc::new(Mutex::new(TerminalSnapshot::default()));
         // Scrolls two lines into history, then reports the end of a command and a new prompt.
-        let bytes: &[u8] = b"a\r\nb\r\nc\r\nd\r\n\x1b]7;file://h/tmp\x07\x1b]133;D;3\x07\x1b]133;A\x07$ ";
+        let bytes: &[u8] =
+            b"a\r\nb\r\nc\r\nd\r\n\x1b]7;file://h/tmp\x07\x1b]133;D;3\x07\x1b]133;A\x07$ ";
         let mut done = 0;
         for (offset, event) in scanner.feed(bytes) {
             parser.advance(&mut term, &bytes[done..offset]);

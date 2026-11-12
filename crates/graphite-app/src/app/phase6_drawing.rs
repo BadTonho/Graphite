@@ -29,6 +29,15 @@ impl App {
         }
         self.debug_input_focused =
             self.debug_panel_visible && y >= bounds.y + bounds.height - line_height * 1.8;
+        if self.debug_panel_visible {
+            let geometry = super::debug_panel::DebugPanelGeometry::new(&bounds, line_height);
+            let char_width = self
+                .gpu
+                .as_ref()
+                .map_or(8.0, |gpu| gpu.renderer.char_width());
+            self.debug_panel_click(&geometry, x, y, char_width);
+            return true;
+        }
         if self.tests_visible {
             let row = ((y - bounds.y - line_height) / line_height)
                 .floor()
@@ -87,7 +96,7 @@ impl App {
         );
         let heading = if self.debug_panel_visible {
             format!(
-                "Debug · {} · F5 Continue/Start · F10 Step Over · F11 Step Into · Shift+F5 Stop",
+                "Debug · {} · F5 Continue · F10 Over · F11 Into · Shift+F5 Stop · Enter evaluate · Ctrl+Enter watch",
                 debug_state_label(&self.debug.state)
             )
         } else if self.tests_visible {
@@ -108,49 +117,7 @@ impl App {
             rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
         );
         if self.debug_panel_visible {
-            let mut y = top + line_height;
-            for frame in self.debug.frames.iter().take(2) {
-                r.draw_text(
-                    &format!(
-                        "  {} · {}:{}",
-                        frame.name,
-                        frame
-                            .source
-                            .as_deref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_default(),
-                        frame.line
-                    ),
-                    bounds.x + PAD,
-                    y,
-                    rgb(Theme::color(Theme::DIM, 0x616161)),
-                );
-                y += line_height;
-            }
-            for (name, value, _) in self.debug.variables.iter().take(3) {
-                r.draw_text(
-                    &format!("  {name} = {value}"),
-                    bounds.x + PAD,
-                    y,
-                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-                );
-                y += line_height;
-            }
-            for output in self.debug.output.iter().rev().take(2).rev() {
-                r.draw_text(
-                    &format!("{}: {}", output.category, output.text.trim()),
-                    bounds.x + PAD,
-                    y,
-                    rgb(Theme::color(Theme::DIM, 0x616161)),
-                );
-                y += line_height;
-            }
-            r.draw_text(
-                &format!("> {}", self.debug_input),
-                bounds.x + PAD,
-                bounds.y + bounds.height - line_height * 1.7,
-                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-            );
+            self.draw_debug_panel(r, &bounds, line_height);
         } else if self.tests_visible {
             let roots = self
                 .test_explorer

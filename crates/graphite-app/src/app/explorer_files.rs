@@ -244,7 +244,13 @@ impl App {
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         renderer.draw_rect(x, y, panel_width, panel_height, border);
-        renderer.draw_rect(x + 1.0, y + 1.0, (panel_width - 2.0).max(0.0), panel_height - 2.0, bg);
+        renderer.draw_rect(
+            x + 1.0,
+            y + 1.0,
+            (panel_width - 2.0).max(0.0),
+            panel_height - 2.0,
+            bg,
+        );
         renderer.draw_text(self.t("explorer.rename.prompt"), x + 16.0, y + 18.0, text);
         let max_chars = ((panel_width - 32.0) / cw.max(1.0)).floor() as usize;
         let input = Self::help_menu_visible_label(
@@ -289,7 +295,11 @@ mod tests {
         assert_eq!(app.documents[id].buffer.path(), Some(to.as_path()));
         assert_eq!(app.explorer_selected.as_deref(), Some(to.as_path()));
         // `src` is collapsed, so the moved file is not a visible row until it is expanded.
-        assert!(!app.tree.rows.iter().any(|row| row.entry.name == "renamed.txt"));
+        assert!(!app
+            .tree
+            .rows
+            .iter()
+            .any(|row| row.entry.name == "renamed.txt"));
     }
 
     #[test]
@@ -300,9 +310,7 @@ mod tests {
         assert!(app.move_explorer_entry(&a, &b).is_err());
         assert!(a.exists() && b.exists());
         let src = dir.path().join("src");
-        assert!(app
-            .move_explorer_entry(&src, &src.join("nested"))
-            .is_err());
+        assert!(app.move_explorer_entry(&src, &src.join("nested")).is_err());
     }
 
     #[test]

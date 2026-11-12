@@ -11,7 +11,10 @@ const RULES: &[(&str, &[&str])] = &[
     (".js", &[".js.map", ".min.js"]),
     (".scss", &[".css", ".css.map"]),
     (".less", &[".css"]),
-    ("package.json", &["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]),
+    (
+        "package.json",
+        &["package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
+    ),
     ("Cargo.toml", &["Cargo.lock"]),
     ("composer.json", &["composer.lock"]),
     ("Gemfile", &["Gemfile.lock"]),
@@ -42,12 +45,15 @@ pub fn is_companion(parent: &str, child: &str) -> bool {
 pub fn nesting_parents(files: &[(&str, bool)]) -> Vec<Option<usize>> {
     let is_child: Vec<bool> = (0..files.len())
         .map(|child| {
-            files.iter().enumerate().any(|(parent, (parent_name, parent_dir))| {
-                parent != child
-                    && !parent_dir
-                    && !files[child].1
-                    && is_companion(parent_name, files[child].0)
-            })
+            files
+                .iter()
+                .enumerate()
+                .any(|(parent, (parent_name, parent_dir))| {
+                    parent != child
+                        && !parent_dir
+                        && !files[child].1
+                        && is_companion(parent_name, files[child].0)
+                })
         })
         .collect();
     (0..files.len())
@@ -55,13 +61,16 @@ pub fn nesting_parents(files: &[(&str, bool)]) -> Vec<Option<usize>> {
             if !is_child[child] || files[child].1 {
                 return None;
             }
-            files.iter().enumerate().find_map(|(parent, (parent_name, parent_dir))| {
-                (parent != child
-                    && !parent_dir
-                    && !is_child[parent]
-                    && is_companion(parent_name, files[child].0))
-                .then_some(parent)
-            })
+            files
+                .iter()
+                .enumerate()
+                .find_map(|(parent, (parent_name, parent_dir))| {
+                    (parent != child
+                        && !parent_dir
+                        && !is_child[parent]
+                        && is_companion(parent_name, files[child].0))
+                    .then_some(parent)
+                })
         })
         .collect()
 }

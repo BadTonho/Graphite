@@ -10,18 +10,18 @@ mod documents;
 mod file_events;
 mod language_results;
 mod languages;
-pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use decorations::LineMark as DecorationMark;
+pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
 mod storage;
 mod terminals;
 mod testing;
-mod text_search;
-mod workbench;
 #[cfg(test)]
 mod tests;
+mod text_search;
+mod workbench;
 
 pub(crate) struct Runtime {
     session: Session,

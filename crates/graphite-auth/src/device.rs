@@ -61,7 +61,10 @@ pub fn parse_device_code(value: &Value) -> Result<DeviceCode, String> {
         user_code: text("user_code")?,
         verification_uri: text("verification_uri")?,
         interval: value.get("interval").and_then(Value::as_u64).unwrap_or(5),
-        expires_in: value.get("expires_in").and_then(Value::as_u64).unwrap_or(900),
+        expires_in: value
+            .get("expires_in")
+            .and_then(Value::as_u64)
+            .unwrap_or(900),
     })
 }
 
@@ -183,7 +186,9 @@ mod tests {
     impl Transport for Fake {
         fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<Value, String> {
             let fields: Vec<String> = form.iter().map(|(k, v)| format!("{k}={v}")).collect();
-            self.posts.borrow_mut().push(format!("{url} {}", fields.join("&")));
+            self.posts
+                .borrow_mut()
+                .push(format!("{url} {}", fields.join("&")));
             self.answers
                 .borrow_mut()
                 .pop()
@@ -207,10 +212,15 @@ mod tests {
         let code = parse_device_code(&code_response()).unwrap();
         assert_eq!(code.user_code, "WDJB-MJHT");
         assert_eq!(code.interval, 5);
-        let defaults = parse_device_code(&json!({"device_code": "d", "user_code": "u", "verification_uri": "v"})).unwrap();
+        let defaults = parse_device_code(
+            &json!({"device_code": "d", "user_code": "u", "verification_uri": "v"}),
+        )
+        .unwrap();
         assert_eq!((defaults.interval, defaults.expires_in), (5, 900));
         assert_eq!(
-            parse_device_code(&json!({"error": "incorrect_client_credentials", "error_description": "bad client"})),
+            parse_device_code(
+                &json!({"error": "incorrect_client_credentials", "error_description": "bad client"})
+            ),
             Err("bad client".to_owned())
         );
         assert!(parse_device_code(&json!({"device_code": "d"})).is_err());
@@ -218,10 +228,19 @@ mod tests {
 
     #[test]
     fn token_responses_map_to_poll_outcomes() {
-        assert_eq!(parse_poll(&json!({"access_token": "gho_x", "token_type": "bearer"})), Poll::Token("gho_x".into()));
-        assert_eq!(parse_poll(&json!({"error": "authorization_pending"})), Poll::Pending);
+        assert_eq!(
+            parse_poll(&json!({"access_token": "gho_x", "token_type": "bearer"})),
+            Poll::Token("gho_x".into())
+        );
+        assert_eq!(
+            parse_poll(&json!({"error": "authorization_pending"})),
+            Poll::Pending
+        );
         assert_eq!(parse_poll(&json!({"error": "slow_down"})), Poll::SlowDown);
-        assert_eq!(parse_poll(&json!({"error": "expired_token"})), Poll::Expired);
+        assert_eq!(
+            parse_poll(&json!({"error": "expired_token"})),
+            Poll::Expired
+        );
         assert_eq!(parse_poll(&json!({"error": "access_denied"})), Poll::Denied);
         assert_eq!(
             parse_poll(&json!({"error": "unsupported_grant_type", "error_description": "no"})),
@@ -253,22 +272,34 @@ mod tests {
         assert_eq!(session.name.as_deref(), Some("Mona"));
         assert_eq!(session.token, "gho_test");
         assert!(fake.posts.borrow()[0].contains("scope=read:user"));
-        assert!(fake.posts.borrow()[1].contains("grant_type=urn:ietf:params:oauth:grant-type:device_code"));
+        assert!(fake.posts.borrow()[1]
+            .contains("grant_type=urn:ietf:params:oauth:grant-type:device_code"));
     }
 
     #[test]
     fn refusal_expiry_and_timeouts_end_the_flow_with_errors() {
         let refused = Fake::new(vec![code_response(), json!({"error": "access_denied"})]);
-        assert!(sign_in(&refused, "c", |_| {}, |_| {}).unwrap_err().contains("refused"));
+        assert!(sign_in(&refused, "c", |_| {}, |_| {})
+            .unwrap_err()
+            .contains("refused"));
 
         let expired = Fake::new(vec![code_response(), json!({"error": "expired_token"})]);
-        assert!(sign_in(&expired, "c", |_| {}, |_| {}).unwrap_err().contains("expired"));
+        assert!(sign_in(&expired, "c", |_| {}, |_| {})
+            .unwrap_err()
+            .contains("expired"));
 
         // Every poll is pending and the code runs out of time after a few waits.
         let short = json!({"device_code": "dc", "user_code": "U", "verification_uri": "v", "interval": 5, "expires_in": 15});
-        let never = Fake::new(vec![short, json!({"error": "authorization_pending"}), json!({"error": "authorization_pending"}), json!({"error": "authorization_pending"})]);
+        let never = Fake::new(vec![
+            short,
+            json!({"error": "authorization_pending"}),
+            json!({"error": "authorization_pending"}),
+            json!({"error": "authorization_pending"}),
+        ]);
         let mut waits = 0;
-        assert!(sign_in(&never, "c", |_| {}, |_| waits += 1).unwrap_err().contains("expired"));
+        assert!(sign_in(&never, "c", |_| {}, |_| waits += 1)
+            .unwrap_err()
+            .contains("expired"));
         assert_eq!(waits, 2);
     }
 }

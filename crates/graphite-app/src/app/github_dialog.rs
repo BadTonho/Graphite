@@ -25,7 +25,9 @@ struct Layout {
 }
 
 fn layout(window_width: f32, window_height: f32, char_width: f32) -> Layout {
-    let width = (window_width * 0.6).clamp(360.0, 620.0).min((window_width - 24.0).max(0.0));
+    let width = (window_width * 0.6)
+        .clamp(360.0, 620.0)
+        .min((window_width - 24.0).max(0.0));
     let x = ((window_width - width) * 0.5).max(12.0);
     let y = ((window_height - DIALOG_HEIGHT) * 0.5).max(12.0);
     let button_height = 30.0;
@@ -118,7 +120,10 @@ impl App {
         renderer.draw_rect(x + 1.0, y + 1.0, panel_width - 2.0, DIALOG_HEIGHT - 2.0, bg);
         renderer.draw_text(self.t("github.dialog.title"), x + 16.0, y + 14.0, text);
         renderer.draw_text(
-            &self.tf("github.dialog.instructions", &[("uri", &dialog.verification_uri)]),
+            &self.tf(
+                "github.dialog.instructions",
+                &[("uri", &dialog.verification_uri)],
+            ),
             x + 16.0,
             y + 44.0,
             dim,

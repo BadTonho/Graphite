@@ -80,7 +80,10 @@ pub(super) fn load_snippets_from_dirs(
 }
 
 /// Snippets and warnings from one snippet file (`{ "name": { "prefix", "body", "scope" } }`).
-pub(crate) fn parse_snippet_file(path: &Path, translator: &Translator) -> (Vec<Snippet>, Vec<String>) {
+pub(crate) fn parse_snippet_file(
+    path: &Path,
+    translator: &Translator,
+) -> (Vec<Snippet>, Vec<String>) {
     let mut found = Vec::new();
     let mut warnings = Vec::new();
     let data = match fs::read(&path) {
@@ -104,9 +107,8 @@ pub(crate) fn parse_snippet_file(path: &Path, translator: &Translator) -> (Vec<S
         }
     };
     let Some(entries) = value.as_object() else {
-        warnings.push(
-            translator.format("config.snippets.not_object", &[("path", &path.display())]),
-        );
+        warnings
+            .push(translator.format("config.snippets.not_object", &[("path", &path.display())]));
         return (found, warnings);
     };
     for (name, item) in entries {

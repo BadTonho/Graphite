@@ -1,9 +1,9 @@
 //! Native webview host. Windows uses a child WebView2; Linux creates a GTK
 //! WebKitGTK window so the same surface remains available on X11 and Wayland.
 
-use std::sync::{Arc, Mutex};
 #[cfg(target_os = "linux")]
 use gtk::prelude::*;
+use std::sync::{Arc, Mutex};
 use wry::{http::Request, WebView, WebViewBuilder};
 
 #[cfg(windows)]

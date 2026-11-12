@@ -26,9 +26,9 @@ fn is_relevant_watch_path(path: &Path) -> bool {
     let names: Vec<_> = path.components().map(|part| part.as_os_str()).collect();
     if let Some(git) = names.iter().position(|name| *name == ".git") {
         // Branch switches and commits move HEAD or refs; everything else is Git internals.
-        return names.get(git + 1).is_some_and(|name| {
-            *name == "HEAD" || *name == "refs" || *name == "packed-refs"
-        });
+        return names
+            .get(git + 1)
+            .is_some_and(|name| *name == "HEAD" || *name == "refs" || *name == "packed-refs");
     }
     !names.iter().any(|name| *name == "target")
 }
@@ -1074,7 +1074,9 @@ mod tests {
         assert!(is_relevant_watch_event(&modify("/w/.git/refs/heads/main")));
         assert!(!is_relevant_watch_event(&modify("/w/.git/index")));
         assert!(!is_relevant_watch_event(&modify("/w/.git/index.lock")));
-        assert!(!is_relevant_watch_event(&modify("/w/target/debug/graphite")));
+        assert!(!is_relevant_watch_event(&modify(
+            "/w/target/debug/graphite"
+        )));
         let read = Event::new(EventKind::Access(AccessKind::Any)).add_path("/w/src/a.rs".into());
         assert!(!is_relevant_watch_event(&read));
     }

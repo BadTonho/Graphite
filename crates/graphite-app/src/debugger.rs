@@ -7,10 +7,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::mpsc::{self, Receiver, SyncSender, TryRecvError},
     thread,
 };
@@ -99,8 +99,8 @@ pub enum AdapterEvent {
 }
 
 pub struct DapSession {
-    child: Child,
-    stdin: Option<ChildStdin>,
+    child: Option<Child>,
+    stdin: Option<Box<dyn Write + Send>>,
     events: Receiver<AdapterEvent>,
     sequence: i64,
 }
@@ -128,25 +128,77 @@ pub struct StackFrame {
     pub line: u32,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope {
+    pub name: String,
+    pub reference: i64,
+    pub expensive: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Variable {
+    pub name: String,
+    pub value: String,
+    pub type_name: Option<String>,
+    /// Zero when the variable has no children.
+    pub reference: i64,
+}
+
+/// One visible line of the variables tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VariableRow {
+    pub depth: usize,
+    pub name: String,
+    pub value: String,
+    pub reference: i64,
+    pub expanded: bool,
+    pub is_scope: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WatchExpression {
+    pub expression: String,
+    pub result: Option<Result<String, String>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExceptionFilter {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PendingEvaluation {
+    Watch(String),
+    Repl,
+}
+
+const MAX_VARIABLE_DEPTH: usize = 16;
+
 #[derive(Default)]
 pub struct DebugRuntime {
     pub session: Option<DapSession>,
     pub state: DebugState,
     pub output: Vec<DebugOutput>,
     pub frames: Vec<StackFrame>,
-    pub variables: Vec<(String, String, Option<i64>)>,
-    pub watches: Vec<String>,
+    pub selected_frame: usize,
+    pub scopes: Vec<Scope>,
+    pub watches: Vec<WatchExpression>,
+    pub exception_filters: Vec<ExceptionFilter>,
     pub breakpoints: BTreeMap<PathBuf, Vec<Value>>,
     pub breakpoints_disabled: bool,
     pub launch_configs: Vec<LaunchConfig>,
     pub active_config: Option<LaunchConfig>,
+    children: BTreeMap<i64, Vec<Variable>>,
+    expanded: BTreeSet<i64>,
     initialize_seq: Option<i64>,
     launch_seq: Option<i64>,
     stack_seq: Option<i64>,
     scopes_seq: Option<i64>,
-    variables_seq: Option<i64>,
+    pending_variables: BTreeMap<i64, i64>,
+    pending_evaluations: BTreeMap<i64, PendingEvaluation>,
     pending_breakpoints: BTreeMap<i64, PathBuf>,
-    selected_frame: Option<i64>,
 }
 
 impl Default for DebugState {
@@ -183,10 +235,9 @@ impl DebugRuntime {
         self.launch_seq = None;
         self.stack_seq = None;
         self.scopes_seq = None;
-        self.variables_seq = None;
         self.pending_breakpoints.clear();
-        self.frames.clear();
-        self.variables.clear();
+        self.pending_evaluations.clear();
+        self.clear_stop_state();
         self.output.clear();
         self.active_config = Some(config);
         self.state = DebugState::Initializing;
@@ -237,9 +288,20 @@ impl DebugRuntime {
         }
         self.state = DebugState::Stopped;
         self.active_config = None;
-        self.frames.clear();
-        self.variables.clear();
+        self.clear_stop_state();
         Ok(())
+    }
+
+    /// Drops everything that only describes the paused program.
+    fn clear_stop_state(&mut self) {
+        self.frames.clear();
+        self.selected_frame = 0;
+        self.scopes.clear();
+        self.children.clear();
+        self.expanded.clear();
+        self.pending_variables.clear();
+        self.stack_seq = None;
+        self.scopes_seq = None;
     }
 
     pub fn request(&mut self, command: &str, arguments: Value) -> Result<(), DebugError> {
@@ -257,6 +319,7 @@ impl DebugRuntime {
         };
         self.request("continue", serde_json::json!({"threadId":thread_id}))?;
         self.state = DebugState::Running;
+        self.clear_stop_state();
         Ok(())
     }
 
@@ -275,6 +338,7 @@ impl DebugRuntime {
     pub fn restart(&mut self) -> Result<(), DebugError> {
         self.request("restart", serde_json::json!({}))?;
         self.state = DebugState::Running;
+        self.clear_stop_state();
         Ok(())
     }
 
@@ -320,7 +384,6 @@ impl DebugRuntime {
     }
 
     pub fn request_scopes(&mut self, frame_id: i64) -> Result<(), DebugError> {
-        self.selected_frame = Some(frame_id);
         self.scopes_seq = Some(
             self.session
                 .as_mut()
@@ -330,19 +393,223 @@ impl DebugRuntime {
         Ok(())
     }
 
-    pub fn evaluate_watch(
+    pub fn selected_frame_id(&self) -> Option<i64> {
+        self.frames.get(self.selected_frame).map(|frame| frame.id)
+    }
+
+    /// Makes `index` the frame whose scopes, variables and watches are shown.
+    pub fn select_frame(&mut self, index: usize) -> Result<(), DebugError> {
+        let Some(frame) = self.frames.get(index) else {
+            return Ok(());
+        };
+        let frame_id = frame.id;
+        self.selected_frame = index;
+        self.scopes.clear();
+        self.children.clear();
+        self.expanded.clear();
+        self.pending_variables.clear();
+        self.request_scopes(frame_id)?;
+        self.refresh_watches()
+    }
+
+    /// Expands or collapses a variable, fetching its children on first expansion.
+    pub fn toggle_variable(&mut self, reference: i64) -> Result<(), DebugError> {
+        if reference <= 0 {
+            return Ok(());
+        }
+        if !self.expanded.remove(&reference) {
+            self.expanded.insert(reference);
+            if !self.children.contains_key(&reference) {
+                self.request_variables(reference)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn request_variables(&mut self, reference: i64) -> Result<(), DebugError> {
+        if self.pending_variables.values().any(|r| *r == reference) {
+            return Ok(());
+        }
+        let seq = self
+            .session
+            .as_mut()
+            .ok_or(DebugError::Stopped)?
+            .send_request(
+                "variables",
+                serde_json::json!({"variablesReference":reference}),
+            )?;
+        self.pending_variables.insert(seq, reference);
+        Ok(())
+    }
+
+    /// The visible rows of the variables tree: scopes, then expanded children.
+    pub fn variable_rows(&self) -> Vec<VariableRow> {
+        fn visit(
+            runtime: &DebugRuntime,
+            reference: i64,
+            depth: usize,
+            path: &mut Vec<i64>,
+            rows: &mut Vec<VariableRow>,
+        ) {
+            if depth > MAX_VARIABLE_DEPTH {
+                return;
+            }
+            for variable in runtime.children.get(&reference).into_iter().flatten() {
+                let expanded = variable.reference > 0
+                    && runtime.expanded.contains(&variable.reference)
+                    && !path.contains(&variable.reference);
+                rows.push(VariableRow {
+                    depth,
+                    name: variable.name.clone(),
+                    value: variable.value.clone(),
+                    reference: variable.reference,
+                    expanded,
+                    is_scope: false,
+                });
+                if expanded {
+                    path.push(variable.reference);
+                    visit(runtime, variable.reference, depth + 1, path, rows);
+                    path.pop();
+                }
+            }
+        }
+        let mut rows = Vec::new();
+        for scope in &self.scopes {
+            let expanded = self.expanded.contains(&scope.reference);
+            rows.push(VariableRow {
+                depth: 0,
+                name: scope.name.clone(),
+                value: String::new(),
+                reference: scope.reference,
+                expanded,
+                is_scope: true,
+            });
+            if expanded {
+                visit(
+                    self,
+                    scope.reference,
+                    1,
+                    &mut vec![scope.reference],
+                    &mut rows,
+                );
+            }
+        }
+        rows
+    }
+
+    /// Evaluates `expression` in the selected frame as a debug console command.
+    pub fn evaluate_repl(&mut self, expression: &str) -> Result<(), DebugError> {
+        self.push_output("console", format!("> {expression}"));
+        self.evaluate(expression, "repl", PendingEvaluation::Repl)
+    }
+
+    pub fn add_watch(&mut self, expression: &str) -> Result<(), DebugError> {
+        let expression = expression.trim();
+        if expression.is_empty() || self.watches.iter().any(|w| w.expression == expression) {
+            return Ok(());
+        }
+        self.watches.push(WatchExpression {
+            expression: expression.to_owned(),
+            result: None,
+        });
+        if matches!(self.state, DebugState::Paused { .. }) {
+            self.evaluate(
+                expression,
+                "watch",
+                PendingEvaluation::Watch(expression.to_owned()),
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_watch(&mut self, index: usize) {
+        if index < self.watches.len() {
+            self.watches.remove(index);
+        }
+    }
+
+    /// Re-evaluates every watch against the selected frame.
+    pub fn refresh_watches(&mut self) -> Result<(), DebugError> {
+        if self.session.is_none() || !matches!(self.state, DebugState::Paused { .. }) {
+            return Ok(());
+        }
+        let expressions: Vec<String> = self.watches.iter().map(|w| w.expression.clone()).collect();
+        for expression in expressions {
+            let pending = PendingEvaluation::Watch(expression.clone());
+            self.evaluate(&expression, "watch", pending)?;
+        }
+        Ok(())
+    }
+
+    fn evaluate(
         &mut self,
         expression: &str,
-        frame_id: Option<i64>,
+        context: &str,
+        pending: PendingEvaluation,
     ) -> Result<(), DebugError> {
-        self.session
+        let frame_id = self.selected_frame_id();
+        let seq = self
+            .session
             .as_mut()
             .ok_or(DebugError::Stopped)?
             .send_request(
                 "evaluate",
-                serde_json::json!({"expression":expression,"frameId":frame_id,"context":"watch"}),
+                serde_json::json!({"expression":expression,"frameId":frame_id,"context":context}),
             )?;
+        self.pending_evaluations.insert(seq, pending);
         Ok(())
+    }
+
+    pub fn toggle_exception_filter(&mut self, index: usize) -> Result<(), DebugError> {
+        let Some(filter) = self.exception_filters.get_mut(index) else {
+            return Ok(());
+        };
+        filter.enabled = !filter.enabled;
+        if self.session.is_some() {
+            self.send_exception_filters()?;
+        }
+        Ok(())
+    }
+
+    fn send_exception_filters(&mut self) -> Result<(), DebugError> {
+        if self.exception_filters.is_empty() {
+            return Ok(());
+        }
+        let filters: Vec<&str> = self
+            .exception_filters
+            .iter()
+            .filter(|filter| filter.enabled)
+            .map(|filter| filter.id.as_str())
+            .collect();
+        let arguments = serde_json::json!({"filters":filters});
+        self.session
+            .as_mut()
+            .ok_or(DebugError::Stopped)?
+            .send_request("setExceptionBreakpoints", arguments)?;
+        Ok(())
+    }
+
+    /// Adopts the adapter's advertised exception filters, keeping choices already made.
+    fn adopt_exception_filters(&mut self, capabilities: &Value) {
+        let previous = std::mem::take(&mut self.exception_filters);
+        self.exception_filters = capabilities["exceptionBreakpointFilters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|filter| {
+                let id = filter["filter"].as_str()?.to_owned();
+                let enabled = previous
+                    .iter()
+                    .find(|old| old.id == id)
+                    .map(|old| old.enabled)
+                    .unwrap_or_else(|| filter["default"].as_bool().unwrap_or(false));
+                Some(ExceptionFilter {
+                    label: filter["label"].as_str().unwrap_or(&id).to_owned(),
+                    id,
+                    enabled,
+                })
+            })
+            .collect();
     }
 
     fn step(&mut self, command: &str) -> Result<(), DebugError> {
@@ -352,6 +619,7 @@ impl DebugRuntime {
         };
         self.request(command, serde_json::json!({"threadId":thread_id}))?;
         self.state = DebugState::Running;
+        self.clear_stop_state();
         Ok(())
     }
 
@@ -386,6 +654,7 @@ impl DebugRuntime {
             if !success {
                 return Err(DebugError::Transport(dap_error(message)));
             }
+            self.adopt_exception_filters(&message["body"]);
             let config = self.active_config.as_ref().ok_or(DebugError::Stopped)?;
             let mut arguments = serde_json::to_value(config)?;
             arguments.as_object_mut().unwrap().remove("adapter");
@@ -435,52 +704,82 @@ impl DebugRuntime {
                     line: frame["line"].as_u64().unwrap_or_default() as u32,
                 })
                 .collect();
+            self.selected_frame = 0;
+            self.scopes.clear();
+            self.children.clear();
+            self.expanded.clear();
             if let Some(frame) = self.frames.first() {
                 self.request_scopes(frame.id)?;
             }
+            self.refresh_watches()?;
         } else if self.scopes_seq == Some(seq) {
             self.scopes_seq = None;
-            if let Some(reference) = message["body"]["scopes"]
-                .as_array()
-                .and_then(|scopes| scopes.first())
-                .and_then(|scope| scope["variablesReference"].as_i64())
-            {
-                self.variables_seq = Some(
-                    self.session
-                        .as_mut()
-                        .ok_or(DebugError::Stopped)?
-                        .send_request(
-                            "variables",
-                            serde_json::json!({"variablesReference":reference}),
-                        )?,
-                );
-            }
-        } else if self.variables_seq == Some(seq) {
-            self.variables_seq = None;
-            self.variables = message["body"]["variables"]
+            self.scopes = message["body"]["scopes"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|variable| {
-                    (
-                        variable["name"].as_str().unwrap_or_default().to_owned(),
-                        variable["value"].as_str().unwrap_or_default().to_owned(),
-                        variable["variablesReference"]
-                            .as_i64()
-                            .filter(|reference| *reference > 0),
-                    )
+                .map(|scope| Scope {
+                    name: scope["name"].as_str().unwrap_or("Scope").to_owned(),
+                    reference: scope["variablesReference"].as_i64().unwrap_or_default(),
+                    expensive: scope["expensive"].as_bool().unwrap_or(false),
                 })
+                .filter(|scope| scope.reference > 0)
                 .collect();
+            // Like VS Code, open the first cheap scope (normally "Locals").
+            if let Some(reference) = self
+                .scopes
+                .iter()
+                .find(|scope| !scope.expensive)
+                .map(|scope| scope.reference)
+            {
+                self.toggle_variable(reference)?;
+            }
+        } else if let Some(reference) = self.pending_variables.remove(&seq) {
+            if success {
+                let variables = message["body"]["variables"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|variable| Variable {
+                        name: variable["name"].as_str().unwrap_or_default().to_owned(),
+                        value: variable["value"].as_str().unwrap_or_default().to_owned(),
+                        type_name: variable["type"].as_str().map(str::to_owned),
+                        reference: variable["variablesReference"].as_i64().unwrap_or_default(),
+                    })
+                    .collect();
+                self.children.insert(reference, variables);
+            } else {
+                self.expanded.remove(&reference);
+                self.push_output("stderr", dap_error(message));
+            }
+        } else if let Some(pending) = self.pending_evaluations.remove(&seq) {
+            let outcome = if success {
+                Ok(message["body"]["result"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned())
+            } else {
+                Err(dap_error(message))
+            };
+            match pending {
+                PendingEvaluation::Watch(expression) => {
+                    if let Some(watch) = self
+                        .watches
+                        .iter_mut()
+                        .find(|watch| watch.expression == expression)
+                    {
+                        watch.result = Some(outcome);
+                    }
+                }
+                PendingEvaluation::Repl => match outcome {
+                    Ok(result) => self.push_output("console", result),
+                    Err(error) => self.push_output("stderr", error),
+                },
+            }
         } else if self.pending_breakpoints.remove(&seq).is_some() && !success {
             self.push_output("stderr", dap_error(message));
         } else if !success {
             self.push_output("stderr", dap_error(message));
-        }
-        if let Some(body) = message.get("body").filter(|_| success) {
-            if message["command"] == "evaluate" {
-                let expression = body["result"].as_str().unwrap_or("");
-                self.push_output("console", expression.to_owned());
-            }
         }
         Ok(())
     }
@@ -492,6 +791,7 @@ impl DebugRuntime {
                 for (source, points) in breakpoints {
                     self.set_breakpoints(&source, points)?;
                 }
+                self.send_exception_filters()?;
                 self.session
                     .as_mut()
                     .ok_or(DebugError::Stopped)?
@@ -504,10 +804,17 @@ impl DebugRuntime {
                     thread_id,
                     reason: body["reason"].as_str().unwrap_or("paused").to_owned(),
                 };
+                self.clear_stop_state();
                 self.request_stack(thread_id)?;
             }
-            "continued" => self.state = DebugState::Running,
-            "terminated" | "exited" => self.state = DebugState::Stopped,
+            "continued" => {
+                self.state = DebugState::Running;
+                self.clear_stop_state();
+            }
+            "terminated" | "exited" => {
+                self.state = DebugState::Stopped;
+                self.clear_stop_state();
+            }
             "output" => {
                 let body = &message["body"];
                 self.push_output(
@@ -566,7 +873,10 @@ impl DapSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let stdin = child.stdin.take();
+        let stdin = child
+            .stdin
+            .take()
+            .map(|stdin| Box::new(stdin) as Box<dyn Write + Send>);
         let stdout = child.stdout.take().ok_or(DebugError::Stopped)?;
         let stderr = child.stderr.take().ok_or(DebugError::Stopped)?;
         let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
@@ -578,11 +888,23 @@ impl DapSession {
             .name("graphite-dap-stderr".into())
             .spawn(move || read_stderr(stderr, stderr_sender))?;
         Ok(Self {
-            child,
+            child: Some(child),
             stdin,
             events,
             sequence: 1,
         })
+    }
+
+    /// A session without an adapter process, for tests that drive the protocol directly.
+    #[cfg(test)]
+    fn detached(writer: Box<dyn Write + Send>) -> Self {
+        let (_sender, events) = mpsc::sync_channel(1);
+        Self {
+            child: None,
+            stdin: Some(writer),
+            events,
+            sequence: 1,
+        }
     }
 
     pub fn send_request(&mut self, command: &str, arguments: Value) -> Result<i64, DebugError> {
@@ -632,15 +954,20 @@ impl DapSession {
     }
 
     pub fn is_running(&mut self) -> Result<bool, DebugError> {
-        Ok(self.child.try_wait()?.is_none())
+        match self.child.as_mut() {
+            Some(child) => Ok(child.try_wait()?.is_none()),
+            None => Ok(true),
+        }
     }
 
     pub fn stop(&mut self) -> Result<(), DebugError> {
         self.stdin.take();
-        if self.child.try_wait()?.is_none() {
-            self.child.kill()?;
+        if let Some(child) = self.child.as_mut() {
+            if child.try_wait()?.is_none() {
+                child.kill()?;
+            }
+            let _ = child.wait();
         }
-        let _ = self.child.wait();
         Ok(())
     }
 
@@ -760,6 +1087,354 @@ mod tests {
         assert!(read_message(&mut Cursor::new(b"Content-Length: nope\r\n\r\n")).is_err());
         let large = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
         assert!(read_message(&mut Cursor::new(large.into_bytes())).is_err());
+    }
+
+    #[derive(Clone, Default)]
+    struct SharedWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SharedWriter {
+        /// Every request sent so far, oldest first.
+        fn requests(&self) -> Vec<Value> {
+            let bytes = self.0.lock().unwrap().clone();
+            let mut reader = BufReader::new(Cursor::new(bytes));
+            let mut requests = Vec::new();
+            while let Ok(Some(message)) = read_message(&mut reader) {
+                requests.push(message);
+            }
+            requests
+        }
+
+        fn last(&self) -> Value {
+            self.requests().pop().expect("a request was sent")
+        }
+    }
+
+    fn paused_runtime() -> (DebugRuntime, SharedWriter) {
+        let writer = SharedWriter::default();
+        let runtime = DebugRuntime {
+            session: Some(DapSession::detached(Box::new(writer.clone()))),
+            state: DebugState::Paused {
+                thread_id: 1,
+                reason: "breakpoint".into(),
+            },
+            ..DebugRuntime::default()
+        };
+        (runtime, writer)
+    }
+
+    fn respond(runtime: &mut DebugRuntime, request_seq: i64, body: Value) {
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"response","request_seq":request_seq,"success":true,"body":body}),
+                Path::new("."),
+            )
+            .unwrap();
+    }
+
+    fn respond_error(runtime: &mut DebugRuntime, request_seq: i64, message: &str) {
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"response","request_seq":request_seq,"success":false,"message":message}),
+                Path::new("."),
+            )
+            .unwrap();
+    }
+
+    /// Drives stackTrace and scopes so the runtime shows locals `a` and expandable `obj`.
+    fn paused_with_locals() -> (DebugRuntime, SharedWriter) {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.request_stack(1).unwrap();
+        respond(
+            &mut runtime,
+            1,
+            serde_json::json!({"stackFrames":[
+                {"id":10,"name":"main","source":{"path":"a.rs"},"line":3},
+                {"id":11,"name":"caller","source":{"path":"b.rs"},"line":9}
+            ]}),
+        );
+        respond(
+            &mut runtime,
+            2,
+            serde_json::json!({"scopes":[
+                {"name":"Locals","variablesReference":5},
+                {"name":"Globals","variablesReference":6,"expensive":true}
+            ]}),
+        );
+        respond(
+            &mut runtime,
+            3,
+            serde_json::json!({"variables":[
+                {"name":"a","value":"1","type":"int","variablesReference":0},
+                {"name":"obj","value":"Obj","variablesReference":7}
+            ]}),
+        );
+        (runtime, writer)
+    }
+
+    #[test]
+    fn a_stop_loads_the_first_cheap_scope_and_lists_its_variables() {
+        let (runtime, writer) = paused_with_locals();
+        let requests = writer.requests();
+        assert_eq!(requests[1]["command"], "scopes");
+        assert_eq!(requests[1]["arguments"]["frameId"], 10);
+        assert_eq!(requests[2]["command"], "variables");
+        assert_eq!(requests[2]["arguments"]["variablesReference"], 5);
+        let rows = runtime.variable_rows();
+        let labels: Vec<_> = rows
+            .iter()
+            .map(|row| (row.depth, row.name.as_str(), row.expanded))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                (0, "Locals", true),
+                (1, "a", false),
+                (1, "obj", false),
+                (0, "Globals", false)
+            ]
+        );
+        assert_eq!(rows[1].value, "1");
+        assert!(rows[0].is_scope && !rows[1].is_scope);
+    }
+
+    #[test]
+    fn expanding_a_variable_fetches_children_once_and_collapsing_hides_them() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.toggle_variable(7).unwrap();
+        assert_eq!(writer.last()["arguments"]["variablesReference"], 7);
+        respond(
+            &mut runtime,
+            4,
+            serde_json::json!({"variables":[{"name":"field","value":"2","variablesReference":0}]}),
+        );
+        let rows = runtime.variable_rows();
+        assert_eq!(rows[3].name, "field");
+        assert_eq!(rows[3].depth, 2);
+        assert!(rows[2].expanded);
+
+        runtime.toggle_variable(7).unwrap();
+        assert_eq!(runtime.variable_rows().len(), 4);
+        let sent = writer.requests().len();
+        runtime.toggle_variable(7).unwrap();
+        assert_eq!(
+            writer.requests().len(),
+            sent,
+            "cached children are not fetched again"
+        );
+        assert_eq!(runtime.variable_rows().len(), 5);
+    }
+
+    #[test]
+    fn self_referencing_variables_do_not_loop_forever() {
+        let (mut runtime, _writer) = paused_with_locals();
+        runtime.toggle_variable(7).unwrap();
+        respond(
+            &mut runtime,
+            4,
+            serde_json::json!({"variables":[{"name":"me","value":"Obj","variablesReference":7}]}),
+        );
+        let rows = runtime.variable_rows();
+        assert!(rows.len() < 10, "cycle was cut: {} rows", rows.len());
+    }
+
+    #[test]
+    fn a_failed_variables_request_reports_and_collapses() {
+        let (mut runtime, _writer) = paused_with_locals();
+        runtime.toggle_variable(7).unwrap();
+        respond_error(&mut runtime, 4, "cannot read");
+        assert!(!runtime.variable_rows()[2].expanded);
+        assert_eq!(runtime.output.last().unwrap().text, "cannot read");
+    }
+
+    #[test]
+    fn selecting_another_frame_reloads_scopes_and_watches() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.add_watch("a + 1").unwrap();
+        runtime.select_frame(1).unwrap();
+        assert_eq!(runtime.selected_frame_id(), Some(11));
+        assert!(runtime.variable_rows().is_empty(), "old locals are dropped");
+        let requests = writer.requests();
+        let scopes = requests
+            .iter()
+            .rev()
+            .find(|request| request["command"] == "scopes")
+            .unwrap();
+        assert_eq!(scopes["arguments"]["frameId"], 11);
+        assert_eq!(writer.last()["command"], "evaluate");
+        assert_eq!(writer.last()["arguments"]["frameId"], 11);
+        // Out-of-range indexes are ignored instead of panicking.
+        runtime.select_frame(99).unwrap();
+        assert_eq!(runtime.selected_frame_id(), Some(11));
+    }
+
+    #[test]
+    fn watches_show_results_errors_and_survive_frame_changes() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.add_watch("a + 1").unwrap();
+        runtime.add_watch("a + 1").unwrap();
+        runtime.add_watch("  ").unwrap();
+        assert_eq!(
+            runtime.watches.len(),
+            1,
+            "duplicates and blanks are ignored"
+        );
+        let request = writer.last();
+        assert_eq!(request["arguments"]["context"], "watch");
+        assert_eq!(request["arguments"]["frameId"], 10);
+        respond(&mut runtime, 4, serde_json::json!({"result":"2"}));
+        assert_eq!(runtime.watches[0].result, Some(Ok("2".into())));
+
+        runtime.add_watch("missing").unwrap();
+        respond_error(&mut runtime, 5, "not defined");
+        assert_eq!(runtime.watches[1].result, Some(Err("not defined".into())));
+        assert!(
+            runtime.output.iter().all(|line| line.text != "not defined"),
+            "watch errors stay in the watch row"
+        );
+
+        runtime.remove_watch(0);
+        assert_eq!(runtime.watches[0].expression, "missing");
+    }
+
+    #[test]
+    fn repl_input_is_echoed_and_its_result_lands_in_the_console() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.evaluate_repl("a").unwrap();
+        assert_eq!(writer.last()["arguments"]["context"], "repl");
+        respond(&mut runtime, 4, serde_json::json!({"result":"1"}));
+        let lines: Vec<_> = runtime
+            .output
+            .iter()
+            .map(|line| (line.category.as_str(), line.text.as_str()))
+            .collect();
+        assert_eq!(lines, [("console", "> a"), ("console", "1")]);
+
+        runtime.evaluate_repl("nope").unwrap();
+        respond_error(&mut runtime, 5, "undefined: nope");
+        assert_eq!(
+            runtime.output.last().map(|line| line.category.as_str()),
+            Some("stderr")
+        );
+        assert!(runtime.watches.is_empty(), "repl input is not a watch");
+    }
+
+    #[test]
+    fn exception_filters_come_from_the_adapter_and_are_sent_when_toggled() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.initialize_seq = Some(1);
+        runtime.active_config = Some(LaunchConfig {
+            name: "x".into(),
+            adapter_type: "t".into(),
+            request: RequestKind::Launch,
+            program: None,
+            args: Vec::new(),
+            cwd: None,
+            stop_on_entry: false,
+            env: BTreeMap::new(),
+            adapter: None,
+            extra: BTreeMap::new(),
+        });
+        respond(
+            &mut runtime,
+            1,
+            serde_json::json!({"exceptionBreakpointFilters":[
+                {"filter":"raised","label":"Raised Exceptions","default":false},
+                {"filter":"uncaught","label":"Uncaught Exceptions","default":true}
+            ]}),
+        );
+        let enabled: Vec<_> = runtime
+            .exception_filters
+            .iter()
+            .map(|filter| (filter.label.as_str(), filter.enabled))
+            .collect();
+        assert_eq!(
+            enabled,
+            [("Raised Exceptions", false), ("Uncaught Exceptions", true)]
+        );
+
+        runtime.toggle_exception_filter(0).unwrap();
+        let request = writer.last();
+        assert_eq!(request["command"], "setExceptionBreakpoints");
+        assert_eq!(
+            request["arguments"]["filters"],
+            serde_json::json!(["raised", "uncaught"])
+        );
+        runtime.toggle_exception_filter(1).unwrap();
+        assert_eq!(
+            writer.last()["arguments"]["filters"],
+            serde_json::json!(["raised"])
+        );
+
+        // The choices survive a restart that advertises the same filters.
+        runtime.adopt_exception_filters(&serde_json::json!({"exceptionBreakpointFilters":[
+            {"filter":"raised","label":"Raised","default":false},
+            {"filter":"uncaught","label":"Uncaught","default":true}
+        ]}));
+        assert!(runtime.exception_filters[0].enabled);
+        assert!(!runtime.exception_filters[1].enabled);
+    }
+
+    #[test]
+    fn the_initialized_event_sends_exception_filters_before_configuration_done() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.exception_filters = vec![ExceptionFilter {
+            id: "all".into(),
+            label: "All".into(),
+            enabled: true,
+        }];
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"event","event":"initialized"}),
+                Path::new("."),
+            )
+            .unwrap();
+        let commands: Vec<_> = writer
+            .requests()
+            .iter()
+            .map(|request| request["command"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(commands, ["setExceptionBreakpoints", "configurationDone"]);
+    }
+
+    #[test]
+    fn adapters_without_exception_filters_get_no_exception_request() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.toggle_exception_filter(0).unwrap();
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"event","event":"initialized"}),
+                Path::new("."),
+            )
+            .unwrap();
+        let commands: Vec<_> = writer
+            .requests()
+            .iter()
+            .map(|request| request["command"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(commands, ["configurationDone"]);
+    }
+
+    #[test]
+    fn stepping_sends_the_paused_thread_and_clears_the_stale_stop() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.step_over().unwrap();
+        let request = writer.last();
+        assert_eq!(request["command"], "next");
+        assert_eq!(request["arguments"]["threadId"], 1);
+        assert_eq!(runtime.state, DebugState::Running);
+        assert!(runtime.frames.is_empty());
+        assert!(runtime.variable_rows().is_empty());
+        assert!(runtime.step_over().is_err(), "cannot step while running");
     }
 
     #[test]

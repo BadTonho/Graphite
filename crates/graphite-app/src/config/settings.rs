@@ -334,9 +334,8 @@ pub(super) fn read_editor_prefs(
         }
         if let Some(value) = value.get("files.autoSave") {
             let text = value.as_str().unwrap_or_default();
-            prefs.auto_save = Some(
-                AutoSaveMode::parse(text).ok_or_else(|| invalid("files.autoSave", path))?,
-            );
+            prefs.auto_save =
+                Some(AutoSaveMode::parse(text).ok_or_else(|| invalid("files.autoSave", path))?);
         }
         if let Some(value) = value.get("files.autoSaveDelay") {
             prefs.auto_save_delay_ms = value

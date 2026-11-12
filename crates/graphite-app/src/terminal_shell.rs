@@ -139,8 +139,7 @@ pub const POWERSHELL_INTEGRATION: &str = concat!(
 );
 
 /// Prompt command for bash: reports the previous exit code and the prompt position.
-pub const BASH_PROMPT_COMMAND: &str =
-    "printf '\\033]133;D;%s\\007\\033]133;A\\007' \"$?\"";
+pub const BASH_PROMPT_COMMAND: &str = "printf '\\033]133;D;%s\\007\\033]133;A\\007' \"$?\"";
 
 /// Whether a shell executable is one of the shells that gets integration.
 #[derive(Debug, PartialEq, Eq)]
@@ -185,10 +184,7 @@ mod tests {
         );
         assert_eq!(
             found,
-            vec![
-                ShellEvent::CommandEnd(Some(2)),
-                ShellEvent::PromptStart
-            ]
+            vec![ShellEvent::CommandEnd(Some(2)), ShellEvent::PromptStart]
         );
     }
 
@@ -201,10 +197,7 @@ mod tests {
         );
         assert_eq!(
             found,
-            vec![
-                ShellEvent::CommandEnd(Some(0)),
-                ShellEvent::PromptStart
-            ]
+            vec![ShellEvent::CommandEnd(Some(0)), ShellEvent::PromptStart]
         );
     }
 
@@ -222,10 +215,7 @@ mod tests {
         big.extend(std::iter::repeat(b'x').take(MAX_PAYLOAD + 10));
         big.push(0x07);
         big.extend_from_slice(b"\x1b[31mred\x1b[0m\x1b]133;A\x07");
-        assert_eq!(
-            events(&mut scanner, &[&big]),
-            vec![ShellEvent::PromptStart]
-        );
+        assert_eq!(events(&mut scanner, &[&big]), vec![ShellEvent::PromptStart]);
     }
 
     #[test]

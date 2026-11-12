@@ -28,7 +28,9 @@ fn span(
     }
     let line_chars = text.trim_end_matches(['\r', '\n']).chars().count();
     let chars_at = |column: Option<u32>, default: usize| {
-        column.map_or(default, |column| utf16_column_to_chars(text, column).min(line_chars))
+        column.map_or(default, |column| {
+            utf16_column_to_chars(text, column).min(line_chars)
+        })
     };
     let columns = |chars: usize| {
         let prefix: String = text.chars().take(chars).collect();
@@ -107,20 +109,41 @@ mod tests {
     fn spans_follow_character_columns_and_clamp_to_the_line() {
         // `cw` is 10 px and text starts at x = 100.
         let text = "hello world\n";
-        assert_eq!(span(&mark(Some(2), Some(5), false), text, 4, 100.0, 10.0, 900.0), Some((120.0, 150.0)));
-        assert_eq!(span(&mark(None, None, false), text, 4, 100.0, 10.0, 900.0), Some((100.0, 210.0)));
+        assert_eq!(
+            span(&mark(Some(2), Some(5), false), text, 4, 100.0, 10.0, 900.0),
+            Some((120.0, 150.0))
+        );
+        assert_eq!(
+            span(&mark(None, None, false), text, 4, 100.0, 10.0, 900.0),
+            Some((100.0, 210.0))
+        );
         // An end column past the line clamps to the line length.
-        assert_eq!(span(&mark(Some(6), Some(99), false), text, 4, 100.0, 10.0, 900.0), Some((160.0, 210.0)));
+        assert_eq!(
+            span(&mark(Some(6), Some(99), false), text, 4, 100.0, 10.0, 900.0),
+            Some((160.0, 210.0))
+        );
         // Empty ranges draw nothing, a whole line spans the text area.
-        assert_eq!(span(&mark(Some(3), Some(3), false), text, 4, 100.0, 10.0, 900.0), None);
-        assert_eq!(span(&mark(Some(3), Some(3), true), text, 4, 100.0, 10.0, 900.0), Some((100.0, 900.0)));
+        assert_eq!(
+            span(&mark(Some(3), Some(3), false), text, 4, 100.0, 10.0, 900.0),
+            None
+        );
+        assert_eq!(
+            span(&mark(Some(3), Some(3), true), text, 4, 100.0, 10.0, 900.0),
+            Some((100.0, 900.0))
+        );
     }
 
     #[test]
     fn utf16_columns_map_to_characters_and_tabs_widen_the_span() {
         // The emoji is two UTF-16 units but one character, one display column.
-        assert_eq!(span(&mark(Some(2), Some(3), false), "a🌎b", 4, 0.0, 10.0, 500.0), Some((10.0, 20.0)));
+        assert_eq!(
+            span(&mark(Some(2), Some(3), false), "a🌎b", 4, 0.0, 10.0, 500.0),
+            Some((10.0, 20.0))
+        );
         // A tab counts as `tab_size` display columns.
-        assert_eq!(span(&mark(Some(0), Some(1), false), "\tx", 4, 0.0, 10.0, 500.0), Some((0.0, 40.0)));
+        assert_eq!(
+            span(&mark(Some(0), Some(1), false), "\tx", 4, 0.0, 10.0, 500.0),
+            Some((0.0, 40.0))
+        );
     }
 }

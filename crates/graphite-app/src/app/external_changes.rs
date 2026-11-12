@@ -89,7 +89,10 @@ mod tests {
         app.sync_external_changes_after(Duration::ZERO);
         assert_eq!(app.editor().text(), "two");
         assert!(!app.documents[id].is_dirty());
-        assert_eq!(app.status, app.tf("external.reloaded", &[("count", &1usize)]));
+        assert_eq!(
+            app.status,
+            app.tf("external.reloaded", &[("count", &1usize)])
+        );
 
         app.editor_mut().insert("x");
         fs::write(&path, "three").unwrap();
@@ -97,7 +100,10 @@ mod tests {
         assert!(app.editor().text().contains('x'));
         assert_ne!(app.editor().text(), "three");
         assert!(app.documents[id].is_dirty());
-        assert_eq!(app.status, app.tf("external.kept_edits", &[("count", &1usize)]));
+        assert_eq!(
+            app.status,
+            app.tf("external.kept_edits", &[("count", &1usize)])
+        );
     }
 
     #[test]

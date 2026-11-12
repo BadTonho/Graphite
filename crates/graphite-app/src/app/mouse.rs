@@ -284,10 +284,8 @@ impl App {
                     match row.kind {
                         ScmListRowKind::Section { staged, .. } => {
                             if !staged {
-                                let (history, stash) = super::scm_ui::changes_header_buttons(
-                                    row.action,
-                                    cw,
-                                );
+                                let (history, stash) =
+                                    super::scm_ui::changes_header_buttons(row.action, cw);
                                 if history.contains(local_x, local_y) {
                                     self.open_scm_history();
                                     return;
@@ -532,7 +530,9 @@ impl App {
             );
             return;
         }
-        let line = self.editor_line_at_row(((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize);
+        let line = self.editor_line_at_row(
+            ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize,
+        );
         let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;
         let head = self.documents[self.active_document()]
             .buffer

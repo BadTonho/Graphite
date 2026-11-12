@@ -895,7 +895,6 @@ impl App {
             let _ = std::fs::write(self.profile_root.join("recent-workspaces.json"), bytes);
         }
     }
-
 }
 
 #[cfg(test)]

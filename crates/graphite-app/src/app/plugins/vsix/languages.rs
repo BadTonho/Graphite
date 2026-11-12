@@ -267,7 +267,10 @@ impl App {
                 self.completion_index = 0;
             }
             Feature::Definition | Feature::Declaration | Feature::TypeDefinition => {
-                self.show_lsp_locations(&language_results::locations(result), "lsp.definition.none");
+                self.show_lsp_locations(
+                    &language_results::locations(result),
+                    "lsp.definition.none",
+                );
             }
             Feature::Implementation => {
                 self.show_lsp_locations(
@@ -276,7 +279,10 @@ impl App {
                 );
             }
             Feature::References => {
-                self.show_lsp_locations(&language_results::locations(result), "lsp.references.none");
+                self.show_lsp_locations(
+                    &language_results::locations(result),
+                    "lsp.references.none",
+                );
             }
             Feature::DocumentSymbols => self.show_vsix_symbols(&request.document, result),
             Feature::CodeActions => {

@@ -47,7 +47,10 @@ impl App {
     fn lsp_position_params(&self) -> Option<(PathBuf, Value)> {
         let (path, position) = self.active_lsp_position()?;
         let uri = self.lsp_manager.document_uri(&path)?;
-        Some((path, json!({"textDocument": {"uri": uri}, "position": position})))
+        Some((
+            path,
+            json!({"textDocument": {"uri": uri}, "position": position}),
+        ))
     }
 
     fn lsp_send_at_caret(
@@ -122,8 +125,7 @@ impl App {
             return;
         };
         let line_text = self.editor().line(position.line as usize);
-        let column =
-            super::drawing_helpers::utf16_column_to_chars(&line_text, position.character);
+        let column = super::drawing_helpers::utf16_column_to_chars(&line_text, position.character);
         let value = word_at(&line_text, column);
         if value.is_empty() {
             self.status = self.t("lsp.rename.no_symbol").into();
@@ -208,9 +210,7 @@ impl App {
                     ("typeHierarchySubtypes", "typeHierarchy/subtypes"),
                 ],
             ),
-            "callHierarchyIncoming" => {
-                self.add_hierarchy_items(calls_from(&result, "from", "← "))
-            }
+            "callHierarchyIncoming" => self.add_hierarchy_items(calls_from(&result, "from", "← ")),
             "callHierarchyOutgoing" => self.add_hierarchy_items(calls_from(&result, "to", "→ ")),
             "typeHierarchySupertypes" => self.add_hierarchy_items(items_from(&result, "↑ ")),
             "typeHierarchySubtypes" => self.add_hierarchy_items(items_from(&result, "↓ ")),
@@ -295,7 +295,12 @@ impl App {
             "options": crate::lsp::LspManager::formatting_options(self.tab_size, self.insert_spaces),
         });
         self.lsp_format_revision = Some(self.documents[self.command_document()].buffer.revision());
-        self.lsp_request_at(&path, "rangeFormatting", "textDocument/rangeFormatting", params)
+        self.lsp_request_at(
+            &path,
+            "rangeFormatting",
+            "textDocument/rangeFormatting",
+            params,
+        )
     }
 
     fn apply_format_result(&mut self, result: Value) {
@@ -385,11 +390,7 @@ impl App {
 
     /// After a hierarchy root is prepared, asks for its related items in both directions.
     fn follow_hierarchy(&mut self, result: &Value, requests: [(&'static str, &'static str); 2]) {
-        let Some(item) = result
-            .as_array()
-            .and_then(|items| items.first())
-            .cloned()
-        else {
+        let Some(item) = result.as_array().and_then(|items| items.first()).cloned() else {
             self.status = self.t("lsp.hierarchy.none").into();
             return;
         };

@@ -152,7 +152,11 @@ impl App {
         };
         let name = self.t(label).to_owned();
         let state = self
-            .t(if on { "search.option.on" } else { "search.option.off" })
+            .t(if on {
+                "search.option.on"
+            } else {
+                "search.option.off"
+            })
             .to_owned();
         self.status = self.tf(
             "search.option.changed",

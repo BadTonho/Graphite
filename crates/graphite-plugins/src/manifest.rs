@@ -393,8 +393,14 @@ mod activity_bar_tests {
         assert_eq!(
             snippets,
             vec![
-                SnippetContribution { language: "rust".into(), path: "snippets/rust.json".into() },
-                SnippetContribution { language: "go".into(), path: "snippets/go.json".into() },
+                SnippetContribution {
+                    language: "rust".into(),
+                    path: "snippets/rust.json".into()
+                },
+                SnippetContribution {
+                    language: "go".into(),
+                    path: "snippets/go.json".into()
+                },
             ]
         );
         assert!(vsix_snippets(&serde_json::json!({})).is_empty());

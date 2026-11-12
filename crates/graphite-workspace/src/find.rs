@@ -114,6 +114,8 @@ mod find_tests {
             vec!["lib.rs", "main.rs"]
         );
         assert_eq!(workspace.find_files(None, &[], &[], 2).len(), 2);
-        assert!(workspace.find_files(None, &["[".into()], &[], 10).is_empty());
+        assert!(workspace
+            .find_files(None, &["[".into()], &[], 10)
+            .is_empty());
     }
 }

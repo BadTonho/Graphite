@@ -7,14 +7,19 @@ const MIN_WIDTH: f32 = 248.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ProfileMenuRow {
-    Profile { name: String, active: bool },
+    Profile {
+        name: String,
+        active: bool,
+    },
     Separator,
     Create,
     Unavailable,
     /// Start the GitHub sign-in of this profile.
     GitHubSignIn,
     /// The signed-in account; informational, not selectable.
-    GitHubAccount { login: String },
+    GitHubAccount {
+        login: String,
+    },
     GitHubSignOut,
 }
 
@@ -23,7 +28,9 @@ impl ProfileMenuRow {
     fn is_selectable(&self) -> bool {
         !matches!(
             self,
-            ProfileMenuRow::Separator | ProfileMenuRow::Unavailable | ProfileMenuRow::GitHubAccount { .. }
+            ProfileMenuRow::Separator
+                | ProfileMenuRow::Unavailable
+                | ProfileMenuRow::GitHubAccount { .. }
         )
     }
 }
@@ -200,9 +207,7 @@ impl App {
             .rows
             .iter()
             .enumerate()
-            .filter_map(|(index, row)| {
-                row.is_selectable().then_some(index)
-            })
+            .filter_map(|(index, row)| row.is_selectable().then_some(index))
             .collect::<Vec<_>>();
         let position = selectable
             .iter()
@@ -430,7 +435,9 @@ mod tests {
         app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
         let rows = app.profile_menu.as_ref().unwrap().rows.clone();
         assert!(rows.contains(&ProfileMenuRow::GitHubSignIn));
-        assert!(!rows.iter().any(|row| matches!(row, ProfileMenuRow::GitHubSignOut)));
+        assert!(!rows
+            .iter()
+            .any(|row| matches!(row, ProfileMenuRow::GitHubSignOut)));
 
         app.github_session = Some(graphite_auth::Session {
             token: "gho_secret".into(),

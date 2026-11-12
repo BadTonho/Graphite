@@ -275,19 +275,26 @@ impl App {
                 .and_then(|path| graphite_core_api::DocumentUri::from_path(path).ok())
                 .map(|uri| uri.as_str().to_owned());
             let folds = super::fold_commands::effective_folds(view, buffer.revision());
-            let fold_hidden = super::folding::hidden_ranges(buffer, folds, tab.indentation.tab_size);
-            let rows = super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
+            let fold_hidden =
+                super::folding::hidden_ranges(buffer, folds, tab.indentation.tab_size);
+            let rows =
+                super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
             for (row, &line) in rows.iter().enumerate() {
                 let y = body_y + row as f32 * lh;
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
-                let first_bracket = bracket_levels.partition_point(|(index, _)| *index < line_start);
-                let bracket_overlays: Vec<(usize, graphite_syntax::Class)> = bracket_levels[first_bracket..]
+                let first_bracket =
+                    bracket_levels.partition_point(|(index, _)| *index < line_start);
+                let bracket_overlays: Vec<(usize, graphite_syntax::Class)> = bracket_levels
+                    [first_bracket..]
                     .iter()
                     .take_while(|(index, _)| *index < line_end)
                     .map(|&(index, level)| {
-                        (index - line_start, super::drawing_helpers::bracket_class(level))
+                        (
+                            index - line_start,
+                            super::drawing_helpers::bracket_class(level),
+                        )
                     })
                     .collect();
                 if let Some(uri) = &decoration_uri {
@@ -366,7 +373,9 @@ impl App {
                     y,
                     rgb(color),
                 );
-                for column in super::drawing_helpers::indent_guide_columns(&text, tab.indentation.tab_size) {
+                for column in
+                    super::drawing_helpers::indent_guide_columns(&text, tab.indentation.tab_size)
+                {
                     r.draw_rect(
                         text_x + column as f32 * cw,
                         y,
@@ -376,9 +385,12 @@ impl App {
                     );
                 }
                 if folds.binary_search(&line).is_ok() {
-                    let width = display_line(text.trim_end_matches(['\r', '\n']), tab.indentation.tab_size)
-                        .chars()
-                        .count();
+                    let width = display_line(
+                        text.trim_end_matches(['\r', '\n']),
+                        tab.indentation.tab_size,
+                    )
+                    .chars()
+                    .count();
                     r.draw_text(
                         " …",
                         text_x + width as f32 * cw,
@@ -389,7 +401,9 @@ impl App {
                 for &(match_line, column) in &bracket_match_cells {
                     if match_line == line {
                         let prefix: String = text.chars().take(column).collect();
-                        let x = display_line(&prefix, tab.indentation.tab_size).chars().count();
+                        let x = display_line(&prefix, tab.indentation.tab_size)
+                            .chars()
+                            .count();
                         r.draw_rect(
                             text_x + x as f32 * cw,
                             y,
@@ -404,15 +418,7 @@ impl App {
                     spans_for(&tab.highlights, line),
                     &bracket_overlays,
                 );
-                draw_code_line(
-                    r,
-                    &text,
-                    &merged,
-                    text_x,
-                    y,
-                    cw,
-                    tab.indentation.tab_size,
-                );
+                draw_code_line(r, &text, &merged, text_x, y, cw, tab.indentation.tab_size);
                 if let Some(uri) = &decoration_uri {
                     self.draw_line_decorations(
                         r,

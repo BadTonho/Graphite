@@ -381,6 +381,20 @@ impl ApplicationHandler<UserEvent> for App {
                         window_height,
                         line_height,
                     );
+                let debug_geometry = (self.debug_panel_visible
+                    && self.view_preferences.panel_visible
+                    && !over_sidebar)
+                    .then(|| {
+                        let bounds = self.panel_bounds(window_width, window_height, line_height);
+                        let inside = (self.mouse.x as f32) >= bounds.x
+                            && (self.mouse.x as f32) < bounds.x + bounds.width
+                            && (self.mouse.y as f32) >= bounds.y
+                            && (self.mouse.y as f32) < bounds.y + bounds.height;
+                        inside.then(|| {
+                            super::debug_panel::DebugPanelGeometry::new(&bounds, line_height)
+                        })
+                    })
+                    .flatten();
                 let over_plugins = self.plugins.visible && over_sidebar;
                 let over_scm = self.scm_visible && over_sidebar;
                 if over_scm {
@@ -415,6 +429,8 @@ impl ApplicationHandler<UserEvent> for App {
                     self.scroll_plugins(lines as i32);
                 } else if self.plugins.active_graphite_detail.is_some() {
                     self.scroll_graphite_detail(lines as i32);
+                } else if let Some(geometry) = debug_geometry {
+                    self.debug_panel_scroll(&geometry, self.mouse.x as f32, lines);
                 } else if over_process_panel {
                     let max_scroll = self.process_metrics.len().saturating_sub(9);
                     self.process_scroll = (self.process_scroll as i32 + lines as i32)

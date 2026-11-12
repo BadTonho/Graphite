@@ -1339,9 +1339,11 @@ impl App {
                     super::profile_menu::ProfileMenuRow::GitHubSignOut => {
                         (self.t("github.sign_out").to_owned(), false, false)
                     }
-                    super::profile_menu::ProfileMenuRow::GitHubAccount { login } => {
-                        (self.tf("github.signed_in_as", &[("login", login)]), false, true)
-                    }
+                    super::profile_menu::ProfileMenuRow::GitHubAccount { login } => (
+                        self.tf("github.signed_in_as", &[("login", login)]),
+                        false,
+                        true,
+                    ),
                     super::profile_menu::ProfileMenuRow::Separator => continue,
                 };
                 let mut item = Node::new(Role::MenuItem);

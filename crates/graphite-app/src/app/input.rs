@@ -227,7 +227,12 @@ impl App {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) => self.debug_input_focused = false,
                 Key::Named(NamedKey::Enter) => {
-                    if let Err(error) = self.evaluate_debug_input() {
+                    let result = if ctrl {
+                        self.add_debug_watch_from_input()
+                    } else {
+                        self.evaluate_debug_input()
+                    };
+                    if let Err(error) = result {
                         self.status = error;
                     }
                 }

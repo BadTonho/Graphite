@@ -864,7 +864,9 @@ impl App {
             }
             GoMenuCommand::References => self.run_ui_command("editor.action.goToReferences"),
             GoMenuCommand::Declaration => self.run_ui_command("editor.action.goToDeclaration"),
-            GoMenuCommand::TypeDefinition => self.run_ui_command("editor.action.goToTypeDefinition"),
+            GoMenuCommand::TypeDefinition => {
+                self.run_ui_command("editor.action.goToTypeDefinition")
+            }
             GoMenuCommand::GoToLine => self.run_ui_command("workbench.action.gotoLine"),
             GoMenuCommand::NextProblem => self.run_ui_command("editor.action.marker.next"),
             GoMenuCommand::PreviousProblem => self.run_ui_command("editor.action.marker.prev"),

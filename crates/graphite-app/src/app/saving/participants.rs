@@ -8,10 +8,17 @@ use std::time::{Duration, Instant};
 
 pub(super) enum Provider {
     /// `textDocument/willSaveWaitUntil` from the language server.
-    Lsp { instance: u64 },
+    Lsp {
+        instance: u64,
+    },
     /// `textDocument/formatting` from the language server (`editor.formatOnSave`).
-    LspFormat { instance: u64 },
-    Host { session: u64, resource: u64 },
+    LspFormat {
+        instance: u64,
+    },
+    Host {
+        session: u64,
+        resource: u64,
+    },
 }
 enum Reply {
     Lsp(mpsc::Receiver<ServiceResult<Vec<graphite_core_api::TextEdit>>>),

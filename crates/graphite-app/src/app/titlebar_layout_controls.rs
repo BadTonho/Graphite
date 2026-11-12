@@ -55,7 +55,10 @@ pub(crate) fn layout_control_rects(
     let width = BUTTON_WIDTH * scale;
     let first_x = controls_left - width * LAYOUT_CONTROLS.len() as f32 - 2.0 * scale;
     LAYOUT_CONTROLS.map(|control| {
-        let index = LAYOUT_CONTROLS.iter().position(|item| *item == control).unwrap() as f32;
+        let index = LAYOUT_CONTROLS
+            .iter()
+            .position(|item| *item == control)
+            .unwrap() as f32;
         (control, (first_x + index * width, 0.0, width, title_height))
     })
 }
@@ -100,7 +103,12 @@ impl App {
     }
 
     /// Draws the four buttons, their state, and the tooltip of the hovered one.
-    pub(crate) fn draw_layout_controls(&self, renderer: &mut Renderer, rects: &[(LayoutControl, Rect); 4], title_height: f32) {
+    pub(crate) fn draw_layout_controls(
+        &self,
+        renderer: &mut Renderer,
+        rects: &[(LayoutControl, Rect); 4],
+        title_height: f32,
+    ) {
         let (x, y) = (self.mouse.x as f32, self.mouse.y as f32);
         let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let hovered_bg = rgb(Theme::color(Theme::ACTIVE_ROW, 0x3f3f46));
@@ -118,30 +126,62 @@ impl App {
                 rect.3,
                 if is_hovered { hovered_bg } else { background },
             );
-            draw_icon(renderer, *control, *rect, self.layout_control_active(*control), foreground, background);
+            draw_icon(
+                renderer,
+                *control,
+                *rect,
+                self.layout_control_active(*control),
+                foreground,
+                background,
+            );
         }
         if let Some((control, rect)) = hovered {
             self.draw_layout_tooltip(renderer, control, rect, title_height);
         }
     }
 
-    fn draw_layout_tooltip(&self, renderer: &mut Renderer, control: LayoutControl, rect: Rect, title_height: f32) {
+    fn draw_layout_tooltip(
+        &self,
+        renderer: &mut Renderer,
+        control: LayoutControl,
+        rect: Rect,
+        title_height: f32,
+    ) {
         let text = self.t(control.tooltip_key());
         let char_width = renderer.char_width();
         let width = text.chars().count() as f32 * char_width + 12.0;
         let (window_width, _) = renderer.size();
-        let x = (rect.0 + rect.2 * 0.5 - width * 0.5).clamp(4.0, (window_width - width - 4.0).max(4.0));
+        let x =
+            (rect.0 + rect.2 * 0.5 - width * 0.5).clamp(4.0, (window_width - width - 4.0).max(4.0));
         let y = title_height + 4.0;
         let height = renderer.line_height() + 8.0;
         renderer.draw_rect(x, y, width, height, rgb(Theme::color(Theme::DIM, 0x454545)));
-        renderer.draw_rect(x + 1.0, y + 1.0, width - 2.0, height - 2.0, rgb(Theme::color(Theme::SIDEBAR, 0x252526)));
-        renderer.draw_text(text, x + 6.0, y + 4.0, rgb(Theme::color(Theme::TEXT, 0xd4d4d4)));
+        renderer.draw_rect(
+            x + 1.0,
+            y + 1.0,
+            width - 2.0,
+            height - 2.0,
+            rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
+        );
+        renderer.draw_text(
+            text,
+            x + 6.0,
+            y + 4.0,
+            rgb(Theme::color(Theme::TEXT, 0xd4d4d4)),
+        );
     }
 }
 
 /// Icon of one button: an outlined window with the active part filled, or a 2x2 grid for the
 /// customize button. Drawn with rectangles so it does not depend on an icon font.
-fn draw_icon(renderer: &mut Renderer, control: LayoutControl, rect: Rect, active: bool, foreground: Color, background: Color) {
+fn draw_icon(
+    renderer: &mut Renderer,
+    control: LayoutControl,
+    rect: Rect,
+    active: bool,
+    foreground: Color,
+    background: Color,
+) {
     let (x, y, width, height) = rect;
     let cx = x + width * 0.5;
     let cy = y + height * 0.5;
@@ -157,7 +197,9 @@ fn draw_icon(renderer: &mut Renderer, control: LayoutControl, rect: Rect, active
     let fill = if active { foreground } else { background };
     match control {
         LayoutControl::PrimarySidebar => renderer.draw_rect(ox + 1.0, oy + 1.0, 4.0, h - 2.0, fill),
-        LayoutControl::SecondarySidebar => renderer.draw_rect(ox + w - 5.0, oy + 1.0, 4.0, h - 2.0, fill),
+        LayoutControl::SecondarySidebar => {
+            renderer.draw_rect(ox + w - 5.0, oy + 1.0, 4.0, h - 2.0, fill)
+        }
         LayoutControl::Panel => renderer.draw_rect(ox + 1.0, oy + h - 4.0, w - 2.0, 3.0, fill),
         LayoutControl::Customize => {}
     }
@@ -190,14 +232,23 @@ mod tests {
     fn a_click_finds_the_button_under_it_and_misses_the_gaps_outside() {
         let rects = layout_control_rects(900.0, 30.0, 1.0);
         let panel = rects[2].1;
-        assert_eq!(layout_control_at(&rects, panel.0 + 2.0, 5.0), Some(LayoutControl::Panel));
+        assert_eq!(
+            layout_control_at(&rects, panel.0 + 2.0, 5.0),
+            Some(LayoutControl::Panel)
+        );
         assert_eq!(layout_control_at(&rects, 10.0, 5.0), None);
     }
 
     #[test]
     fn every_button_names_its_command_and_tooltip() {
-        assert_eq!(LayoutControl::Panel.command(), "graphite.layout.togglePanel");
-        assert_eq!(LayoutControl::Customize.tooltip_key(), "titlebar.layout.customize");
+        assert_eq!(
+            LayoutControl::Panel.command(),
+            "graphite.layout.togglePanel"
+        );
+        assert_eq!(
+            LayoutControl::Customize.tooltip_key(),
+            "titlebar.layout.customize"
+        );
     }
 }
 

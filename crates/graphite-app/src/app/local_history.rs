@@ -43,7 +43,9 @@ impl App {
     /// Folder that holds the versions of one file.
     fn local_history_dir(&self, path: &Path) -> PathBuf {
         let key = fnv1a(path.to_string_lossy().as_bytes());
-        self.profile_root.join("history").join(format!("{key:016x}"))
+        self.profile_root
+            .join("history")
+            .join(format!("{key:016x}"))
     }
 
     pub(crate) fn is_local_history_file(&self, path: &Path) -> bool {

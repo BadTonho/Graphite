@@ -58,25 +58,35 @@ pub(crate) fn stash(root: &Path) -> Result<String, String> {
 
 /// Recent commits as a graph, newest first.
 pub(crate) fn history(root: &Path) -> Result<String, String> {
-    run_git(root, &["log", "--oneline", "--decorate", "--graph", "-n", "300"])
+    run_git(
+        root,
+        &["log", "--oneline", "--decorate", "--graph", "-n", "300"],
+    )
 }
 
 /// GitHub compare page for the current branch, which offers "Create pull request".
 pub(crate) fn pull_request_url(root: &Path) -> Result<String, String> {
     let remote = run_git(root, &["remote", "get-url", "origin"])
         .map_err(|_| "No remote named origin".to_owned())?;
-    let (owner, repo) =
-        parse_github_remote(&remote).ok_or_else(|| "The origin remote is not on GitHub".to_owned())?;
+    let (owner, repo) = parse_github_remote(&remote)
+        .ok_or_else(|| "The origin remote is not on GitHub".to_owned())?;
     let branch = run_git(root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    Ok(format!("https://github.com/{owner}/{repo}/compare/{branch}?expand=1"))
+    Ok(format!(
+        "https://github.com/{owner}/{repo}/compare/{branch}?expand=1"
+    ))
 }
 
 /// `(owner, repo)` of a GitHub remote URL, in HTTPS or SSH form.
 pub(crate) fn parse_github_remote(remote: &str) -> Option<(String, String)> {
     let remote = remote.trim();
-    let path = ["https://github.com/", "http://github.com/", "ssh://git@github.com/", "git@github.com:"]
-        .iter()
-        .find_map(|prefix| remote.strip_prefix(prefix))?;
+    let path = [
+        "https://github.com/",
+        "http://github.com/",
+        "ssh://git@github.com/",
+        "git@github.com:",
+    ]
+    .iter()
+    .find_map(|prefix| remote.strip_prefix(prefix))?;
     let path = path.trim_end_matches('/').trim_end_matches(".git");
     let mut parts = path.split('/');
     let owner = parts.next().filter(|owner| !owner.is_empty())?;
@@ -118,7 +128,11 @@ mod tests {
             .args(args)
             .output()
             .expect("git runs");
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]
@@ -127,9 +141,15 @@ mod tests {
         let remote = dir.path().join("remote.git");
         let work = dir.path().join("work");
         fs::create_dir_all(&work).unwrap();
-        git(dir.path(), &["init", "--bare", "-b", "main", remote.to_str().unwrap()]);
+        git(
+            dir.path(),
+            &["init", "--bare", "-b", "main", remote.to_str().unwrap()],
+        );
         git(&work, &["init", "-b", "main"]);
-        git(&work, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(
+            &work,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
         fs::write(work.join("a.txt"), "one").unwrap();
         git(&work, &["add", "a.txt"]);
         git(&work, &["commit", "-m", "first"]);
@@ -144,7 +164,15 @@ mod tests {
         assert_eq!(fs::read_to_string(work.join("a.txt")).unwrap(), "one");
 
         // A remote that cannot be reached is reported, not hidden.
-        git(&work, &["remote", "set-url", "origin", dir.path().join("missing.git").to_str().unwrap()]);
+        git(
+            &work,
+            &[
+                "remote",
+                "set-url",
+                "origin",
+                dir.path().join("missing.git").to_str().unwrap(),
+            ],
+        );
         assert!(push(&work).is_err());
         assert!(sync(&work).is_err());
         assert!(pull_request_url(&work).unwrap_err().contains("GitHub"));

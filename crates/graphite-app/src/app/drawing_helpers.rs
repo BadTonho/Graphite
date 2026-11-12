@@ -201,7 +201,11 @@ pub(crate) fn bracket_class(level: u8) -> Class {
 /// Returns spans covering the whole line, with bracket overlays replacing syntax classes.
 ///
 /// `overlays` pairs a character column within `line` with the class to paint there.
-pub(crate) fn overlay_classes(line: &str, spans: &[Span], overlays: &[(usize, Class)]) -> Vec<Span> {
+pub(crate) fn overlay_classes(
+    line: &str,
+    spans: &[Span],
+    overlays: &[(usize, Class)],
+) -> Vec<Span> {
     let mut classes = vec![Class::Default; line.len()];
     for span in spans {
         for byte in span.range.clone() {
@@ -269,14 +273,30 @@ mod guide_and_bracket_tests {
             range: 0..5,
             class: Class::Keyword,
         }];
-        let merged = overlay_classes("fn(a)", &spans, &[(2, Class::BracketLevel1), (4, Class::BracketLevel1)]);
+        let merged = overlay_classes(
+            "fn(a)",
+            &spans,
+            &[(2, Class::BracketLevel1), (4, Class::BracketLevel1)],
+        );
         assert_eq!(
             merged,
             vec![
-                Span { range: 0..2, class: Class::Keyword },
-                Span { range: 2..3, class: Class::BracketLevel1 },
-                Span { range: 3..4, class: Class::Keyword },
-                Span { range: 4..5, class: Class::BracketLevel1 },
+                Span {
+                    range: 0..2,
+                    class: Class::Keyword
+                },
+                Span {
+                    range: 2..3,
+                    class: Class::BracketLevel1
+                },
+                Span {
+                    range: 3..4,
+                    class: Class::Keyword
+                },
+                Span {
+                    range: 4..5,
+                    class: Class::BracketLevel1
+                },
             ]
         );
     }

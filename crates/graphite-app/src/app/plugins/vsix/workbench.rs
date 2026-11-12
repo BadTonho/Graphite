@@ -123,7 +123,12 @@ pub(super) fn dispatch(
         }
         ("MainThreadOutputService", "$update") => {
             let id = text(0);
-            match runtime.workbench.outputs.get(id).and_then(|c| c.path.clone()) {
+            match runtime
+                .workbench
+                .outputs
+                .get(id)
+                .and_then(|c| c.path.clone())
+            {
                 Some(path) => {
                     let content = read_output(&path);
                     if app.output_view_open(&path) {
@@ -193,7 +198,10 @@ pub(super) fn dispatch(
                 &exclude,
                 limit,
             );
-            Ok(json!(found.iter().map(|path| file_uri(path)).collect::<Vec<_>>()))
+            Ok(json!(found
+                .iter()
+                .map(|path| file_uri(path))
+                .collect::<Vec<_>>()))
         }
         _ => return None,
     };
@@ -230,7 +238,10 @@ impl App {
             if let Err(error) = self.run_vsix_command(&format!(":{command}")) {
                 self.status = error;
             }
-        } else if crate::app::command_registry::registry().get(&command).is_some() {
+        } else if crate::app::command_registry::registry()
+            .get(&command)
+            .is_some()
+        {
             self.run_ui_command(&command);
         } else {
             self.status = format!("Unknown command: {command}");

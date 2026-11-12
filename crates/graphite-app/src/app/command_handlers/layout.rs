@@ -48,7 +48,10 @@ fn customize_layout(app: &mut App, _invocation: &CommandInvocation) -> Result<()
     let Some(width) = app.gpu.as_ref().map(|gpu| gpu.renderer.size().0) else {
         return Ok(());
     };
-    let char_width = app.gpu.as_ref().map_or(app.font_size * 0.6, |gpu| gpu.renderer.char_width());
+    let char_width = app
+        .gpu
+        .as_ref()
+        .map_or(app.font_size * 0.6, |gpu| gpu.renderer.char_width());
     let anchor = app
         .titlebar_layout(width, char_width)
         .layout_controls
@@ -59,7 +62,10 @@ fn customize_layout(app: &mut App, _invocation: &CommandInvocation) -> Result<()
     Ok(())
 }
 
-fn toggle_primary_sidebar(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+fn toggle_primary_sidebar(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
     app.view_preferences.primary_sidebar_visible = !app.view_preferences.primary_sidebar_visible;
     app.save_view_preferences_for_command();
     Ok(())
@@ -71,8 +77,12 @@ fn toggle_panel(app: &mut App, _invocation: &CommandInvocation) -> Result<(), Co
     Ok(())
 }
 
-fn toggle_secondary_sidebar(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
-    app.view_preferences.secondary_sidebar_visible = !app.view_preferences.secondary_sidebar_visible;
+fn toggle_secondary_sidebar(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.view_preferences.secondary_sidebar_visible =
+        !app.view_preferences.secondary_sidebar_visible;
     app.save_view_preferences_for_command();
     Ok(())
 }

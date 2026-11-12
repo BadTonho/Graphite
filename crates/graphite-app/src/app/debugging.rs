@@ -48,10 +48,15 @@ impl App {
             .map_err(|error| error.to_string())
     }
 
-    pub(crate) fn debug_request(&mut self, command: &str) -> Result<(), String> {
-        self.debug
-            .request(command, serde_json::json!({}))
-            .map_err(|error| error.to_string())
+    /// Steps the paused thread. DAP step requests require its `threadId`.
+    pub(crate) fn debug_step(&mut self, command: &str) -> Result<(), String> {
+        match command {
+            "next" => self.debug.step_over(),
+            "stepIn" => self.debug.step_into(),
+            "stepOut" => self.debug.step_out(),
+            other => return Err(format!("Unknown debug step: {other}")),
+        }
+        .map_err(|error| error.to_string())
     }
 
     pub(crate) fn toggle_breakpoint(&mut self) -> Result<(), String> {
@@ -143,11 +148,22 @@ impl App {
         if expression.is_empty() {
             return Ok(());
         }
-        let frame = self.debug.frames.first().map(|frame| frame.id);
         self.debug
-            .evaluate_watch(&expression, frame)
+            .evaluate_repl(&expression)
             .map_err(|error| error.to_string())?;
-        self.debug.watches.push(expression);
+        self.debug_input.clear();
+        Ok(())
+    }
+
+    /// Adds the console input as a watch expression, shown in the variables column.
+    pub(crate) fn add_debug_watch_from_input(&mut self) -> Result<(), String> {
+        let expression = self.debug_input.trim().to_owned();
+        if expression.is_empty() {
+            return Ok(());
+        }
+        self.debug
+            .add_watch(&expression)
+            .map_err(|error| error.to_string())?;
         self.debug_input.clear();
         Ok(())
     }
@@ -227,9 +243,9 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
             0 => |app, _| app.start_debugging().map_err(CommandError::Failed),
             1 => |app, _| app.stop_debugging().map_err(CommandError::Failed),
             2 => |app, _| app.debug_continue().map_err(CommandError::Failed),
-            3 => |app, _| app.debug_request("next").map_err(CommandError::Failed),
-            4 => |app, _| app.debug_request("stepIn").map_err(CommandError::Failed),
-            5 => |app, _| app.debug_request("stepOut").map_err(CommandError::Failed),
+            3 => |app, _| app.debug_step("next").map_err(CommandError::Failed),
+            4 => |app, _| app.debug_step("stepIn").map_err(CommandError::Failed),
+            5 => |app, _| app.debug_step("stepOut").map_err(CommandError::Failed),
             6 => |app, _| {
                 app.debug
                     .restart()

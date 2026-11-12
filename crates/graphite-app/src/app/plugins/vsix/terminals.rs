@@ -85,7 +85,10 @@ pub(super) fn dispatch(
                 if args.get(2).and_then(Value::as_bool).unwrap_or(false) {
                     bytes.push(b'\r');
                 }
-                app.terminals.iter().find(|tab| tab.id() == session)?.input(bytes);
+                app.terminals
+                    .iter()
+                    .find(|tab| tab.id() == session)?
+                    .input(bytes);
                 Some(Value::Null)
             })
             .ok_or_else(|| "Unknown terminal".to_owned()),
@@ -106,7 +109,10 @@ pub(super) fn dispatch(
             Ok(Value::Null)
         }
         "$dispose" => terminal_index(app, runtime, &first).and_then(|index| {
-            let position = runtime.terminals.position(&first).ok_or("Unknown terminal")?;
+            let position = runtime
+                .terminals
+                .position(&first)
+                .ok_or("Unknown terminal")?;
             let item = runtime.terminals.items.remove(position);
             app.close_terminal_at(index);
             closed(runtime, item.id, None, EXIT_EXTENSION)?;
@@ -242,8 +248,16 @@ mod tests {
     fn terminals_are_found_by_extension_identifier_or_number() {
         let terminals = Terminals {
             items: vec![
-                Item { id: 1, extension_id: "a".into(), session: 10 },
-                Item { id: 2, extension_id: "b".into(), session: 11 },
+                Item {
+                    id: 1,
+                    extension_id: "a".into(),
+                    session: 10,
+                },
+                Item {
+                    id: 2,
+                    extension_id: "b".into(),
+                    session: 11,
+                },
             ],
             next: 2,
         };

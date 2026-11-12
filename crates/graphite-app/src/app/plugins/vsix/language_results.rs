@@ -5,11 +5,7 @@ use super::*;
 
 /// LSP `Range` for a Code OSS `IRange` (1-based line and column).
 pub(super) fn range(range: &Value) -> Option<Value> {
-    let coordinate = |name: &str| {
-        range[name]
-            .as_u64()
-            .and_then(|value| value.checked_sub(1))
-    };
+    let coordinate = |name: &str| range[name].as_u64().and_then(|value| value.checked_sub(1));
     Some(json!({
         "start": {"line": coordinate("startLineNumber")?, "character": coordinate("startColumn")?},
         "end": {"line": coordinate("endLineNumber")?, "character": coordinate("endColumn")?},
@@ -22,7 +18,10 @@ pub(super) fn uri(value: &Value) -> Option<String> {
     if let Some(text) = value.as_str() {
         return text.starts_with("file:").then(|| text.to_owned());
     }
-    if value["scheme"].as_str().is_some_and(|scheme| scheme != "file") {
+    if value["scheme"]
+        .as_str()
+        .is_some_and(|scheme| scheme != "file")
+    {
         return None;
     }
     crate::lsp::path_to_uri(&workbench::file_path(value)?)
@@ -78,11 +77,17 @@ pub(super) fn signature_help(result: &Value) -> Value {
                         Value::Array(offsets) => {
                             let start = offsets.first()?.as_u64()? as usize;
                             let end = offsets.get(1)?.as_u64()? as usize;
-                            label.chars().skip(start).take(end.checked_sub(start)?).collect()
+                            label
+                                .chars()
+                                .skip(start)
+                                .take(end.checked_sub(start)?)
+                                .collect()
                         }
                         _ => return None,
                     };
-                    Some(json!({"label": label, "documentation": text(&parameter["documentation"])}))
+                    Some(
+                        json!({"label": label, "documentation": text(&parameter["documentation"])}),
+                    )
                 })
                 .collect::<Vec<_>>();
             Some(json!({
@@ -150,7 +155,8 @@ pub(super) fn workspace_edit_changes(dto: &Value) -> Option<Value> {
             return None;
         };
         let target = uri(&edit["resource"])?;
-        let entry = json!({"range": range(&text_edit["range"])?, "newText": text_edit["text"].as_str()?});
+        let entry =
+            json!({"range": range(&text_edit["range"])?, "newText": text_edit["text"].as_str()?});
         changes
             .entry(target)
             .or_insert_with(|| json!([]))
@@ -214,7 +220,10 @@ mod tests {
         let items = converted.as_array().unwrap();
         assert_eq!(items.len(), 2);
         assert!(items[0]["uri"].as_str().unwrap().ends_with("/work/a.rs"));
-        assert_eq!(items[1]["range"]["start"], json!({"line": 9, "character": 4}));
+        assert_eq!(
+            items[1]["range"]["start"],
+            json!({"line": 9, "character": 4})
+        );
         assert_eq!(locations(&json!(null)), json!([]));
         assert_eq!(
             locations(&json!({"uri": file("/work/a.rs"), "range": span(2, 1, 2)}))
@@ -239,7 +248,10 @@ mod tests {
         let help = signature_help(&result);
         assert_eq!(help["signatures"][0]["parameters"][0]["label"], "a: i32");
         assert_eq!(help["signatures"][0]["documentation"], "Adds two numbers");
-        assert_eq!(help["signatures"][0]["parameters"][1]["documentation"], "second");
+        assert_eq!(
+            help["signatures"][0]["parameters"][1]["documentation"],
+            "second"
+        );
         assert_eq!(help["activeParameter"], 1);
         assert!(signature_help(&json!(null)).is_null());
     }
@@ -271,7 +283,10 @@ mod tests {
         let map = changes["changes"].as_object().unwrap();
         assert_eq!(map.len(), 2);
         assert_eq!(map.values().next().unwrap().as_array().unwrap().len(), 2);
-        assert_eq!(workspace_edit_changes(&json!({"value": dto})).unwrap(), changes);
+        assert_eq!(
+            workspace_edit_changes(&json!({"value": dto})).unwrap(),
+            changes
+        );
         let operation = json!({"edits": [{"oldResource": file("/a"), "newResource": file("/b")}]});
         assert!(workspace_edit_changes(&operation).is_none());
         assert!(workspace_edit_changes(&json!({})).is_none());

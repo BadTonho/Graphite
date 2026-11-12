@@ -40,12 +40,18 @@ fn focus_next_region(app: &mut App, _invocation: &CommandInvocation) -> Result<(
     Ok(())
 }
 
-fn focus_previous_region(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+fn focus_previous_region(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
     app.cycle_focus_region(true);
     Ok(())
 }
 
-fn toggle_high_contrast(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+fn toggle_high_contrast(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
     let enabled = !HIGH_CONTRAST.load(Ordering::Relaxed);
     HIGH_CONTRAST.store(enabled, Ordering::Relaxed);
     crate::config::save_high_contrast_in(&app.profile_root, enabled);

@@ -17,7 +17,10 @@ pub(crate) fn hex_view(bytes: &[u8]) -> String {
         return hex_dump(bytes);
     }
     let mut text = hex_dump(&bytes[..HEX_VIEW_LIMIT]);
-    text.push_str(&format!("... {} more bytes not shown\n", bytes.len() - HEX_VIEW_LIMIT));
+    text.push_str(&format!(
+        "... {} more bytes not shown\n",
+        bytes.len() - HEX_VIEW_LIMIT
+    ));
     text
 }
 
@@ -52,10 +55,7 @@ pub(crate) fn hex_dump(bytes: &[u8]) -> String {
 fn joined_text(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(lines)) => lines
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<String>(),
+        Some(Value::Array(lines)) => lines.iter().filter_map(Value::as_str).collect::<String>(),
         _ => String::new(),
     }
 }
@@ -88,7 +88,10 @@ pub(crate) fn notebook_view(json: &str) -> Result<String, String> {
             let text = match output.get("output_type").and_then(Value::as_str) {
                 Some("stream") => joined_text(output.get("text")),
                 Some("error") => {
-                    let name = output.get("ename").and_then(Value::as_str).unwrap_or("error");
+                    let name = output
+                        .get("ename")
+                        .and_then(Value::as_str)
+                        .unwrap_or("error");
                     let value = output.get("evalue").and_then(Value::as_str).unwrap_or("");
                     format!("{name}: {value}\n")
                 }
@@ -138,10 +141,7 @@ impl App {
         let id = self.documents.push(tab);
         self.activate_editor_document(id);
         self.push_navigation_location();
-        self.status = self.tf(
-            "view.read_only",
-            &[("path", &path.display())],
-        );
+        self.status = self.tf("view.read_only", &[("path", &path.display())]);
     }
 
     /// Opens a notebook as a readable view. Returns false when the file is not a notebook.

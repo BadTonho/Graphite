@@ -67,7 +67,10 @@ impl App {
         let available = self.available_focus_regions();
         let region = next_region(&available, self.current_focus_region(), reverse);
         self.focus_region(region);
-        self.status = self.tf("focus.region.changed", &[("region", &self.t(region.label_key()))]);
+        self.status = self.tf(
+            "focus.region.changed",
+            &[("region", &self.t(region.label_key()))],
+        );
     }
 
     pub(crate) fn focus_region(&mut self, region: FocusRegion) {

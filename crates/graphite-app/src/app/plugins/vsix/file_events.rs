@@ -49,7 +49,11 @@ pub(crate) fn changes(event: &notify::Event) -> Vec<(FileChange, PathBuf)> {
         EventKind::Modify(_) | EventKind::Any => FileChange::Changed,
         _ => return Vec::new(),
     };
-    event.paths.iter().map(|path| (kind, path.clone())).collect()
+    event
+        .paths
+        .iter()
+        .map(|path| (kind, path.clone()))
+        .collect()
 }
 
 impl Watches {
@@ -63,7 +67,9 @@ impl Watches {
 
     fn visible(&self, workspace: &Path, path: &Path) -> bool {
         let in_workspace = path.starts_with(workspace)
-            && !path.components().any(|part| part.as_os_str() == "node_modules");
+            && !path
+                .components()
+                .any(|part| part.as_os_str() == "node_modules");
         in_workspace || self.sessions.values().any(|watch| self.covers(watch, path))
     }
 
@@ -155,7 +161,13 @@ mod tests {
 
     fn watches(folder: &str, recursive: bool) -> Watches {
         let mut watches = Watches::default();
-        watches.sessions.insert("0.42".into(), Watch { folder: folder.into(), recursive });
+        watches.sessions.insert(
+            "0.42".into(),
+            Watch {
+                folder: folder.into(),
+                recursive,
+            },
+        );
         watches
     }
 
@@ -173,7 +185,10 @@ mod tests {
             .add_path("/w/new".into());
         assert_eq!(
             changes(&renamed),
-            [(FileChange::Deleted, "/w/old".into()), (FileChange::Created, "/w/new".into())]
+            [
+                (FileChange::Deleted, "/w/old".into()),
+                (FileChange::Created, "/w/new".into())
+            ]
         );
         let read = Event::new(EventKind::Access(AccessKind::Read)).add_path("/w/a".into());
         assert!(changes(&read).is_empty());
@@ -187,24 +202,38 @@ mod tests {
         let batch = vec![
             (FileChange::Created, PathBuf::from("/w/sub/a.txt")),
             (FileChange::Deleted, PathBuf::from("/other/b.txt")),
-            (FileChange::Changed, PathBuf::from("/w/node_modules/dep/c.js")),
+            (
+                FileChange::Changed,
+                PathBuf::from("/w/node_modules/dep/c.js"),
+            ),
             (FileChange::Changed, PathBuf::from("/extra/d.txt")),
         ];
         // Without watchers only the workspace is visible.
-        let events = Watches::default().events_for(Path::new("/w"), &batch).unwrap();
-        assert!(events.get("session").is_none(), "events must not carry a session");
+        let events = Watches::default()
+            .events_for(Path::new("/w"), &batch)
+            .unwrap();
+        assert!(
+            events.get("session").is_none(),
+            "events must not carry a session"
+        );
         assert_eq!(events["created"].as_array().unwrap().len(), 1);
         assert!(events["changed"].as_array().unwrap().is_empty());
         assert!(events["deleted"].as_array().unwrap().is_empty());
 
         // A folder registered with `$watch` adds its own changes.
-        let extra = watches("/extra", true).events_for(Path::new("/w"), &batch).unwrap();
+        let extra = watches("/extra", true)
+            .events_for(Path::new("/w"), &batch)
+            .unwrap();
         assert_eq!(extra["changed"].as_array().unwrap().len(), 1);
         // A non-recursive watcher does not cover nested files.
-        let shallow = watches("/extra/deeper", false).events_for(Path::new("/w"), &batch).unwrap();
+        let shallow = watches("/extra/deeper", false)
+            .events_for(Path::new("/w"), &batch)
+            .unwrap();
         assert!(shallow["changed"].as_array().unwrap().is_empty());
 
         let nothing = [(FileChange::Created, PathBuf::from("/other/x"))];
-        assert!(Watches::default().events_for(Path::new("/w"), &nothing).is_none());
+        assert!(Watches::default()
+            .events_for(Path::new("/w"), &nothing)
+            .is_none());
     }
 }

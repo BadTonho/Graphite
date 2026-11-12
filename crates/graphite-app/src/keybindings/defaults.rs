@@ -151,10 +151,18 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("down", "quickFix.next", "quickFixVisible"),
     ("enter", "quickFix.apply", "quickFixVisible"),
     ("escape", "projectSearch.close", "projectSearchVisible"),
-    ("tab", "projectSearch.toggleReplaceField", "projectSearchVisible"),
+    (
+        "tab",
+        "projectSearch.toggleReplaceField",
+        "projectSearchVisible",
+    ),
     ("alt+r", "projectSearch.toggleRegex", "projectSearchVisible"),
     ("alt+c", "projectSearch.toggleCase", "projectSearchVisible"),
-    ("alt+w", "projectSearch.toggleWholeWord", "projectSearchVisible"),
+    (
+        "alt+w",
+        "projectSearch.toggleWholeWord",
+        "projectSearchVisible",
+    ),
     (
         "ctrl+shift+j",
         "projectSearch.toggleDetails",
@@ -174,8 +182,16 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "projectSearchVisible",
     ),
     ("ctrl+p", "workbench.action.quickOpen", "!terminalFocus"),
-    ("ctrl+up", "graphite.terminal.previousCommand", "terminalFocus"),
-    ("ctrl+down", "graphite.terminal.nextCommand", "terminalFocus"),
+    (
+        "ctrl+up",
+        "graphite.terminal.previousCommand",
+        "terminalFocus",
+    ),
+    (
+        "ctrl+down",
+        "graphite.terminal.nextCommand",
+        "terminalFocus",
+    ),
     ("ctrl+f", "actions.find", "editorTextFocus"),
     (
         "ctrl+h",
@@ -379,7 +395,11 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("f6", "workbench.action.focusNextRegion", "true"),
     ("ctrl+b", "graphite.layout.togglePrimarySidebar", "true"),
     ("ctrl+j", "graphite.layout.togglePanel", "true"),
-    ("ctrl+alt+b", "graphite.layout.toggleSecondarySidebar", "true"),
+    (
+        "ctrl+alt+b",
+        "graphite.layout.toggleSecondarySidebar",
+        "true",
+    ),
     ("shift+f6", "workbench.action.focusPreviousRegion", "true"),
     (
         "ctrl+t",
@@ -476,8 +496,16 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+k ctrl+l", "editor.unfold", "editorTextFocus"),
     ("ctrl+k ctrl+0", "editor.foldAll", "editorTextFocus"),
     ("ctrl+k ctrl+j", "editor.unfoldAll", "editorTextFocus"),
-    ("ctrl+shift+space", "editor.action.triggerParameterHints", "editorTextFocus"),
-    ("shift+alt+h", "graphite.lsp.showCallHierarchy", "editorTextFocus"),
+    (
+        "ctrl+shift+space",
+        "editor.action.triggerParameterHints",
+        "editorTextFocus",
+    ),
+    (
+        "shift+alt+h",
+        "graphite.lsp.showCallHierarchy",
+        "editorTextFocus",
+    ),
     ("f8", "editor.action.marker.next", "editorTextFocus"),
     ("shift+f8", "editor.action.marker.prev", "editorTextFocus"),
     (

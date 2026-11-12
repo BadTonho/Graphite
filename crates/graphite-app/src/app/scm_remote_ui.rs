@@ -112,7 +112,10 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.show_scm_history(Err("not a repository".into()));
         assert!(app.status.contains("not a repository"));
-        assert!(app.documents.id_for_path(&app.profile_root.join("git-history.txt")).is_none());
+        assert!(app
+            .documents
+            .id_for_path(&app.profile_root.join("git-history.txt"))
+            .is_none());
     }
 
     #[test]
@@ -121,7 +124,10 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.profile_root = dir.path().join("profile");
         app.show_scm_history(Ok("* abc first".into()));
-        let id = app.documents.id_for_path(&app.profile_root.join("git-history.txt")).unwrap();
+        let id = app
+            .documents
+            .id_for_path(&app.profile_root.join("git-history.txt"))
+            .unwrap();
         assert!(app.documents[id].buffer.is_read_only());
         assert!(app.editor().text().contains("abc first"));
         // A second load refreshes the same view instead of opening another tab.
@@ -155,10 +161,12 @@ mod button_layout_tests {
         assert!(layout.repo_sync.x + layout.repo_sync.width <= layout.repo_pull_request.x);
         assert!(layout.repo_pull_request.x + layout.repo_pull_request.width <= more.x);
 
-        let section = layout
-            .list_rows
-            .iter()
-            .find(|row| matches!(row.kind, crate::app::scm_ui::ScmListRowKind::Section { staged: false, .. }));
+        let section = layout.list_rows.iter().find(|row| {
+            matches!(
+                row.kind,
+                crate::app::scm_ui::ScmListRowKind::Section { staged: false, .. }
+            )
+        });
         if let Some(row) = section {
             let (history, stash) = changes_header_buttons(row.action, 9.0);
             assert!(history.x + history.width <= stash.x);

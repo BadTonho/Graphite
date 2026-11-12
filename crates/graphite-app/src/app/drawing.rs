@@ -472,7 +472,11 @@ impl App {
                 format!("{label}  [{flags}]")
             };
             let replacement_row = self.search_replacement.is_some();
-            let details_rows = if self.search_filters.details { 2.0 } else { 0.0 };
+            let details_rows = if self.search_filters.details {
+                2.0
+            } else {
+                0.0
+            };
             // Rows above the results: replacement and filter fields when shown.
             let rows_above = replacement_row as u8 as f32 + details_rows;
             let height = lh * (self.search_results.len().min(6) as f32 + 1.2 + rows_above);
@@ -511,8 +515,18 @@ impl App {
                     &[("filter", &self.search_filters.exclude)],
                 );
                 let base = h - lh - height + PAD + lh * (1.0 + replacement_row as u8 as f32);
-                r.draw_text(&include, editor_left + PAD, base, rgb(Theme::color(Theme::TEXT, 0x1e1e1e)));
-                r.draw_text(&exclude, editor_left + PAD, base + lh, rgb(Theme::color(Theme::TEXT, 0x1e1e1e)));
+                r.draw_text(
+                    &include,
+                    editor_left + PAD,
+                    base,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+                r.draw_text(
+                    &exclude,
+                    editor_left + PAD,
+                    base + lh,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
             }
             let start = self
                 .search_index

@@ -97,7 +97,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = crate::TestDir::new();
         save_session(&dir, &session()).unwrap();
-        let mode = fs::metadata(dir.join(SESSION_FILE)).unwrap().permissions().mode();
+        let mode = fs::metadata(dir.join(SESSION_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o777, 0o600);
     }
 }

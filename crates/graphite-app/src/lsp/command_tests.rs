@@ -578,7 +578,10 @@ fn format_selection_requests_range_formatting_for_the_selection_and_applies_the_
     while messages.try_recv().is_ok() {}
     let _ticket = app.execute_command(request(&app, "editor.action.formatSelection"));
     let WorkerMessage::Command(LspCommand::Query {
-        method, kind, params, ..
+        method,
+        kind,
+        params,
+        ..
     }) = messages.recv_timeout(Duration::from_secs(1)).unwrap()
     else {
         panic!("expected rangeFormatting query")

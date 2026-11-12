@@ -18,7 +18,12 @@ impl App {
         };
         let translator = self.translator;
         let mut snippets = Vec::new();
-        for record in self.plugins.installed.iter().filter(|record| record.enabled) {
+        for record in self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| record.enabled)
+        {
             let Metadata::Vsix(vsix) = &record.metadata else {
                 continue;
             };
@@ -89,7 +94,8 @@ mod tests {
             merged
                 .iter()
                 .find(|snippet| {
-                    snippet.prefix == prefix && snippet.scope.as_deref() == Some(&[scope.into()][..])
+                    snippet.prefix == prefix
+                        && snippet.scope.as_deref() == Some(&[scope.into()][..])
                 })
                 .map(|snippet| snippet.body.as_str())
         };
@@ -111,9 +117,13 @@ mod tests {
         });
         let mut archive = zip::ZipWriter::new(std::fs::File::create(&package).unwrap());
         let options = zip::write::SimpleFileOptions::default();
-        archive.start_file("extension/package.json", options).unwrap();
+        archive
+            .start_file("extension/package.json", options)
+            .unwrap();
         serde_json::to_writer(&mut archive, &manifest).unwrap();
-        archive.start_file("extension/snippets/a.json", options).unwrap();
+        archive
+            .start_file("extension/snippets/a.json", options)
+            .unwrap();
         archive
             .write_all(br#"{"Hello": {"prefix": "hello", "body": ["Hello ${1:world}"]}}"#)
             .unwrap();
@@ -126,12 +136,19 @@ mod tests {
         app.plugins.store = Some(store.clone());
         app.plugins.installed = store.list().unwrap();
         app.reload_extension_snippets();
-        assert!(app.snippets.is_empty(), "disabled extensions contribute nothing");
+        assert!(
+            app.snippets.is_empty(),
+            "disabled extensions contribute nothing"
+        );
 
         store.enable("test.snips", true).unwrap();
         app.plugins.installed = store.list().unwrap();
         app.reload_extension_snippets();
-        let hello = app.snippets.iter().find(|snippet| snippet.prefix == "hello").unwrap();
+        let hello = app
+            .snippets
+            .iter()
+            .find(|snippet| snippet.prefix == "hello")
+            .unwrap();
         assert_eq!(hello.body, "Hello world");
         assert_eq!(hello.scope.as_deref(), Some(&["plaintext".to_owned()][..]));
 

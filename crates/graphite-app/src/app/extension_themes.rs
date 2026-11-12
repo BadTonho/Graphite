@@ -12,7 +12,13 @@ const THEMES_DIR: &str = "imported/themes/vsix";
 /// An extension directory name that is safe on every platform.
 fn directory_name(id: &str) -> String {
     id.chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -26,7 +32,12 @@ impl App {
         let target = self.profile_root.join(THEMES_DIR);
         let mut wanted = std::collections::BTreeSet::new();
         let mut changed = false;
-        for record in self.plugins.installed.iter().filter(|record| record.enabled) {
+        for record in self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| record.enabled)
+        {
             let Metadata::Vsix(vsix) = &record.metadata else {
                 continue;
             };
@@ -93,11 +104,18 @@ mod tests {
         });
         let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
         let options = zip::write::SimpleFileOptions::default();
-        archive.start_file("extension/package.json", options).unwrap();
-        serde_json::to_writer(&mut archive, &manifest).unwrap();
-        archive.start_file("extension/themes/ext.json", options).unwrap();
-        write!(archive, r#"{{"name": "Ext Theme", "colors": {{"editor.background": "{background}"}}}}"#)
+        archive
+            .start_file("extension/package.json", options)
             .unwrap();
+        serde_json::to_writer(&mut archive, &manifest).unwrap();
+        archive
+            .start_file("extension/themes/ext.json", options)
+            .unwrap();
+        write!(
+            archive,
+            r#"{{"name": "Ext Theme", "colors": {{"editor.background": "{background}"}}}}"#
+        )
+        .unwrap();
         archive.finish().unwrap();
     }
 
@@ -123,7 +141,10 @@ mod tests {
 
         app.plugins.installed = store.list().unwrap();
         app.sync_extension_themes();
-        assert!(resolve(&app).is_err(), "a disabled extension provides no theme");
+        assert!(
+            resolve(&app).is_err(),
+            "a disabled extension provides no theme"
+        );
 
         store.enable("test.themes", true).unwrap();
         app.plugins.installed = store.list().unwrap();

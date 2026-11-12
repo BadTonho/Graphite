@@ -28,7 +28,10 @@ impl TestDir {
         let name = format!(
             "graphite-auth-{}-{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("t").replace("::", "_")
+            std::thread::current()
+                .name()
+                .unwrap_or("t")
+                .replace("::", "_")
         );
         let path = std::env::temp_dir().join(name);
         let _ = std::fs::remove_dir_all(&path);

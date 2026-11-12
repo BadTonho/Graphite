@@ -18,6 +18,7 @@ use document::Document;
 mod debugger;
 mod file_format;
 mod file_icons;
+mod file_nesting;
 mod json_schema;
 mod keybindings;
 mod lsp;
@@ -32,7 +33,6 @@ mod terminal_shell;
 mod test_explorer;
 #[cfg(test)]
 mod test_support;
-mod file_nesting;
 mod tree;
 mod webview;
 
@@ -276,7 +276,7 @@ struct App {
     debug_panel_visible: bool,
     debug_input: String,
     debug_input_focused: bool,
-    debug_scroll: usize,
+    debug_scroll: [usize; 3],
     test_explorer: test_explorer::TestExplorer,
     tests_visible: bool,
     ports: ports::PortManager,
@@ -731,7 +731,7 @@ impl App {
             debug_panel_visible: false,
             debug_input: String::new(),
             debug_input_focused: false,
-            debug_scroll: 0,
+            debug_scroll: [0; 3],
             test_explorer: test_explorer::TestExplorer::default(),
             tests_visible: false,
             ports: ports::PortManager::default(),

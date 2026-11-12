@@ -33,8 +33,8 @@ pub(crate) use sidebar_layout::{
 };
 #[cfg(test)]
 use snippets::expand_snippet;
-pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
 pub(crate) use snippets::parse_snippet_file;
+pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
 
 /// Imports the themes a VSIX contributes (`contributes.themes`) from its extracted `package`
 /// folder into `destination`, where `workbench.colorTheme` can select them by label or id.
@@ -51,8 +51,7 @@ pub(crate) fn import_extension_themes(
 use themes::theme_colors_from;
 pub use themes::{
     imported_theme_colors, imported_theme_colors_in, load_dark_theme, load_dark_theme_from,
-    load_high_contrast_from, save_high_contrast_in,
-    save_dark_theme, save_dark_theme_in,
+    load_high_contrast_from, save_dark_theme, save_dark_theme_in, save_high_contrast_in,
 };
 pub(crate) use view_layout::{
     load_view_layout_preferences, save_view_layout_preferences, MultiCursorModifier, PanelPosition,
@@ -144,8 +143,8 @@ mod tests {
         let temp = crate::test_support::TempDir::new();
         let workspace = temp.path().join("settings.json");
         fs::write(&workspace, r#"{"editor.formatOnSave":true}"#).unwrap();
-        let prefs = settings::read_editor_prefs(&[workspace.clone()], &Translator::english())
-            .unwrap();
+        let prefs =
+            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
         assert!(prefs.format_on_save);
         assert!(!prefs.format_on_paste);
         fs::write(&workspace, r#"{"editor.formatOnSave":"yes"}"#).unwrap();
@@ -163,8 +162,8 @@ mod tests {
             r#"{"files.autoSave":"onFocusChange","files.autoSaveDelay":250}"#,
         )
         .unwrap();
-        let prefs = settings::read_editor_prefs(&[workspace.clone()], &Translator::english())
-            .unwrap();
+        let prefs =
+            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
         assert_eq!(prefs.auto_save, Some(AutoSaveMode::OnFocusChange));
         assert_eq!(prefs.auto_save_delay_ms, 250);
         fs::write(&workspace, r#"{"files.autoSave":"always"}"#).unwrap();

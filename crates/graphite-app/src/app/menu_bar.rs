@@ -149,7 +149,10 @@ impl MenuItemRectLike {
 pub(crate) struct TitlebarLayout {
     icon: MenuItemRectLike,
     controls: TitlebarControlRects,
-    pub(crate) layout_controls: [(super::titlebar_layout_controls::LayoutControl, super::titlebar_layout_controls::Rect); 4],
+    pub(crate) layout_controls: [(
+        super::titlebar_layout_controls::LayoutControl,
+        super::titlebar_layout_controls::Rect,
+    ); 4],
     command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
@@ -534,7 +537,9 @@ impl App {
             return false;
         };
         let layout = self.titlebar_layout(width, self.font_size * 0.6);
-        if let Some(control) = super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y) {
+        if let Some(control) =
+            super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y)
+        {
             let anchor = layout
                 .layout_controls
                 .iter()
@@ -2034,7 +2039,13 @@ impl App {
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         renderer.draw_rect(x, y, panel_width, panel_height, border);
-        renderer.draw_rect(x + 1.0, y + 1.0, (panel_width - 2.0).max(0.0), panel_height - 2.0, bg);
+        renderer.draw_rect(
+            x + 1.0,
+            y + 1.0,
+            (panel_width - 2.0).max(0.0),
+            panel_height - 2.0,
+            bg,
+        );
         renderer.draw_text(self.t("lsp.rename.prompt"), x + 16.0, y + 18.0, text);
         let max_chars = ((panel_width - 32.0) / cw.max(1.0)).floor() as usize;
         let input = Self::help_menu_visible_label(

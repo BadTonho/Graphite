@@ -36,9 +36,7 @@ pub(super) fn file_matches(results: &[SearchResult], limit: usize) -> (Vec<Value
         let start = utf16_column(&result.text, result.start);
         let end = utf16_column(&result.text, result.end);
         let line = result.line;
-        let range = |first, last| {
-            json!({"startLineNumber": line, "startColumn": first, "endLineNumber": line, "endColumn": last})
-        };
+        let range = |first, last| json!({"startLineNumber": line, "startColumn": first, "endLineNumber": line, "endColumn": last});
         let item = json!({
             "rangeLocations": [{"source": range(start, end), "preview": range(start, end)}],
             "previewText": result.text,
@@ -136,7 +134,10 @@ mod tests {
         assert_eq!(first[0]["rangeLocations"][0]["source"]["startColumn"], 3);
         assert_eq!(first[0]["rangeLocations"][0]["source"]["endColumn"], 9);
         assert_eq!(first[0]["previewText"], "x🌎 needle");
-        assert_eq!(files[1]["results"][0]["rangeLocations"][0]["source"]["startLineNumber"], 3);
+        assert_eq!(
+            files[1]["results"][0]["rangeLocations"][0]["source"]["startLineNumber"],
+            3
+        );
     }
 
     #[test]
