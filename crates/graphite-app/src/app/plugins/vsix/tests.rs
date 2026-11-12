@@ -121,6 +121,7 @@ fn fixture(path: &PathBuf, version: &str) {
             {"command":"phase5.crash","title":"Phase 5 crash"},
             {"command":"phase5.workbench","title":"Phase 5 workbench"},
             {"command":"phase5.terminal","title":"Phase 5 terminal"},
+            {"command":"phase5.decorate","title":"Phase 5 decorate"},
             {"command":"phase5.watch","title":"Phase 5 watch"},
         ]}
     });
@@ -521,4 +522,44 @@ fn official_host_delivers_file_events_to_watchers() {
         std::thread::sleep(Duration::from_millis(100));
     }
     assert!(!app.status.contains("watcher"), "{}", app.status);
+}
+
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_sends_text_decorations_for_the_active_editor() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let mut app = App::new_with_options(work.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("fixture.vsix");
+    fixture(&package, "1.0.0");
+    store.install(&package).unwrap();
+    store.enable("test.phase5", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    let file = work.join("sample.txt");
+    std::fs::write(&file, "sample").unwrap();
+    app.open_file(file.clone());
+    let uri = graphite_core_api::DocumentUri::from_path(&file).unwrap();
+    let uri = uri.as_str().to_owned();
+    app.run_vsix_command_in("test.phase5:phase5.decorate", Some(runtime_path))
+        .unwrap();
+    wait_for(&mut app, |app| app.vsix_line_decorations(&uri, 0, true).len() == 2);
+    let marks = app.vsix_line_decorations(&uri, 0, true);
+    let ranged = marks.iter().find(|mark| !mark.whole_line).unwrap();
+    assert_eq!((ranged.start, ranged.end), (Some(1), Some(4)));
+    assert!(ranged.look.background.is_some_and(|color| color[0] > 0.9 && color[3] < 0.6));
+    assert!(ranged.look.border.is_some());
+    assert_eq!(ranged.after.as_ref().unwrap().text, " note");
+    let whole = marks.iter().find(|mark| mark.whole_line).unwrap();
+    assert_eq!(whole.after.as_ref().unwrap().text, " instance");
+    assert!(whole.look.background.is_some(), "theme colors resolve");
+    assert!(app.vsix_line_decorations(&uri, 1, true).is_empty());
+    wait_for(&mut app, finished);
 }
