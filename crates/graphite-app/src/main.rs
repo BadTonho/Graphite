@@ -482,8 +482,13 @@ impl App {
         let scm_watcher = event_proxy.clone().and_then(|proxy| {
             use notify::Watcher;
             let mut watcher =
-                notify::recommended_watcher(move |_result: notify::Result<notify::Event>| {
-                    let _ = proxy.send_event(UserEvent::ScmRefresh);
+                notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+                    if result
+                        .as_ref()
+                        .map_or(true, |event| scm::is_relevant_watch_event(event))
+                    {
+                        let _ = proxy.send_event(UserEvent::ScmRefresh);
+                    }
                 })
                 .ok()?;
             watcher
