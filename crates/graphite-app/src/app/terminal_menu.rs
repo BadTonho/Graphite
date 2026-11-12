@@ -361,7 +361,7 @@ mod tests {
             rows.iter()
                 .filter(|row| matches!(row, TerminalMenuRow::Separator))
                 .count(),
-            4
+            3
         );
     }
 

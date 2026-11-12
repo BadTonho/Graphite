@@ -2,6 +2,8 @@
 //! WebKitGTK window so the same surface remains available on X11 and Wayland.
 
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "linux")]
+use gtk::prelude::*;
 use wry::{http::Request, WebView, WebViewBuilder};
 
 #[cfg(windows)]

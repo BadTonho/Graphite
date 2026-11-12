@@ -6,8 +6,11 @@ use std::process::Command;
 
 /// Runs `git` in `root` and returns its trimmed standard output.
 pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
+    // Git messages are matched in English below, so keep them out of the user's locale.
     let output = Command::new("git")
         .current_dir(root)
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
         .args(args)
         .output()
         .map_err(|error| error.to_string())?;

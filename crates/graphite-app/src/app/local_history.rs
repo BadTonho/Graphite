@@ -70,9 +70,16 @@ impl App {
                 return;
             }
         }
-        let millis = SystemTime::now()
+        let mut millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |time| time.as_millis() as u64);
+        // Two saves in the same millisecond must not overwrite each other's file.
+        let latest_millis = versions
+            .last()
+            .and_then(|latest| latest.file_stem()?.to_str()?.parse::<u64>().ok());
+        if let Some(latest) = latest_millis.filter(|latest| *latest >= millis) {
+            millis = latest + 1;
+        }
         if fs::create_dir_all(&dir).is_err() {
             return;
         }
