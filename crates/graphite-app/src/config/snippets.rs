@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snippet {
     pub prefix: String,
     pub body: String,
@@ -79,6 +79,118 @@ pub(super) fn load_snippets_from_dirs(
     (snippets, warnings)
 }
 
+/// Snippets and warnings from one snippet file (`{ "name": { "prefix", "body", "scope" } }`).
+pub(crate) fn parse_snippet_file(path: &Path, translator: &Translator) -> (Vec<Snippet>, Vec<String>) {
+    let mut found = Vec::new();
+    let mut warnings = Vec::new();
+    let data = match fs::read(&path) {
+        Ok(data) => data,
+        Err(error) => {
+            warnings.push(translator.format(
+                "config.snippets.cannot_read_file",
+                &[("path", &path.display()), ("error", &error)],
+            ));
+            return (found, warnings);
+        }
+    };
+    let value = match serde_json::from_slice::<Value>(&data) {
+        Ok(value) => value,
+        Err(error) => {
+            warnings.push(translator.format(
+                "config.snippets.invalid",
+                &[("path", &path.display()), ("error", &error)],
+            ));
+            return (found, warnings);
+        }
+    };
+    let Some(entries) = value.as_object() else {
+        warnings.push(
+            translator.format("config.snippets.not_object", &[("path", &path.display())]),
+        );
+        return (found, warnings);
+    };
+    for (name, item) in entries {
+        let Some(prefix) = item.get("prefix") else {
+            warnings.push(translator.format(
+                "config.snippets.missing_prefix",
+                &[("name", name), ("path", &path.display())],
+            ));
+            return (found, warnings);
+        };
+        let prefixes: Vec<String> = if let Some(s) = prefix.as_str() {
+            vec![s.to_owned()]
+        } else {
+            prefix
+                .as_array()
+                .map(|array| {
+                    array
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let body = item
+            .get("body")
+            .map(|value| {
+                if let Some(text) = value.as_str() {
+                    text.to_owned()
+                } else {
+                    value
+                        .as_array()
+                        .map(|array| {
+                            array
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .unwrap_or_default()
+                }
+            })
+            .unwrap_or_default();
+        if prefixes.is_empty() || body.is_empty() {
+            warnings.push(translator.format(
+                "config.snippets.missing_body",
+                &[("name", name), ("path", &path.display())],
+            ));
+            return (found, warnings);
+        }
+        let scope = item.get("scope").and_then(|scope| {
+            if let Some(scope) = scope.as_str() {
+                Some(
+                    scope
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|part| !part.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                )
+            } else {
+                scope.as_array().map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+            }
+        });
+        let body = expand_snippet(&body);
+        for prefix in prefixes {
+            found.push(Snippet {
+                prefix,
+                body: body.clone(),
+                scope: scope.clone(),
+            });
+        }
+    }
+
+    found.sort_by(|a, b| a.prefix.cmp(&b.prefix));
+    (found, warnings)
+}
+
 fn read_snippet_files(
     dir: &Path,
     code_snippets_only: bool,
@@ -116,109 +228,9 @@ fn read_snippet_files(
         } else if path.extension().is_none_or(|extension| extension != "json") {
             continue;
         }
-        let data = match fs::read(&path) {
-            Ok(data) => data,
-            Err(error) => {
-                warnings.push(translator.format(
-                    "config.snippets.cannot_read_file",
-                    &[("path", &path.display()), ("error", &error)],
-                ));
-                continue;
-            }
-        };
-        let value = match serde_json::from_slice::<Value>(&data) {
-            Ok(value) => value,
-            Err(error) => {
-                warnings.push(translator.format(
-                    "config.snippets.invalid",
-                    &[("path", &path.display()), ("error", &error)],
-                ));
-                continue;
-            }
-        };
-        let Some(entries) = value.as_object() else {
-            warnings.push(
-                translator.format("config.snippets.not_object", &[("path", &path.display())]),
-            );
-            continue;
-        };
-        for (name, item) in entries {
-            let Some(prefix) = item.get("prefix") else {
-                warnings.push(translator.format(
-                    "config.snippets.missing_prefix",
-                    &[("name", name), ("path", &path.display())],
-                ));
-                continue;
-            };
-            let prefixes: Vec<String> = if let Some(s) = prefix.as_str() {
-                vec![s.to_owned()]
-            } else {
-                prefix
-                    .as_array()
-                    .map(|array| {
-                        array
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            };
-            let body = item
-                .get("body")
-                .map(|value| {
-                    if let Some(text) = value.as_str() {
-                        text.to_owned()
-                    } else {
-                        value
-                            .as_array()
-                            .map(|array| {
-                                array
-                                    .iter()
-                                    .filter_map(Value::as_str)
-                                    .collect::<Vec<_>>()
-                                    .join("\n")
-                            })
-                            .unwrap_or_default()
-                    }
-                })
-                .unwrap_or_default();
-            if prefixes.is_empty() || body.is_empty() {
-                warnings.push(translator.format(
-                    "config.snippets.missing_body",
-                    &[("name", name), ("path", &path.display())],
-                ));
-                continue;
-            }
-            let scope = item.get("scope").and_then(|scope| {
-                if let Some(scope) = scope.as_str() {
-                    Some(
-                        scope
-                            .split(',')
-                            .map(str::trim)
-                            .filter(|part| !part.is_empty())
-                            .map(str::to_owned)
-                            .collect(),
-                    )
-                } else {
-                    scope.as_array().map(|values| {
-                        values
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                }
-            });
-            let body = expand_snippet(&body);
-            for prefix in prefixes {
-                found.push(Snippet {
-                    prefix,
-                    body: body.clone(),
-                    scope: scope.clone(),
-                });
-            }
-        }
+        let (snippets, file_warnings) = parse_snippet_file(&path, translator);
+        found.extend(snippets);
+        warnings.extend(file_warnings);
     }
     found.sort_by(|a, b| a.prefix.cmp(&b.prefix));
     (found, warnings)

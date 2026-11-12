@@ -276,8 +276,10 @@ impl App {
             config::load_dark_theme_from(&self.profile_root),
             Ordering::Relaxed,
         );
-        (self.snippets, self.snippet_load_warnings) =
+        let (snippets, warnings) =
             config::load_snippets_for_workspace_in(&self.profile_root, &workspace, &translator);
+        self.snippet_load_warnings = warnings;
+        self.set_user_snippets(snippets);
         if let Ok(settings) = config::terminal_settings_in(&self.profile_root, &translator) {
             self.terminal_profiles = settings.profiles;
             self.selected_terminal_profile = settings.default_profile;

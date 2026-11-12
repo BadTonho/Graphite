@@ -291,6 +291,7 @@ mod tests {
                 line_comment: Some("--".into()),
                 block_comment: None,
             }],
+            snippets: vec![],
         });
         app.plugins
             .installed_plugins_mut()

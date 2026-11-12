@@ -504,7 +504,7 @@ impl App {
             UserEvent::SnippetsLoaded { snippets, warnings } => {
                 self.context_keys
                     .close_widget(super::context_keys::WidgetKind::Snippet);
-                self.snippets = snippets;
+                self.set_user_snippets(snippets);
                 self.snippet_load_warnings = warnings;
                 self.snippet_query = Some(String::new());
                 self.status = self

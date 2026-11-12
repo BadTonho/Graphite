@@ -125,6 +125,35 @@ pub struct Vsix {
     pub activity_bar: Vec<ActivityBarContainer>,
     #[serde(default)]
     pub language_comments: Vec<LanguageComments>,
+    /// Snippet files the extension contributes (`contributes.snippets`).
+    #[serde(default)]
+    pub snippets: Vec<SnippetContribution>,
+}
+
+/// A snippet file inside the extension for one language.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SnippetContribution {
+    pub language: String,
+    /// Path relative to the extension root, validated by [`crate::package::safe_path`].
+    pub path: String,
+}
+
+pub(crate) fn vsix_snippets(manifest: &Value) -> Vec<SnippetContribution> {
+    manifest
+        .pointer("/contributes/snippets")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let language = entry.get("language")?.as_str()?.trim();
+            let path = entry.get("path")?.as_str()?;
+            let path = path.strip_prefix("./").unwrap_or(path);
+            (!language.is_empty() && crate::package::safe_path(path)).then(|| SnippetContribution {
+                language: language.to_owned(),
+                path: path.to_owned(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -348,5 +377,26 @@ mod activity_bar_tests {
         assert_eq!(comments[0].extensions, ["smp"]);
         assert_eq!(comments[0].line_comment.as_deref(), Some("#"));
         assert_eq!(comments[0].block_comment.as_ref().unwrap(), &["/*", "*/"]);
+    }
+
+    #[test]
+    fn vsix_snippets_keep_only_safe_relative_paths_with_a_language() {
+        let manifest = serde_json::json!({"contributes": {"snippets": [
+            {"language": "rust", "path": "./snippets/rust.json"},
+            {"language": "go", "path": "snippets/go.json"},
+            {"language": "evil", "path": "../outside.json"},
+            {"language": "abs", "path": "/etc/passwd"},
+            {"language": "", "path": "snippets/none.json"},
+            {"path": "snippets/no-language.json"},
+        ]}});
+        let snippets = vsix_snippets(&manifest);
+        assert_eq!(
+            snippets,
+            vec![
+                SnippetContribution { language: "rust".into(), path: "snippets/rust.json".into() },
+                SnippetContribution { language: "go".into(), path: "snippets/go.json".into() },
+            ]
+        );
+        assert!(vsix_snippets(&serde_json::json!({})).is_empty());
     }
 }

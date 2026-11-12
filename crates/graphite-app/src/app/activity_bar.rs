@@ -1767,6 +1767,7 @@ mod tests {
                         }],
                     }],
                     language_comments: vec![],
+                    snippets: vec![],
                 },
             ),
             enabled: true,
