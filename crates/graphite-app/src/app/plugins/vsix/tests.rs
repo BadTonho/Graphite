@@ -390,3 +390,92 @@ fn official_host_creates_terminals_and_reports_their_exit() {
     assert_eq!(app.terminal_names, ["Phase 5 terminal"]);
     assert!(app.terminal_visible);
 }
+
+/// Compatibility survey: installs real extensions from Open VSX into isolated temporary
+/// profiles, runs each one's first command and reports what Graphite did not support.
+///
+/// `GRAPHITE_TEST_COMPAT_LIST` is a file with one `namespace.name` per line and
+/// `GRAPHITE_TEST_COMPAT_OUT` a directory that receives `report.tsv`. Third-party extension
+/// code runs during the survey, so each one gets its own temporary `HOME`.
+#[test]
+#[ignore = "network survey; requires the packaged Code OSS runtime"]
+fn compatibility_survey() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let list = std::fs::read_to_string(std::env::var_os("GRAPHITE_TEST_COMPAT_LIST").unwrap())
+        .unwrap();
+    let out = PathBuf::from(std::env::var_os("GRAPHITE_TEST_COMPAT_OUT").unwrap());
+    std::fs::create_dir_all(&out).unwrap();
+    let registry = graphite_plugins::open_vsx::Registry::new().unwrap();
+    let mut report = String::from("extension\tversion\tresult\tunsupported\n");
+    for line in list.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let Some((namespace, name)) = line.split_once('.') else {
+            continue;
+        };
+        let dir = TempDir::new();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("HOME", &home);
+        let package = dir.path().join("extension.vsix");
+        let (version, result, unsupported) = (|| -> (String, String, String) {
+            let metadata = match registry.download_latest(namespace, name, &package) {
+                Ok(metadata) => metadata,
+                Err(error) => return (String::new(), format!("download failed: {error}"), String::new()),
+            };
+            let version = metadata.version;
+            let mut app = App::new_with_options(dir.path().join("work"), None, true);
+            let _ = std::fs::create_dir_all(dir.path().join("work"));
+            app = App::new_with_options(dir.path().join("work"), None, true);
+            app.profile_root = dir.path().join("profile");
+            app.workspace_trust = Some(
+                crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap(),
+            );
+            app.run_ui_command("graphite.security.trustWorkspace");
+            let store = Store::new(app.profile_root.join("plugins"));
+            let record = match store.install(&package) {
+                Ok(record) => record,
+                Err(error) => return (version, format!("install failed: {error}"), String::new()),
+            };
+            let id = record.metadata.id().to_owned();
+            let command = match &record.metadata {
+                Metadata::Vsix(vsix) if vsix.main.is_some() => {
+                    vsix.commands.first().map(|command| command.id.clone())
+                }
+                _ => None,
+            };
+            let Some(command) = command else {
+                return (version, "no entry point or commands (declarative only)".into(), String::new());
+            };
+            store.enable(&id, true).unwrap();
+            app.plugins.store = Some(store.clone());
+            app.plugins.installed = store.list().unwrap();
+            let sample = dir.path().join("work/sample.txt");
+            std::fs::write(&sample, "sample\n").unwrap();
+            app.open_file(sample);
+            let key = format!("{id}:{command}");
+            if let Err(error) = app.run_vsix_command_in(&key, Some(runtime_path.clone())) {
+                return (version, format!("could not start: {error}"), String::new());
+            }
+            let deadline = Instant::now() + Duration::from_secs(40);
+            while Instant::now() < deadline {
+                app.poll_plugins();
+                if finished(&app) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let outcome = if !finished(&app) {
+                "timed out".to_owned()
+            } else if app.plugins.vsix.is_none() {
+                format!("host stopped: {}", app.status)
+            } else {
+                format!("ran `{command}`: {}", app.status)
+            };
+            let log = std::fs::read_to_string(app.profile_root.join("code-oss/unsupported-api.log"))
+                .unwrap_or_default();
+            (version, outcome, log.lines().collect::<Vec<_>>().join(","))
+        })();
+        let clean = |text: &str| text.replace(['\t', '\n', '\r'], " ");
+        report.push_str(&format!("{line}\t{version}\t{}\t{}\n", clean(&result), unsupported));
+        std::fs::write(out.join("report.tsv"), &report).unwrap();
+    }
+}

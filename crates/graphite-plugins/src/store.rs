@@ -180,9 +180,8 @@ impl Store {
         if record.directory != directory {
             return Err("The installed package changed; review the new installation".into());
         }
-        if matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()) {
-            return Err("VSIX has no Node.js entry point".into());
-        }
+        // A VSIX without a Node.js entry point (themes, snippets, language packs) runs no code;
+        // enabling it only applies its declarative contributions.
         record.enabled = true;
         record.trusted_version = Some(record.metadata.version().into());
         self.publish(&record, Some(directory))

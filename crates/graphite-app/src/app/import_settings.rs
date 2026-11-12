@@ -35,7 +35,7 @@ impl App {
                     / 100.0,
             );
         }
-        self.snippets = snippets;
+        self.set_user_snippets(snippets);
         self.snippet_load_warnings = warnings;
         self.keymap = keymap;
         self.status = if let Some(warning) = self.snippet_load_warnings.first() {

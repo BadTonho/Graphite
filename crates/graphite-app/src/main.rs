@@ -190,6 +190,10 @@ struct App {
     command_center: Option<CommandCenter>,
     snippet_query: Option<String>,
     snippets: Vec<config::Snippet>,
+    /// Snippets from the user's profile and the project, which override extension snippets.
+    user_snippets: Vec<config::Snippet>,
+    /// Snippets contributed by enabled VSIX extensions.
+    extension_snippets: Vec<config::Snippet>,
     snippet_load_warnings: Vec<String>,
     font_size: f32,
     tab_size: usize,
@@ -633,6 +637,8 @@ impl App {
             command_palette: None,
             command_center: None,
             snippet_query: None,
+            user_snippets: snippets.clone(),
+            extension_snippets: Vec::new(),
             snippets,
             snippet_load_warnings,
             font_size: prefs.font_size,

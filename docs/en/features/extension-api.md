@@ -20,6 +20,19 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Terminal | `window.createTerminal` (with `name`, `shellPath`, `shellArgs`, `cwd`) opens a Graphite terminal tab. `sendText`, `show`, `hide`, `dispose` and `onDidCloseTerminal` with the exit code work. |
 | Webview | One webview panel, HTML content, messages both ways. |
 
+## Declarative contributions
+
+A VSIX without a Node.js entry point (themes, snippets, language packs) runs no code, so it can be enabled without starting the extension host. Applied contributions:
+
+| Contribution | What happens |
+|---|---|
+| `commands` | Declared commands appear in the palette before the extension activates. |
+| `languages` configuration | Line and block comment markers feed Toggle Line/Block Comment. |
+| `viewsContainers.activitybar` | Containers appear in the activity bar. |
+| `snippets` | Snippet files are loaded for enabled extensions, scoped to the contributing language. A user or project snippet with the same prefix and scope overrides them. |
+
+Themes, keybindings, grammars and icon themes are listed in the package but not applied yet.
+
 ## Not yet
 
 - Language providers beyond the list above (range and on-type formatting, document highlights, semantic tokens, code lenses, folding, selection ranges, call and type hierarchies, inlay hints, links and colors). Code actions that only run an extension command, and file operations inside a rename, are not applied.

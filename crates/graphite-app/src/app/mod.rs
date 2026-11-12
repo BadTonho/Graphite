@@ -44,6 +44,7 @@ pub(crate) mod plugins;
 pub(crate) mod profile_menu;
 mod project_search;
 pub(super) mod project_search_filters;
+mod extension_snippets;
 mod external_changes;
 mod autosave;
 mod local_history;

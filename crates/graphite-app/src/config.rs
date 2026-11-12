@@ -34,6 +34,7 @@ pub(crate) use sidebar_layout::{
 #[cfg(test)]
 use snippets::expand_snippet;
 pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
+pub(crate) use snippets::parse_snippet_file;
 #[cfg(test)]
 use themes::theme_colors_from;
 pub use themes::{
