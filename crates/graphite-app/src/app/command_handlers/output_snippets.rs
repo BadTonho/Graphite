@@ -39,8 +39,20 @@ fn show_output(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
     Ok(())
 }
 
+fn show_logs(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_log_picker();
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Handler); 3] = [
+    let commands: [(&'static str, &'static str, &'static str, Handler); 5] = [
+        ("workbench.action.showLogs", "Show logs", "View", show_logs),
+        (
+            "workbench.action.openLogFile",
+            "Open log file",
+            "View",
+            show_logs,
+        ),
         (
             "workbench.action.openSnippets",
             "Configure snippets",
@@ -115,6 +127,29 @@ mod tests {
         assert_eq!(app.editor().text(), "aSNIPb");
         assert!(run_with_text(&mut app, "editor.action.insertSnippet", "").is_err());
         assert_eq!(app.editor().text(), "aSNIPb");
+    }
+
+    #[test]
+    fn the_log_commands_list_the_profile_log_files() {
+        let (mut app, _dir) = app();
+        app.run_ui_command("workbench.action.showLogs");
+        assert_eq!(app.status, app.t("logs.none"));
+        assert!(app.go_picker.is_none());
+        std::fs::create_dir_all(app.profile_root.join("code-oss")).unwrap();
+        std::fs::write(app.profile_root.join("code-oss/unsupported-api.log"), "x").unwrap();
+        std::fs::write(app.profile_root.join("requested-commands.log"), "y").unwrap();
+        std::fs::write(app.profile_root.join("notes.txt"), "z").unwrap();
+        app.run_ui_command("workbench.action.openLogFile");
+        let mut names: Vec<_> = app
+            .go_picker
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .map(|item| item.name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["requested-commands.log", "unsupported-api.log"]);
     }
 
     #[test]

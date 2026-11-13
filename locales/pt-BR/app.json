@@ -663,5 +663,6 @@
   "debug.set_variable_format": "Use a forma nome=valor",
   "debug.filter_cleared": "Filtro do console de depuração removido",
   "debug.filter_set": "O console de depuração mostra só linhas com: {text}",
-  "debug.unknown_config": "Não há configuração de execução chamada {name}"
+  "debug.unknown_config": "Não há configuração de execução chamada {name}",
+  "logs.none": "Ainda não há arquivos de log no perfil"
 }

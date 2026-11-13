@@ -573,5 +573,7 @@
   "command.repl.action.filter": "Filter the debug console",
   "command.repl.action.find": "Find in the debug console",
   "command.debug.setVariable": "Set variable value",
-  "command.debug.startFromConfig": "Start debugging with a configuration"
+  "command.debug.startFromConfig": "Start debugging with a configuration",
+  "command.workbench.action.showLogs": "Show logs",
+  "command.workbench.action.openLogFile": "Open log file"
 }

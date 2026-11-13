@@ -663,5 +663,6 @@
   "debug.set_variable_format": "Use the form name=value",
   "debug.filter_cleared": "Debug console filter cleared",
   "debug.filter_set": "Debug console shows only lines with: {text}",
-  "debug.unknown_config": "There is no launch configuration called {name}"
+  "debug.unknown_config": "There is no launch configuration called {name}",
+  "logs.none": "There are no log files in the profile yet"
 }

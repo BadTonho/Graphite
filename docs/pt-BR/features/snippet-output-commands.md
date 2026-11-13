@@ -8,3 +8,7 @@
 | Mostrar saída | Mostra a saída das tarefas no painel. |
 
 Canais de saída, logs e a vista de linha do tempo não estão disponíveis: o Graphite tem uma saída só, a das tarefas.
+
+## Logs
+
+**Mostrar logs** e **Abrir arquivo de log** listam os arquivos `*.log` do perfil (até duas pastas de profundidade, os mais novos primeiro), por exemplo os logs de APIs não suportadas e de comandos pedidos que as extensões geram. Escolher um o abre. Sem arquivos de log, avisam.

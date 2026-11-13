@@ -573,5 +573,7 @@
   "command.repl.action.filter": "Filtrar o console de depuração",
   "command.repl.action.find": "Procurar no console de depuração",
   "command.debug.setVariable": "Alterar o valor de uma variável",
-  "command.debug.startFromConfig": "Iniciar a depuração com uma configuração"
+  "command.debug.startFromConfig": "Iniciar a depuração com uma configuração",
+  "command.workbench.action.showLogs": "Mostrar logs",
+  "command.workbench.action.openLogFile": "Abrir arquivo de log"
 }

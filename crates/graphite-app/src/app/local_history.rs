@@ -274,6 +274,61 @@ impl App {
     }
 }
 
+/// Log files under the profile (`*.log`, up to two folders deep), newest first.
+fn log_files(root: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                if depth < 2 {
+                    walk(&path, depth + 1, out);
+                }
+            } else if path.extension().is_some_and(|ext| ext == "log") {
+                out.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(root, 0, &mut files);
+    files.sort_by_key(|path| {
+        std::cmp::Reverse(
+            std::fs::metadata(path)
+                .and_then(|meta| meta.modified())
+                .ok(),
+        )
+    });
+    files
+}
+
+impl App {
+    /// Lists the log files of the profile; picking one opens it.
+    pub(crate) fn open_log_picker(&mut self) {
+        let items: Vec<super::go_menu::GoSymbolItem> = log_files(&self.profile_root)
+            .into_iter()
+            .map(|path| super::go_menu::GoSymbolItem {
+                name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                scope: path
+                    .parent()
+                    .map(|parent| parent.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                path,
+                line: 0,
+            })
+            .collect();
+        if items.is_empty() {
+            self.status = self.t("logs.none").into();
+            return;
+        }
+        self.open_locations_picker(items);
+    }
+}
+
 /// Version files of one history folder, oldest first (names sort by time).
 fn list_versions(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
