@@ -3,7 +3,7 @@
 //! `git` command like [`crate::scm_remote`], so hooks, identity and configuration match the
 //! terminal. Callers run them on a worker thread.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A merge or rebase that stopped and waits for the user.
@@ -250,7 +250,7 @@ pub(crate) fn rebase_interactive(root: &Path, onto: &str, todo: &str) -> Result<
     if !plain_ref(onto) {
         return Err(format!("'{onto}' is not a valid branch name"));
     }
-    let directory = std::env::temp_dir().join(format!("graphite-rebase-{}", std::process::id()));
+    let directory = plan_directory();
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let plan = directory.join("todo.txt");
     std::fs::write(&plan, todo).map_err(|error| error.to_string())?;
@@ -277,6 +277,18 @@ pub(crate) fn rebase_interactive(root: &Path, onto: &str, todo: &str) -> Result<
     } else {
         Err(failure(&result, "rebase"))
     }
+}
+
+/// A directory of its own for one rebase's plan. Rebases that run at the same time must not share
+/// it, or one would overwrite or delete the plan the other is about to hand to git.
+fn plan_directory() -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "graphite-rebase-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 /// Runs git and returns all of its standard output, for commands whose output has many lines.
@@ -331,6 +343,12 @@ pub(crate) fn continue_operation(root: &Path) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn every_rebase_gets_its_own_plan_directory() {
+        let directories: std::collections::HashSet<_> = (0..50).map(|_| plan_directory()).collect();
+        assert_eq!(directories.len(), 50);
+    }
 
     /// Runs git with a fixed identity so commits work on any machine.
     fn sh(root: &Path, args: &[&str]) -> String {
