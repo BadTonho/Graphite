@@ -198,6 +198,8 @@ pub struct DebugRuntime {
     pub breakpoints_disabled: bool,
     pub launch_configs: Vec<LaunchConfig>,
     pub active_config: Option<LaunchConfig>,
+    /// Name of the configuration chosen for the next start; the first one is used when unset.
+    pub selected_config: Option<String>,
     children: BTreeMap<i64, Vec<Variable>>,
     expanded: BTreeSet<i64>,
     initialize_seq: Option<i64>,
@@ -223,6 +225,27 @@ impl DebugRuntime {
     pub fn refresh_configs(&mut self, workspace: &Path) -> Result<(), DebugError> {
         self.launch_configs = load_launch_configs(workspace)?;
         Ok(())
+    }
+
+    /// The configuration F5 starts: the selected one if it still exists, otherwise the first.
+    pub fn launch_config(&self) -> Option<&LaunchConfig> {
+        self.selected_config
+            .as_deref()
+            .and_then(|name| {
+                self.launch_configs
+                    .iter()
+                    .find(|config| config.name == name)
+            })
+            .or_else(|| self.launch_configs.first())
+    }
+
+    /// Chooses the configuration called `name`. Returns false when there is none.
+    pub fn select_config(&mut self, name: &str) -> bool {
+        let known = self.launch_configs.iter().any(|config| config.name == name);
+        if known {
+            self.selected_config = Some(name.to_owned());
+        }
+        known
     }
 
     pub fn start(&mut self, config: LaunchConfig, workspace: &Path) -> Result<(), DebugError> {
@@ -1311,6 +1334,37 @@ mod tests {
             adapter: None,
             extra: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn the_selected_configuration_wins_and_the_first_is_the_fallback() {
+        let mut runtime = DebugRuntime::default();
+        assert!(runtime.launch_config().is_none());
+        runtime.launch_configs = vec![
+            LaunchConfig {
+                name: "first".into(),
+                ..config_with_tasks(None, None)
+            },
+            LaunchConfig {
+                name: "second".into(),
+                ..config_with_tasks(None, None)
+            },
+        ];
+        assert_eq!(runtime.launch_config().unwrap().name, "first");
+        assert!(runtime.select_config("second"));
+        assert_eq!(runtime.launch_config().unwrap().name, "second");
+        assert!(
+            !runtime.select_config("missing"),
+            "unknown names are refused"
+        );
+        assert_eq!(
+            runtime.launch_config().unwrap().name,
+            "second",
+            "choice is kept"
+        );
+        // The file changed and the selected configuration is gone.
+        runtime.launch_configs.remove(1);
+        assert_eq!(runtime.launch_config().unwrap().name, "first");
     }
 
     #[test]

@@ -74,6 +74,20 @@ impl App {
                 enabled: trusted && self.task_cancel.is_none(),
             }));
         }
+        for name in self.launch_config_names() {
+            items.push(PaletteItem {
+                id: format!("graphite.debug.start:{name}"),
+                title: format!("Start Debugging: {name}"),
+                source: "Debug".into(),
+                enabled: trusted,
+            });
+            items.push(PaletteItem {
+                id: format!("graphite.debug.select:{name}"),
+                title: format!("Select Debug Configuration: {name}"),
+                source: "Debug".into(),
+                enabled: true,
+            });
+        }
         items.extend(self.vsix_palette_items());
         items.sort_by(|a, b| {
             a.title
@@ -178,6 +192,14 @@ impl App {
                 }
             } else if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
                 if let Err(error) = self.run_task(label) {
+                    self.status = error;
+                }
+            } else if let Some(name) = id.strip_prefix("graphite.debug.start:") {
+                if let Err(error) = self.start_debug_configuration(name) {
+                    self.status = error;
+                }
+            } else if let Some(name) = id.strip_prefix("graphite.debug.select:") {
+                if let Err(error) = self.select_debug_configuration(name) {
                     self.status = error;
                 }
             } else {

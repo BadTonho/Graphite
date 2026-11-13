@@ -45,7 +45,16 @@ Extensões instaladas antes desta funcionalidade são relidas do `package.json` 
 
 Toda string da configuração (incluindo `program`, `args`, `cwd` e `env`) expande `${workspaceFolder}`, `${workspaceFolderBasename}`, `${cwd}`, `${userHome}`, `${pathSeparator}` (e `${/}`), `${env:NOME}` (vazio se não definida) e, a partir do arquivo aberto quando a sessão começa, `${file}`, `${fileBasename}`, `${fileBasenameNoExtension}`, `${fileExtname}`, `${fileDirname}`, `${relativeFile}` e `${relativeFileDirname}`. Variáveis desconhecidas, `${input:…}`, `${command:…}` e variáveis de arquivo sem arquivo aberto ficam como estão escritas, para o problema ficar visível. Um `program` ou `cwd` relativo é resolvido contra o workspace depois da expansão; `cwd` assume o workspace por padrão.
 
-Quem inicia é sempre a primeira configuração do `launch.json`; escolher entre várias ainda não está implementado.
+### Escolher a configuração
+
+`F5` e **Executar → Iniciar depuração** iniciam a configuração *selecionada*, ou a primeira do `launch.json` quando nenhuma foi selecionada (ou a selecionada não existe mais no arquivo). A paleta de comandos lista, para cada nome de configuração distinto:
+
+- **Select Debug Configuration: NOME** — torna essa a configuração que o `F5` inicia, sem iniciá-la.
+- **Start Debugging: NOME** — seleciona e inicia (exige workspace confiável). É recusado enquanto outra sessão roda ou espera o `preLaunchTask`, para que a escolha nunca seja ignorada em silêncio.
+
+A seleção vale durante a sessão da janela; não é salva entre execuções. Nomes duplicados aparecem uma vez e usam a primeira ocorrência. Configurações compostas (`compounds`) não são suportadas.
+
+**Iniciar depuração** no menu Executar não exige mais um `"adapter"` explícito: qualquer configuração do `launch.json` o habilita.
 
 ## Tarefas ao redor da sessão
 

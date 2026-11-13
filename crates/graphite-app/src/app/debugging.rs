@@ -27,8 +27,7 @@ impl App {
             .map_err(|error| error.to_string())?;
         let config = self
             .debug
-            .launch_configs
-            .first()
+            .launch_config()
             .cloned()
             .ok_or("No launch configuration is available")?;
         if self.debug_pending_launch.is_some() {
@@ -46,6 +45,41 @@ impl App {
             return Ok(());
         }
         self.begin_debug_session(config)
+    }
+
+    /// Names of the `launch.json` configurations, without duplicates, in file order.
+    pub(crate) fn launch_config_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for config in crate::debugger::load_launch_configs(self.tree.root()).unwrap_or_default() {
+            if !names.contains(&config.name) {
+                names.push(config.name);
+            }
+        }
+        names
+    }
+
+    /// Chooses the configuration that F5 and the Run menu start.
+    pub(crate) fn select_debug_configuration(&mut self, name: &str) -> Result<(), String> {
+        self.debug
+            .refresh_configs(self.tree.root())
+            .map_err(|error| error.to_string())?;
+        if !self.debug.select_config(name) {
+            return Err(format!("No launch configuration named '{name}'"));
+        }
+        self.status = format!("Debug configuration: {name}");
+        Ok(())
+    }
+
+    /// Selects `name` and starts it. A running session must be stopped first so a
+    /// configuration chosen from the list is never silently ignored.
+    pub(crate) fn start_debug_configuration(&mut self, name: &str) -> Result<(), String> {
+        if self.debug.session.is_some() || self.debug_pending_launch.is_some() {
+            return Err(
+                "A debug session is already active; stop it before starting another".into(),
+            );
+        }
+        self.select_debug_configuration(name)?;
+        self.start_debugging()
     }
 
     fn begin_debug_session(
@@ -595,5 +629,135 @@ mod tests {
         app.status.clear();
         app.run_pending_post_debug_task();
         assert!(app.status.is_empty());
+    }
+
+    fn write_launch_json(dir: &crate::test_support::TempDir, body: &str) {
+        std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
+        std::fs::write(dir.path().join(".vscode/launch.json"), body).unwrap();
+    }
+
+    const TWO_CONFIGS: &str = r#"{"configurations":[
+        {"name":"API","type":"node","request":"launch"},
+        {"name":"Worker","type":"node","request":"launch"},
+        {"name":"API","type":"node","request":"attach"}
+    ]}"#;
+
+    #[test]
+    fn the_palette_offers_start_and_select_for_each_distinct_configuration() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_command_palette();
+        let items: Vec<_> = app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .filter(|item| item.source == "Debug")
+            .map(|item| item.id.clone())
+            .collect();
+        for id in [
+            "graphite.debug.start:API",
+            "graphite.debug.select:API",
+            "graphite.debug.start:Worker",
+            "graphite.debug.select:Worker",
+        ] {
+            assert_eq!(items.iter().filter(|item| *item == id).count(), 1, "{id}");
+        }
+        assert_eq!(items.len(), 4, "the duplicated name is listed once");
+    }
+
+    #[test]
+    fn starting_from_the_palette_is_disabled_until_the_workspace_is_trusted() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.workspace_trust = Some(crate::app::phase5::WorkspaceTrust::restricted(
+            dir.path().join("trust.json"),
+        ));
+        app.open_command_palette();
+        let enabled = |app: &App, id: &str| {
+            app.command_palette
+                .as_ref()
+                .unwrap()
+                .items
+                .iter()
+                .find(|item| item.id == id)
+                .map(|item| item.enabled)
+        };
+        assert_eq!(enabled(&app, "graphite.debug.start:API"), Some(false));
+        assert_eq!(enabled(&app, "graphite.debug.select:API"), Some(true));
+    }
+
+    #[test]
+    fn selecting_a_configuration_from_the_palette_changes_what_f5_starts() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_command_palette();
+        app.command_palette.as_mut().unwrap().query = "select debug configuration: worker".into();
+        app.execute_command_palette_selection();
+        assert_eq!(app.status, "Debug configuration: Worker");
+        assert_eq!(app.debug.launch_config().unwrap().name, "Worker");
+    }
+
+    #[test]
+    fn an_unknown_configuration_name_is_refused() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let error = app.select_debug_configuration("Nope").unwrap_err();
+        assert_eq!(error, "No launch configuration named 'Nope'");
+        assert!(app.debug.selected_config.is_none());
+    }
+
+    #[test]
+    fn starting_a_named_configuration_never_hijacks_a_live_session() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = trusted_app(&dir);
+        app.debug_pending_launch = Some(config(Some("build")));
+        let error = app.start_debug_configuration("Worker").unwrap_err();
+        assert!(error.contains("already active"), "{error}");
+        assert!(
+            app.debug.selected_config.is_none(),
+            "the refused request does not change the selection"
+        );
+    }
+
+    #[test]
+    fn starting_a_named_configuration_selects_it_before_starting() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = trusted_app(&dir);
+        // The fixture type has no provider, so the start itself fails after the selection.
+        let error = app.start_debug_configuration("Worker").unwrap_err();
+        assert!(error.contains("No installed extension provides a debugger for type 'node'"));
+        assert_eq!(app.debug.selected_config.as_deref(), Some("Worker"));
+    }
+
+    #[test]
+    fn the_run_menu_can_start_a_configuration_that_relies_on_an_extension_adapter() {
+        let dir = crate::test_support::TempDir::new();
+        write_launch_json(&dir, TWO_CONFIGS);
+        let mut app = trusted_app(&dir);
+        app.open_run_menu();
+        let start = app
+            .run_menu_rows()
+            .into_iter()
+            .find_map(|row| match row {
+                crate::app::run_menu::RunMenuRow::Item {
+                    command: crate::app::run_menu::RunMenuCommand::StartDebugging,
+                    enabled,
+                    ..
+                } => Some(enabled),
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            start,
+            "no explicit \"adapter\" is needed to enable Start Debugging"
+        );
     }
 }

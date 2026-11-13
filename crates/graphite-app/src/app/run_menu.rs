@@ -79,12 +79,7 @@ impl App {
         let has_session = self.debug.session.is_some();
         let paused = matches!(self.debug.state, DebugState::Paused { .. });
         let config_exists = self.tree.root().join(".vscode/launch.json").is_file();
-        let has_config = self.debug.launch_configs.first().is_some_and(|config| {
-            config
-                .adapter
-                .as_ref()
-                .is_some_and(|adapter| !adapter.command.as_os_str().is_empty())
-        });
+        let has_config = self.debug.launch_config().is_some();
         let active_path = self.documents[self.active_document()].buffer.path();
         let has_saved_file = active_path.is_some();
         let any_breakpoints = self

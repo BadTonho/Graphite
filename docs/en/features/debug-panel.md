@@ -45,7 +45,16 @@ Extensions installed before this feature are re-read from their `package.json` w
 
 Every string in the launch configuration (including `program`, `args`, `cwd` and `env`) expands `${workspaceFolder}`, `${workspaceFolderBasename}`, `${cwd}`, `${userHome}`, `${pathSeparator}` (and `${/}`), `${env:NAME}` (empty when unset), and, from the file open when the session starts, `${file}`, `${fileBasename}`, `${fileBasenameNoExtension}`, `${fileExtname}`, `${fileDirname}`, `${relativeFile}` and `${relativeFileDirname}`. Unknown variables, `${input:…}`, `${command:…}`, and file variables with no file open are left as written so the problem is visible. A relative `program` or `cwd` is resolved against the workspace after expansion; `cwd` defaults to the workspace.
 
-The first configuration in `launch.json` is always the one that starts; choosing among several is not implemented yet.
+### Choosing a configuration
+
+`F5` and **Run → Start Debugging** start the *selected* configuration, or the first one in `launch.json` when none has been selected (or the selected one no longer exists in the file). The command palette lists, for every distinct configuration name:
+
+- **Select Debug Configuration: NAME** — makes it the one `F5` starts, without starting it.
+- **Start Debugging: NAME** — selects it and starts it (needs a trusted workspace). It is refused while another session is running or waiting for its `preLaunchTask`, so a choice is never silently ignored.
+
+The selection lives for the current session of the window; it is not saved between launches. Duplicate names are listed once and resolve to the first match. Compound configurations are not supported.
+
+**Start Debugging** in the Run menu no longer requires an explicit `"adapter"`: any configuration in `launch.json` enables it.
 
 ## Tasks around a session
 
