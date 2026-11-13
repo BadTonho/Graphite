@@ -19,3 +19,7 @@ Estes recursos enviam requisições ao servidor de linguagem configurado para o 
 - **Espiar definição** mostra as primeiras linhas da definição no balão de hover, sem sair do arquivo.
 - **Ajuda de parâmetros** mostra a assinatura ativa no balão de hover. O destaque do parâmetro ainda não é desenhado.
 - **Hierarquia de chamadas** lista os chamadores (`←`) e os chamados (`→`) do símbolo sob o cursor em um único seletor. **Hierarquia de tipos** lista supertipos (`↑`) e subtipos (`↓`).
+
+## Realce semântico
+
+Quando um servidor de linguagem anuncia `semanticTokensProvider`, o Graphite pede a ele os tokens do documento inteiro (`textDocument/semanticTokens/full`) a cada sincronização do documento e os desenha sobre o realce do tree-sitter, com o mesmo desenho usado pelos provedores de extensões (veja [API de extensões](extension-api.md)). Os tipos de token são mapeados para a classe de sintaxe mais próxima (tipos, funções, variáveis, propriedades, palavras-chave, comentários, strings, números, operadores); outros tipos mantêm a cor da sintaxe e os modificadores são ignorados. Os tokens descrevem uma revisão do texto, então após uma edição valem as cores da sintaxe até o servidor responder de novo. Servidores que não anunciam a capacidade nunca são consultados, e pedidos delta e de intervalo não são usados. Os tokens de um provedor de extensão têm prioridade sobre os do servidor para o mesmo documento.

@@ -102,6 +102,11 @@ pub enum LspUiEvent {
         request_id: u64,
         hints: Vec<InlayHint>,
     },
+    /// Semantic tokens of a document, decoded against the server's legend.
+    SemanticTokens {
+        request_id: u64,
+        tokens: crate::semantic_tokens::Tokens,
+    },
     CodeActions {
         request_id: u64,
         actions: Vec<CodeActionOrCommand>,
@@ -174,6 +179,10 @@ enum LspCommand {
         start: Position,
         end: Position,
     },
+    SemanticTokens {
+        request_id: u64,
+        uri: String,
+    },
     CodeActions {
         request_id: u64,
         uri: String,
@@ -207,6 +216,7 @@ impl LspCommand {
             | Self::Definition { request_id, .. }
             | Self::Hover { request_id, .. }
             | Self::InlayHints { request_id, .. }
+            | Self::SemanticTokens { request_id, .. }
             | Self::CodeActions { request_id, .. }
             | Self::Query { request_id, .. }
             | Self::ExecuteCommand { request_id, .. } => Some(*request_id),
@@ -500,6 +510,16 @@ impl LspManager {
         );
     }
 
+    pub fn request_semantic_tokens(&self, path: &Path, request_id: u64) {
+        self.send(
+            path,
+            LspCommand::SemanticTokens {
+                request_id,
+                uri: String::new(),
+            },
+        );
+    }
+
     pub fn request_code_actions(
         &self,
         path: &Path,
@@ -586,6 +606,7 @@ impl LspManager {
             | LspCommand::Definition { uri: target, .. }
             | LspCommand::Hover { uri: target, .. }
             | LspCommand::InlayHints { uri: target, .. }
+            | LspCommand::SemanticTokens { uri: target, .. }
             | LspCommand::CodeActions { uri: target, .. } => *target = uri.clone(),
             LspCommand::Query { .. } => {}
             _ => return false,
@@ -764,12 +785,52 @@ mod tests {
             &mut pending,
             &event_tx,
             &Translator::english(),
+            &[],
         );
         assert!(
             matches!(event_rx.recv().unwrap(), LspUiEvent::Status(message) if message.contains("failure"))
         );
     }
 
+    #[test]
+    fn semantic_tokens_responses_are_decoded_with_the_server_legend() {
+        let legend = vec!["keyword".to_owned(), "variable".to_owned()];
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut pending = HashMap::from([(6, (42, "semanticTokens"))]);
+        dispatch_server_message(
+            Message::Response(lsp_server::Response::new_ok(
+                RequestId::from(6),
+                json!({"resultId": "1", "data": [0, 0, 3, 0, 0, 0, 4, 1, 1, 0]}),
+            )),
+            &mut pending,
+            &event_tx,
+            &Translator::english(),
+            &legend,
+        );
+        let LspUiEvent::SemanticTokens { request_id, tokens } = event_rx.recv().unwrap() else {
+            panic!("expected semantic tokens");
+        };
+        assert_eq!(request_id, 42);
+        assert_eq!(tokens[&0].len(), 2);
+
+        // A server with nothing to say answers null: the document simply has no tokens.
+        let mut pending = HashMap::from([(7, (43, "semanticTokens"))]);
+        dispatch_server_message(
+            Message::Response(lsp_server::Response::new_ok(
+                RequestId::from(7),
+                Value::Null,
+            )),
+            &mut pending,
+            &event_tx,
+            &Translator::english(),
+            &legend,
+        );
+        let LspUiEvent::SemanticTokens { request_id, tokens } = event_rx.recv().unwrap() else {
+            panic!("expected an (empty) token set");
+        };
+        assert_eq!(request_id, 43);
+        assert!(tokens.is_empty(), "stale tokens are replaced by nothing");
+    }
     #[test]
     fn lsp_positions_count_utf16_units() {
         let p = position_at_char("a🌎b\nx", 2);
@@ -878,6 +939,7 @@ mod tests {
             &mut pending,
             &event_tx,
             &Translator::english(),
+            &[],
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::Diagnostics {
@@ -906,6 +968,7 @@ mod tests {
             &mut pending,
             &event_tx,
             &Translator::english(),
+            &[],
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::Completion { request_id, items } => {
@@ -936,6 +999,7 @@ mod tests {
             &mut pending,
             &event_tx,
             &Translator::english(),
+            &[],
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::CodeActions {
@@ -973,6 +1037,7 @@ mod tests {
             &mut pending,
             &event_tx,
             &Translator::english(),
+            &[],
         );
         match event_rx.recv().unwrap() {
             LspUiEvent::CodeActions {

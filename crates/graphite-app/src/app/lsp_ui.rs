@@ -37,6 +37,7 @@ impl App {
             self.documents[document].lsp_revision = Some(revision);
             if document == self.active_document() {
                 self.request_inlay_hints();
+                self.request_semantic_tokens();
             }
         }
     }
@@ -325,6 +326,23 @@ impl App {
             {
                 self.hover_text = text;
             }
+            LspUiEvent::SemanticTokens { request_id, tokens }
+                if (tracked || request_id == self.semantic_request_id) =>
+            {
+                let document = self.command_document();
+                let tab = &self.documents[document];
+                if let Some(uri) = tab
+                    .buffer
+                    .path()
+                    .and_then(|path| graphite_core_api::DocumentUri::from_path(path).ok())
+                {
+                    self.lsp_semantic = Some(semantic_tokens::DocumentTokens {
+                        uri: uri.as_str().to_owned(),
+                        revision: tab.buffer.revision(),
+                        lines: tokens,
+                    });
+                }
+            }
             LspUiEvent::InlayHints { request_id, hints }
                 if (tracked || request_id == self.inlay_request_id) =>
             {
@@ -420,6 +438,20 @@ impl App {
         self.inlay_request_id = self.inlay_request_id.wrapping_add(1);
         self.completion_items.clear();
         self.hover_text = None;
+    }
+
+    /// Asks the language server of the active document for its semantic tokens.
+    pub(crate) fn request_semantic_tokens(&mut self) {
+        let tab = &self.documents[self.active_document()];
+        let Some(path) = tab.buffer.path().map(PathBuf::from) else {
+            return;
+        };
+        if !self.lsp_manager.supports_path(&path) {
+            return;
+        }
+        self.semantic_request_id = self.semantic_request_id.wrapping_add(1);
+        self.lsp_manager
+            .request_semantic_tokens(&path, self.semantic_request_id);
     }
 
     pub(crate) fn request_inlay_hints(&mut self) {

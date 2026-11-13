@@ -1340,7 +1340,7 @@ mod flow_tests {
         app.poll_vsix();
         let revision = app.documents[app.active_document()].buffer.revision();
         let uri = doc_uri(&dir);
-        let first = app.vsix_semantic_spans(&uri, revision, 0, "let x\n");
+        let first = app.semantic_spans(&uri, revision, 0, "let x\n");
         let classes: Vec<_> = first.iter().map(|s| (s.range.clone(), s.class)).collect();
         assert_eq!(
             classes,
@@ -1349,15 +1349,15 @@ mod flow_tests {
                 (4..5, graphite_syntax::Class::Variable)
             ]
         );
-        assert_eq!(app.vsix_semantic_spans(&uri, revision, 1, "x\n").len(), 1);
-        assert!(app.vsix_semantic_spans(&uri, revision, 2, "").is_empty());
+        assert_eq!(app.semantic_spans(&uri, revision, 1, "x\n").len(), 1);
+        assert!(app.semantic_spans(&uri, revision, 2, "").is_empty());
         assert!(
-            app.vsix_semantic_spans(&uri, revision + 1, 0, "let x\n")
+            app.semantic_spans(&uri, revision + 1, 0, "let x\n")
                 .is_empty(),
             "tokens for an older text are not drawn"
         );
         assert!(app
-            .vsix_semantic_spans("file:///other", revision, 0, "let x\n")
+            .semantic_spans("file:///other", revision, 0, "let x\n")
             .is_empty());
 
         app.poll_vsix();
@@ -1378,7 +1378,7 @@ mod flow_tests {
         app.poll_vsix();
         let revision = app.documents[app.active_document()].buffer.revision();
         assert!(app
-            .vsix_semantic_spans(&doc_uri(&dir), revision, 0, "x\n")
+            .semantic_spans(&doc_uri(&dir), revision, 0, "x\n")
             .is_empty());
 
         app.editor_mut().insert("y");
@@ -1427,5 +1427,26 @@ mod flow_tests {
             ]
         );
         assert!(overlay_spans("", &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn language_server_tokens_are_drawn_unless_an_extension_provides_its_own() {
+        let dir = TempDir::new();
+        let (mut app, _host) = app_with_providers(&dir, "let x\n", &[]);
+        let revision = app.documents[app.active_document()].buffer.revision();
+        let uri = doc_uri(&dir);
+        app.lsp_semantic = Some(crate::semantic_tokens::DocumentTokens {
+            uri: uri.clone(),
+            revision,
+            lines: [(0usize, vec![(0u32, 3u32, graphite_syntax::Class::Keyword)])]
+                .into_iter()
+                .collect(),
+        });
+        let spans = app.semantic_spans(&uri, revision, 0, "let x\n");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].range, 0..3);
+        assert!(app.semantic_spans(&uri, revision + 1, 0, "let x\n").is_empty(), "stale");
+        assert!(app.semantic_spans("file:///other", revision, 0, "let x\n").is_empty());
+        assert!(app.semantic_spans(&uri, revision, 1, "x\n").is_empty(), "no tokens on that line");
     }
 }

@@ -99,6 +99,13 @@ pub(super) fn run_server(
                     "hover": {},
                     "definition": {},
                     "inlayHint": { "dynamicRegistration": false },
+                    "semanticTokens": {
+                        "dynamicRegistration": false,
+                        "requests": { "full": true },
+                        "tokenTypes": ["namespace","type","class","enum","interface","struct","typeParameter","parameter","variable","property","enumMember","event","function","method","macro","keyword","modifier","comment","string","number","regexp","operator","decorator"],
+                        "tokenModifiers": [],
+                        "formats": ["relative"]
+                    },
                     "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite"] } } },
                     "publishDiagnostics": { "relatedInformation": true }
                 }
@@ -114,7 +121,7 @@ pub(super) fn run_server(
         return;
     }
     let initialize_deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let (sync_kind, save_capabilities) = loop {
+    let (sync_kind, save_capabilities, legend) = loop {
         if std::time::Instant::now() >= initialize_deadline {
             let _ = event_tx.send(LspUiEvent::Status(
                 translator.text("lsp.status.initialize_timeout").into(),
@@ -151,7 +158,14 @@ pub(super) fn run_server(
                 let _ = event_tx.send(LspUiEvent::Status(
                     translator.format("lsp.status.ready", &[("language", &config.language_id)]),
                 ));
-                break (kind, protocol::SaveCapabilities::from_sync(sync));
+                let legend: Vec<String> = result
+                    .pointer("/capabilities/semanticTokensProvider/legend/tokenTypes")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .map(|name| name.as_str().unwrap_or_default().to_owned())
+                    .collect();
+                break (kind, protocol::SaveCapabilities::from_sync(sync), legend);
             }
             Ok(WorkerMessage::Incoming(_)) => {}
             Ok(WorkerMessage::IoError(error)) => {
@@ -478,6 +492,18 @@ pub(super) fn run_server(
                             }),
                         })]
                     }
+                    // A server that did not advertise semantic tokens would only answer with an error.
+                    LspCommand::SemanticTokens { .. } if legend.is_empty() => Vec::new(),
+                    LspCommand::SemanticTokens { request_id, uri } => {
+                        let id = next_id;
+                        next_id += 1;
+                        pending.insert(id, (request_id, "semanticTokens"));
+                        vec![Message::Request(Request {
+                            id: RequestId::from(id),
+                            method: "textDocument/semanticTokens/full".into(),
+                            params: json!({ "textDocument": { "uri": uri } }),
+                        })]
+                    }
                     LspCommand::CodeActions {
                         request_id,
                         uri,
@@ -588,7 +614,7 @@ pub(super) fn run_server(
                         continue;
                     }
                 }
-                dispatch_server_message(message, &mut pending, &event_tx, &translator);
+                dispatch_server_message(message, &mut pending, &event_tx, &translator, &legend);
             }
             Ok(WorkerMessage::IoError(error)) => {
                 let _ = event_tx.send(LspUiEvent::Status(translator.format(

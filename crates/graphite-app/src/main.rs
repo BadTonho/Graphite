@@ -26,6 +26,7 @@ mod ports;
 mod previews;
 mod process_explorer;
 mod scm;
+mod semantic_tokens;
 mod scm_branches;
 mod scm_remote;
 mod terminal;
@@ -225,6 +226,9 @@ struct App {
     hover_text: Option<String>,
     lsp_request_id: u64,
     inlay_request_id: u64,
+    semantic_request_id: u64,
+    /// Semantic tokens of the active document from its language server.
+    lsp_semantic: Option<semantic_tokens::DocumentTokens>,
     quick_fix_actions: Vec<lsp_types::CodeActionOrCommand>,
     quick_fix_index: usize,
     quick_fix_visible: bool,
@@ -690,6 +694,8 @@ impl App {
             hover_text: None,
             lsp_request_id: 0,
             inlay_request_id: 0,
+            semantic_request_id: 0,
+            lsp_semantic: None,
             quick_fix_actions: Vec::new(),
             quick_fix_index: 0,
             quick_fix_visible: false,

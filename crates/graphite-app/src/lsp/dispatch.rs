@@ -5,6 +5,7 @@ pub(super) fn dispatch_server_message(
     pending: &mut HashMap<i32, (u64, &'static str)>,
     event_tx: &Sender<LspUiEvent>,
     translator: &Translator,
+    legend: &[String],
 ) {
     match message {
         Message::Notification(notification)
@@ -116,6 +117,18 @@ pub(super) fn dispatch_server_message(
                         .ok()
                         .map(hover_to_string);
                     let _ = event_tx.send(LspUiEvent::Hover { request_id, text });
+                }
+                "semanticTokens" => {
+                    // `{ resultId, data: [u32] }`; a server that does not support it answers null.
+                    let data: Vec<u32> = result["data"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|word| u32::try_from(word.as_u64()?).ok())
+                        .collect();
+                    if let Some(tokens) = crate::semantic_tokens::decode_data(&data, legend) {
+                        let _ = event_tx.send(LspUiEvent::SemanticTokens { request_id, tokens });
+                    }
                 }
                 "inlayHints" => {
                     let hints = result

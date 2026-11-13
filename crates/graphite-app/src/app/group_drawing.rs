@@ -420,7 +420,7 @@ impl App {
                 }
                 let semantic = decoration_uri
                     .as_deref()
-                    .map(|uri| self.vsix_semantic_spans(uri, buffer.revision(), line, &text))
+                    .map(|uri| self.semantic_spans(uri, buffer.revision(), line, &text))
                     .unwrap_or_default();
                 let layered;
                 let syntax = if semantic.is_empty() {

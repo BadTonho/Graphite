@@ -19,3 +19,7 @@ These features send requests to the language server configured for the active fi
 - **Peek definition** shows the first lines of the definition in the hover popup, without leaving the file.
 - **Parameter hints** show the active signature in the hover popup. Parameter highlighting is not drawn yet.
 - **Call hierarchy** lists callers (`←`) and callees (`→`) of the symbol under the caret in one picker. **Type hierarchy** lists supertypes (`↑`) and subtypes (`↓`).
+
+## Semantic highlighting
+
+When a language server advertises `semanticTokensProvider`, Graphite asks it for the full-document tokens (`textDocument/semanticTokens/full`) each time the document is synchronized and draws them over the tree-sitter highlighting, with the same display used for extension providers (see [Extension API](extension-api.md)). Token types map to the nearest syntax class (types, functions, variables, properties, keywords, comments, strings, numbers, operators); other types keep the syntax color and modifiers are ignored. Tokens describe one revision of the text, so after an edit the syntax colors show until the server answers again. Servers that do not advertise the capability are never asked, and delta and range requests are not used. Tokens from an extension provider take priority over the server's for the same document.
