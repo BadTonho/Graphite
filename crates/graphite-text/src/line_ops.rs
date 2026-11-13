@@ -268,7 +268,7 @@ impl Editor<'_> {
     }
 
     /// Applies edits and puts each cursor that produced one at the end of its edit.
-    fn apply_cursor_edits(&mut self, edits: &[TextReplacement]) -> Result<(), TransactionError> {
+    pub(super) fn apply_cursor_edits(&mut self, edits: &[TextReplacement]) -> Result<(), TransactionError> {
         if edits.is_empty() {
             return Ok(());
         }

@@ -758,7 +758,6 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.navigateToLastEditLocation",
             "Last Edit Location",
         ),
-        ("editor.action.jumpToBracket", "Go to Bracket"),
         ("workbench.action.nextChange", "Next Change"),
         ("workbench.action.previousChange", "Previous Change"),
     ] {

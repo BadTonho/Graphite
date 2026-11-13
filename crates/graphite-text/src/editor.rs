@@ -10,6 +10,8 @@ pub struct SelectionState {
     pub(super) cursor: Cursor,
     pub(super) selection: Option<Selection>,
     pub(super) extra_selections: Vec<Selection>,
+    /// A remembered position (the selection anchor) that follows the text through edits.
+    pub(super) mark: Option<usize>,
 }
 
 impl SelectionState {
@@ -68,6 +70,7 @@ impl SelectionState {
         selections
     }
     pub fn remap(&mut self, changes: &[PositionEdit], len: usize) {
+        self.mark = self.mark.map(|mark| map_position(mark, changes).min(len));
         let selections = self
             .selections()
             .into_iter()

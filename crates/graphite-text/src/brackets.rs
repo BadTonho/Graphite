@@ -79,6 +79,37 @@ fn scan_backward(rope: &Rope, start: usize, opener: char, closer: char) -> Optio
     None
 }
 
+/// The innermost bracket pair around `offset`, as the indices of its opening and closing bracket.
+pub fn enclosing_brackets(rope: &Rope, offset: usize) -> Option<(usize, usize)> {
+    let offset = offset.min(rope.len_chars());
+    let mut open_depth = [0usize; 3];
+    for index in (offset.saturating_sub(MAX_SCAN)..offset).rev() {
+        let ch = rope.char(index);
+        let Some((other, is_open)) = bracket_kind(ch) else {
+            continue;
+        };
+        let kind = match ch {
+            '(' | ')' => 0,
+            '[' | ']' => 1,
+            _ => 2,
+        };
+        if !is_open {
+            open_depth[kind] += 1;
+        } else if open_depth[kind] > 0 {
+            open_depth[kind] -= 1;
+        } else {
+            return scan_forward(rope, index, ch, other).map(|close| (index, close));
+        }
+    }
+    None
+}
+
+/// Index of the first bracket at or after `offset`.
+pub fn next_bracket(rope: &Rope, offset: usize) -> Option<usize> {
+    let end = rope.len_chars().min(offset.saturating_add(MAX_SCAN));
+    (offset..end).find(|&index| bracket_kind(rope.char(index)).is_some())
+}
+
 /// Nesting level (cycling through 0..3) of every bracket before `end`, from the document start.
 ///
 /// Each closing bracket gets the level of its opening bracket.

@@ -614,5 +614,7 @@
   "command_center.accessible_label": "Pesquisa de acesso rápido",
   "command_center.back": "Voltar",
   "command_center.forward": "Avançar",
-  "command_center.suggestions": "Sugestões de acesso rápido"
+  "command_center.suggestions": "Sugestões de acesso rápido",
+  "editor.anchor.none": "Nenhuma âncora de seleção foi definida",
+  "editor.anchor.set": "Âncora definida em {line}:{column}"
 }

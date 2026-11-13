@@ -9,8 +9,10 @@ use std::{
 mod brackets;
 mod case;
 mod cursor_ops;
+mod selection_ops;
+pub use selection_ops::next_value;
 pub use case::CaseTransform;
-pub use brackets::{bracket_levels, matching_bracket};
+pub use brackets::{bracket_levels, enclosing_brackets, matching_bracket, next_bracket};
 mod edit;
 mod editor;
 pub use editor::{

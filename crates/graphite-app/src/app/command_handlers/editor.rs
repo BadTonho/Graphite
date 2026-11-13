@@ -566,6 +566,132 @@ pub(super) fn editor_move_selection_to_previous_match(
     Ok(())
 }
 
+pub(super) fn editor_set_selection_anchor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_selection_anchor();
+    Ok(())
+}
+
+pub(super) fn editor_go_to_selection_anchor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    if app.editor_mut().go_to_selection_anchor() {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(app.t("editor.anchor.none").into()))
+    }
+}
+
+pub(super) fn editor_select_from_anchor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    if app.editor_mut().select_from_selection_anchor() {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(app.t("editor.anchor.none").into()))
+    }
+}
+
+pub(super) fn editor_cancel_selection_anchor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.cancel_selection_anchor();
+    Ok(())
+}
+
+pub(super) fn editor_move_selected_text_left(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().move_selected_text(true);
+    Ok(())
+}
+
+pub(super) fn editor_move_selected_text_right(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().move_selected_text(false);
+    Ok(())
+}
+
+pub(super) fn editor_transpose_letters(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().transpose_letters();
+    Ok(())
+}
+
+pub(super) fn editor_select_to_bracket(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().select_to_bracket(true);
+    Ok(())
+}
+
+pub(super) fn editor_remove_brackets(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().remove_brackets();
+    Ok(())
+}
+
+pub(super) fn editor_replace_previous_value(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().replace_with_next_value(false);
+    Ok(())
+}
+
+pub(super) fn editor_replace_next_value(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().replace_with_next_value(true);
+    Ok(())
+}
+
+pub(super) fn editor_font_zoom_in(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.run_font_zoom(1);
+    Ok(())
+}
+
+pub(super) fn editor_font_zoom_out(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.run_font_zoom(-1);
+    Ok(())
+}
+
+pub(super) fn editor_font_zoom_reset(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.run_font_zoom(0);
+    Ok(())
+}
+
+pub(super) fn editor_jump_to_bracket(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().jump_to_bracket();
+    Ok(())
+}
+
 pub(super) fn editor_action_go_to_references(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -1745,6 +1871,156 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "documentAvailable",
         None,
         editor_move_selection_to_previous_match,
+    );
+    add(
+        registry,
+        "editor.action.setSelectionAnchor",
+        "Set selection anchor",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_set_selection_anchor,
+    );
+    add(
+        registry,
+        "editor.action.goToSelectionAnchor",
+        "Go to selection anchor",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_go_to_selection_anchor,
+    );
+    add(
+        registry,
+        "editor.action.selectFromAnchorToCursor",
+        "Select from anchor to cursor",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_select_from_anchor,
+    );
+    add(
+        registry,
+        "editor.action.cancelSelectionAnchor",
+        "Cancel selection anchor",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_cancel_selection_anchor,
+    );
+    add(
+        registry,
+        "editor.action.moveCarretLeftAction",
+        "Move selected text left",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_move_selected_text_left,
+    );
+    add(
+        registry,
+        "editor.action.moveCarretRightAction",
+        "Move selected text right",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_move_selected_text_right,
+    );
+    add(
+        registry,
+        "editor.action.transposeLetters",
+        "Transpose letters",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_transpose_letters,
+    );
+    add(
+        registry,
+        "editor.action.selectToBracket",
+        "Select to bracket",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_select_to_bracket,
+    );
+    add(
+        registry,
+        "editor.action.removeBrackets",
+        "Remove brackets",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_remove_brackets,
+    );
+    add(
+        registry,
+        "editor.action.inPlaceReplace.up",
+        "Replace with previous value",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_replace_previous_value,
+    );
+    add(
+        registry,
+        "editor.action.inPlaceReplace.down",
+        "Replace with next value",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_replace_next_value,
+    );
+    add(
+        registry,
+        "editor.action.fontZoomIn",
+        "Increase editor font size",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_font_zoom_in,
+    );
+    add(
+        registry,
+        "editor.action.fontZoomOut",
+        "Decrease editor font size",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_font_zoom_out,
+    );
+    add(
+        registry,
+        "editor.action.fontZoomReset",
+        "Reset editor font size",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_font_zoom_reset,
+    );
+    add(
+        registry,
+        "editor.action.jumpToBracket",
+        "Go to Bracket",
+        "Go",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_jump_to_bracket,
     );
     add(
         registry,

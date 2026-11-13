@@ -709,6 +709,16 @@ impl App {
         self.save_view_preferences();
     }
 
+    /// Zooms the editor text in (1), out (-1) or back to 100% (0).
+    pub(crate) fn run_font_zoom(&mut self, step: i8) {
+        let action = match step {
+            1.. => ViewAction::ZoomIn,
+            0 => ViewAction::ResetZoom,
+            _ => ViewAction::ZoomOut,
+        };
+        self.execute_view_action(action, None);
+    }
+
     fn execute_view_action(&mut self, action: ViewAction, extension_index: Option<usize>) {
         use ViewAction as A;
         match action {

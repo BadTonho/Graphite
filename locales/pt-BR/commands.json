@@ -354,5 +354,19 @@
   "command.editor.action.focusNextCursor": "Focar o próximo cursor",
   "command.editor.action.focusPreviousCursor": "Focar o cursor anterior",
   "command.editor.action.moveSelectionToNextFindMatch": "Mover a última seleção para a próxima correspondência",
-  "command.editor.action.moveSelectionToPreviousFindMatch": "Mover a última seleção para a correspondência anterior"
+  "command.editor.action.moveSelectionToPreviousFindMatch": "Mover a última seleção para a correspondência anterior",
+  "command.editor.action.setSelectionAnchor": "Definir âncora de seleção",
+  "command.editor.action.goToSelectionAnchor": "Ir para a âncora de seleção",
+  "command.editor.action.selectFromAnchorToCursor": "Selecionar da âncora até o cursor",
+  "command.editor.action.cancelSelectionAnchor": "Cancelar âncora de seleção",
+  "command.editor.action.moveCarretLeftAction": "Mover texto selecionado para a esquerda",
+  "command.editor.action.moveCarretRightAction": "Mover texto selecionado para a direita",
+  "command.editor.action.transposeLetters": "Transpor letras",
+  "command.editor.action.selectToBracket": "Selecionar até o colchete",
+  "command.editor.action.removeBrackets": "Remover colchetes",
+  "command.editor.action.inPlaceReplace.up": "Substituir pelo valor anterior",
+  "command.editor.action.inPlaceReplace.down": "Substituir pelo próximo valor",
+  "command.editor.action.fontZoomIn": "Aumentar a fonte do editor",
+  "command.editor.action.fontZoomOut": "Diminuir a fonte do editor",
+  "command.editor.action.fontZoomReset": "Restaurar a fonte do editor"
 }

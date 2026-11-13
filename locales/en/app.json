@@ -614,5 +614,7 @@
   "command_center.accessible_label": "Quick access search",
   "command_center.back": "Go back",
   "command_center.forward": "Go forward",
-  "command_center.suggestions": "Quick access suggestions"
+  "command_center.suggestions": "Quick access suggestions",
+  "editor.anchor.none": "No selection anchor is set",
+  "editor.anchor.set": "Anchor set at {line}:{column}"
 }

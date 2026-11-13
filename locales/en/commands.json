@@ -354,5 +354,19 @@
   "command.editor.action.focusNextCursor": "Focus next cursor",
   "command.editor.action.focusPreviousCursor": "Focus previous cursor",
   "command.editor.action.moveSelectionToNextFindMatch": "Move last selection to next find match",
-  "command.editor.action.moveSelectionToPreviousFindMatch": "Move last selection to previous find match"
+  "command.editor.action.moveSelectionToPreviousFindMatch": "Move last selection to previous find match",
+  "command.editor.action.setSelectionAnchor": "Set selection anchor",
+  "command.editor.action.goToSelectionAnchor": "Go to selection anchor",
+  "command.editor.action.selectFromAnchorToCursor": "Select from anchor to cursor",
+  "command.editor.action.cancelSelectionAnchor": "Cancel selection anchor",
+  "command.editor.action.moveCarretLeftAction": "Move selected text left",
+  "command.editor.action.moveCarretRightAction": "Move selected text right",
+  "command.editor.action.transposeLetters": "Transpose letters",
+  "command.editor.action.selectToBracket": "Select to bracket",
+  "command.editor.action.removeBrackets": "Remove brackets",
+  "command.editor.action.inPlaceReplace.up": "Replace with previous value",
+  "command.editor.action.inPlaceReplace.down": "Replace with next value",
+  "command.editor.action.fontZoomIn": "Increase editor font size",
+  "command.editor.action.fontZoomOut": "Decrease editor font size",
+  "command.editor.action.fontZoomReset": "Reset editor font size"
 }

@@ -34,6 +34,23 @@ fn folds_for_revision(folded: &[usize], folded_revision: u64, revision: u64) -> 
 }
 
 impl App {
+    /// Remembers the cursor position so a later command can select back to it.
+    pub(crate) fn set_selection_anchor(&mut self) {
+        self.editor_mut().set_selection_anchor();
+        let (line, column) = self.editor().cursor_line_col();
+        self.status = self.tf(
+            "editor.anchor.set",
+            &[
+                ("line", &(line + 1).to_string()),
+                ("column", &(column + 1).to_string()),
+            ],
+        );
+    }
+
+    pub(crate) fn cancel_selection_anchor(&mut self) {
+        self.editor_mut().clear_selection_anchor();
+    }
+
     /// Refreshes the active view's folds before drawing: drops stale folds and reveals
     /// the cursor line when a fold hides it.
     pub(crate) fn sync_active_folds(&mut self) {
