@@ -526,4 +526,34 @@ mod tests {
             "a repository without remotes"
         );
     }
+
+    #[test]
+    fn checking_out_a_remote_branch_creates_a_tracking_branch() {
+        let remote = repository();
+        sh(remote.path(), &["branch", "feature"]);
+        let clone = crate::test_support::TempDir::new();
+        sh(
+            clone.path(),
+            &["clone", "-q", &remote.path().display().to_string(), "."],
+        );
+        let translator = graphite_i18n::Translator::english();
+        crate::scm::checkout_branch(clone.path(), "origin/feature", &translator).unwrap();
+        assert_eq!(current_branch(clone.path()), "feature");
+        assert_eq!(
+            sh(
+                clone.path(),
+                &["rev-parse", "--abbrev-ref", "feature@{upstream}"]
+            ),
+            "origin/feature",
+            "the new local branch tracks the remote one"
+        );
+        // A local branch is still switched to directly, and unknown names are refused.
+        crate::scm::checkout_branch(clone.path(), "main", &translator).unwrap();
+        assert_eq!(current_branch(clone.path()), "main");
+        let error =
+            crate::scm::checkout_branch(clone.path(), "origin/nope", &translator).unwrap_err();
+        assert!(error.contains("Unknown branch"), "{error}");
+        // The local branch already exists now, so a second remote checkout is reported by git.
+        assert!(crate::scm::checkout_branch(clone.path(), "origin/feature", &translator).is_err());
+    }
 }

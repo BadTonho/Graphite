@@ -1,6 +1,6 @@
 {
-  "scm.branch.prompt": "Fazer checkout de branch local (Enter / Esc)",
-  "scm.branch.select_hint": "Selecione um branch local; o checkout exige uma árvore de trabalho limpa",
+  "scm.branch.prompt": "Fazer checkout de branch (Enter / Esc)",
+  "scm.branch.select_hint": "Selecione um branch (os remotos viram branches de rastreamento); o checkout exige uma árvore de trabalho limpa",
   "scm.checkout.failed": "Falha no checkout: {error}",
   "scm.checkout.success": "Checkout realizado: {branch}",
   "scm.checkout.unsaved": "Checkout recusado porque há um documento aberto com alterações não salvas",
@@ -49,7 +49,7 @@
   "scm.error.path_outside": "O caminho está fora da árvore de trabalho do Git",
   "scm.error.select_changed": "Selecione primeiro um arquivo alterado",
   "scm.error.select_staged": "Selecione primeiro um arquivo preparado",
-  "scm.error.unknown_branch": "Branch local desconhecido: {branch}",
+  "scm.error.unknown_branch": "Branch desconhecido: {branch}",
   "scm.error.unresolved_conflicts": "Resolva todos os conflitos de mesclagem antes de fazer commit",
   "scm.outline.title": "ESTRUTURA",
   "scm.process.startup": "DESEMPENHO DE INICIALIZAÇÃO",

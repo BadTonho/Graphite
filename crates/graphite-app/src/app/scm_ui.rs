@@ -489,8 +489,7 @@ impl App {
             return;
         }
         let Some(branch) = self
-            .scm_snapshot
-            .branches
+            .branch_picker_entries()
             .get(self.branch_selected)
             .cloned()
         else {

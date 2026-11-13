@@ -41,7 +41,8 @@ pub(crate) struct BranchNamePrompt {
 }
 
 impl App {
-    /// The branches the picker lists for its current action. Checkout offers the local branches;
+    /// The branches the picker lists for its current action. Checkout offers the local branches and
+    /// then the remote-tracking ones (which become tracking branches);
     /// deleting offers the local ones except the checked out branch; merging and rebasing offer
     /// those too plus the remote-tracking branches (`origin/main`).
     pub(crate) fn branch_picker_entries(&self) -> Vec<String> {
@@ -53,7 +54,11 @@ impl App {
                 .collect()
         };
         match self.branch_picker_action {
-            BranchPickerAction::Checkout => snapshot.branches.clone(),
+            BranchPickerAction::Checkout => {
+                let mut entries = snapshot.branches.clone();
+                entries.extend(snapshot.remote_branches.iter().cloned());
+                entries
+            }
             BranchPickerAction::Delete | BranchPickerAction::DeleteForce => {
                 others(&snapshot.branches)
             }
@@ -412,8 +417,8 @@ mod tests {
         app.branch_picker_action = BranchPickerAction::Checkout;
         assert_eq!(
             app.branch_picker_entries(),
-            ["main", "topic"],
-            "local only, current included"
+            ["main", "topic", "origin/main", "origin/topic"],
+            "local branches (current included), then the remote ones"
         );
         for action in [BranchPickerAction::Delete, BranchPickerAction::DeleteForce] {
             app.branch_picker_action = action;

@@ -36,5 +36,5 @@ Notes:
 - A conflict is not an error that loses anything: the merge or rebase stays in progress, the conflicting files appear in the Source Control view (open them in the 3-way conflict editor), and the status line says to resolve, continue or abort.
 - Branch arguments that start with `-` or contain whitespace are rejected before git runs, so a branch name can never be read as a git option.
 - Git runs with `GIT_EDITOR=true`, so no editor opens for merge or rebase messages; the default message is used.
-- The picker shows 12 entries around the selection, so long lists scroll with the arrow keys. Checking out a remote branch is not offered yet.
+- The picker shows 12 entries around the selection, so long lists scroll with the arrow keys. Checkout also lists the remote-tracking branches: choosing `origin/feature` runs `git switch --track` and creates a local `feature` that tracks it (git reports it if a local branch with that name already exists).
 - Still missing: interactive rebase and the `merge --squash`/`--no-ff` options.

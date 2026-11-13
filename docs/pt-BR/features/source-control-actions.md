@@ -36,5 +36,5 @@ Observações:
 - Um conflito não perde nada: o merge ou rebase continua em andamento, os arquivos em conflito aparecem na visão de Controle de Código-Fonte (abra-os no editor de conflitos em 3 vias) e a barra de status orienta a resolver, continuar ou abortar.
 - Argumentos de branch que começam com `-` ou contêm espaços são rejeitados antes de o git rodar, então um nome de branch nunca é lido como opção do git.
 - O Git roda com `GIT_EDITOR=true`, então nenhum editor abre para mensagens de merge ou rebase; a mensagem padrão é usada.
-- O seletor mostra 12 entradas em volta da seleção, então listas longas rolam com as setas. Fazer checkout de uma branch remota ainda não é oferecido.
+- O seletor mostra 12 entradas em volta da seleção, então listas longas rolam com as setas. O checkout também lista as branches de rastreamento remoto: escolher `origin/feature` executa `git switch --track` e cria uma `feature` local que a rastreia (o git informa se já existe uma branch local com esse nome).
 - Ainda faltam: rebase interativo e as opções `merge --squash`/`--no-ff`.

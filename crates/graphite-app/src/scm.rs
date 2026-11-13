@@ -233,16 +233,26 @@ pub(crate) fn checkout_branch(
     if !snapshot.files.is_empty() {
         return Err(translator.text("scm.error.checkout_dirty").into());
     }
-    if !snapshot
+    let local = snapshot
         .branches
         .iter()
-        .any(|candidate| candidate == branch)
-    {
+        .any(|candidate| candidate == branch);
+    let remote = snapshot
+        .remote_branches
+        .iter()
+        .any(|candidate| candidate == branch);
+    if !local && !remote {
         return Err(translator.format("scm.error.unknown_branch", &[("branch", &branch)]));
     }
+    // A remote-tracking branch such as `origin/feature` becomes a local branch that tracks it.
+    let arguments: &[&str] = if local {
+        &["switch", "--", branch]
+    } else {
+        &["switch", "--track", "--", branch]
+    };
     let output = std::process::Command::new("git")
         .current_dir(root)
-        .args(["switch", "--", branch])
+        .args(arguments)
         .output()
         .map_err(|error| translator.format("scm.error.checkout_start", &[("error", &error)]))?;
     if output.status.success() {
