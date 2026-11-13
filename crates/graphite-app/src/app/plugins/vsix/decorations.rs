@@ -69,6 +69,8 @@ pub(super) struct Decorations {
     styles: BTreeMap<String, Style>,
     /// Marks by editor (the document URI) and decoration type key.
     marks: BTreeMap<String, BTreeMap<String, Vec<Mark>>>,
+    /// Color swatches by editor.
+    colors: BTreeMap<String, Vec<super::colors::ColorRange>>,
 }
 
 fn hex_byte(digits: &str) -> Option<f32> {
@@ -317,16 +319,32 @@ impl Decorations {
         self.set(editor, LENS_KEY, Vec::new());
     }
 
+    /// Shows the swatches of a color provider for `editor`.
+    pub(super) fn set_colors(&mut self, editor: &str, ranges: Vec<super::colors::ColorRange>) {
+        if ranges.is_empty() {
+            self.colors.remove(editor);
+        } else {
+            self.colors.insert(
+                editor.to_owned(),
+                ranges.into_iter().take(MARK_LIMIT).collect(),
+            );
+        }
+    }
+
+    pub(super) fn clear_colors(&mut self, editor: &str) {
+        self.colors.remove(editor);
+    }
+
     pub(super) fn is_empty(&self) -> bool {
-        self.marks.values().all(BTreeMap::is_empty)
+        self.marks.values().all(BTreeMap::is_empty) && self.colors.values().all(Vec::is_empty)
     }
 
     /// Everything to draw on `line` of `editor` in the given theme.
     pub(crate) fn on_line(&self, editor: &str, line: usize, dark: bool) -> Vec<LineMark> {
         let line = line as u32;
-        let Some(by_key) = self.marks.get(editor) else {
-            return Vec::new();
-        };
+        // An editor may have only color swatches and no marks.
+        let no_marks = BTreeMap::new();
+        let by_key = self.marks.get(editor).unwrap_or(&no_marks);
         let mut found = Vec::new();
         for (key, marks) in by_key {
             let Some(style) = self.styles.get(key) else {
@@ -348,6 +366,21 @@ impl Decorations {
                     start: (line == mark.start.0).then_some(mark.start.1),
                     end: last.then_some(mark.end.1),
                     after,
+                });
+            }
+        }
+        for range in self.colors.get(editor).into_iter().flatten() {
+            if range.start.0 <= line && line <= range.end.0 {
+                found.push(LineMark {
+                    look: Look {
+                        background: Some(super::colors::tint(range.color)),
+                        border: Some(range.color),
+                        ..Look::default()
+                    },
+                    whole_line: false,
+                    start: (line == range.start.0).then_some(range.start.1),
+                    end: (line == range.end.0).then_some(range.end.1),
+                    after: None,
                 });
             }
         }

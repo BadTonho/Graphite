@@ -33,6 +33,8 @@ pub(crate) enum Feature {
     SemanticTokens,
     /// Code lenses. Requested automatically.
     CodeLens,
+    /// Color swatches. Requested automatically.
+    DocumentColors,
     /// Call hierarchy (callers and callees). Started by a command, with several steps.
     CallHierarchy,
     /// Type hierarchy (supertypes and subtypes).
@@ -261,6 +263,7 @@ impl App {
             | Feature::FoldingRanges
             | Feature::CallHierarchy
             | Feature::TypeHierarchy
+            | Feature::DocumentColors
             | Feature::CodeLens
             | Feature::SemanticTokens
             | Feature::DocumentLinks => return Ok(false),
@@ -415,6 +418,7 @@ impl App {
             }
             Feature::Format
             | Feature::FormatRange
+            | Feature::DocumentColors
             | Feature::CodeLens
             | Feature::SemanticTokens
             | Feature::DocumentLinks
@@ -505,6 +509,9 @@ pub(super) fn language_rpc(
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
             ("MainThreadLanguageFeatures", "$registerCodeLensSupport") => Feature::CodeLens,
+            ("MainThreadLanguageFeatures", "$registerDocumentColorProvider") => {
+                Feature::DocumentColors
+            }
             ("MainThreadLanguageFeatures", "$registerDocumentSemanticTokensProvider") => {
                 Feature::SemanticTokens
             }

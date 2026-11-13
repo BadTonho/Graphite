@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
 mod code_lens;
+mod colors;
 mod debug;
 mod decorations;
 mod documents;
@@ -55,6 +56,8 @@ pub(crate) struct Runtime {
     hierarchy: hierarchy::Hierarchies,
     /// Code lenses of the active document.
     lenses: code_lens::CodeLenses,
+    /// Color swatches of the active document.
+    colors: colors::Colors,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -69,6 +72,7 @@ impl Runtime {
             || self.passive.busy()
             || self.hierarchy.busy()
             || self.lenses.busy()
+            || self.colors.busy()
     }
 }
 
@@ -96,6 +100,7 @@ impl Runtime {
             passive: Default::default(),
             hierarchy: Default::default(),
             lenses: Default::default(),
+            colors: Default::default(),
             unsupported: BTreeSet::new(),
         }
     }
@@ -266,6 +271,7 @@ impl App {
             passive: Default::default(),
             hierarchy: Default::default(),
             lenses: Default::default(),
+            colors: Default::default(),
             unsupported: BTreeSet::new(),
         });
         Ok(())
@@ -332,6 +338,8 @@ impl App {
                 Some("result") => {
                     if event["id"].as_u64() == Some(debug::ADAPTER_CALL_ID) {
                         self.finish_vsix_debug_adapter(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(colors::is_color_reply) {
+                        self.finish_vsix_colors(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(code_lens::is_lens_reply) {
                         self.finish_vsix_code_lens(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(hierarchy::is_hierarchy_reply) {
@@ -385,6 +393,7 @@ impl App {
             self.drive_vsix_passive(runtime)?;
             self.expire_vsix_hierarchy(runtime);
             self.drive_vsix_code_lens(runtime)?;
+            self.drive_vsix_colors(runtime)?;
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
             if let (Some(handle), Some(webview)) =
