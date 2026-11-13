@@ -190,7 +190,14 @@ pub(super) fn code_actions(result: &Value) -> Vec<Value> {
 mod tests {
     use super::*;
 
+    /// A `file` URI for the Unix-style `path`; on Windows it gets a drive letter, as Code OSS
+    /// writes them (`/c:/work/a.rs`), because a path without one is not absolute there.
     fn file(path: &str) -> Value {
+        let path = if cfg!(windows) {
+            format!("/c:{path}")
+        } else {
+            path.to_owned()
+        };
         json!({"$mid": 1, "scheme": "file", "authority": "", "path": path})
     }
 
