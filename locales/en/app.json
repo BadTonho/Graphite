@@ -652,5 +652,6 @@
   "plugins.invalid_id": "An extension id looks like publisher.name",
   "plugins.not_installed": "The extension {id} is not installed",
   "plugins.none_enabled": "No extension is enabled",
-  "plugins.none_to_enable": "No disabled extension can be enabled without asking for trust first"
+  "plugins.none_to_enable": "No disabled extension can be enabled without asking for trust first",
+  "snippets.empty": "There is no snippet text to insert"
 }

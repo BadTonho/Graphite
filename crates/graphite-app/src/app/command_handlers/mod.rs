@@ -18,6 +18,7 @@ mod input;
 mod layout;
 mod lists;
 mod misc;
+mod output_snippets;
 mod parts;
 mod preferences;
 mod quick;
@@ -169,6 +170,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     task_commands::register(registry);
     debug_extra::register(registry);
     extensions::register(registry);
+    output_snippets::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

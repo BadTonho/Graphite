@@ -652,5 +652,6 @@
   "plugins.invalid_id": "O id de uma extensão tem a forma publicador.nome",
   "plugins.not_installed": "A extensão {id} não está instalada",
   "plugins.none_enabled": "Nenhuma extensão está ativada",
-  "plugins.none_to_enable": "Nenhuma extensão desativada pode ser ativada sem pedir confiança antes"
+  "plugins.none_to_enable": "Nenhuma extensão desativada pode ser ativada sem pedir confiança antes",
+  "snippets.empty": "Não há texto de snippet para inserir"
 }

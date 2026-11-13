@@ -547,5 +547,9 @@
   "command.workbench.extensions.search": "Procurar extensões",
   "command.workbench.extensions.installExtension": "Instalar extensão",
   "command.workbench.extensions.uninstallExtension": "Desinstalar extensão",
-  "command.category.extensions": "Extensões"
+  "command.category.extensions": "Extensões",
+  "command.workbench.action.openSnippets": "Configurar snippets",
+  "command.workbench.action.output.toggleOutput": "Alternar saída",
+  "command.workbench.action.showOutputChannels": "Mostrar saída",
+  "command.editor.action.insertSnippet": "Inserir snippet"
 }
