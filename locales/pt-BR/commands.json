@@ -300,7 +300,7 @@
   "command.editor.debug.action.editBreakpoint": "Editar Breakpoint",
   "command.editor.debug.action.addLogPoint": "Logpoint",
   "command.graphite.debug.inlineBreakpoint": "Breakpoint em Linha",
-  "command.graphite.debug.functionBreakpoint": "Breakpoint de Função",
+  "command.workbench.debug.viewlet.action.addFunctionBreakpointAction": "Breakpoint de Função",
   "command.graphite.debug.triggeredBreakpoint": "Breakpoint Acionado",
   "command.workbench.debug.viewlet.action.enableAllBreakpoints": "Habilitar Todos os Breakpoints",
   "command.workbench.debug.viewlet.action.disableAllBreakpoints": "Desabilitar Todos os Breakpoints",
@@ -565,5 +565,13 @@
   "command.timeline.showWorkspaceTimeline": "Mostrar a linha do tempo do espaço de trabalho",
   "command.timeline.toggleFollowActiveEditor": "Seguir o editor ativo na linha do tempo",
   "command.timeline.compareSelected": "Comparar a entrada selecionada da linha do tempo",
-  "command.category.timeline": "Linha do tempo"
+  "command.category.timeline": "Linha do tempo",
+  "command.debug.enableOrDisableBreakpoint": "Ativar ou desativar ponto de interrupção",
+  "command.debug.toggleBreakpoint": "Alternar ponto de interrupção",
+  "command.debug.editBreakpoint": "Editar ponto de interrupção",
+  "command.editor.debug.action.showDebugHover": "Mostrar o hover de depuração",
+  "command.repl.action.filter": "Filtrar o console de depuração",
+  "command.repl.action.find": "Procurar no console de depuração",
+  "command.debug.setVariable": "Alterar o valor de uma variável",
+  "command.debug.startFromConfig": "Iniciar a depuração com uma configuração"
 }

@@ -198,9 +198,18 @@ pub struct ExceptionFilter {
 enum PendingEvaluation {
     Watch(String),
     Repl,
+    Hover(String),
 }
 
 const MAX_VARIABLE_DEPTH: usize = 16;
+
+/// Marks a breakpoint that is kept in the list but not sent to the adapter.
+pub const DISABLED_KEY: &str = "graphiteDisabled";
+
+/// Whether a breakpoint entry has been turned off one by one.
+pub fn is_disabled(point: &Value) -> bool {
+    point[DISABLED_KEY].as_bool().unwrap_or(false)
+}
 
 #[derive(Default)]
 pub struct DebugRuntime {
@@ -231,6 +240,12 @@ pub struct DebugRuntime {
     pending_variables: BTreeMap<i64, i64>,
     pending_evaluations: BTreeMap<i64, PendingEvaluation>,
     pending_breakpoints: BTreeMap<i64, PathBuf>,
+    /// Names of the function breakpoints, sent with `setFunctionBreakpoints`.
+    pub function_breakpoints: Vec<String>,
+    /// Only console lines that contain this text are shown (empty shows everything).
+    pub console_filter: String,
+    /// `setVariable` requests in flight: the variable's parent reference and its name.
+    pending_set_variables: BTreeMap<i64, (i64, String)>,
     /// `postDebugTask` of the running session, held until the session ends.
     post_debug_task: Option<String>,
     /// A `postDebugTask` whose session has ended and which has not been run yet.
@@ -293,6 +308,7 @@ impl DebugRuntime {
         self.stack_seq = None;
         self.scopes_seq = None;
         self.pending_breakpoints.clear();
+        self.pending_set_variables.clear();
         self.pending_evaluations.clear();
         self.clear_stop_state();
         self.output.clear();
@@ -434,10 +450,19 @@ impl DebugRuntime {
     ) -> Result<(), DebugError> {
         self.breakpoints
             .insert(source.to_path_buf(), breakpoints.clone());
-        let breakpoints = if self.breakpoints_disabled {
+        let breakpoints: Vec<Value> = if self.breakpoints_disabled {
             Vec::new()
         } else {
             breakpoints
+                .into_iter()
+                .filter(|point| !is_disabled(point))
+                .map(|mut point| {
+                    if let Some(object) = point.as_object_mut() {
+                        object.remove(DISABLED_KEY);
+                    }
+                    point
+                })
+                .collect()
         };
         let seq = self
             .session
@@ -452,6 +477,64 @@ impl DebugRuntime {
                 }),
             )?;
         self.pending_breakpoints.insert(seq, source.to_path_buf());
+        Ok(())
+    }
+
+    /// Adds a function breakpoint (ignored when the name is empty or already there) and sends
+    /// the list to a running session.
+    pub fn add_function_breakpoint(&mut self, name: &str) -> Result<(), DebugError> {
+        let name = name.trim();
+        if name.is_empty() || self.function_breakpoints.iter().any(|known| known == name) {
+            return Ok(());
+        }
+        self.function_breakpoints.push(name.to_owned());
+        self.send_function_breakpoints()
+    }
+
+    pub fn remove_function_breakpoints(&mut self) -> Result<(), DebugError> {
+        self.function_breakpoints.clear();
+        self.send_function_breakpoints()
+    }
+
+    /// Sends the function breakpoints; does nothing without a session.
+    pub fn send_function_breakpoints(&mut self) -> Result<(), DebugError> {
+        let Some(session) = self.session.as_mut() else {
+            return Ok(());
+        };
+        let breakpoints: Vec<Value> = if self.breakpoints_disabled {
+            Vec::new()
+        } else {
+            self.function_breakpoints
+                .iter()
+                .map(|name| serde_json::json!({"name": name}))
+                .collect()
+        };
+        session.send_request(
+            "setFunctionBreakpoints",
+            serde_json::json!({"breakpoints": breakpoints}),
+        )?;
+        Ok(())
+    }
+
+    /// Changes the value of a loaded variable named `name`, searching the lists of variables
+    /// that have been fetched. The new value shows when the adapter answers.
+    pub fn set_variable(&mut self, name: &str, value: &str) -> Result<(), DebugError> {
+        let reference = self
+            .children
+            .iter()
+            .find(|(_, variables)| variables.iter().any(|variable| variable.name == name))
+            .map(|(reference, _)| *reference)
+            .ok_or_else(|| DebugError::Transport(format!("No variable named {name} is loaded")))?;
+        let seq = self
+            .session
+            .as_mut()
+            .ok_or(DebugError::Stopped)?
+            .send_request(
+                "setVariable",
+                serde_json::json!({"variablesReference": reference, "name": name, "value": value}),
+            )?;
+        self.pending_set_variables
+            .insert(seq, (reference, name.to_owned()));
         Ok(())
     }
 
@@ -622,6 +705,19 @@ impl DebugRuntime {
     pub fn evaluate_repl(&mut self, expression: &str) -> Result<(), DebugError> {
         self.push_output("console", format!("> {expression}"));
         self.evaluate(expression, "repl", PendingEvaluation::Repl)
+    }
+
+    /// Evaluates `expression` for a hover and writes `expression = result` to the console.
+    pub fn evaluate_hover(&mut self, expression: &str) -> Result<(), DebugError> {
+        let expression = expression.trim();
+        if expression.is_empty() {
+            return Ok(());
+        }
+        self.evaluate(
+            expression,
+            "hover",
+            PendingEvaluation::Hover(expression.to_owned()),
+        )
     }
 
     pub fn add_watch(&mut self, expression: &str) -> Result<(), DebugError> {
@@ -877,6 +973,23 @@ impl DebugRuntime {
                 self.expanded.remove(&reference);
                 self.push_output("stderr", dap_error(message));
             }
+        } else if let Some((reference, name)) = self.pending_set_variables.remove(&seq) {
+            if success {
+                if let Some(variable) = self
+                    .children
+                    .get_mut(&reference)
+                    .and_then(|list| list.iter_mut().find(|variable| variable.name == name))
+                {
+                    let body = &message["body"];
+                    variable.value = body["value"].as_str().unwrap_or_default().to_owned();
+                    if let Some(type_name) = body["type"].as_str() {
+                        variable.type_name = Some(type_name.to_owned());
+                    }
+                    variable.reference = body["variablesReference"].as_i64().unwrap_or_default();
+                }
+            } else {
+                self.push_output("stderr", dap_error(message));
+            }
         } else if let Some(pending) = self.pending_evaluations.remove(&seq) {
             let outcome = if success {
                 Ok(message["body"]["result"]
@@ -896,6 +1009,10 @@ impl DebugRuntime {
                         watch.result = Some(outcome);
                     }
                 }
+                PendingEvaluation::Hover(expression) => match outcome {
+                    Ok(result) => self.push_output("console", format!("{expression} = {result}")),
+                    Err(error) => self.push_output("stderr", error),
+                },
                 PendingEvaluation::Repl => match outcome {
                     Ok(result) => self.push_output("console", result),
                     Err(error) => self.push_output("stderr", error),
@@ -1955,5 +2072,113 @@ mod tests {
             read_message(&mut reader).unwrap().unwrap()["command"],
             "continue"
         );
+    }
+
+    #[test]
+    fn a_disabled_breakpoint_is_kept_but_not_sent_to_the_adapter() {
+        let (mut runtime, writer) = paused_runtime();
+        let file = PathBuf::from("a.rs");
+        runtime
+            .set_breakpoints(
+                &file,
+                vec![
+                    serde_json::json!({"line": 3}),
+                    serde_json::json!({"line": 5, "graphiteDisabled": true}),
+                    serde_json::json!({"line": 8, "condition": "x > 1"}),
+                ],
+            )
+            .unwrap();
+        let sent = writer.last();
+        assert_eq!(sent["command"], "setBreakpoints");
+        assert_eq!(
+            sent["arguments"]["breakpoints"],
+            serde_json::json!([{"line": 3}, {"line": 8, "condition": "x > 1"}])
+        );
+        assert_eq!(
+            runtime.breakpoints[&file].len(),
+            3,
+            "the list keeps the disabled one"
+        );
+        assert!(is_disabled(&runtime.breakpoints[&file][1]));
+    }
+
+    #[test]
+    fn function_breakpoints_are_sent_deduplicated_and_cleared() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.add_function_breakpoint("  main ").unwrap();
+        runtime.add_function_breakpoint("main").unwrap();
+        runtime.add_function_breakpoint("   ").unwrap();
+        runtime.add_function_breakpoint("helper").unwrap();
+        let requests = writer.requests();
+        assert_eq!(requests.len(), 2, "only the two new names were sent");
+        assert_eq!(requests[1]["command"], "setFunctionBreakpoints");
+        assert_eq!(
+            requests[1]["arguments"]["breakpoints"],
+            serde_json::json!([{"name": "main"}, {"name": "helper"}])
+        );
+        runtime.remove_function_breakpoints().unwrap();
+        assert_eq!(
+            writer.last()["arguments"]["breakpoints"],
+            serde_json::json!([])
+        );
+        assert!(runtime.function_breakpoints.is_empty());
+    }
+
+    #[test]
+    fn function_breakpoints_are_held_back_while_all_breakpoints_are_off() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.breakpoints_disabled = true;
+        runtime.add_function_breakpoint("main").unwrap();
+        assert_eq!(
+            writer.last()["arguments"]["breakpoints"],
+            serde_json::json!([])
+        );
+        assert_eq!(runtime.function_breakpoints, ["main"], "still remembered");
+    }
+
+    #[test]
+    fn setting_a_variable_sends_the_request_and_shows_the_new_value() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.set_variable("a", "42").unwrap();
+        let request = writer.last();
+        assert_eq!(request["command"], "setVariable");
+        assert_eq!(request["arguments"]["variablesReference"], 5);
+        assert_eq!(request["arguments"]["name"], "a");
+        assert_eq!(request["arguments"]["value"], "42");
+        let seq = request["seq"].as_i64().unwrap();
+        respond(
+            &mut runtime,
+            seq,
+            serde_json::json!({"value": "42", "type": "int"}),
+        );
+        let row = runtime
+            .variable_rows()
+            .into_iter()
+            .find(|row| row.name == "a")
+            .unwrap();
+        assert_eq!(row.value, "42");
+    }
+
+    #[test]
+    fn a_rejected_set_variable_reports_the_error_and_keeps_the_value() {
+        let (mut runtime, writer) = paused_with_locals();
+        runtime.set_variable("a", "oops").unwrap();
+        let seq = writer.last()["seq"].as_i64().unwrap();
+        respond_error(&mut runtime, seq, "not a number");
+        assert_eq!(runtime.output.last().unwrap().text, "not a number");
+        let row = runtime
+            .variable_rows()
+            .into_iter()
+            .find(|row| row.name == "a")
+            .unwrap();
+        assert_eq!(row.value, "1");
+    }
+
+    #[test]
+    fn setting_an_unknown_variable_is_refused_without_a_request() {
+        let (mut runtime, writer) = paused_with_locals();
+        let before = writer.requests().len();
+        assert!(runtime.set_variable("nope", "1").is_err());
+        assert_eq!(writer.requests().len(), before);
     }
 }

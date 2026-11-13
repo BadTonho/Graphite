@@ -27,3 +27,15 @@ These commands changed id. A custom shortcut in `keybindings.json` that uses the
 | `graphite.debug.removeAllBreakpoints` | `workbench.debug.viewlet.action.removeAllBreakpoints` |
 
 Enabling or disabling a single breakpoint, function and data breakpoints, setting a variable, and the debug hover are not available yet.
+
+## Single breakpoints, function breakpoints, variables, hover and console filter
+
+| Command | What it does |
+| --- | --- |
+| Enable or Disable Breakpoint | Turns the breakpoint on the cursor line off or back on without removing it. A disabled breakpoint stays in the list and is not sent to the debugger. |
+| Toggle Breakpoint / Edit Breakpoint (`debug.toggleBreakpoint`, `debug.editBreakpoint`) | The same as the editor commands, under the ids the context menus use. |
+| Add Function Breakpoint | Takes the function name from the debug console input and sends it to the debugger (`setFunctionBreakpoints`). Names already added are ignored; Activate or Deactivate Breakpoints also holds these back. |
+| Set Variable Value (`debug.setVariable`) | Takes `{"text": "name=value"}` and changes a variable that is loaded in the variables list; the new value shows when the debugger answers. A rejected value is reported in the console and the old value stays. |
+| Start Debugging with a Configuration (`debug.startFromConfig`) | Takes `{"text": "<configuration name>"}` and starts that launch configuration. An unknown name is refused. |
+| Show Debug Hover | Evaluates the selection, or the word at the cursor, in the current frame and writes `expression = result` to the debug console. There is no popup over the code. |
+| Filter / Find in the Debug Console | Shows only the console lines that contain the text in the console input; running it with an empty input shows every line again. |

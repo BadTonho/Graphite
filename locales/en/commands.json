@@ -300,7 +300,7 @@
   "command.editor.debug.action.editBreakpoint": "Edit Breakpoint",
   "command.editor.debug.action.addLogPoint": "Logpoint",
   "command.graphite.debug.inlineBreakpoint": "Inline Breakpoint",
-  "command.graphite.debug.functionBreakpoint": "Function Breakpoint",
+  "command.workbench.debug.viewlet.action.addFunctionBreakpointAction": "Function Breakpoint",
   "command.graphite.debug.triggeredBreakpoint": "Triggered Breakpoint",
   "command.workbench.debug.viewlet.action.enableAllBreakpoints": "Enable All Breakpoints",
   "command.workbench.debug.viewlet.action.disableAllBreakpoints": "Disable All Breakpoints",
@@ -565,5 +565,13 @@
   "command.timeline.showWorkspaceTimeline": "Show timeline of the workspace",
   "command.timeline.toggleFollowActiveEditor": "Follow the active editor in the timeline",
   "command.timeline.compareSelected": "Compare the selected timeline entry",
-  "command.category.timeline": "Timeline"
+  "command.category.timeline": "Timeline",
+  "command.debug.enableOrDisableBreakpoint": "Enable or disable breakpoint",
+  "command.debug.toggleBreakpoint": "Toggle breakpoint",
+  "command.debug.editBreakpoint": "Edit breakpoint",
+  "command.editor.debug.action.showDebugHover": "Show debug hover",
+  "command.repl.action.filter": "Filter the debug console",
+  "command.repl.action.find": "Find in the debug console",
+  "command.debug.setVariable": "Set variable value",
+  "command.debug.startFromConfig": "Start debugging with a configuration"
 }

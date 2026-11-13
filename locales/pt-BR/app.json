@@ -657,5 +657,11 @@
   "timeline.saved": "Salvo",
   "timeline.empty": "Nenhuma versão salva nem commit para este arquivo",
   "timeline.following": "A linha do tempo segue o editor ativo",
-  "timeline.pinned": "A linha do tempo fica neste arquivo"
+  "timeline.pinned": "A linha do tempo fica neste arquivo",
+  "debug.function_name_needed": "Digite antes o nome da função na entrada do console de depuração",
+  "debug.function_breakpoint_added": "Ponto de interrupção de função adicionado: {name}",
+  "debug.set_variable_format": "Use a forma nome=valor",
+  "debug.filter_cleared": "Filtro do console de depuração removido",
+  "debug.filter_set": "O console de depuração mostra só linhas com: {text}",
+  "debug.unknown_config": "Não há configuração de execução chamada {name}"
 }

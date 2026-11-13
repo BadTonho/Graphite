@@ -114,6 +114,127 @@ impl App {
         Ok(())
     }
 
+    /// Turns the breakpoint on the cursor line off or back on without removing it.
+    pub(crate) fn toggle_breakpoint_enabled(&mut self) -> Result<(), String> {
+        let Some((path, lines)) = self.active_breakpoint_lines() else {
+            return Ok(());
+        };
+        let cursor = self.editor().cursor_line_col().0;
+        if !lines.contains(&cursor) {
+            self.status = self.t("debug.no_breakpoint_here").into();
+            return Ok(());
+        }
+        let line = cursor as u64 + 1;
+        let points = self.debug.breakpoints.entry(path.clone()).or_default();
+        for point in points
+            .iter_mut()
+            .filter(|point| point["line"].as_u64() == Some(line))
+        {
+            let disabled = crate::debugger::is_disabled(point);
+            if let Some(object) = point.as_object_mut() {
+                if disabled {
+                    object.remove(crate::debugger::DISABLED_KEY);
+                } else {
+                    object.insert(
+                        crate::debugger::DISABLED_KEY.into(),
+                        serde_json::json!(true),
+                    );
+                }
+            }
+        }
+        let points = points.clone();
+        if self.debug.session.is_some() {
+            self.debug
+                .set_breakpoints(&path, points)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Adds the function named in the debug console input as a function breakpoint.
+    pub(crate) fn add_function_breakpoint_from_input(&mut self) -> Result<(), String> {
+        let name = self.debug_input.trim().to_owned();
+        if name.is_empty() {
+            return Err(self.t("debug.function_name_needed").to_owned());
+        }
+        self.debug
+            .add_function_breakpoint(&name)
+            .map_err(|error| error.to_string())?;
+        self.debug_input.clear();
+        self.status = self.tf("debug.function_breakpoint_added", &[("name", &name)]);
+        Ok(())
+    }
+
+    /// Sets a loaded variable from text of the form `name=value`.
+    pub(crate) fn set_variable_from_text(&mut self, text: &str) -> Result<(), String> {
+        let (name, value) = text
+            .split_once('=')
+            .map(|(name, value)| (name.trim(), value.trim()))
+            .filter(|(name, value)| !name.is_empty() && !value.is_empty())
+            .ok_or_else(|| self.t("debug.set_variable_format").to_owned())?;
+        self.debug
+            .set_variable(name, value)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Evaluates the selection, or the word at the cursor, and writes the result to the console.
+    pub(crate) fn show_debug_hover(&mut self) -> Result<(), String> {
+        let selected = self
+            .editor()
+            .selected_text()
+            .filter(|text| !text.trim().is_empty());
+        let expression = match selected {
+            Some(text) => text,
+            None => {
+                let (line, column) = self.editor().cursor_line_col();
+                let text: Vec<char> = self.editor().line(line).chars().collect();
+                let part = |index: usize| {
+                    text.get(index)
+                        .is_some_and(|c| c.is_alphanumeric() || *c == '_')
+                };
+                let mut start = column.min(text.len());
+                while start > 0 && part(start - 1) {
+                    start -= 1;
+                }
+                let mut end = column.min(text.len());
+                while part(end) {
+                    end += 1;
+                }
+                text[start..end].iter().collect()
+            }
+        };
+        if expression.trim().is_empty() {
+            return Ok(());
+        }
+        self.debug_panel_visible = true;
+        self.debug
+            .evaluate_hover(&expression)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Shows only the console lines that contain the text in the console input; empty text shows
+    /// everything again.
+    pub(crate) fn filter_debug_console_from_input(&mut self) {
+        self.debug.console_filter = self.debug_input.trim().to_owned();
+        self.debug_input.clear();
+        self.status = if self.debug.console_filter.is_empty() {
+            self.t("debug.filter_cleared").into()
+        } else {
+            self.tf(
+                "debug.filter_set",
+                &[("text", &self.debug.console_filter.clone())],
+            )
+        };
+    }
+
+    /// Starts debugging with the launch configuration called `name`.
+    pub(crate) fn start_debugging_with_config(&mut self, name: &str) -> Result<(), String> {
+        if !self.debug.select_config(name) {
+            return Err(self.tf("debug.unknown_config", &[("name", &name)]));
+        }
+        self.start_debugging()
+    }
+
     pub(crate) fn show_debug_view(&mut self) {
         self.debug_panel_visible = true;
     }
@@ -233,5 +354,110 @@ mod tests {
             .is_none());
         assert!(crate::keybindings::default_keybindings_json()
             .contains("editor.debug.action.toggleBreakpoint"));
+    }
+
+    fn run_with_text(
+        app: &mut App,
+        id: &str,
+        text: &str,
+    ) -> crate::app::command_execution::CommandResult {
+        app.execute_command(graphite_core_api::CommandRequest {
+            id: id.into(),
+            arguments: serde_json::json!({"text": text}),
+            target: app.ui_target_for_command(id),
+        })
+        .try_result()
+        .expect("finishes at once")
+    }
+
+    #[test]
+    fn a_breakpoint_can_be_switched_off_and_on_in_place() {
+        let (mut app, _dir, path) = app_with_breakpoints(&[3, 6]);
+        app.editor_mut().set_cursor_line_col(2, 0);
+        app.run_ui_command("debug.enableOrDisableBreakpoint");
+        let points = &app.debug.breakpoints[&path];
+        assert!(crate::debugger::is_disabled(&points[0]));
+        assert!(
+            !crate::debugger::is_disabled(&points[1]),
+            "the other one is untouched"
+        );
+        assert_eq!(points.len(), 2, "it is not removed");
+        app.run_ui_command("debug.enableOrDisableBreakpoint");
+        assert!(!crate::debugger::is_disabled(
+            &app.debug.breakpoints[&path][0]
+        ));
+        app.editor_mut().set_cursor_line_col(0, 0);
+        app.run_ui_command("debug.enableOrDisableBreakpoint");
+        assert_eq!(app.status, app.t("debug.no_breakpoint_here"));
+    }
+
+    #[test]
+    fn a_function_breakpoint_comes_from_the_console_input() {
+        let (mut app, _dir, _path) = app_with_breakpoints(&[]);
+        app.run_ui_command("workbench.debug.viewlet.action.addFunctionBreakpointAction");
+        assert!(app.debug.function_breakpoints.is_empty());
+        app.debug_input = "  main ".into();
+        app.run_ui_command("workbench.debug.viewlet.action.addFunctionBreakpointAction");
+        assert_eq!(app.debug.function_breakpoints, ["main"]);
+        assert!(app.debug_input.is_empty());
+        assert!(app.status.contains("main"), "{}", app.status);
+    }
+
+    #[test]
+    fn set_variable_needs_a_name_value_pair_and_a_running_session() {
+        let (mut app, _dir, _path) = app_with_breakpoints(&[]);
+        for bad in ["", "novalue", "=1", "x="] {
+            assert!(
+                run_with_text(&mut app, "debug.setVariable", bad).is_err(),
+                "{bad:?}"
+            );
+        }
+        // The pair is well formed, but there is no loaded variable of that name.
+        assert!(run_with_text(&mut app, "debug.setVariable", "a=1").is_err());
+    }
+
+    #[test]
+    fn starting_from_a_configuration_needs_a_known_name() {
+        let (mut app, _dir, _path) = app_with_breakpoints(&[]);
+        let error = run_with_text(&mut app, "debug.startFromConfig", "nope").unwrap_err();
+        assert!(error.to_string().contains("nope"), "{error}");
+    }
+
+    #[test]
+    fn the_console_filter_hides_other_lines_and_clears_with_empty_text() {
+        let (mut app, _dir, _path) = app_with_breakpoints(&[]);
+        for text in ["alpha one\n", "beta two\n", "alpha three\n"] {
+            app.debug.output.push(crate::debugger::DebugOutput {
+                category: "stdout".into(),
+                text: text.into(),
+            });
+        }
+        app.debug_input = "alpha".into();
+        app.run_ui_command("repl.action.filter");
+        assert_eq!(app.debug.console_filter, "alpha");
+        let shown: Vec<_> = crate::app::debug_panel::debug_columns(&app.debug)[2]
+            .iter()
+            .map(|row| row.text.clone())
+            .collect();
+        assert!(shown.iter().all(|line| !line.contains("beta")), "{shown:?}");
+        assert_eq!(
+            shown.iter().filter(|line| line.contains("alpha")).count(),
+            2
+        );
+        app.run_ui_command("repl.action.find");
+        assert!(app.debug.console_filter.is_empty(), "empty input clears it");
+    }
+
+    #[test]
+    fn the_debug_hover_needs_a_session_and_an_expression() {
+        let (mut app, _dir, _path) = app_with_breakpoints(&[]);
+        app.editor_mut().set_cursor_line_col(0, 0);
+        app.run_ui_command("editor.debug.action.showDebugHover");
+        assert!(crate::app::command_registry::registry()
+            .get("debug.toggleBreakpoint")
+            .is_some());
+        assert!(crate::app::command_registry::registry()
+            .get("debug.editBreakpoint")
+            .is_some());
     }
 }

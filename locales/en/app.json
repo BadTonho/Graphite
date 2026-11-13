@@ -657,5 +657,11 @@
   "timeline.saved": "Saved",
   "timeline.empty": "No saved versions or commits for this file",
   "timeline.following": "The timeline follows the active editor",
-  "timeline.pinned": "The timeline stays on this file"
+  "timeline.pinned": "The timeline stays on this file",
+  "debug.function_name_needed": "Type the function name in the debug console input first",
+  "debug.function_breakpoint_added": "Function breakpoint added: {name}",
+  "debug.set_variable_format": "Use the form name=value",
+  "debug.filter_cleared": "Debug console filter cleared",
+  "debug.filter_set": "Debug console shows only lines with: {text}",
+  "debug.unknown_config": "There is no launch configuration called {name}"
 }

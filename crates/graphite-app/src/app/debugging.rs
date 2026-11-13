@@ -494,7 +494,6 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
     for (id, title) in [
         ("workbench.action.debug.run", "Run Without Debugging"),
         ("graphite.debug.inlineBreakpoint", "Inline Breakpoint"),
-        ("graphite.debug.functionBreakpoint", "Function Breakpoint"),
         ("graphite.debug.triggeredBreakpoint", "Triggered Breakpoint"),
         (
             "debug.installAdditionalDebuggers",

@@ -185,6 +185,9 @@ fn console_rows(runtime: &DebugRuntime) -> Vec<DebugRow> {
             DebugRowStyle::Normal
         };
         for line in output.text.lines() {
+            if !runtime.console_filter.is_empty() && !line.contains(&runtime.console_filter) {
+                continue;
+            }
             rows.push(DebugRow::new(line.trim_end(), style));
         }
     }

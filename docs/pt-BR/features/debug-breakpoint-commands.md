@@ -27,3 +27,15 @@ Estes comandos mudaram de id. Um atalho personalizado em `keybindings.json` que 
 | `graphite.debug.removeAllBreakpoints` | `workbench.debug.viewlet.action.removeAllBreakpoints` |
 
 Ativar ou desativar um ponto de interrupção isolado, pontos de interrupção de função e de dados, alterar uma variável e o hover de depuração ainda não estão disponíveis.
+
+## Pontos de interrupção isolados, de função, variáveis, hover e filtro do console
+
+| Comando | O que faz |
+| --- | --- |
+| Ativar ou desativar ponto de interrupção | Desliga o ponto de interrupção da linha do cursor, ou o religa, sem removê-lo. Um ponto desativado continua na lista e não é enviado ao depurador. |
+| Alternar / Editar ponto de interrupção (`debug.toggleBreakpoint`, `debug.editBreakpoint`) | O mesmo que os comandos do editor, sob os ids que os menus de contexto usam. |
+| Adicionar ponto de interrupção de função | Pega o nome da função na entrada do console de depuração e o envia ao depurador (`setFunctionBreakpoints`). Nomes já adicionados são ignorados; Ativar ou desativar os pontos de interrupção também segura estes. |
+| Alterar o valor de uma variável (`debug.setVariable`) | Recebe `{"text": "nome=valor"}` e muda uma variável que está carregada na lista de variáveis; o novo valor aparece quando o depurador responde. Um valor recusado é informado no console e o antigo fica. |
+| Iniciar a depuração com uma configuração (`debug.startFromConfig`) | Recebe `{"text": "<nome da configuração>"}` e inicia essa configuração de execução. Um nome desconhecido é recusado. |
+| Mostrar o hover de depuração | Avalia a seleção, ou a palavra sob o cursor, no quadro atual e escreve `expressão = resultado` no console de depuração. Não há popup sobre o código. |
+| Filtrar / Procurar no console de depuração | Mostra só as linhas do console que contêm o texto da entrada do console; rodar com a entrada vazia mostra todas as linhas de novo. |
