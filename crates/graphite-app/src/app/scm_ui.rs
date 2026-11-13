@@ -1505,7 +1505,8 @@ impl App {
         }
         if self.branch_picker {
             let box_width = 420.0f32.min(width - PAD * 2.0);
-            let box_height = (self.scm_snapshot.branches.len().min(12) as f32 + 1.5) * line_height;
+            let entries = self.branch_picker_entries();
+            let box_height = (entries.len().min(12) as f32 + 1.5) * line_height;
             let x = (width - box_width) / 2.0;
             let y = (height - box_height) / 2.0;
             renderer.draw_rect(
@@ -1521,8 +1522,11 @@ impl App {
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
-            for (index, branch) in self.scm_snapshot.branches.iter().take(12).enumerate() {
-                let row_y = y + line_height * (index as f32 + 1.2);
+            // Show the 12 entries around the selection, so a long list can be scrolled with the
+            // arrow keys.
+            let first = self.branch_selected.saturating_sub(11).min(entries.len().saturating_sub(12));
+            for (index, branch) in entries.iter().enumerate().skip(first).take(12) {
+                let row_y = y + line_height * ((index - first) as f32 + 1.2);
                 if index == self.branch_selected {
                     renderer.draw_rect(
                         x,

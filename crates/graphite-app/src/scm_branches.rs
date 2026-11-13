@@ -49,13 +49,19 @@ fn failure(output: &Output, operation: &str) -> String {
         &output.stderr
     };
     let conflicted = output.stdout.contains("CONFLICT") || output.stderr.contains("CONFLICT");
+    // The last line that is not advice (`hint: ...`) says what went wrong.
+    let line = text
+        .lines()
+        .rev()
+        .find(|line| !line.trim_start().starts_with("hint:"))
+        .or_else(|| text.lines().last())
+        .unwrap_or(text);
     match (text.is_empty(), conflicted) {
         (true, _) => format!("git {operation} failed"),
-        (false, true) => format!(
-            "{} — resolve the conflicts, stage the files and continue, or abort",
-            text.lines().last().unwrap_or(text)
-        ),
-        (false, false) => text.lines().last().unwrap_or(text).to_owned(),
+        (false, true) => {
+            format!("{line} — resolve the conflicts, stage the files and continue, or abort")
+        }
+        (false, false) => line.to_owned(),
     }
 }
 
@@ -96,6 +102,20 @@ pub(crate) fn create_branch(root: &Path, name: &str) -> Result<String, String> {
     }
     run(root, &["switch", "-c", name], false)?;
     Ok(format!("Switched to new branch '{name}'"))
+}
+
+/// Deletes the local branch `name`. Without `force` git refuses a branch that is not fully merged
+/// (and the one that is checked out, with or without it).
+pub(crate) fn delete_branch(root: &Path, name: &str, force: bool) -> Result<String, String> {
+    if !plain_ref(name) {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    run(
+        root,
+        &["branch", if force { "-D" } else { "-d" }, "--", name],
+        false,
+    )?;
+    Ok(format!("Deleted branch '{name}'"))
 }
 
 /// Merges `branch` into the current branch. A conflict leaves the merge in progress.
@@ -447,5 +467,63 @@ mod tests {
         assert!(!plain_ref("-f"));
         assert!(!plain_ref("a b"));
         assert!(!plain_ref("a\nb"));
+    }
+
+    #[test]
+    fn delete_branch_removes_merged_branches_and_protects_unmerged_and_current_ones() {
+        let dir = diverged();
+        // `topic` has a commit `main` does not: the safe delete refuses it.
+        let error = delete_branch(dir.path(), "topic", false).unwrap_err();
+        assert!(error.contains("not fully merged"), "{error}");
+        assert_eq!(
+            sh(dir.path(), &["branch", "--list", "topic"]).trim(),
+            "topic"
+        );
+
+        merge(dir.path(), "topic").unwrap();
+        assert_eq!(
+            delete_branch(dir.path(), "topic", false).unwrap(),
+            "Deleted branch 'topic'"
+        );
+        assert!(sh(dir.path(), &["branch", "--list", "topic"]).is_empty());
+
+        // The checked out branch can not be deleted, even forced.
+        assert!(delete_branch(dir.path(), "main", true).is_err());
+        assert_eq!(current_branch(dir.path()), "main");
+    }
+
+    #[test]
+    fn a_forced_delete_drops_an_unmerged_branch() {
+        let dir = diverged();
+        delete_branch(dir.path(), "topic", true).unwrap();
+        assert!(sh(dir.path(), &["branch", "--list", "topic"]).is_empty());
+    }
+
+    #[test]
+    fn delete_branch_refuses_unknown_and_option_like_names() {
+        let dir = repository();
+        assert!(delete_branch(dir.path(), "nope", false).is_err());
+        let error = delete_branch(dir.path(), "--force", false).unwrap_err();
+        assert!(error.contains("not a valid branch name"), "{error}");
+        assert!(delete_branch(dir.path(), "", true).is_err());
+    }
+
+    #[test]
+    fn snapshots_list_remote_branches_without_the_head_alias() {
+        let remote = repository();
+        sh(remote.path(), &["branch", "feature"]);
+        let clone = crate::test_support::TempDir::new();
+        sh(
+            clone.path(),
+            &["clone", "-q", &remote.path().display().to_string(), "."],
+        );
+        let snapshot = crate::scm::snapshot(clone.path());
+        assert_eq!(snapshot.remote_branches, ["origin/feature", "origin/main"]);
+        assert_eq!(snapshot.branches, ["main"]);
+        let plain = crate::scm::snapshot(remote.path());
+        assert!(
+            plain.remote_branches.is_empty(),
+            "a repository without remotes"
+        );
     }
 }

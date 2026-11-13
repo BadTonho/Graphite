@@ -144,7 +144,7 @@ fn branch_close(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError
 }
 fn branch_next(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.branch_selected =
-        (app.branch_selected + 1).min(app.scm_snapshot.branches.len().saturating_sub(1));
+        (app.branch_selected + 1).min(app.branch_picker_entries().len().saturating_sub(1));
     Ok(())
 }
 fn branch_previous(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

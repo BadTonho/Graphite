@@ -53,6 +53,8 @@ pub(crate) enum LineChange {
 pub(crate) struct Snapshot {
     pub branch: Option<String>,
     pub branches: Vec<String>,
+    /// Remote-tracking branches such as `origin/main` (never `origin/HEAD`).
+    pub remote_branches: Vec<String>,
     pub files: Vec<FileStatus>,
     pub line_changes: BTreeMap<PathBuf, Vec<(usize, LineChange)>>,
     pub error: Option<String>,
@@ -83,6 +85,16 @@ fn snapshot_inner(root: &Path) -> Result<Snapshot, String> {
         .filter_map(Result::ok)
         .map(|reference| reference.name().shorten().to_string())
         .collect::<Vec<_>>();
+    let mut remote_branches = repo
+        .references()
+        .map_err(display_error)?
+        .remote_branches()
+        .map_err(display_error)?
+        .filter_map(Result::ok)
+        .map(|reference| reference.name().shorten().to_string())
+        .filter(|name| !name.ends_with("/HEAD"))
+        .collect::<Vec<_>>();
+    remote_branches.sort();
     let mut files = BTreeMap::<PathBuf, FileStatus>::new();
     let changes = repo
         .status(gix::progress::Discard)
@@ -127,6 +139,7 @@ fn snapshot_inner(root: &Path) -> Result<Snapshot, String> {
     Ok(Snapshot {
         branch,
         branches,
+        remote_branches,
         files,
         line_changes,
         error: None,

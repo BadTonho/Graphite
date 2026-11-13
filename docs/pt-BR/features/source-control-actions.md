@@ -23,8 +23,10 @@ Limites: os botões usam símbolos de texto, então podem ficar um pouco diferen
 |---|---|
 | **Git: Corrigir último commit (amend)** | Substitui o último commit pelas alterações preparadas (staged). O texto digitado no campo de mensagem vira a nova mensagem (e o campo é limpo); com o campo vazio a mensagem existente é mantida. |
 | **Git: Criar branch...** | Pede um nome, cria a branch no commit atual e muda para ela. Alterações não commitadas acompanham. O nome é validado com `git check-ref-format`; nomes existentes e inválidos são recusados. |
-| **Git: Mesclar branch...** | Abre o seletor de branch; a escolhida é mesclada na atual com um commit de merge (`--no-edit`). |
+| **Git: Mesclar branch...** | Abre o seletor de branch (branches locais, exceto a atual, e depois as remotas como `origin/main`); a escolhida é mesclada na atual com um commit de merge (`--no-edit`). |
 | **Git: Rebase sobre branch...** | Abre o seletor de branch; a branch atual sofre rebase sobre a escolhida. |
+| **Git: Excluir branch...** | Abre o seletor com as branches locais, exceto a atual, e exclui a escolhida com `git branch -d`, que recusa uma branch sem merge completo. |
+| **Git: Excluir branch (forçar)...** | O mesmo com `git branch -D`: exclui até uma branch sem merge (os commits dela só ficam acessíveis pelo reflog). |
 | **Git: Abortar merge ou rebase** | Abandona um merge ou rebase parado por conflitos e restaura o estado anterior. |
 | **Git: Continuar merge ou rebase** | Depois de resolver e preparar os arquivos em conflito: continua o rebase ou faz o commit do merge. |
 
@@ -34,4 +36,5 @@ Observações:
 - Um conflito não perde nada: o merge ou rebase continua em andamento, os arquivos em conflito aparecem na visão de Controle de Código-Fonte (abra-os no editor de conflitos em 3 vias) e a barra de status orienta a resolver, continuar ou abortar.
 - Argumentos de branch que começam com `-` ou contêm espaços são rejeitados antes de o git rodar, então um nome de branch nunca é lido como opção do git.
 - O Git roda com `GIT_EDITOR=true`, então nenhum editor abre para mensagens de merge ou rebase; a mensagem padrão é usada.
-- Ainda faltam: excluir branches, rebase interativo, escolher uma branch remota no seletor (só as locais são listadas) e as opções `merge --squash`/`--no-ff`.
+- O seletor mostra 12 entradas em volta da seleção, então listas longas rolam com as setas. Fazer checkout de uma branch remota ainda não é oferecido.
+- Ainda faltam: rebase interativo e as opções `merge --squash`/`--no-ff`.

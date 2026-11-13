@@ -194,7 +194,7 @@ fn scm_continue_operation(app: &mut App, _: &CommandInvocation) -> Result<(), Co
 
 /// The `Git:` commands of the palette (and of the SCM view's "…" button).
 pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 14] = [
+    let commands: [(&'static str, &'static str, Handler); 16] = [
         ("graphite.scm.pull", "Git: Pull", scm_pull),
         ("graphite.scm.push", "Git: Push", scm_push),
         ("graphite.scm.fetch", "Git: Fetch", scm_fetch),
@@ -228,6 +228,16 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
             scm_rebase,
         ),
         (
+            "graphite.scm.deleteBranch",
+            "Git: Delete Branch...",
+            scm_delete_branch,
+        ),
+        (
+            "graphite.scm.deleteBranchForce",
+            "Git: Delete Branch (Force)...",
+            scm_delete_branch_force,
+        ),
+        (
             "graphite.scm.abortOperation",
             "Git: Abort Merge or Rebase",
             scm_abort_operation,
@@ -241,4 +251,14 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
     for (id, title, handler) in commands {
         add(registry, id, title, "Scm", ALL, "true", None, handler);
     }
+}
+
+fn scm_delete_branch(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_branch_picker_for(crate::app::scm_branch_ui::BranchPickerAction::Delete);
+    Ok(())
+}
+
+fn scm_delete_branch_force(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_branch_picker_for(crate::app::scm_branch_ui::BranchPickerAction::DeleteForce);
+    Ok(())
 }

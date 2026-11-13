@@ -13,6 +13,8 @@
   "command.graphite.scm.createBranch": "Git: Criar branch...",
   "command.graphite.scm.merge": "Git: Mesclar branch...",
   "command.graphite.scm.rebase": "Git: Rebase sobre branch...",
+  "command.graphite.scm.deleteBranch": "Git: Excluir branch...",
+  "command.graphite.scm.deleteBranchForce": "Git: Excluir branch (forçar)...",
   "command.graphite.scm.abortOperation": "Git: Abortar merge ou rebase",
   "command.graphite.scm.continueOperation": "Git: Continuar merge ou rebase",
   "command.graphite.layout.customize": "Personalizar layout...",

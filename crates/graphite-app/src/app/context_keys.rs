@@ -406,7 +406,7 @@ impl super::App {
                 WidgetKind::Snippet => self.snippets.len(),
                 WidgetKind::Terminal => self.terminals.len(),
                 WidgetKind::Scm => self.scm_snapshot.files.len(),
-                WidgetKind::Branch => self.scm_snapshot.branches.len(),
+                WidgetKind::Branch => self.branch_picker_entries().len(),
                 _ => 0,
             };
             self.context_keys.sync_widget(

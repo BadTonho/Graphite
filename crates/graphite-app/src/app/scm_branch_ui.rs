@@ -15,6 +15,10 @@ pub(crate) enum BranchPickerAction {
     Merge,
     /// Rebase the current branch onto the branch.
     Rebase,
+    /// Delete the local branch (git refuses it when it is not fully merged).
+    Delete,
+    /// Delete the local branch even if it is not fully merged.
+    DeleteForce,
 }
 
 impl BranchPickerAction {
@@ -24,6 +28,8 @@ impl BranchPickerAction {
             Self::Checkout => "scm.branch.prompt",
             Self::Merge => "scm.branch.prompt_merge",
             Self::Rebase => "scm.branch.prompt_rebase",
+            Self::Delete => "scm.branch.prompt_delete",
+            Self::DeleteForce => "scm.branch.prompt_delete_force",
         }
     }
 }
@@ -35,10 +41,38 @@ pub(crate) struct BranchNamePrompt {
 }
 
 impl App {
+    /// The branches the picker lists for its current action. Checkout offers the local branches;
+    /// deleting offers the local ones except the checked out branch; merging and rebasing offer
+    /// those too plus the remote-tracking branches (`origin/main`).
+    pub(crate) fn branch_picker_entries(&self) -> Vec<String> {
+        let snapshot = &self.scm_snapshot;
+        let others = |list: &[String]| -> Vec<String> {
+            list.iter()
+                .filter(|name| Some(*name) != snapshot.branch.as_ref())
+                .cloned()
+                .collect()
+        };
+        match self.branch_picker_action {
+            BranchPickerAction::Checkout => snapshot.branches.clone(),
+            BranchPickerAction::Delete | BranchPickerAction::DeleteForce => {
+                others(&snapshot.branches)
+            }
+            BranchPickerAction::Merge | BranchPickerAction::Rebase => {
+                let mut entries = others(&snapshot.branches);
+                entries.extend(snapshot.remote_branches.iter().cloned());
+                entries
+            }
+        }
+    }
+
     /// Opens the branch picker for `action`.
     pub(crate) fn open_branch_picker_for(&mut self, action: BranchPickerAction) {
         self.open_branch_picker();
         self.branch_picker_action = action;
+        // The list is not the plain branch list any more, so start from its top.
+        if action != BranchPickerAction::Checkout {
+            self.branch_selected = 0;
+        }
     }
 
     /// Enter in the branch picker: do what the picker was opened for.
@@ -46,10 +80,9 @@ impl App {
         let action = self.branch_picker_action;
         match action {
             BranchPickerAction::Checkout => self.checkout_selected_branch(),
-            BranchPickerAction::Merge | BranchPickerAction::Rebase => {
+            _ => {
                 let Some(branch) = self
-                    .scm_snapshot
-                    .branches
+                    .branch_picker_entries()
                     .get(self.branch_selected)
                     .cloned()
                 else {
@@ -57,11 +90,12 @@ impl App {
                 };
                 self.branch_picker = false;
                 self.branch_picker_action = BranchPickerAction::Checkout;
-                if action == BranchPickerAction::Merge {
-                    self.run_scm_remote(RemoteOp::Merge(branch));
-                } else {
-                    self.run_scm_remote(RemoteOp::Rebase(branch));
-                }
+                self.run_scm_remote(match action {
+                    BranchPickerAction::Merge => RemoteOp::Merge(branch),
+                    BranchPickerAction::Rebase => RemoteOp::Rebase(branch),
+                    BranchPickerAction::Delete => RemoteOp::DeleteBranch(branch, false),
+                    _ => RemoteOp::DeleteBranch(branch, true),
+                });
             }
         }
     }
@@ -297,6 +331,8 @@ mod tests {
             "Git: Create Branch...",
             "Git: Merge Branch...",
             "Git: Rebase onto Branch...",
+            "Git: Delete Branch...",
+            "Git: Delete Branch (Force)...",
             "Git: Abort Merge or Rebase",
             "Git: Continue Merge or Rebase",
         ] {
@@ -359,5 +395,85 @@ mod tests {
             "the prompt closes on Enter"
         );
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+    }
+
+    fn app_with_remote_branches(dir: &TempDir) -> App {
+        let mut app = app(dir);
+        app.scm_snapshot.branch = Some("main".into());
+        app.scm_snapshot.branches = vec!["main".into(), "topic".into()];
+        app.scm_snapshot.remote_branches = vec!["origin/main".into(), "origin/topic".into()];
+        app
+    }
+
+    #[test]
+    fn each_picker_action_lists_the_branches_that_make_sense_for_it() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.branch_picker_action = BranchPickerAction::Checkout;
+        assert_eq!(
+            app.branch_picker_entries(),
+            ["main", "topic"],
+            "local only, current included"
+        );
+        for action in [BranchPickerAction::Delete, BranchPickerAction::DeleteForce] {
+            app.branch_picker_action = action;
+            assert_eq!(
+                app.branch_picker_entries(),
+                ["topic"],
+                "the checked out branch is not offered"
+            );
+        }
+        for action in [BranchPickerAction::Merge, BranchPickerAction::Rebase] {
+            app.branch_picker_action = action;
+            assert_eq!(
+                app.branch_picker_entries(),
+                ["topic", "origin/main", "origin/topic"],
+                "local branches except the current one, then the remote ones"
+            );
+        }
+    }
+
+    #[test]
+    fn choosing_an_entry_uses_the_filtered_list_not_the_raw_branch_list() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.run_ui_command("graphite.scm.merge");
+        assert_eq!(app.branch_selected, 0, "the list starts at its first entry");
+        app.branch_selected = 1; // origin/main, because the current branch is hidden
+        app.status.clear();
+        app.run_ui_command("graphite.scm.checkout");
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+        assert!(!app.branch_picker);
+
+        // The selection can go down to the last remote entry and no further.
+        app.run_ui_command("graphite.scm.rebase");
+        for _ in 0..10 {
+            app.run_ui_command("graphite.branch.next");
+        }
+        assert_eq!(app.branch_selected, 2, "topic, origin/main, origin/topic");
+    }
+
+    #[test]
+    fn the_delete_commands_open_the_picker_in_their_mode() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.run_ui_command("graphite.scm.deleteBranch");
+        assert_eq!(app.branch_picker_action, BranchPickerAction::Delete);
+        app.run_ui_command("graphite.branch.close");
+        app.run_ui_command("graphite.scm.deleteBranchForce");
+        assert_eq!(app.branch_picker_action, BranchPickerAction::DeleteForce);
+        let translator = graphite_i18n::Translator::english();
+        assert!(translator.has(BranchPickerAction::Delete.prompt_key()));
+        assert!(translator.has(BranchPickerAction::DeleteForce.prompt_key()));
+        assert_ne!(
+            BranchPickerAction::Delete.prompt_key(),
+            BranchPickerAction::DeleteForce.prompt_key()
+        );
+    }
+
+    #[test]
+    fn deleting_never_needs_saved_documents() {
+        assert!(!RemoteOp::DeleteBranch("topic".into(), false).needs_saved_documents());
+        assert!(!RemoteOp::DeleteBranch("topic".into(), true).needs_saved_documents());
     }
 }

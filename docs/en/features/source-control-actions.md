@@ -23,8 +23,10 @@ Limits: the buttons use text symbols, so they may look slightly different from V
 |---|---|
 | **Git: Amend Last Commit** | Replaces the last commit with the staged changes. Text typed in the commit message field becomes the new message (and the field is cleared); an empty field keeps the existing message. |
 | **Git: Create Branch...** | Asks for a name, then creates the branch at the current commit and switches to it. Uncommitted changes come along. The name is checked with `git check-ref-format`; existing and invalid names are refused. |
-| **Git: Merge Branch...** | Opens the branch picker; the chosen branch is merged into the current one with a merge commit (`--no-edit`). |
+| **Git: Merge Branch...** | Opens the branch picker (local branches except the current one, then remote-tracking branches such as `origin/main`); the chosen branch is merged into the current one with a merge commit (`--no-edit`). |
 | **Git: Rebase onto Branch...** | Opens the branch picker; the current branch is rebased onto the chosen one. |
+| **Git: Delete Branch...** | Opens the picker with the local branches except the checked out one and deletes the chosen branch with `git branch -d`, which refuses a branch that is not fully merged. |
+| **Git: Delete Branch (Force)...** | The same with `git branch -D`: deletes even an unmerged branch (its commits stay reachable only through the reflog). |
 | **Git: Abort Merge or Rebase** | Abandons a merge or rebase that stopped on conflicts and restores the previous state. |
 | **Git: Continue Merge or Rebase** | After resolving and staging the conflicting files: continues the rebase, or commits the merge. |
 
@@ -34,4 +36,5 @@ Notes:
 - A conflict is not an error that loses anything: the merge or rebase stays in progress, the conflicting files appear in the Source Control view (open them in the 3-way conflict editor), and the status line says to resolve, continue or abort.
 - Branch arguments that start with `-` or contain whitespace are rejected before git runs, so a branch name can never be read as a git option.
 - Git runs with `GIT_EDITOR=true`, so no editor opens for merge or rebase messages; the default message is used.
-- Still missing: deleting branches, interactive rebase, choosing a remote branch from the picker (only local branches are listed), and `merge --squash`/`--no-ff` options.
+- The picker shows 12 entries around the selection, so long lists scroll with the arrow keys. Checking out a remote branch is not offered yet.
+- Still missing: interactive rebase and the `merge --squash`/`--no-ff` options.
