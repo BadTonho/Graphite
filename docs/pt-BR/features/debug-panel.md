@@ -37,9 +37,24 @@ Um `launch.json` padrão do VS Code cita só o `type` de depuração (`"node"`, 
 - Caminhos de `program` que saem da pasta da extensão são ignorados.
 - Um `"adapter": { "command": …, "args": […] }` na configuração continua tendo prioridade, para adaptadores que não são instalados como extensões.
 - Os erros indicam a causa: nenhuma extensão fornece o tipo, a extensão que o fornece está desabilitada, ou o programa do adaptador não existe.
-- Ainda não suportado: extensões que criam o adaptador em código (`registerDebugAdapterDescriptorFactory`) e não declaram `program`.
+- Extensões que criam o adaptador em código são tratadas pelo extension host; veja abaixo.
 
 Extensões instaladas antes desta funcionalidade são relidas do `package.json` quando o registro é carregado.
+
+### Adaptadores criados pelo código da extensão
+
+Quando a extensão que fornece o `type` não declara `program` mas tem um ponto de entrada de código, ela normalmente chama `vscode.debug.registerDebugAdapterDescriptorFactory`. Então o Graphite:
+
+1. Exige workspace confiável e a extensão habilitada e aprovada em Plugins (a mesma regra de executar qualquer código de extensão). Caso contrário, informa e não inicia.
+2. Inicia o extension host se ele não estiver rodando, ativa a extensão (evento de ativação `onDebugResolve:<type>`) e executa a fábrica dela com a configuração de lançamento já com as variáveis expandidas.
+3. Inicia a sessão a partir do descritor que a fábrica devolve:
+   - `DebugAdapterExecutable` executa o comando com `args`, `options.cwd` e `options.env`.
+   - `DebugAdapterServer` conecta à porta. Só endereços de loopback são aceitos, então uma extensão não consegue fazer o Graphite conectar a outra máquina.
+   - Servidores por named pipe e `DebugAdapterInlineImplementation` (um adaptador rodando dentro do extension host) são informados como ainda não suportados.
+
+A espera termina com uma mensagem se a extensão falhar, não devolver adaptador ou não responder em 30 segundos. `Shift+F5` durante a espera abandona o lançamento; uma resposta tardia é ignorada.
+
+Limites conhecidos: os provedores `resolveDebugConfiguration` e `provideDebugConfigurations` não são chamados, então extensões que dependem deles para completar ou reescrever a configuração (muitas de linguagens) podem ainda não funcionar. Este caminho exige o runtime Code OSS empacotado; é coberto por testes unitários que fazem o papel do host no protocolo e por um teste de integração ignorado (`official_host_creates_a_debug_adapter_from_an_extension_factory`), mas não foi executado com extensões reais de terceiros.
 
 ### Variáveis
 

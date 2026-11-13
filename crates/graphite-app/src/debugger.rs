@@ -9,10 +9,12 @@ use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{BufRead, BufReader, Read, Write},
+    net::{Shutdown, TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::mpsc::{self, Receiver, SyncSender, TryRecvError},
     thread,
+    time::Duration,
 };
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -45,6 +47,9 @@ pub struct LaunchConfig {
     /// Graphite's executable declaration for a local stdio adapter.
     #[serde(default)]
     pub adapter: Option<AdapterCommand>,
+    /// A listening adapter chosen at launch time (not part of `launch.json`).
+    #[serde(skip)]
+    pub server: Option<AdapterServer>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -56,11 +61,24 @@ pub enum RequestKind {
     Attach,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct AdapterCommand {
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Working directory for the adapter; defaults to the workspace folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
+    /// Extra environment variables for the adapter process.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+}
+
+/// A debug adapter that is already listening on a local TCP port.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AdapterServer {
+    pub host: String,
+    pub port: u16,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +125,8 @@ pub enum AdapterEvent {
 pub struct DapSession {
     child: Option<Child>,
     stdin: Option<Box<dyn Write + Send>>,
+    /// The connection of a TCP session, kept to shut it down on stop.
+    socket: Option<TcpStream>,
     events: Receiver<AdapterEvent>,
     sequence: i64,
 }
@@ -985,7 +1005,7 @@ pub fn expand_variables(value: &str, context: &VariableContext) -> String {
     result
 }
 
-fn expand_value(value: &mut Value, context: &VariableContext) {
+pub(crate) fn expand_value(value: &mut Value, context: &VariableContext) {
     match value {
         Value::String(text) => *text = expand_variables(text, context),
         Value::Array(items) => items
@@ -1000,13 +1020,17 @@ fn expand_value(value: &mut Value, context: &VariableContext) {
 
 impl DapSession {
     pub fn spawn(config: &LaunchConfig, cwd: &Path) -> Result<Self, DebugError> {
+        if let Some(server) = &config.server {
+            return Self::connect(server);
+        }
         let adapter = config
             .adapter
             .as_ref()
             .ok_or_else(|| DebugError::MissingAdapter(config.adapter_type.clone()))?;
-        let mut child = Command::new(&adapter.command)
-            .args(&adapter.args)
-            .current_dir(cwd)
+        let mut child = Command::new(&adapter.command);
+        child.args(&adapter.args).envs(&adapter.env);
+        let mut child = child
+            .current_dir(adapter.cwd.as_deref().unwrap_or(cwd))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1028,6 +1052,35 @@ impl DapSession {
         Ok(Self {
             child: Some(child),
             stdin,
+            socket: None,
+            events,
+            sequence: 1,
+        })
+    }
+
+    /// Connects to an adapter that is already listening. Only loopback addresses are accepted:
+    /// the address may come from an extension, which must not make Graphite dial out.
+    pub fn connect(server: &AdapterServer) -> Result<Self, DebugError> {
+        let address = (server.host.as_str(), server.port)
+            .to_socket_addrs()?
+            .find(|address| address.ip().is_loopback())
+            .ok_or_else(|| {
+                DebugError::Transport(format!(
+                    "Debug adapter server {}:{} is not a local address",
+                    server.host, server.port
+                ))
+            })?;
+        let stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))?;
+        let reader = stream.try_clone()?;
+        let socket = stream.try_clone()?;
+        let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
+        thread::Builder::new()
+            .name("graphite-dap-reader".into())
+            .spawn(move || read_messages(reader, sender))?;
+        Ok(Self {
+            child: None,
+            stdin: Some(Box::new(stream)),
+            socket: Some(socket),
             events,
             sequence: 1,
         })
@@ -1040,6 +1093,7 @@ impl DapSession {
         Self {
             child: None,
             stdin: Some(writer),
+            socket: None,
             events,
             sequence: 1,
         }
@@ -1100,6 +1154,10 @@ impl DapSession {
 
     pub fn stop(&mut self) -> Result<(), DebugError> {
         self.stdin.take();
+        if let Some(socket) = self.socket.take() {
+            // Wakes the reader thread, which would otherwise wait for the adapter forever.
+            let _ = socket.shutdown(Shutdown::Both);
+        }
         if let Some(child) = self.child.as_mut() {
             if child.try_wait()?.is_none() {
                 child.kill()?;
@@ -1332,6 +1390,7 @@ mod tests {
             post_debug_task: post.map(str::to_owned),
             env: BTreeMap::new(),
             adapter: None,
+            server: None,
             extra: BTreeMap::new(),
         }
     }

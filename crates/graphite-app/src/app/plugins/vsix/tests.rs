@@ -591,3 +591,67 @@ fn official_host_sends_text_decorations_for_the_active_editor() {
     assert!(app.vsix_line_decorations(&uri, 1, true).is_empty());
     wait_for(&mut app, finished);
 }
+
+const DEBUG_FACTORY_FIXTURE: &str = r#"
+const vscode = require('vscode');
+exports.activate = () => {
+    vscode.debug.registerDebugAdapterDescriptorFactory('fixture-debug', {
+        createDebugAdapterDescriptor: () =>
+            new vscode.DebugAdapterServer(Number(process.env.GRAPHITE_TEST_DAP_PORT)),
+    });
+};
+"#;
+
+fn debug_factory_fixture(path: &PathBuf) {
+    let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+    let manifest = json!({
+        "publisher":"test", "name":"debugfactory", "version":"1.0.0",
+        "engines":{"vscode":"^1.100.0"}, "main":"index.js",
+        "contributes":{"debuggers":[{"type":"fixture-debug","label":"Fixture"}]}
+    });
+    let options = zip::write::SimpleFileOptions::default();
+    archive.start_file("extension/package.json", options).unwrap();
+    serde_json::to_writer(&mut archive, &manifest).unwrap();
+    archive.start_file("extension/index.js", options).unwrap();
+    archive.write_all(DEBUG_FACTORY_FIXTURE.as_bytes()).unwrap();
+    archive.finish().unwrap();
+}
+
+/// End to end: the real extension host runs an extension's `DebugAdapterDescriptorFactory`, and
+/// Graphite connects to the TCP server it describes. Needs the packaged runtime
+/// (`GRAPHITE_TEST_CODE_OSS`), which is why it is ignored by default.
+#[test]
+#[ignore = "requires the packaged Code OSS runtime"]
+fn official_host_creates_a_debug_adapter_from_an_extension_factory() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    std::env::set_var(
+        "GRAPHITE_TEST_DAP_PORT",
+        listener.local_addr().unwrap().port().to_string(),
+    );
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let store = Store::new(app.profile_root.join("plugins"));
+    let package = dir.path().join("debugfactory.vsix");
+    debug_factory_fixture(&package);
+    store.install(&package).unwrap();
+    store.enable("test.debugfactory", true).unwrap();
+    app.plugins.store = Some(store.clone());
+    app.plugins.installed = store.list().unwrap();
+    std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
+    std::fs::write(
+        dir.path().join(".vscode/launch.json"),
+        r#"{"configurations":[{"name":"Fixture","type":"fixture-debug","request":"launch"}]}"#,
+    )
+    .unwrap();
+    app.start_vsix_host(Some(runtime_path)).unwrap();
+    app.start_debugging().unwrap();
+    wait_for(&mut app, |app| !app.vsix_debug_adapter_pending());
+    assert!(app.debug.session.is_some(), "{}", app.status);
+    let (_stream, _) = listener.accept().unwrap();
+    app.debug.stop().unwrap();
+}

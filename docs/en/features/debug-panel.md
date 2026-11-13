@@ -37,9 +37,24 @@ A standard VS Code `launch.json` names only the debug `type` (`"node"`, `"python
 - `program` paths that leave the extension directory are ignored.
 - An `"adapter": { "command": …, "args": […] }` in the configuration still takes precedence, for adapters not installed as extensions.
 - Errors name the cause: no extension provides the type, the providing extension is disabled, or the adapter program is missing.
-- Not supported yet: extensions that build their adapter in code (`registerDebugAdapterDescriptorFactory`) and declare no `program`.
+- Extensions that create their adapter in code are handled by the extension host; see below.
 
 Extensions installed before this feature are re-read from their `package.json` when the registry loads.
+
+### Adapters created by extension code
+
+When the extension that provides the `type` declares no `program` but has a code entry point, it normally calls `vscode.debug.registerDebugAdapterDescriptorFactory`. Graphite then:
+
+1. Requires the workspace to be trusted and the extension to be enabled and approved in Plugins (the same rule as running any extension code). Otherwise it says so and does not start.
+2. Starts the extension host if it is not running, activates the extension (activation event `onDebugResolve:<type>`) and runs its factory with the launch configuration after variable expansion.
+3. Starts the session from the descriptor the factory returns:
+   - `DebugAdapterExecutable` runs the command with its `args`, `options.cwd` and `options.env`.
+   - `DebugAdapterServer` connects to the port. Only loopback addresses are accepted, so an extension cannot make Graphite connect to another machine.
+   - Named pipe servers and `DebugAdapterInlineImplementation` (an adapter running inside the extension host) are reported as not supported yet.
+
+The wait ends with a message if the extension fails, returns no adapter, or does not answer within 30 seconds. `Shift+F5` while waiting abandons the launch; a late answer is ignored.
+
+Known limits: `resolveDebugConfiguration` and `provideDebugConfigurations` providers are not called, so extensions that rely on them to fill in or rewrite a configuration (many language extensions do) may not work yet. This path needs the packaged Code OSS runtime; it is covered by unit tests that play the host's side of the protocol and by an ignored integration test (`official_host_creates_a_debug_adapter_from_an_extension_factory`), but it has not been run against real third-party extensions.
 
 ### Variables
 

@@ -58,6 +58,16 @@ Known limits: not drawn in word-wrap mode; ranges do not follow edits until the 
 - [ ] Snippets contributed by an installed VSIX appear in completion; disabling the extension removes them.
 - [ ] Color themes contributed by a VSIX appear in the theme list and apply correctly.
 
+## 5c. Debugging with extensions
+
+- [ ] A `launch.json` with only `"type"` (for example from an installed debugger extension that ships a `program`) starts the adapter; the panel shows frames, variables and watches at a breakpoint.
+- [ ] An extension that registers a `DebugAdapterDescriptorFactory` (executable or `DebugAdapterServer`): F5 starts the session after the extension host starts; the status line says "Waiting for ..." meanwhile.
+- [ ] `Shift+F5` while waiting for the extension abandons the launch and nothing starts later.
+- [ ] A factory that throws, or returns an inline implementation, shows a readable status message.
+- [ ] `preLaunchTask` runs before the session and a failing task aborts it; `postDebugTask` runs once after the session ends.
+- [ ] Command palette: **Select Debug Configuration** and **Start Debugging: NAME** list every configuration of `launch.json`.
+- [ ] With the real Code OSS runtime, run `cargo test -p graphite-app -- --ignored official_host_creates_a_debug_adapter_from_an_extension_factory` with `GRAPHITE_TEST_CODE_OSS` set.
+
 ## 6. Report
 
 Note failures with: step, expected result, actual result, and `unsupported-api.log` contents if present.

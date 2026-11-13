@@ -5,6 +5,7 @@ use graphite_extension_host::code_oss::Session;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
+mod debug;
 mod decorations;
 mod documents;
 mod file_events;
@@ -38,6 +39,8 @@ pub(crate) struct Runtime {
     terminals: terminals::Terminals,
     watches: file_events::Watches,
     decorations: decorations::Decorations,
+    /// A debug adapter the extension host is being asked to create.
+    debug_adapter: Option<debug::PendingAdapter>,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -48,6 +51,7 @@ impl Runtime {
             || self.languages.pending()
             || !self.editor_commands.is_empty()
             || !self.test_calls.is_empty()
+            || self.debug_adapter.is_some()
     }
 }
 
@@ -136,56 +140,7 @@ impl App {
             return Err(format!("Multiple enabled VSIX extensions declare {command}"));
         }
         if self.plugins.vsix.is_none() {
-            let path = runtime_path
-                .ok_or("Code OSS runtime is unavailable. Use the portable Graphite package.")?;
-            let store = self
-                .plugins
-                .store
-                .as_ref()
-                .ok_or("Plugin store is unavailable")?;
-            let packages = self
-                .plugins
-                .installed
-                .iter()
-                .filter(|record| eligible(record))
-                .map(|record| {
-                    json!({
-                        "id": record.metadata.id(),
-                        "version": record.metadata.version(),
-                        "directory": store.root.join(&record.directory).join("extension"),
-                    })
-                })
-                .collect::<Vec<_>>();
-            let proxy = self.event_proxy.clone();
-            let root_uri = graphite_core_api::DocumentUri::from_path(self.tree.root())
-                .map_err(|error| error.to_string())?;
-            let session = Session::start(path, move || {
-                if let Some(proxy) = &proxy {
-                    let _ = proxy.send_event(UserEvent::ExtensionHostWake);
-                }
-            });
-            session.send(json!({
-                "type": "start", "packages": packages, "root": self.tree.root(), "rootUri": root_uri,
-                "storage": self.profile_root.join("code-oss"), "locale": self.translator.language().code(),
-                "configuration": self.vsix_configuration()?,
-            }))?;
-            self.plugins.vsix = Some(Runtime {
-                session,
-                ready: false,
-                registered: BTreeSet::new(),
-                command: None,
-                sent: false,
-                synced: None,
-                prompt: None,
-                languages: Default::default(),
-                editor_commands: BTreeMap::new(),
-                test_calls: BTreeSet::new(),
-                workbench: Default::default(),
-                terminals: Default::default(),
-                watches: Default::default(),
-                decorations: Default::default(),
-                unsupported: BTreeSet::new(),
-            });
+            self.start_vsix_host(runtime_path)?;
         }
         let runtime = self.plugins.vsix.as_mut().unwrap();
         if runtime.command.is_some() {
@@ -197,6 +152,62 @@ impl App {
             Instant::now() + Duration::from_secs(30),
         ));
         runtime.sent = false;
+        Ok(())
+    }
+
+    /// Starts the Code OSS extension host and loads the approved extensions into it.
+    pub(super) fn start_vsix_host(&mut self, runtime_path: Option<PathBuf>) -> Result<()> {
+        let path = runtime_path
+            .ok_or("Code OSS runtime is unavailable. Use the portable Graphite package.")?;
+        let store = self
+            .plugins
+            .store
+            .as_ref()
+            .ok_or("Plugin store is unavailable")?;
+        let packages = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| eligible(record))
+            .map(|record| {
+                json!({
+                    "id": record.metadata.id(),
+                    "version": record.metadata.version(),
+                    "directory": store.root.join(&record.directory).join("extension"),
+                })
+            })
+            .collect::<Vec<_>>();
+        let proxy = self.event_proxy.clone();
+        let root_uri = graphite_core_api::DocumentUri::from_path(self.tree.root())
+            .map_err(|error| error.to_string())?;
+        let session = Session::start(path, move || {
+            if let Some(proxy) = &proxy {
+                let _ = proxy.send_event(UserEvent::ExtensionHostWake);
+            }
+        });
+        session.send(json!({
+            "type": "start", "packages": packages, "root": self.tree.root(), "rootUri": root_uri,
+            "storage": self.profile_root.join("code-oss"), "locale": self.translator.language().code(),
+            "configuration": self.vsix_configuration()?,
+        }))?;
+        self.plugins.vsix = Some(Runtime {
+            session,
+            ready: false,
+            registered: BTreeSet::new(),
+            command: None,
+            sent: false,
+            synced: None,
+            prompt: None,
+            languages: Default::default(),
+            editor_commands: BTreeMap::new(),
+            test_calls: BTreeSet::new(),
+            workbench: Default::default(),
+            terminals: Default::default(),
+            watches: Default::default(),
+            decorations: Default::default(),
+            debug_adapter: None,
+            unsupported: BTreeSet::new(),
+        });
         Ok(())
     }
 
@@ -259,7 +270,9 @@ impl App {
                     }
                 }
                 Some("result") => {
-                    if event["id"].as_u64() == Some(1) {
+                    if event["id"].as_u64() == Some(debug::ADAPTER_CALL_ID) {
+                        self.finish_vsix_debug_adapter(runtime, &event);
+                    } else if event["id"].as_u64() == Some(1) {
                         runtime.command = None;
                         if let Some(error) = event["error"].as_str() {
                             self.status = error.to_owned();
@@ -300,6 +313,7 @@ impl App {
         }
         if runtime.ready {
             self.reply_vsix_editor_commands(runtime)?;
+            self.drive_vsix_debug_adapter(runtime)?;
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
             self.refresh_vsix_outputs(runtime);

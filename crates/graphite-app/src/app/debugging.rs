@@ -33,6 +33,9 @@ impl App {
         if self.debug_pending_launch.is_some() {
             return Err("A debug session is already waiting for its preLaunchTask".into());
         }
+        if self.vsix_debug_adapter_pending() {
+            return Err("A debug adapter is already being created".into());
+        }
         if let Some(label) = config.pre_launch_task.clone() {
             // The session starts from `finish_debug_pre_launch` once the task succeeds.
             self.task_file()?
@@ -73,7 +76,10 @@ impl App {
     /// Selects `name` and starts it. A running session must be stopped first so a
     /// configuration chosen from the list is never silently ignored.
     pub(crate) fn start_debug_configuration(&mut self, name: &str) -> Result<(), String> {
-        if self.debug.session.is_some() || self.debug_pending_launch.is_some() {
+        if self.debug.session.is_some()
+            || self.debug_pending_launch.is_some()
+            || self.vsix_debug_adapter_pending()
+        {
             return Err(
                 "A debug session is already active; stop it before starting another".into(),
             );
@@ -86,7 +92,25 @@ impl App {
         &mut self,
         mut config: crate::debugger::LaunchConfig,
     ) -> Result<(), String> {
-        self.resolve_debug_adapter(&mut config)?;
+        match self.resolve_debug_adapter(&mut config)? {
+            super::debug_adapters::AdapterSource::Ready => {
+                self.start_resolved_debug_session(config)
+            }
+            // The extension creates its adapter in the extension host; the session starts from
+            // `finish_vsix_debug_adapter` when the answer arrives.
+            super::debug_adapters::AdapterSource::Extension(owner) => {
+                self.request_vsix_debug_adapter(config, &owner)?;
+                self.debug_panel_visible = true;
+                Ok(())
+            }
+        }
+    }
+
+    /// Starts the session of a configuration whose adapter is known.
+    pub(crate) fn start_resolved_debug_session(
+        &mut self,
+        config: crate::debugger::LaunchConfig,
+    ) -> Result<(), String> {
         self.debug.active_file = self.documents[self.active_document()]
             .buffer
             .path()
@@ -137,6 +161,10 @@ impl App {
         if self.debug_pending_launch.take().is_some() {
             // Stopping while the preLaunchTask runs abandons the launch.
             self.cancel_task();
+            self.status = "Debugging cancelled".into();
+        }
+        if self.cancel_vsix_debug_adapter() {
+            // Stopping while the extension builds its adapter abandons the launch.
             self.status = "Debugging cancelled".into();
         }
         self.debug.stop().map_err(|error| error.to_string())

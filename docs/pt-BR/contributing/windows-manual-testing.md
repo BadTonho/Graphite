@@ -58,6 +58,16 @@ Limites conhecidos: não desenha com quebra de linha; os intervalos não acompan
 - [ ] Snippets de um VSIX instalado aparecem no autocompletar; desativar a extensão os remove.
 - [ ] Temas de cor de um VSIX aparecem na lista e se aplicam corretamente.
 
+## 5c. Depuração com extensões
+
+- [ ] Um `launch.json` com apenas `"type"` (por exemplo de uma extensão de depurador instalada que traz um `program`) inicia o adaptador; o painel mostra frames, variáveis e watches em um breakpoint.
+- [ ] Uma extensão que registra um `DebugAdapterDescriptorFactory` (executável ou `DebugAdapterServer`): F5 inicia a sessão depois que o extension host sobe; a barra de status mostra "Waiting for ..." nesse meio tempo.
+- [ ] `Shift+F5` enquanto espera a extensão abandona o lançamento e nada inicia depois.
+- [ ] Uma fábrica que lança erro, ou devolve uma implementação inline, mostra uma mensagem legível na barra de status.
+- [ ] `preLaunchTask` roda antes da sessão e uma tarefa que falha a aborta; `postDebugTask` roda uma vez depois que a sessão termina.
+- [ ] Paleta de comandos: **Select Debug Configuration** e **Start Debugging: NOME** listam todas as configurações do `launch.json`.
+- [ ] Com o runtime Code OSS real, execute `cargo test -p graphite-app -- --ignored official_host_creates_a_debug_adapter_from_an_extension_factory` com `GRAPHITE_TEST_CODE_OSS` definido.
+
 ## 6. Relatório
 
 Anote falhas com: passo, resultado esperado, resultado obtido e o conteúdo de `unsupported-api.log`, se existir.

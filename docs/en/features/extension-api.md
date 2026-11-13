@@ -22,6 +22,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Clipboard | `env.clipboard.readText` and `writeText`. |
 | `workspace.fs` | Answered by the extension host directly on the local disk; it does not go through Graphite. |
 | Text decorations | `window.createTextEditorDecorationType` and `TextEditor.setDecorations` draw background colors, borders (`border`, `outline`), whole-line marks and `after` text at the end of a line, with `dark` and `light` variants. Colors can be hex, `rgb()`/`rgba()` or common theme colors. Fonts, gutter icons, overview ruler marks, `before` text and hover messages are ignored, and decorations are not drawn in word-wrap mode yet. Ranges are not adjusted while the document is edited; the extension normally sets them again. |
+| Debug adapters | An extension that registers a `DebugAdapterDescriptorFactory` can supply the adapter for its debug type: executable and local TCP server descriptors work. Configuration providers, named pipes and inline implementations are not supported yet. See [Debug panel](debug-panel.md). |
 | Webview | One webview panel, HTML content, messages both ways. |
 
 ## Declarative contributions

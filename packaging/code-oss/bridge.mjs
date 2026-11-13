@@ -31,6 +31,9 @@ let stopping = false;
 let synchronization = Promise.resolve();
 const documents = new Map();
 let activeEditor = null;
+// Debug adapter factories extensions registered, by debug type, so Graphite can ask for one.
+const debugFactories = new Map();
+let workspaceRootUri;
 
 function send(message) {
     const json = JSON.stringify(message, (_, value) => value?.$mid === 1
@@ -101,6 +104,7 @@ async function extensions(packages) {
 }
 
 async function start({ packages, root, rootUri, storage, locale, configuration }) {
+    workspaceRootUri = rootUri;
     const snapshot = await extensions(packages);
     if (stopping) return;
     const declared = new Map();
@@ -174,6 +178,7 @@ async function start({ packages, root, rootUri, storage, locale, configuration }
                     rpc.set(identifier, new Proxy(Object.create(null), {
                         get: (_, method) => typeof method === 'string' && method.startsWith('$')
                             ? (...args) => {
+                                if (name === 'MainThreadDebugService') trackDebugFactory(method, args);
                                 if (name === 'MainThreadCommands' && method === '$executeCommand' && declared.has(args[0])) {
                                     const owner = declared.get(args[0]);
                                     if (!owner) throw new Error(`Multiple VSIX extensions declare ${args[0]}`);
@@ -289,6 +294,42 @@ async function execute({ id, owner, command }) {
     }
 }
 
+function trackDebugFactory(method, args) {
+    if (method === '$registerDebugAdapterDescriptorFactory') {
+        debugFactories.set(args[0], args[1]);
+    } else if (method === '$unregisterDebugAdapterDescriptorFactory') {
+        for (const [type, handle] of debugFactories) {
+            if (handle === args[0]) debugFactories.delete(type);
+        }
+    }
+}
+
+// Activates the extension that provides `debugType`, runs its adapter factory and returns the
+// descriptor (executable, server, ...) for Graphite to start.
+async function provideDebugAdapter({ id, owner, debugType, session }) {
+    try {
+        await synchronization;
+        const extensionId = { value: owner, _lower: owner };
+        const activated = await rpc.getProxy(ExtHostContext.ExtHostExtensionService)
+            .$activate(extensionId, { startup: false, extensionId, activationEvent: `onDebugResolve:${debugType}` });
+        if (!activated) {
+            throw new Error(`Could not activate ${owner}. Check its entry point, dependencies and supported Code OSS version.`);
+        }
+        const handle = debugFactories.get(debugType);
+        if (handle === undefined) {
+            throw new Error(`${owner} did not register a debug adapter factory for '${debugType}'`);
+        }
+        const descriptor = await rpc.getProxy(ExtHostContext.ExtHostDebugService).$provideDebugAdapter(handle, {
+            id: randomUUID(), type: session.type, name: session.name,
+            folderUri: workspaceRootUri ? URI.parse(workspaceRootUri) : undefined,
+            configuration: session.configuration,
+        });
+        send({ type: 'result', id, result: descriptor ?? null });
+    } catch (error) {
+        send({ type: 'result', id, error: String(error?.message ?? error) });
+    }
+}
+
 async function executeCommand(extensionId, command, args) {
     if (extensionId) {
         const activated = await rpc.getProxy(ExtHostContext.ExtHostExtensionService)
@@ -332,6 +373,9 @@ async function receive(message) {
             break;
         case 'execute':
             await execute(message);
+            break;
+        case 'provideDebugAdapter':
+            await provideDebugAdapter(message);
             break;
         case 'call':
             await synchronization;

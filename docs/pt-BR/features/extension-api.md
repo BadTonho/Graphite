@@ -22,6 +22,7 @@ Extensões VSIX rodam no extension host oficial do Code OSS 1.145.2, em um proce
 | Área de transferência | `env.clipboard.readText` e `writeText`. |
 | `workspace.fs` | Respondido pelo próprio extension host direto no disco local; não passa pelo Graphite. |
 | Decorações de texto | `window.createTextEditorDecorationType` e `TextEditor.setDecorations` desenham cores de fundo, bordas (`border`, `outline`), marcas de linha inteira e texto `after` no fim da linha, com variantes `dark` e `light`. As cores podem ser hex, `rgb()`/`rgba()` ou cores de tema comuns. Fontes, ícones de gutter, marcas da régua, texto `before` e mensagens de hover são ignorados, e as decorações ainda não são desenhadas no modo de quebra de linha. Os intervalos não são ajustados durante a edição; a extensão normalmente os define de novo. |
+| Adaptadores de depuração | Uma extensão que registra um `DebugAdapterDescriptorFactory` pode fornecer o adaptador do seu tipo de depuração: descritores de executável e de servidor TCP local funcionam. Provedores de configuração, named pipes e implementações inline ainda não são suportados. Veja [Painel de depuração](debug-panel.md). |
 | Webview | Um painel webview, conteúdo HTML, mensagens nos dois sentidos. |
 
 ## Contribuições declarativas

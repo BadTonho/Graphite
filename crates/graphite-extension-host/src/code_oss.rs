@@ -62,6 +62,37 @@ impl Session {
             Err(mpsc::TryRecvError::Disconnected) => Some(Err("Code OSS disconnected".into())),
         }
     }
+
+    /// A session wired to an in-process stand-in for the Code OSS bridge instead of a Node
+    /// process. Tests use it to play the extension host's side of the protocol.
+    pub fn loopback() -> (Self, LoopbackHost) {
+        let (outgoing, sent) = mpsc::sync_channel(QUEUE);
+        let (events, incoming) = mpsc::sync_channel(QUEUE);
+        let session = Self {
+            outgoing,
+            incoming,
+            stopped: Arc::new(AtomicBool::new(false)),
+        };
+        (session, LoopbackHost { sent, events })
+    }
+}
+
+/// The host end of [`Session::loopback`].
+pub struct LoopbackHost {
+    sent: Receiver<Value>,
+    events: SyncSender<Result<Value, String>>,
+}
+
+impl LoopbackHost {
+    /// The next message Graphite sent to the host, if any.
+    pub fn next_sent(&self) -> Option<Value> {
+        self.sent.try_recv().ok()
+    }
+
+    /// Delivers an event from the host to Graphite.
+    pub fn emit(&self, event: Value) {
+        let _ = self.events.send(Ok(event));
+    }
 }
 
 impl Drop for Session {
