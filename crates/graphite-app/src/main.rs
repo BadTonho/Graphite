@@ -24,6 +24,7 @@ mod keybindings;
 mod lsp;
 mod merge;
 mod multi_diff;
+mod notebook;
 mod ports;
 mod previews;
 mod process_explorer;
