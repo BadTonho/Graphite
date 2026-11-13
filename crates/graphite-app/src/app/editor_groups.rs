@@ -494,6 +494,131 @@ fn balanced_layout_nodes(nodes: &[Layout], direction: SplitDirection) -> Layout 
     }
 }
 
+impl EditorGroups {
+    /// Moves a tab to `index` within its group (clamped to the last position). The active tab
+    /// stays the active one.
+    pub(crate) fn move_view_to_index(&mut self, view: ViewId, index: usize) -> bool {
+        let Some(group_id) = self.group_for_view(view) else {
+            return false;
+        };
+        let group = self.group_mut(group_id).expect("group exists");
+        let active_id = group.tabs[group.active].id;
+        let from = group
+            .tabs
+            .iter()
+            .position(|tab| tab.id == view)
+            .expect("view is in its group");
+        let tab = group.tabs.remove(from);
+        group.tabs.insert(index.min(group.tabs.len()), tab);
+        group.active = group
+            .tabs
+            .iter()
+            .position(|tab| tab.id == active_id)
+            .unwrap_or(0);
+        self.order_group_tabs(group_id);
+        true
+    }
+
+    /// Puts a view of the same document into `target` (the existing one when the group already
+    /// has it) and makes it the active tab there, focusing that group. With `copy` false the tab
+    /// leaves its group, which closes if it had no other tab. Returns the view in the target.
+    pub(crate) fn transfer_view(
+        &mut self,
+        view: ViewId,
+        target: u64,
+        copy: bool,
+    ) -> Option<ViewId> {
+        let source = self.group_for_view(view)?;
+        self.group(target)?;
+        if source == target {
+            return Some(view);
+        }
+        let mut tab = self.view(view)?.clone();
+        let existing = self
+            .group(target)?
+            .tabs
+            .iter()
+            .position(|other| other.document == tab.document);
+        let result = match existing {
+            Some(index) => {
+                let group = self.group_mut(target)?;
+                group.active = index;
+                group.tabs[index].id
+            }
+            None => {
+                tab.id = next_view_id();
+                tab.ime_preedit.clear();
+                tab.ime_composing = false;
+                tab.smart_selection_history.clear();
+                tab.smart_selection_guard = None;
+                let id = tab.id;
+                let group = self.group_mut(target)?;
+                group.tabs.push(tab);
+                group.active = group.tabs.len() - 1;
+                self.order_group_tabs(target);
+                let group = self.group_mut(target)?;
+                group.active = group.tabs.iter().position(|other| other.id == id)?;
+                id
+            }
+        };
+        self.focused = target;
+        if !copy {
+            self.remove_view_from_group(view);
+        }
+        Some(result)
+    }
+
+    /// Takes a tab out of its group without any dirty check, removing the group when it was the
+    /// last tab and other groups remain. The focus is left alone unless its group disappeared.
+    fn remove_view_from_group(&mut self, view: ViewId) {
+        let Some(id) = self.group_for_view(view) else {
+            return;
+        };
+        let focused = self.focused;
+        let group = self.group_mut(id).expect("group exists");
+        if group.tabs.len() > 1 {
+            let active_id = group.tabs[group.active].id;
+            let index = group.tabs.iter().position(|tab| tab.id == view).unwrap();
+            group.tabs.remove(index);
+            group.active = group
+                .tabs
+                .iter()
+                .position(|tab| tab.id == active_id)
+                .unwrap_or(index.min(group.tabs.len() - 1));
+        } else if self.groups.len() > 1 {
+            self.layout = self.layout.clone().remove(id).unwrap();
+            self.groups.retain(|group| group.id != id);
+            if focused == id {
+                self.focused = self.groups[0].id;
+            }
+        }
+    }
+
+    /// Moves every tab of `from` into `into` (skipping documents it already shows) and removes
+    /// `from`. The result is the focused group.
+    pub(crate) fn join_groups(&mut self, from: u64, into: u64) -> bool {
+        if from == into || self.group(from).is_none() || self.group(into).is_none() {
+            return false;
+        }
+        let views = self.view_ids_in_group(from).unwrap_or_default();
+        for view in views {
+            self.transfer_view(view, into, false);
+        }
+        self.focused = into;
+        true
+    }
+
+    /// The tab ids of a group in tab order.
+    pub(crate) fn group_views(&self, id: u64) -> Vec<ViewId> {
+        self.view_ids_in_group(id).unwrap_or_default()
+    }
+
+    /// Index of the active tab of a group.
+    pub(crate) fn active_index(&self, id: u64) -> Option<usize> {
+        self.group(id).map(|group| group.active)
+    }
+}
+
 impl Layout {
     fn place_leaf_first(&mut self, target: u64) -> bool {
         let Self::Split { first, second, .. } = self else {

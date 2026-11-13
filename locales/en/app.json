@@ -618,5 +618,6 @@
   "editor.anchor.none": "No selection anchor is set",
   "editor.anchor.set": "Anchor set at {line}:{column}",
   "editor.announce_position": "Line {line}, column {column}",
-  "editor.announce_position_selection": "Line {line}, column {column}, {selected} characters selected"
+  "editor.announce_position_selection": "Line {line}, column {column}, {selected} characters selected",
+  "groups.no_target": "There is no other editor group"
 }
