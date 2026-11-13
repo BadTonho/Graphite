@@ -68,6 +68,12 @@ impl App {
                 }
                 DecorationLayer::Over => {
                     if let (Some(color), Some((left, right))) = (
+                        mark.look.underline,
+                        span(&mark, text, tab_size, text_x, cw, area_right),
+                    ) {
+                        r.draw_rect(left, y + lh - 2.0, right - left, 1.0, color);
+                    }
+                    if let (Some(color), Some((left, right))) = (
                         mark.look.border,
                         span(&mark, text, tab_size, text_x, cw, area_right),
                     ) {

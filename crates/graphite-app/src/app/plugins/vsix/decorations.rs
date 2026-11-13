@@ -14,6 +14,8 @@ const MARK_LIMIT: usize = 20_000;
 const AFTER_LIMIT: usize = 300;
 /// Decoration type key of the built-in document highlights.
 const HIGHLIGHT_KEY: &str = "graphite.documentHighlight";
+/// Decoration type key of the built-in document links.
+const LINK_KEY: &str = "graphite.documentLink";
 
 /// Text drawn after the end of a line.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,6 +29,8 @@ pub(crate) struct After {
 pub(crate) struct Look {
     pub background: Option<Color>,
     pub border: Option<Color>,
+    /// Color of a line drawn under the text (document links).
+    pub underline: Option<Color>,
     pub after: Option<After>,
 }
 
@@ -187,6 +191,7 @@ fn look(options: &Value) -> Look {
     Look {
         background: parse_color(&options["backgroundColor"]),
         border: border_color(options),
+        underline: None,
         after: after(options),
     }
 }
@@ -196,6 +201,7 @@ fn overlay(base: &Look, variant: &Look) -> Look {
     Look {
         background: variant.background.or(base.background),
         border: variant.border.or(base.border),
+        underline: variant.underline.or(base.underline),
         after: variant.after.clone().or_else(|| base.after.clone()),
     }
 }
@@ -256,6 +262,35 @@ impl Decorations {
 
     pub(super) fn clear_highlights(&mut self, editor: &str) {
         self.set(editor, HIGHLIGHT_KEY, Vec::new());
+    }
+
+    /// Underlines the links an extension reported, as 0-based `((line, column), (line, column))`
+    /// ranges, with a built-in decoration type.
+    pub(super) fn set_links(&mut self, editor: &str, ranges: Vec<((u32, u32), (u32, u32))>) {
+        let look = Look {
+            underline: theme_color("textLink.foreground")
+                .or_else(|| parse_color(&Value::String("#3794ff".into()))),
+            ..Look::default()
+        };
+        self.styles.entry(LINK_KEY.to_owned()).or_insert(Style {
+            dark: look.clone(),
+            light: look,
+            whole_line: false,
+        });
+        let marks = ranges
+            .into_iter()
+            .take(MARK_LIMIT)
+            .map(|(start, end)| Mark {
+                start,
+                end,
+                after: None,
+            })
+            .collect();
+        self.set(editor, LINK_KEY, marks);
+    }
+
+    pub(super) fn clear_links(&mut self, editor: &str) {
+        self.set(editor, LINK_KEY, Vec::new());
     }
 
     pub(super) fn is_empty(&self) -> bool {

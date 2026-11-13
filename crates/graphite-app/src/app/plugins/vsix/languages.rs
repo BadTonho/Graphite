@@ -27,6 +27,8 @@ pub(crate) enum Feature {
     SelectionRanges,
     /// Formatting after a trigger character was typed (`editor.formatOnType`).
     FormatOnType,
+    /// Clickable links in the text. Requested automatically.
+    DocumentLinks,
     /// Call hierarchy (callers and callees). Started by a command, with several steps.
     CallHierarchy,
     /// Type hierarchy (supertypes and subtypes).
@@ -244,7 +246,8 @@ impl App {
             | Feature::DocumentHighlights
             | Feature::FoldingRanges
             | Feature::CallHierarchy
-            | Feature::TypeHierarchy => return Ok(false),
+            | Feature::TypeHierarchy
+            | Feature::DocumentLinks => return Ok(false),
             Feature::SelectionRanges => {
                 ("$provideSelectionRanges", json!([handle, uri, [position]]))
             }
@@ -396,6 +399,7 @@ impl App {
             }
             Feature::Format
             | Feature::FormatRange
+            | Feature::DocumentLinks
             | Feature::CallHierarchy
             | Feature::TypeHierarchy
             | Feature::FormatOnType
@@ -482,6 +486,9 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerDocumentLinkProvider") => {
+                Feature::DocumentLinks
+            }
             ("MainThreadLanguageFeatures", "$registerCallHierarchyProvider") => {
                 Feature::CallHierarchy
             }

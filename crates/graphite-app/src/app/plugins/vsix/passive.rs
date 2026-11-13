@@ -43,6 +43,11 @@ pub(super) struct Passive {
     next_id: u64,
     inlay: Option<InFlight>,
     fold: Option<InFlight>,
+    links_request: Option<InFlight>,
+    /// Revision of the document the last link request covered.
+    links_done: Option<(DocumentId, u64)>,
+    /// The links of the active document, for Ctrl+click.
+    pub(super) links: Option<LinkSet>,
     /// Revision of the document the last folding request covered.
     fold_done: Option<(DocumentId, u64)>,
     highlight: Option<InFlight>,
@@ -61,6 +66,7 @@ impl Passive {
     pub(super) fn busy(&self) -> bool {
         self.inlay.is_some()
             || self.fold.is_some()
+            || self.links_request.is_some()
             || self.highlight.is_some()
             || self.highlight_wanted.is_some()
     }
@@ -142,6 +148,98 @@ pub(super) fn highlight_ranges(result: &Value) -> Vec<((u32, u32), (u32, u32))> 
         .collect()
 }
 
+/// One link of the active document: 0-based `(line, UTF-16 column)` start and end, and where it
+/// goes (`None` when the provider leaves it to be resolved, which is not supported yet).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DocLink {
+    pub start: (u32, u32),
+    pub end: (u32, u32),
+    pub target: Option<String>,
+}
+
+/// The links of one document, with the document and revision they describe.
+pub(crate) struct LinkSet {
+    pub uri: String,
+    pub document: DocumentId,
+    pub revision: u64,
+    pub links: Vec<DocLink>,
+}
+
+/// The links of an `ILinksListDto`. Ranges that are empty or malformed are dropped.
+pub(super) fn document_links(result: &Value) -> Vec<DocLink> {
+    result["links"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|link| {
+            let coordinate = |name: &str| {
+                u32::try_from(link["range"][name].as_u64()?)
+                    .ok()?
+                    .checked_sub(1)
+            };
+            let start = (coordinate("startLineNumber")?, coordinate("startColumn")?);
+            let end = (coordinate("endLineNumber")?, coordinate("endColumn")?);
+            if end <= start {
+                return None;
+            }
+            Some(DocLink {
+                start,
+                end,
+                // The host turns URIs into strings; a plain string is also accepted.
+                target: link["url"].as_str().map(str::to_owned),
+            })
+        })
+        .collect()
+}
+
+/// The link covering `(line, column)`, if any.
+pub(super) fn link_at(links: &[DocLink], line: u32, column: u32) -> Option<&DocLink> {
+    links
+        .iter()
+        .find(|link| link.start <= (line, column) && (line, column) < link.end)
+}
+
+impl App {
+    /// Opens the extension link under the cursor of the active document. Returns whether there
+    /// was one (even if its target could not be opened, which is reported in the status line).
+    pub(crate) fn open_document_link_at_cursor(&mut self) -> bool {
+        let document = self.active_document();
+        let revision = self.documents[document].buffer.revision();
+        let cursor = documents::position(
+            &self.documents[document].buffer.text(),
+            self.editor().cursor().char_idx,
+        );
+        let Some(link) = self
+            .plugins
+            .vsix
+            .as_ref()
+            .and_then(|runtime| runtime.passive.links.as_ref())
+            .filter(|set| set.document == document && set.revision == revision)
+            .and_then(|set| link_at(&set.links, cursor.line, cursor.character))
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(target) = link.target else {
+            self.status =
+                "This link has to be resolved by its extension, which is not supported yet".into();
+            return true;
+        };
+        if target.starts_with("https://") {
+            crate::app::plugins::drawing::open_external_https(&target);
+        } else if let Ok(uri) = graphite_core_api::DocumentUri::parse(&target) {
+            match uri.to_path() {
+                Ok(path) if path.is_file() => self.open_file(path),
+                Ok(path) => self.status = format!("{} does not exist", path.display()),
+                Err(_) => self.status = format!("Cannot open {target}"),
+            }
+        } else {
+            self.status = format!("Cannot open {target}");
+        }
+        true
+    }
+}
+
 impl Runtime {
     fn provider(&self, feature: Feature, document: &DocumentSnapshot) -> Option<u64> {
         self.languages.provider_for(feature, document)
@@ -156,6 +254,7 @@ impl App {
                 Feature::InlayHints,
                 Feature::DocumentHighlights,
                 Feature::FoldingRanges,
+                Feature::DocumentLinks,
             ])
         {
             return Ok(());
@@ -164,6 +263,7 @@ impl App {
         for in_flight in [
             &mut runtime.passive.inlay,
             &mut runtime.passive.fold,
+            &mut runtime.passive.links_request,
             &mut runtime.passive.highlight,
         ] {
             if in_flight
@@ -200,6 +300,14 @@ impl App {
             && !runtime.passive.fold.as_ref().is_some_and(|request| {
                 request.key.revision == revision && request.key.document == document
             });
+        let wants_links = runtime.passive.links_done != Some((document, revision))
+            && !runtime
+                .passive
+                .links_request
+                .as_ref()
+                .is_some_and(|request| {
+                    request.key.revision == revision && request.key.document == document
+                });
         let wants_highlight = runtime.passive.highlight_done != Some(key)
             && runtime
                 .passive
@@ -207,7 +315,7 @@ impl App {
                 .as_ref()
                 .map(|request| request.key)
                 != Some(key);
-        if !wants_inlay && !wants_highlight && !wants_fold {
+        if !wants_inlay && !wants_highlight && !wants_fold && !wants_links {
             if runtime.passive.highlight_done == Some(key) {
                 runtime.passive.highlight_wanted = None;
             }
@@ -221,6 +329,9 @@ impl App {
         }
         if wants_fold {
             self.request_vsix_folds(runtime, &snapshot, key)?;
+        }
+        if wants_links {
+            self.request_vsix_links(runtime, &snapshot, key)?;
         }
         if wants_highlight {
             // A stale highlight would point at the wrong text, so drop it right away.
@@ -320,6 +431,41 @@ impl App {
         Ok(())
     }
 
+    fn request_vsix_links(
+        &self,
+        runtime: &mut Runtime,
+        snapshot: &DocumentSnapshot,
+        key: Key,
+    ) -> Result<()> {
+        runtime.passive.links_done = Some((key.document, key.revision));
+        // Links of an older text would underline the wrong words.
+        if let Some(old) = runtime.passive.links.take() {
+            runtime.decorations.clear_links(&old.uri);
+        }
+        let Some(handle) = runtime.provider(Feature::DocumentLinks, snapshot) else {
+            return Ok(());
+        };
+        if let Some(previous) = runtime.passive.links_request.take() {
+            runtime
+                .session
+                .send(json!({"type":"cancelCall","id":previous.id}))?;
+        }
+        let id = runtime.passive.next_id();
+        runtime.session.send(json!({
+            "type": "call", "id": id, "actor": "ExtHostLanguageFeatures",
+            "method": "$provideDocumentLinks", "cancellable": true,
+            "args": [handle, {"$graphiteUri": snapshot.uri}],
+        }))?;
+        runtime.passive.links_request = Some(InFlight {
+            id,
+            key,
+            handle,
+            uri: snapshot.uri.as_str().to_owned(),
+            deadline: Instant::now() + REQUEST_TIMEOUT,
+        });
+        Ok(())
+    }
+
     fn request_vsix_highlights(
         &self,
         runtime: &mut Runtime,
@@ -385,6 +531,35 @@ impl App {
             let tab = &mut self.documents[request.key.document];
             tab.inlay_hints = inlay_hints(&event["result"]);
             tab.inlay_revision = Some(request.key.revision);
+        } else if runtime
+            .passive
+            .links_request
+            .as_ref()
+            .is_some_and(|r| r.id == id)
+        {
+            let request = runtime.passive.links_request.take().unwrap();
+            if event["error"].is_string() {
+                return;
+            }
+            if !current(&request.key, self) {
+                runtime.passive.links_done = None;
+                return;
+            }
+            if let Some(cache) = event["result"]["cacheId"].as_u64() {
+                let _ = runtime.session.send(json!({
+                    "type": "call", "actor": "ExtHostLanguageFeatures",
+                    "method": "$releaseDocumentLinks", "args": [request.handle, cache],
+                }));
+            }
+            let links = document_links(&event["result"]);
+            let ranges = links.iter().map(|link| (link.start, link.end)).collect();
+            runtime.decorations.set_links(&request.uri, ranges);
+            runtime.passive.links = Some(LinkSet {
+                uri: request.uri,
+                document: request.key.document,
+                revision: request.key.revision,
+                links,
+            });
         } else if runtime.passive.fold.as_ref().is_some_and(|r| r.id == id) {
             let request = runtime.passive.fold.take().unwrap();
             if event["error"].is_string() {
@@ -961,5 +1136,136 @@ mod flow_tests {
             calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
             "several cursors"
         );
+    }
+
+    const LINKS: &str = "$registerDocumentLinkProvider";
+
+    fn link(range: Value, url: Option<&str>) -> Value {
+        let mut link = json!({ "range": range });
+        if let Some(url) = url {
+            link["url"] = json!(url);
+        }
+        link
+    }
+
+    #[test]
+    fn document_links_are_converted_and_bad_ones_dropped() {
+        let links = document_links(&json!({"links": [
+            link(range(1, 5, 12), Some("https://example.com")),
+            link(range(2, 1, 4), None),
+            link(range(3, 4, 4), Some("https://empty.example")),
+            {"url": "https://norange.example"},
+        ], "cacheId": 3}));
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].start, (0, 4));
+        assert_eq!(links[0].end, (0, 11));
+        assert_eq!(links[0].target.as_deref(), Some("https://example.com"));
+        assert_eq!(links[1].target, None, "left for the extension to resolve");
+        assert!(document_links(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn link_at_matches_the_half_open_range() {
+        let links = vec![DocLink {
+            start: (1, 4),
+            end: (1, 9),
+            target: None,
+        }];
+        assert!(link_at(&links, 1, 3).is_none());
+        assert!(link_at(&links, 1, 4).is_some());
+        assert!(link_at(&links, 1, 8).is_some());
+        assert!(link_at(&links, 1, 9).is_none(), "the end is exclusive");
+        assert!(link_at(&links, 0, 5).is_none());
+    }
+
+    #[test]
+    fn links_are_requested_underlined_and_followed_with_a_click() {
+        let dir = TempDir::new();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, "linked file\n").unwrap();
+        let target_uri = graphite_core_api::DocumentUri::from_path(&target).unwrap();
+        let (mut app, host) = app_with_providers(&dir, "see other.txt now\n", &[LINKS]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideDocumentLinks");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][0], 1);
+
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!({"links": [link(range(1, 5, 14), Some(target_uri.as_str()))], "cacheId": 9}),
+        );
+        app.poll_vsix();
+        let uri = graphite_core_api::DocumentUri::from_path(&dir.path().join("a.txt"))
+            .unwrap()
+            .as_str()
+            .to_owned();
+        let marks = app.vsix_line_decorations(&uri, 0, true);
+        assert_eq!(marks.len(), 1);
+        assert!(marks[0].look.underline.is_some(), "the link is underlined");
+        assert_eq!((marks[0].start, marks[0].end), (Some(4), Some(13)));
+        let released = calls(&host, "$releaseDocumentLinks");
+        assert_eq!(released[0]["args"], json!([1, 9]));
+
+        // A click outside any link does nothing; inside it opens the target file.
+        app.editor_mut().set_cursor_line_col(0, 1);
+        assert!(!app.open_document_link_at_cursor());
+        app.editor_mut().set_cursor_line_col(0, 6);
+        assert!(app.open_document_link_at_cursor());
+        assert_eq!(app.editor().text(), "linked file\n", "{}", app.status);
+    }
+
+    #[test]
+    fn editing_clears_the_underlines_and_asks_again() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "x https://a.example\n", &[LINKS]);
+        app.poll_vsix();
+        let first = calls(&host, "$provideDocumentLinks");
+        reply(
+            &host,
+            &first[0]["id"],
+            json!({"links": [link(range(1, 3, 21), Some("https://a.example"))]}),
+        );
+        app.poll_vsix();
+        let uri = graphite_core_api::DocumentUri::from_path(&dir.path().join("a.txt"))
+            .unwrap()
+            .as_str()
+            .to_owned();
+        assert_eq!(app.vsix_line_decorations(&uri, 0, true).len(), 1);
+
+        app.editor_mut().insert("yy");
+        assert!(
+            !app.open_document_link_at_cursor(),
+            "links for an older text must not be followed"
+        );
+        app.poll_vsix();
+        assert!(app.vsix_line_decorations(&uri, 0, true).is_empty());
+        assert_eq!(
+            calls(&host, "$provideDocumentLinks").len(),
+            1,
+            "asked for the new text"
+        );
+    }
+
+    #[test]
+    fn unresolved_links_and_missing_files_are_reported_not_opened() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "aaaa bbbb\n", &[LINKS]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideDocumentLinks");
+        let missing =
+            graphite_core_api::DocumentUri::from_path(&dir.path().join("missing.txt")).unwrap();
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!({"links": [link(range(1, 1, 5), None), link(range(1, 6, 10), Some(missing.as_str()))]}),
+        );
+        app.poll_vsix();
+        app.editor_mut().set_cursor_line_col(0, 1);
+        assert!(app.open_document_link_at_cursor());
+        assert!(app.status.contains("has to be resolved"), "{}", app.status);
+        app.editor_mut().set_cursor_line_col(0, 7);
+        assert!(app.open_document_link_at_cursor());
+        assert!(app.status.contains("does not exist"), "{}", app.status);
     }
 }
