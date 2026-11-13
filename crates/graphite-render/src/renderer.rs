@@ -1,8 +1,10 @@
 //! GPU renderer: solid rectangles and cosmic-text glyphs drawn as textured quads.
 
 mod clip;
+mod images;
 mod text;
 use text::measure_char_width;
+pub use images::Image;
 
 use crate::atlas::{ShelfPacker, Slot, ATLAS_SIZE};
 use crate::icons;
@@ -39,6 +41,9 @@ struct Vertex {
     pos: [f32; 2],
     uv: [f32; 2],
     color: [f32; 4],
+    /// 0 for rectangles and glyphs (the atlas gives coverage), 1 for images (the atlas gives
+    /// color).
+    mode: f32,
 }
 
 #[repr(C)]
@@ -64,6 +69,8 @@ pub struct Renderer {
     bind_group: wgpu::BindGroup,
     globals_buf: wgpu::Buffer,
     atlas_tex: wgpu::Texture,
+    image_tex: wgpu::Texture,
+    images: images::ImageAtlas,
     vertex_buf: wgpu::Buffer,
     vertex_capacity: usize,
     vertices: Vec<Vertex>,
@@ -150,6 +157,25 @@ impl Renderer {
             },
         );
 
+        let image_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("image atlas"),
+            size: wgpu::Extent3d {
+                width: ATLAS_SIZE,
+                height: ATLAS_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let image_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
@@ -191,9 +217,26 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let atlas_view = atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let image_view = image_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bind group"),
             layout: &bgl,
@@ -209,6 +252,14 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&image_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&image_sampler),
                 },
             ],
         });
@@ -232,7 +283,7 @@ impl Renderer {
                 buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Float32],
                 })],
             },
             fragment: Some(wgpu::FragmentState {
@@ -274,6 +325,8 @@ impl Renderer {
             bind_group,
             globals_buf,
             atlas_tex,
+            image_tex,
+            images: images::ImageAtlas::new(),
             vertex_buf,
             vertex_capacity,
             vertices: Vec::new(),
@@ -372,6 +425,21 @@ impl Renderer {
         uv1: [f32; 2],
         color: Color,
     ) {
+        self.push_quad_mode(x0, y0, x1, y1, uv0, uv1, color, 0.0);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_quad_mode(
+        &mut self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        uv0: [f32; 2],
+        uv1: [f32; 2],
+        color: Color,
+        mode: f32,
+    ) {
         let Some(([x0, y0, x1, y1], uv0, uv1)) =
             clip::clip_quad([x0, y0, x1, y1], uv0, uv1, self.clip)
         else {
@@ -381,6 +449,7 @@ impl Renderer {
             pos: [x, y],
             uv: [u, t],
             color,
+            mode,
         };
         self.vertices.extend_from_slice(&[
             v(x0, y0, uv0[0], uv0[1]),
@@ -461,6 +530,30 @@ impl Renderer {
         }
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
+        if self.images.reset_pending {
+            self.images.reset();
+        }
         self.vertices.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_shader_parses_and_validates() {
+        let module = wgpu::naga::front::wgsl::parse_str(include_str!("shader.wgsl"))
+            .expect("the shader parses");
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .expect("the shader is valid");
+    }
+
+    #[test]
+    fn vertices_keep_a_tight_layout() {
+        // Position, texture coordinates, color and the mode, as the pipeline declares them.
+        assert_eq!(std::mem::size_of::<super::Vertex>(), 36);
     }
 }

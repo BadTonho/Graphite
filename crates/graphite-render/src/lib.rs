@@ -4,4 +4,4 @@ mod atlas;
 pub mod icons;
 mod renderer;
 
-pub use renderer::{rgb, Color, RenderError, Renderer};
+pub use renderer::{rgb, Color, Image, RenderError, Renderer};

@@ -27,6 +27,15 @@ impl ShelfPacker {
         }
     }
 
+    /// A packer with nothing reserved, for an atlas that holds only images.
+    pub fn empty() -> Self {
+        Self {
+            cursor_x: 0,
+            cursor_y: 0,
+            row_h: 0,
+        }
+    }
+
     pub fn allocate(&mut self, w: u32, h: u32) -> Option<Slot> {
         // 1px padding avoids bleeding between neighbouring glyphs.
         let (pw, ph) = (w + 1, h + 1);
