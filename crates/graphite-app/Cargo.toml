@@ -33,6 +33,7 @@ gix = "0.90"
 interprocess = "2.4"
 notify = "8.2"
 similar = "2.7"
+ring = "0.17"
 sysinfo = "0.40"
 regex = "1"
 thiserror = "2"
@@ -65,3 +66,6 @@ name = "graphite-test-lsp"
 path = "tests/fixtures/lsp_server.rs"
 test = false
 doc = false
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }

@@ -1,5 +1,6 @@
 //! Notebooks: the `.ipynb` document model, the editing session, layout and outputs.
 
+mod kernel;
 mod layout;
 mod model;
 mod output;
