@@ -1115,6 +1115,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "graphite.codeLens.run",
+        "Run code lens on current line",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        run_code_lens,
+    );
+    add(
+        registry,
         "editor.action.formatSelection",
         "Format selection",
         "Editor",
@@ -1283,4 +1293,14 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         cursor_end_select,
     );
+}
+
+fn run_code_lens(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.run_code_lens_on_cursor_line() {
+        Ok(())
+    } else {
+        Err(CommandError::Disabled(
+            "There is no code lens on the cursor line".into(),
+        ))
+    }
 }

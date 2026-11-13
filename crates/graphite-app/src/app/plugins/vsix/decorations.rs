@@ -16,6 +16,8 @@ const AFTER_LIMIT: usize = 300;
 const HIGHLIGHT_KEY: &str = "graphite.documentHighlight";
 /// Decoration type key of the built-in document links.
 const LINK_KEY: &str = "graphite.documentLink";
+/// Decoration type key of the built-in code lens texts.
+const LENS_KEY: &str = "graphite.codeLens";
 
 /// Text drawn after the end of a line.
 #[derive(Clone, Debug, PartialEq)]
@@ -291,6 +293,28 @@ impl Decorations {
 
     pub(super) fn clear_links(&mut self, editor: &str) {
         self.set(editor, LINK_KEY, Vec::new());
+    }
+
+    /// Shows `(0-based line, text)` pairs as muted text at the end of those lines, with a
+    /// built-in decoration type.
+    pub(super) fn set_lenses(&mut self, editor: &str, lines: Vec<(u32, String)>) {
+        self.styles
+            .entry(LENS_KEY.to_owned())
+            .or_insert_with(Style::default);
+        let marks = lines
+            .into_iter()
+            .take(MARK_LIMIT)
+            .map(|(line, text)| Mark {
+                start: (line, 0),
+                end: (line, 0),
+                after: Some(After { text, color: None }),
+            })
+            .collect();
+        self.set(editor, LENS_KEY, marks);
+    }
+
+    pub(super) fn clear_lenses(&mut self, editor: &str) {
+        self.set(editor, LENS_KEY, Vec::new());
     }
 
     pub(super) fn is_empty(&self) -> bool {

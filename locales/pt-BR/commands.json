@@ -89,6 +89,7 @@
   "command.editor.action.showHover": "Mostrar informação",
   "command.editor.action.formatDocument": "Formatar documento",
   "command.editor.action.formatSelection": "Formatar seleção",
+  "command.graphite.codeLens.run": "Executar code lens da linha atual",
   "command.editor.action.refactor": "Refatorar",
   "command.editor.action.smartSelect.expand": "Expandir",
   "command.editor.action.smartSelect.shrink": "Reduzir",

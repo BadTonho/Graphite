@@ -286,10 +286,10 @@ async function sync({ documents: snapshots, active, tabSize, insertSpaces }) {
     for (const [uri, document] of incoming) documents.set(uri, document);
 }
 
-async function execute({ id, owner, command }) {
+async function execute({ id, owner, command, args }) {
     try {
         await synchronization;
-        const result = await executeCommand(owner ? { value: owner, _lower: owner } : null, command, []);
+        const result = await executeCommand(owner ? { value: owner, _lower: owner } : null, command, Array.isArray(args) ? args : []);
         send({ type: 'result', id, result });
     } catch (error) {
         send({ type: 'result', id, error: String(error) });

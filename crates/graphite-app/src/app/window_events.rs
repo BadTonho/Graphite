@@ -303,7 +303,9 @@ impl ApplicationHandler<UserEvent> for App {
                     });
                     // Ctrl+click follows a link an extension reported under the cursor.
                     if in_editor {
-                        self.open_document_link_at_cursor();
+                        if !self.open_document_link_at_cursor() {
+                            self.run_code_lens_at_line_end();
+                        }
                     }
                 }
                 if editor_state != self.editor_state() {

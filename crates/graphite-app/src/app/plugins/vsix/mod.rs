@@ -5,6 +5,7 @@ use graphite_extension_host::code_oss::Session;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
+mod code_lens;
 mod debug;
 mod decorations;
 mod documents;
@@ -34,6 +35,8 @@ pub(crate) struct Runtime {
     ready: bool,
     registered: BTreeSet<String>,
     command: Option<(String, String, Instant)>,
+    /// Arguments passed to the running command (for example a code lens's).
+    command_args: Vec<Value>,
     sent: bool,
     synced: Option<Value>,
     prompt: Option<prompts::Prompt>,
@@ -50,6 +53,8 @@ pub(crate) struct Runtime {
     passive: passive::Passive,
     /// A call or type hierarchy being collected.
     hierarchy: hierarchy::Hierarchies,
+    /// Code lenses of the active document.
+    lenses: code_lens::CodeLenses,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -63,6 +68,7 @@ impl Runtime {
             || self.debug_adapter.is_some()
             || self.passive.busy()
             || self.hierarchy.busy()
+            || self.lenses.busy()
     }
 }
 
@@ -75,6 +81,7 @@ impl Runtime {
             ready: true,
             registered: BTreeSet::new(),
             command: None,
+            command_args: Vec::new(),
             sent: false,
             synced: None,
             prompt: None,
@@ -88,6 +95,7 @@ impl Runtime {
             debug_adapter: None,
             passive: Default::default(),
             hierarchy: Default::default(),
+            lenses: Default::default(),
             unsupported: BTreeSet::new(),
         }
     }
@@ -154,6 +162,15 @@ impl App {
         self.run_vsix_command_in(key, Session::bundled_runtime())
     }
 
+    /// Like [`Self::run_vsix_command`], passing `args` to the command.
+    pub(crate) fn run_vsix_command_with_args(&mut self, key: &str, args: Vec<Value>) -> Result<()> {
+        self.run_vsix_command(key)?;
+        if let Some(runtime) = self.plugins.vsix.as_mut() {
+            runtime.command_args = args;
+        }
+        Ok(())
+    }
+
     fn run_vsix_command_in(&mut self, key: &str, runtime_path: Option<PathBuf>) -> Result<()> {
         if !self.vsix_workspace_trusted() {
             return Err("Workspace is restricted. Trust it before running VSIX commands.".into());
@@ -190,6 +207,7 @@ impl App {
             Instant::now() + Duration::from_secs(30),
         ));
         runtime.sent = false;
+        runtime.command_args = Vec::new();
         Ok(())
     }
 
@@ -233,6 +251,7 @@ impl App {
             ready: false,
             registered: BTreeSet::new(),
             command: None,
+            command_args: Vec::new(),
             sent: false,
             synced: None,
             prompt: None,
@@ -246,6 +265,7 @@ impl App {
             debug_adapter: None,
             passive: Default::default(),
             hierarchy: Default::default(),
+            lenses: Default::default(),
             unsupported: BTreeSet::new(),
         });
         Ok(())
@@ -312,6 +332,8 @@ impl App {
                 Some("result") => {
                     if event["id"].as_u64() == Some(debug::ADAPTER_CALL_ID) {
                         self.finish_vsix_debug_adapter(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(code_lens::is_lens_reply) {
+                        self.finish_vsix_code_lens(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(hierarchy::is_hierarchy_reply) {
                         self.finish_vsix_hierarchy(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(passive::is_passive_reply) {
@@ -362,6 +384,7 @@ impl App {
             self.sync_vsix_documents(runtime)?;
             self.drive_vsix_passive(runtime)?;
             self.expire_vsix_hierarchy(runtime);
+            self.drive_vsix_code_lens(runtime)?;
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
             if let (Some(handle), Some(webview)) =
@@ -376,7 +399,7 @@ impl App {
             if let Some((owner, command, _)) = &runtime.command {
                 if !runtime.sent {
                     runtime.session.send(
-                        json!({"type":"execute", "id":1, "owner":owner, "command":command}),
+                        json!({"type":"execute", "id":1, "owner":owner, "command":command, "args":runtime.command_args}),
                     )?;
                     runtime.sent = true;
                 }

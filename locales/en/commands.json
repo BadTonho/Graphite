@@ -89,6 +89,7 @@
   "command.editor.action.showHover": "Show hover",
   "command.editor.action.formatDocument": "Format document",
   "command.editor.action.formatSelection": "Format selection",
+  "command.graphite.codeLens.run": "Run code lens on current line",
   "command.editor.action.refactor": "Refactor",
   "command.editor.action.smartSelect.expand": "Expand",
   "command.editor.action.smartSelect.shrink": "Shrink",
