@@ -15,6 +15,7 @@ mod focus;
 mod groups;
 mod history;
 mod input;
+mod interactive_commands;
 mod layout;
 mod lists;
 mod misc;
@@ -184,6 +185,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     merge_commands::register(registry);
     notebook_commands::register(registry);
     notebook_run_commands::register(registry);
+    interactive_commands::register(registry);
     multi_diff_commands::register(registry);
     merge_commands::register_conflict_view(registry);
     merge_action_commands::register(registry);

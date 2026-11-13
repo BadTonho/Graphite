@@ -286,6 +286,9 @@ impl super::App {
         let (in_notebook, editing_notebook) = self.notebook_context();
         global.insert("notebookFocus".into(), in_notebook.to_string());
         global.insert("notebookEditing".into(), editing_notebook.to_string());
+        let (in_interactive, input_focused) = self.interactive_context();
+        global.insert("interactiveWindow".into(), in_interactive.to_string());
+        global.insert("interactiveInputFocus".into(), input_focused.to_string());
         global.insert(
             "notebookCommandMode".into(),
             (in_notebook && !editing_notebook).to_string(),

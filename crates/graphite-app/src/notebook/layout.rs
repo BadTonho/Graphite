@@ -52,7 +52,16 @@ pub(crate) fn layout(session: &Session, line_height: f32) -> Vec<CellLayout> {
     session
         .cells
         .iter()
-        .map(|state| {
+        .enumerate()
+        .map(|(index, state)| {
+            if session.is_hidden_cell(index) {
+                return CellLayout {
+                    top,
+                    height: 0.0,
+                    input_lines: 0,
+                    output_lines: 0,
+                };
+            }
             let input_lines = if state.input_collapsed {
                 1
             } else {
@@ -167,6 +176,18 @@ mod tests {
         let layouts = layout(&session, 10.0);
         // Two text lines and an image of 65 pixels, which is seven 10-pixel rows.
         assert_eq!(layouts[0].output_lines, 2 + 7);
+    }
+
+    #[test]
+    fn the_unused_first_cell_of_an_interactive_window_takes_no_room() {
+        use super::super::interactive::InteractiveKind;
+        let mut session = Session::new_interactive(InteractiveKind::Window);
+        let layouts = layout(&session, 10.0);
+        assert_eq!(layouts[0].height, 0.0);
+        assert_eq!(cell_at(&layouts, 0.0), None);
+        session.edit_input(|editor| editor.insert("1"));
+        session.submit_input();
+        assert!(layout(&session, 10.0)[0].height > 0.0);
     }
     #[test]
     fn text_cells_never_show_outputs() {

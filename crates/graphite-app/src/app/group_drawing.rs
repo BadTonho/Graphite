@@ -7,7 +7,14 @@ pub(super) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) 
         .path()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| translator.text("common.untitled").to_owned());
+        .unwrap_or_else(|| {
+            let key = match tab.notebook.as_deref().and_then(crate::notebook::Session::interactive).map(|state| state.kind) {
+                Some(crate::notebook::InteractiveKind::Window) => "notebook.interactive.title",
+                Some(crate::notebook::InteractiveKind::Repl) => "notebook.repl.title",
+                None => "common.untitled",
+            };
+            translator.text(key).to_owned()
+        });
     format!(" {}{} ", name, if tab.is_dirty() { " ●" } else { "" })
 }
 

@@ -31,7 +31,8 @@ impl App {
         r.draw_rect(rect.x, strip_top, rect.width, lh, rgb(Theme::color(0x2d2d30, 0xececec)));
         r.draw_text(&self.notebook_kernel_label(session), rect.x + 16.0, strip_top, dim);
         let body_top = strip_top + lh;
-        let body_height = (rect.height - top - lh).max(0.0);
+        let input_height = session.interactive().map_or(0.0, |state| (state.input_lines() + 1) as f32 * lh);
+        let body_height = (rect.height - top - lh - input_height).max(0.0);
         let active_group = rect.id == self.editor_groups.focused();
         let layouts = notebook::layout(session, lh);
         r.set_clip(Some([rect.x, body_top, rect.x + rect.width, body_top + body_height]));
@@ -41,6 +42,9 @@ impl App {
         let text_left = left + gutter;
         let columns = (((rect.x + rect.width - text_left - PAD) / cw).max(1.0)) as usize;
         for (index, (state, cell)) in session.cells.iter().zip(&layouts).enumerate() {
+            if session.is_hidden_cell(index) {
+                continue;
+            }
             let y = body_top + cell.top - session.scroll;
             if y + cell.height < body_top || y > body_top + body_height {
                 continue;
@@ -152,6 +156,56 @@ impl App {
             }
         }
         r.set_clip(None);
+        if let Some(state) = session.interactive() {
+            let box_top = body_top + body_height;
+            let box_height = (state.input_lines() + 1) as f32 * lh;
+            r.set_clip(Some([rect.x, box_top, rect.x + rect.width, box_top + box_height]));
+            r.draw_rect(rect.x, box_top, rect.width, box_height, tint(0x252526, 0xf3f3f3));
+            r.draw_rect(rect.x, box_top, rect.width, 1.0, tint(0x3c3c3c, 0xd0d0d0));
+            let hint = match state.kind {
+                notebook::InteractiveKind::Window => "notebook.interactive.hint_window",
+                notebook::InteractiveKind::Repl => "notebook.interactive.hint_repl",
+            };
+            r.draw_text(self.t(hint), left, box_top, dim);
+            let focused = state.input_focused && active_group;
+            let selection = state.input.view(&state.input_selection).selection();
+            let (cursor_line, cursor_column) = state.input.view(&state.input_selection).cursor_line_col();
+            // The box shows a window of its lines that always includes the caret.
+            let shown = state.input_lines();
+            let first = cursor_line.saturating_sub(shown - 1).min(state.input.len_lines().saturating_sub(shown));
+            let input_left = left + cw * 2.0;
+            let input_columns = (((rect.x + rect.width - input_left - PAD) / cw).max(1.0)) as usize;
+            for row in 0..shown {
+                let line = first + row;
+                if line >= state.input.len_lines() {
+                    break;
+                }
+                let y = box_top + lh * (row + 1) as f32;
+                let content = state.input.line(line);
+                let content = content.trim_end_matches(['\n', '\r']);
+                r.draw_text(if row == 0 && first == 0 { ">" } else { "…" }, left, y, dim);
+                if let (Some(selection), true) = (selection, focused) {
+                    let start = state.input.line_start_char(line);
+                    let width = content.chars().count();
+                    let (from, to) = (selection.anchor.min(selection.head), selection.anchor.max(selection.head));
+                    let (low, high) = (from.max(start), to.min(start + width + 1));
+                    if low < high {
+                        r.draw_rect(input_left + cw * (low - start) as f32, y, cw * (high - low) as f32, lh, tint(0x264f78, 0xadd6ff));
+                    }
+                }
+                r.draw_text(&content.chars().take(input_columns).collect::<String>(), input_left, y, text);
+            }
+            if focused && cursor_line >= first && cursor_line < first + shown {
+                r.draw_rect(
+                    input_left + cw * cursor_column as f32,
+                    box_top + lh * (cursor_line - first + 1) as f32,
+                    2.0,
+                    lh,
+                    rgb(Theme::color(Theme::CURSOR, 0x000000)),
+                );
+            }
+            r.set_clip(None);
+        }
     }
 }
 

@@ -664,5 +664,21 @@
   "command.notebook.selectKernel": "Notebook: select kernel",
   "command.graphite.notebook.restartKernel": "Notebook: restart the kernel",
   "command.graphite.notebook.restartKernelAndRunAll": "Notebook: restart the kernel and run all cells",
-  "command.graphite.notebook.shutdownKernel": "Notebook: shut down the kernel"
+  "command.graphite.notebook.shutdownKernel": "Notebook: shut down the kernel",
+  "command.interactive.open": "Open interactive window",
+  "command.graphite.repl.open": "Open REPL",
+  "command.interactive.execute": "Interactive window: run input",
+  "command.repl.execute": "REPL: run input",
+  "command.graphite.interactive.executeSelection": "Run selection or line in the interactive window",
+  "command.interactive.input.focus": "Interactive window: focus input",
+  "command.repl.input.focus": "REPL: focus input",
+  "command.list.find.replInputFocus": "REPL: focus input from the list",
+  "command.interactive.input.clear": "Interactive window: clear input",
+  "command.interactive.history.focus": "Interactive window: focus history",
+  "command.repl.focusLastItemExecuted": "REPL: focus the last item executed",
+  "command.interactive.history.previous": "Interactive window: previous input in the history",
+  "command.interactive.history.next": "Interactive window: next input in the history",
+  "command.interactive.scrollToTop": "Interactive window: scroll to top",
+  "command.interactive.scrollToBottom": "Interactive window: scroll to bottom",
+  "command.category.interactive": "Interactive"
 }

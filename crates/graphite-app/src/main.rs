@@ -289,6 +289,8 @@ struct App {
     kernel_factory: app::notebook_kernel::KernelFactory,
     /// Lists the installed kernels; replaced in tests.
     kernel_lister: fn() -> Vec<notebook::kernel::KernelSpec>,
+    /// The interactive window last opened, which code sent from editors goes to.
+    interactive_document: Option<DocumentId>,
     multi_diff: Option<multi_diff::MultiDiff>,
     zen_mode: bool,
     centered_editor: bool,
@@ -771,6 +773,7 @@ impl App {
             kernel_specs: None,
             kernel_factory: notebook::kernel::launch,
             kernel_lister: notebook::kernel::installed,
+            interactive_document: None,
             multi_diff: None,
             zen_mode: false,
             centered_editor: false,

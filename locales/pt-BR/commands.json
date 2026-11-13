@@ -664,5 +664,21 @@
   "command.notebook.selectKernel": "Notebook: selecionar kernel",
   "command.graphite.notebook.restartKernel": "Notebook: reiniciar o kernel",
   "command.graphite.notebook.restartKernelAndRunAll": "Notebook: reiniciar o kernel e executar todas as células",
-  "command.graphite.notebook.shutdownKernel": "Notebook: encerrar o kernel"
+  "command.graphite.notebook.shutdownKernel": "Notebook: encerrar o kernel",
+  "command.interactive.open": "Abrir janela interativa",
+  "command.graphite.repl.open": "Abrir REPL",
+  "command.interactive.execute": "Janela interativa: executar a entrada",
+  "command.repl.execute": "REPL: executar a entrada",
+  "command.graphite.interactive.executeSelection": "Executar a seleção ou a linha na janela interativa",
+  "command.interactive.input.focus": "Janela interativa: focar a entrada",
+  "command.repl.input.focus": "REPL: focar a entrada",
+  "command.list.find.replInputFocus": "REPL: focar a entrada a partir da lista",
+  "command.interactive.input.clear": "Janela interativa: limpar a entrada",
+  "command.interactive.history.focus": "Janela interativa: focar o histórico",
+  "command.repl.focusLastItemExecuted": "REPL: focar o último item executado",
+  "command.interactive.history.previous": "Janela interativa: entrada anterior do histórico",
+  "command.interactive.history.next": "Janela interativa: próxima entrada do histórico",
+  "command.interactive.scrollToTop": "Janela interativa: rolar para o topo",
+  "command.interactive.scrollToBottom": "Janela interativa: rolar para o fim",
+  "command.category.interactive": "Interativo"
 }

@@ -723,5 +723,12 @@
   "notebook.kernel.starting": "iniciando",
   "notebook.kernel.idle": "ocioso",
   "notebook.kernel.busy": "ocupado",
-  "notebook.kernel.stopped": "parado"
+  "notebook.kernel.stopped": "parado",
+  "notebook.interactive.title": "Interativo",
+  "notebook.repl.title": "REPL",
+  "notebook.interactive.opened": "Janela interativa aberta",
+  "notebook.interactive.not_open": "O editor ativo não é uma janela interativa",
+  "notebook.interactive.nothing_to_send": "Não há código para enviar",
+  "notebook.interactive.hint_window": "Shift+Enter executa · Enter nova linha · Cima/Baixo histórico · Esc células",
+  "notebook.interactive.hint_repl": "Enter executa · Shift+Enter nova linha · Cima/Baixo histórico · Esc células"
 }

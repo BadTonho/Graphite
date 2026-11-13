@@ -45,7 +45,7 @@ fn lister() -> Vec<KernelSpec> {
 }
 
 /// Points the application at the scripted kernel and the given installed kernels.
-fn configure(app: &mut App, specs: Vec<KernelSpec>) {
+pub(super) fn configure(app: &mut App, specs: Vec<KernelSpec>) {
     STARTED.with(|started| started.borrow_mut().clear());
     FAIL.with(|fail| *fail.borrow_mut() = None);
     SPECS.with(|slot| *slot.borrow_mut() = specs);
@@ -53,7 +53,7 @@ fn configure(app: &mut App, specs: Vec<KernelSpec>) {
     app.kernel_lister = lister;
 }
 
-fn spec(name: &str, language: &str) -> KernelSpec {
+pub(super) fn spec(name: &str, language: &str) -> KernelSpec {
     KernelSpec {
         name: name.into(),
         display_name: format!("{name} display"),
@@ -78,12 +78,12 @@ fn session(app: &App) -> &crate::notebook::Session {
     app.active_notebook().expect("a notebook")
 }
 
-fn started() -> usize {
+pub(super) fn started() -> usize {
     STARTED.with(|started| started.borrow().len())
 }
 
 /// The execute requests that reached the kernel number `index`, as (id, code).
-fn requests(index: usize) -> Vec<(String, String)> {
+pub(super) fn requests(index: usize) -> Vec<(String, String)> {
     STARTED.with(|started| {
         let started = started.borrow();
         let mut found = Vec::new();
@@ -99,7 +99,7 @@ fn requests(index: usize) -> Vec<(String, String)> {
     })
 }
 
-fn send(index: usize, event: KernelEvent) {
+pub(super) fn send(index: usize, event: KernelEvent) {
     STARTED.with(|started| started.borrow()[index].events.send(event).unwrap());
 }
 

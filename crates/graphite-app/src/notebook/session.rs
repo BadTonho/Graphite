@@ -31,7 +31,7 @@ pub(crate) struct CellState {
 }
 
 impl CellState {
-    fn new(uid: u64, cell: Cell) -> Self {
+    pub(super) fn new(uid: u64, cell: Cell) -> Self {
         let buffer = Buffer::from_text(PathBuf::from("cell"), &cell.source);
         Self {
             uid,
@@ -125,6 +125,8 @@ pub(crate) struct Session {
     pub synced_revision: u64,
     /// The kernel this notebook runs on, with the state of its runs.
     pub(super) kernel: super::execution::KernelSlot,
+    /// Set for the interactive window and the REPL.
+    pub(super) interactive: Option<super::interactive::Interactive>,
 }
 
 impl Session {
@@ -144,6 +146,7 @@ impl Session {
             delete_pending: false,
             synced_revision: 0,
             kernel: Default::default(),
+            interactive: None,
         };
         let cells = std::mem::take(&mut session.base.cells);
         for cell in cells {
@@ -174,8 +177,14 @@ impl Session {
         // The kernel stays; the cells it was running are gone, so its requests are dropped.
         let mut kernel = std::mem::take(&mut self.kernel);
         kernel.forget_requests();
+        let interactive = self.interactive.take();
         *self = Session::from_notebook(notebook);
         self.kernel = kernel;
+        // What came from the file is real history, not an unused first cell.
+        self.interactive = interactive.map(|mut state| {
+            state.placeholder = false;
+            state
+        });
         self.focus = focus.min(self.cells.len() - 1);
         self.anchor = self.focus;
         self.line_numbers = line_numbers;

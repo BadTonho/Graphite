@@ -723,5 +723,12 @@
   "notebook.kernel.starting": "starting",
   "notebook.kernel.idle": "idle",
   "notebook.kernel.busy": "busy",
-  "notebook.kernel.stopped": "stopped"
+  "notebook.kernel.stopped": "stopped",
+  "notebook.interactive.title": "Interactive",
+  "notebook.repl.title": "REPL",
+  "notebook.interactive.opened": "Interactive window opened",
+  "notebook.interactive.not_open": "The active editor is not an interactive window",
+  "notebook.interactive.nothing_to_send": "There is no code to send",
+  "notebook.interactive.hint_window": "Shift+Enter run · Enter new line · Up/Down history · Esc cells",
+  "notebook.interactive.hint_repl": "Enter run · Shift+Enter new line · Up/Down history · Esc cells"
 }

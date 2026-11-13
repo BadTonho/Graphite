@@ -70,11 +70,16 @@ impl App {
         };
         let text = session.to_json();
         tab.buffer.set_derived_text(&text);
+        // The history of an interactive window that was never saved is scratch: closing it does
+        // not ask what to do with it.
+        if session.interactive().is_some() && tab.buffer.path().is_none() {
+            tab.buffer.mark_saved_snapshot(&text);
+        }
         session.synced_revision = tab.buffer.revision();
     }
 
     /// Height available to the cells of the focused editor group, line height and cell width.
-    fn notebook_viewport(&self) -> (f32, f32, f32) {
+    pub(crate) fn notebook_viewport(&self) -> (f32, f32, f32) {
         let Some(gpu) = self.gpu.as_ref() else {
             return (600.0, 20.0, 9.0);
         };
@@ -86,7 +91,8 @@ impl App {
             .into_iter()
             .find(|rect| rect.id == focused);
         let body = rect.map_or(height as f32, |rect| rect.height) - self.editor_tab_strip_height(lh);
-        ((body - lh).max(lh * 3.0), lh, cw)
+        let docked = self.interactive_input_height(lh);
+        ((body - lh - docked).max(lh * 3.0), lh, cw)
     }
 
     /// Runs a change on the active notebook, then keeps the document text and the scroll in step.
@@ -119,6 +125,10 @@ impl App {
     /// Keys of a notebook: cell commands in command mode, text editing in edit mode.
     pub(crate) fn handle_notebook_key(&mut self, event: &winit::event::KeyEvent) {
         use winit::keyboard::{Key, NamedKey};
+        if self.interactive_context().1 {
+            self.handle_interactive_key(event);
+            return;
+        }
         let ctrl = self.modifiers.control_key();
         let shift = self.modifiers.shift_key();
         let alt = self.modifiers.alt_key();
@@ -303,6 +313,14 @@ impl App {
         let document = self.active_document();
         let (_, line_height, char_width) = self.notebook_viewport();
         let top = rect.y + self.editor_tab_strip_height(line_height) + line_height;
+        // In an interactive window the input box is docked under the cells.
+        if self.active_notebook().and_then(Session::interactive).is_some() {
+            let (viewport, _, _) = self.notebook_viewport();
+            let box_top = top + viewport;
+            if self.interactive_click(mx, my, box_top) {
+                return;
+            }
+        }
         let Some(session) = self.documents[document].notebook.as_ref() else {
             return;
         };
@@ -351,5 +369,15 @@ impl App {
             }
             session.enter_edit();
         });
+    }
+}
+
+impl App {
+    /// Height of the input box docked under the cells of an interactive window; none for a
+    /// notebook.
+    pub(crate) fn interactive_input_height(&self, line_height: f32) -> f32 {
+        self.active_notebook()
+            .and_then(Session::interactive)
+            .map_or(0.0, |state| (state.input_lines() + 1) as f32 * line_height)
     }
 }

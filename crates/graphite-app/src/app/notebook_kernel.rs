@@ -79,7 +79,11 @@ impl App {
         }
         let previous = session.kernel_spec().cloned();
         let name = session.metadata().kernel_name().map(str::to_owned);
-        let language = session.metadata().language().map(str::to_owned);
+        let language = session
+            .metadata()
+            .language()
+            .map(str::to_owned)
+            .or_else(|| session.interactive().and_then(|state| state.language_hint.clone()));
         let spec = match previous {
             Some(spec) => spec,
             None => {
