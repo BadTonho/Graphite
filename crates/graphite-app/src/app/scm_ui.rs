@@ -1342,17 +1342,51 @@ impl App {
                 PAD,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
-            if let Some(language) = self.documents[self.active_document()].language {
-                let text = self.documents[self.active_document()].buffer.text();
-                let headers = graphite_syntax::declaration_headers(language, &text);
-                for (i, header) in headers.iter().take(16).enumerate() {
-                    renderer.draw_text(
-                        &format!("{}  {}", header.line + 1, header.text),
-                        x + PAD,
-                        line_height * (i as f32 + 1.5),
-                        rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            let char_width = renderer.char_width();
+            if self.outline.filter_on_type {
+                renderer.draw_text(
+                    &format!("\u{2315} {}\u{258f}", self.outline.filter),
+                    x + PAD,
+                    line_height * 1.5,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+            }
+            let first_row = if self.outline.filter_on_type { 2.5 } else { 1.5 };
+            let chars = ((outline_width - PAD * 2.0) / char_width.max(1.0)) as usize;
+            for (i, row) in self.outline_rows().iter().enumerate() {
+                let y = line_height * (i as f32 + first_row);
+                if y + line_height > height {
+                    break;
+                }
+                if row.current {
+                    renderer.draw_rect(
+                        x,
+                        y,
+                        outline_width,
+                        line_height,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                     );
                 }
+                let chevron = if !row.expandable {
+                    "  "
+                } else if row.collapsed {
+                    "\u{25b8} "
+                } else {
+                    "\u{25be} "
+                };
+                let label = format!(
+                    "{}{}{}  {}",
+                    "  ".repeat(row.depth),
+                    chevron,
+                    row.line + 1,
+                    row.text
+                );
+                renderer.draw_text(
+                    &label.chars().take(chars).collect::<String>(),
+                    x + PAD,
+                    y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
             }
         }
         if let Some(diff) = &self.diff_view {

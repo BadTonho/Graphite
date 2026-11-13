@@ -551,5 +551,13 @@
   "command.workbench.action.openSnippets": "Configurar snippets",
   "command.workbench.action.output.toggleOutput": "Alternar saída",
   "command.workbench.action.showOutputChannels": "Mostrar saída",
-  "command.editor.action.insertSnippet": "Inserir snippet"
+  "command.editor.action.insertSnippet": "Inserir snippet",
+  "command.outline.sortByPosition": "Ordenar o outline por posição",
+  "command.outline.sortByName": "Ordenar o outline por nome",
+  "command.outline.sortByKind": "Ordenar o outline por tipo",
+  "command.outline.followCursor": "Seguir o cursor no outline",
+  "command.outline.filterOnType": "Filtrar o outline ao digitar",
+  "command.outline.collapse": "Recolher todos os itens do outline",
+  "command.outline.expand": "Expandir todos os itens do outline",
+  "command.category.outline": "Outline"
 }

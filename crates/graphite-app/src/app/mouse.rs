@@ -123,17 +123,16 @@ impl App {
             && !self.zen_mode
             && mx >= window_width - 240.0
         {
-            if let Some(language) = self.documents[self.active_document()].language {
-                let text = self.documents[self.active_document()].buffer.text();
-                let row = ((my / lh) as isize - 1).max(0) as usize;
-                if let Some(header) = graphite_syntax::declaration_headers(language, &text).get(row)
-                {
-                    self.run_ui_command_args(
-                        "graphite.editor.setCursor",
-                        serde_json::json!({"line":header.line,"column":0}),
-                    );
-                    self.reveal_cursor = true;
-                }
+            let first_row = if self.outline.filter_on_type { 2.5 } else { 1.5 };
+            let row = ((my / lh) - first_row).floor();
+            if row >= 0.0 {
+                let row = row as usize;
+                let depth = self
+                    .outline_rows()
+                    .get(row)
+                    .map_or(0, |entry| entry.depth);
+                let chevron_start = window_width - 240.0 + PAD + depth as f32 * 2.0 * cw;
+                self.outline_click(row, mx < chevron_start + cw * 2.0);
             }
             return;
         }
