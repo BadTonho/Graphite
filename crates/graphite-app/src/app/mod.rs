@@ -33,6 +33,7 @@ mod change_navigation;
 mod debug_extra;
 mod editor_history_picker;
 pub(crate) mod outline;
+mod timeline;
 mod explorer_nav;
 mod fold_actions;
 mod fold_commands;

@@ -559,5 +559,11 @@
   "command.outline.filterOnType": "Filtrar o outline ao digitar",
   "command.outline.collapse": "Recolher todos os itens do outline",
   "command.outline.expand": "Expandir todos os itens do outline",
-  "command.category.outline": "Outline"
+  "command.category.outline": "Outline",
+  "command.timeline.focus": "Focar a vista da linha do tempo",
+  "command.timeline.refresh": "Atualizar a linha do tempo",
+  "command.timeline.showWorkspaceTimeline": "Mostrar a linha do tempo do espaço de trabalho",
+  "command.timeline.toggleFollowActiveEditor": "Seguir o editor ativo na linha do tempo",
+  "command.timeline.compareSelected": "Comparar a entrada selecionada da linha do tempo",
+  "command.category.timeline": "Linha do tempo"
 }

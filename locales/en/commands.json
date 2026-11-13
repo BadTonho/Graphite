@@ -559,5 +559,11 @@
   "command.outline.filterOnType": "Filter outline on type",
   "command.outline.collapse": "Collapse all outline items",
   "command.outline.expand": "Expand all outline items",
-  "command.category.outline": "Outline"
+  "command.category.outline": "Outline",
+  "command.timeline.focus": "Focus on timeline view",
+  "command.timeline.refresh": "Refresh timeline",
+  "command.timeline.showWorkspaceTimeline": "Show timeline of the workspace",
+  "command.timeline.toggleFollowActiveEditor": "Follow the active editor in the timeline",
+  "command.timeline.compareSelected": "Compare the selected timeline entry",
+  "command.category.timeline": "Timeline"
 }

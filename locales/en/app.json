@@ -653,5 +653,9 @@
   "plugins.not_installed": "The extension {id} is not installed",
   "plugins.none_enabled": "No extension is enabled",
   "plugins.none_to_enable": "No disabled extension can be enabled without asking for trust first",
-  "snippets.empty": "There is no snippet text to insert"
+  "snippets.empty": "There is no snippet text to insert",
+  "timeline.saved": "Saved",
+  "timeline.empty": "No saved versions or commits for this file",
+  "timeline.following": "The timeline follows the active editor",
+  "timeline.pinned": "The timeline stays on this file"
 }

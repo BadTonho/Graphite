@@ -25,6 +25,7 @@ mod preferences;
 mod quick;
 mod scm;
 mod task_commands;
+mod timeline_commands;
 mod ui;
 mod widget_controls;
 mod widgets;
@@ -173,6 +174,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     extensions::register(registry);
     output_snippets::register(registry);
     outline_commands::register(registry);
+    timeline_commands::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

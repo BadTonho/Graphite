@@ -154,6 +154,13 @@ impl App {
         Some((path, versions))
     }
 
+    /// The saved versions of `file`, newest first.
+    pub(crate) fn history_versions_of(&self, file: &Path) -> Vec<PathBuf> {
+        let mut versions = list_versions(&self.local_history_dir(file));
+        versions.reverse();
+        versions
+    }
+
     /// The file a saved version was made from, read from the note kept in its folder.
     pub(crate) fn history_origin(&self, version: &Path) -> Option<PathBuf> {
         if !self.is_local_history_file(version) {

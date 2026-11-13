@@ -283,6 +283,11 @@ struct App {
     centered_editor: bool,
     outline_visible: bool,
     outline: app::outline::OutlineState,
+    /// Whether the timeline follows the active editor, and the file it is pinned to when not.
+    timeline_follow: bool,
+    timeline_pinned: Option<PathBuf>,
+    /// The file the open timeline compares its entries with.
+    timeline_target: Option<PathBuf>,
     process_panel_visible: bool,
     process_metrics: Vec<process_explorer::ProcessMetric>,
     process_scroll: usize,
@@ -754,6 +759,9 @@ impl App {
             centered_editor: false,
             outline_visible: false,
             outline: Default::default(),
+            timeline_follow: true,
+            timeline_pinned: None,
+            timeline_target: None,
             process_panel_visible: false,
             process_metrics: Vec::new(),
             process_scroll: 0,

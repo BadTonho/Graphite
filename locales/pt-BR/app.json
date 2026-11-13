@@ -653,5 +653,9 @@
   "plugins.not_installed": "A extensão {id} não está instalada",
   "plugins.none_enabled": "Nenhuma extensão está ativada",
   "plugins.none_to_enable": "Nenhuma extensão desativada pode ser ativada sem pedir confiança antes",
-  "snippets.empty": "Não há texto de snippet para inserir"
+  "snippets.empty": "Não há texto de snippet para inserir",
+  "timeline.saved": "Salvo",
+  "timeline.empty": "Nenhuma versão salva nem commit para este arquivo",
+  "timeline.following": "A linha do tempo segue o editor ativo",
+  "timeline.pinned": "A linha do tempo fica neste arquivo"
 }

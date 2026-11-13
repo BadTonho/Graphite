@@ -95,6 +95,8 @@ pub(crate) enum GoPickerKind {
     HistoryRestore,
     HistoryCompare,
     HistoryDelete,
+    /// The timeline of a file: picking an entry compares it with the file.
+    Timeline,
 }
 
 #[derive(Clone, Debug)]
@@ -806,6 +808,15 @@ impl App {
                 self.editor_mut()
                     .set_cursor_line_col(line.saturating_sub(1), column.saturating_sub(1));
                 self.reveal_cursor = true;
+            }
+            GoPickerKind::Timeline => {
+                if let Some(item) = self
+                    .go_picker_rows_from(&picker)
+                    .get(picker.selected)
+                    .cloned()
+                {
+                    self.compare_timeline_entry(item.path);
+                }
             }
             GoPickerKind::HistoryRestore
             | GoPickerKind::HistoryCompare
