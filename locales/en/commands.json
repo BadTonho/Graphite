@@ -506,5 +506,19 @@
   "command.workbench.action.openFolderSettingsFile": "Open folder settings (JSON)",
   "command.workbench.action.openGlobalKeybindingsFile": "Open keyboard shortcuts (JSON)",
   "command.workbench.action.openDefaultKeybindingsFile": "Open default keyboard shortcuts (JSON)",
-  "command.category.preferences": "Preferences"
+  "command.category.preferences": "Preferences",
+  "command.workbench.action.tasks.runTask": "Run task...",
+  "command.workbench.action.tasks.showTasks": "Show running tasks",
+  "command.workbench.action.tasks.restartTask": "Restart running task",
+  "command.workbench.action.tasks.terminate": "Terminate task",
+  "command.workbench.action.tasks.reRunTask": "Rerun last task",
+  "command.workbench.action.tasks.test": "Run test task",
+  "command.workbench.action.tasks.clean": "Run clean task",
+  "command.workbench.action.tasks.rebuild": "Run rebuild task",
+  "command.workbench.action.tasks.configureTaskRunner": "Configure task runner",
+  "command.workbench.action.tasks.openWorkspaceFileTasks": "Open workspace tasks",
+  "command.workbench.action.tasks.configureDefaultBuildTask": "Configure default build task",
+  "command.workbench.action.tasks.configureDefaultTestTask": "Configure default test task",
+  "command.workbench.action.tasks.showLog": "Show task log",
+  "command.workbench.action.tasks.toggleProblems": "Toggle problems in the panel"
 }

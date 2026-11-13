@@ -20,6 +20,7 @@ mod parts;
 mod preferences;
 mod quick;
 mod scm;
+mod task_commands;
 mod ui;
 mod widget_controls;
 mod widgets;
@@ -163,6 +164,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     changes::register(registry);
     history::register(registry);
     preferences::register(registry);
+    task_commands::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

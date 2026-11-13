@@ -641,5 +641,9 @@
   "history.unchanged": "The file has not changed since the latest entry",
   "history.unreadable": "Could not read that local history entry",
   "history.no_origin": "Could not find the file this entry belongs to",
-  "history.not_a_version": "The open editor is not a local history entry"
+  "history.not_a_version": "The open editor is not a local history entry",
+  "tasks.no_test_task": "No default test task is configured",
+  "tasks.no_clean_task": "No clean task is configured",
+  "tasks.no_rebuild_task": "No rebuild task is configured",
+  "tasks.no_last_task": "No task has run yet"
 }

@@ -254,6 +254,8 @@ struct App {
     task_output: Vec<String>,
     task_cancel: Option<Arc<AtomicBool>>,
     task_running_label: Option<String>,
+    /// Label of the task that ran last, for Rerun Last Task.
+    task_last_label: Option<String>,
     task_restart_pending: Option<String>,
     task_diagnostics: Vec<app::phase5::TaskDiagnostic>,
     terminal_size: (u16, u16),
@@ -724,6 +726,7 @@ impl App {
             task_output: Vec::new(),
             task_cancel: None,
             task_running_label: None,
+            task_last_label: None,
             task_restart_pending: None,
             task_diagnostics: Vec::new(),
             terminal_size: (0, 0),

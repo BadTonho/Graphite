@@ -641,5 +641,9 @@
   "history.unchanged": "O arquivo não mudou desde a última entrada",
   "history.unreadable": "Não foi possível ler essa entrada do histórico local",
   "history.no_origin": "Não foi possível achar o arquivo dessa entrada",
-  "history.not_a_version": "O editor aberto não é uma entrada do histórico local"
+  "history.not_a_version": "O editor aberto não é uma entrada do histórico local",
+  "tasks.no_test_task": "Nenhuma tarefa de teste padrão foi configurada",
+  "tasks.no_clean_task": "Nenhuma tarefa de limpeza foi configurada",
+  "tasks.no_rebuild_task": "Nenhuma tarefa de recompilação foi configurada",
+  "tasks.no_last_task": "Nenhuma tarefa foi executada ainda"
 }

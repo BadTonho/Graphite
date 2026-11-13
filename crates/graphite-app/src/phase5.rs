@@ -428,9 +428,17 @@ impl TaskFile {
         Ok(file)
     }
     pub fn default_build(&self) -> Option<&Task> {
+        self.default_group("build")
+    }
+    pub fn default_test(&self) -> Option<&Task> {
+        self.default_group("test")
+    }
+    /// The task of a group (`build`, `test`, `clean`, `rebuild`): one marked as the default, or a
+    /// task whose group is just the group name.
+    pub fn default_group(&self, group: &str) -> Option<&Task> {
         self.tasks.iter().find(|task| match &task.group {
-            Some(TaskGroup::Name(name)) => name == "build",
-            Some(TaskGroup::Detailed { kind, is_default }) => kind == "build" && *is_default,
+            Some(TaskGroup::Name(name)) => name == group,
+            Some(TaskGroup::Detailed { kind, is_default }) => kind == group && *is_default,
             _ => false,
         })
     }

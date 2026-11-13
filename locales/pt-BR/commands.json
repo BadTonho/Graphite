@@ -506,5 +506,19 @@
   "command.workbench.action.openFolderSettingsFile": "Abrir configurações da pasta (JSON)",
   "command.workbench.action.openGlobalKeybindingsFile": "Abrir atalhos de teclado (JSON)",
   "command.workbench.action.openDefaultKeybindingsFile": "Abrir atalhos de teclado padrão (JSON)",
-  "command.category.preferences": "Preferências"
+  "command.category.preferences": "Preferências",
+  "command.workbench.action.tasks.runTask": "Executar tarefa...",
+  "command.workbench.action.tasks.showTasks": "Mostrar tarefas em execução",
+  "command.workbench.action.tasks.restartTask": "Reiniciar a tarefa em execução",
+  "command.workbench.action.tasks.terminate": "Encerrar tarefa",
+  "command.workbench.action.tasks.reRunTask": "Executar de novo a última tarefa",
+  "command.workbench.action.tasks.test": "Executar a tarefa de teste",
+  "command.workbench.action.tasks.clean": "Executar a tarefa de limpeza",
+  "command.workbench.action.tasks.rebuild": "Executar a tarefa de recompilação",
+  "command.workbench.action.tasks.configureTaskRunner": "Configurar o executor de tarefas",
+  "command.workbench.action.tasks.openWorkspaceFileTasks": "Abrir tarefas do espaço de trabalho",
+  "command.workbench.action.tasks.configureDefaultBuildTask": "Configurar a tarefa de build padrão",
+  "command.workbench.action.tasks.configureDefaultTestTask": "Configurar a tarefa de teste padrão",
+  "command.workbench.action.tasks.showLog": "Mostrar o log das tarefas",
+  "command.workbench.action.tasks.toggleProblems": "Alternar problemas no painel"
 }

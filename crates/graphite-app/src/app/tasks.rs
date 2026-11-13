@@ -49,6 +49,7 @@ impl App {
         let matchers = task.problem_matcher.clone();
         self.task_cancel = Some(cancel);
         self.task_running_label = Some(task.label.clone());
+        self.task_last_label = Some(task.label.clone());
         self.task_output.clear();
         self.task_diagnostics.clear();
         self.terminal_status = None;
@@ -97,6 +98,21 @@ impl App {
                 format!("Cannot start task worker: {error}")
             })?;
         Ok(())
+    }
+
+    /// Shows the panel with the output of the last task.
+    pub(crate) fn show_task_log(&mut self) {
+        self.terminal_visible = true;
+        self.terminal_problems = false;
+        self.terminal_focused = false;
+        self.resize_terminal();
+    }
+
+    /// Switches the panel between the task output and the problems list.
+    pub(crate) fn toggle_task_problems(&mut self) {
+        self.terminal_visible = true;
+        self.terminal_problems = !self.terminal_problems;
+        self.resize_terminal();
     }
 
     pub(crate) fn cancel_task(&mut self) {
