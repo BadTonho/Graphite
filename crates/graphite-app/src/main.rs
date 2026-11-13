@@ -12,35 +12,21 @@ use app::theme::{Theme, DARK_THEME};
 mod branding;
 mod cli;
 mod config;
-mod document;
-mod document_store;
+mod documents;
+use documents::{document, document_store, file_format};
+mod explorer;
+use explorer::{file_icons, file_nesting, tree};
+mod vcs;
+use vcs::{scm, scm_branches, scm_changes, scm_remote, merge, multi_diff};
+mod language;
+use language::{lsp, json_schema, semantic_tokens};
+mod tooling;
+use tooling::{terminal, terminal_links, terminal_shell, debugger, test_explorer, ports, process_explorer, previews, webview};
 use document::Document;
-mod debugger;
-mod file_format;
-mod file_icons;
-mod file_nesting;
-mod json_schema;
 mod keybindings;
-mod lsp;
-mod merge;
-mod multi_diff;
 mod notebook;
-mod ports;
-mod previews;
-mod process_explorer;
-mod scm;
-mod scm_changes;
-mod semantic_tokens;
-mod scm_branches;
-mod scm_remote;
-mod terminal;
-mod terminal_links;
-mod terminal_shell;
-mod test_explorer;
 #[cfg(test)]
 mod test_support;
-mod tree;
-mod webview;
 
 use accesskit::{
     Action, ActionData, ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, Node,

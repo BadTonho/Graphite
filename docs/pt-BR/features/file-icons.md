@@ -27,7 +27,7 @@ recompilação estão em
 
 ## Mapeamento
 
-O mapeamento fica em `crates/graphite-app/src/file_icons.rs` e contém apenas
+O mapeamento fica em `crates/graphite-app/src/explorer/file_icons.rs` e contém apenas
 dados. A resolução segue esta ordem:
 
 1. **Nomes especiais** — `Cargo.toml`, `Cargo.lock`, `package.json`,
@@ -77,7 +77,7 @@ reconhecíveis nos temas escuro e claro.
 2. Recompile o subset com
    `python crates/graphite-render/assets/generate-icons.py --source SymbolsNerdFont-Regular.ttf`.
 3. Adicione uma constante e uma entrada de mapeamento em
-   `crates/graphite-app/src/file_icons.rs`.
+   `crates/graphite-app/src/explorer/file_icons.rs`.
 4. Execute `cargo test -p graphite-render` e
    `cargo test -p graphite-app --bin graphite file_icons`. Os testes verificam
    que cada glifo mapeado existe no subset e é rasterizado.

@@ -24,7 +24,7 @@ instructions are in
 
 ## Mapping
 
-The mapping lives in `crates/graphite-app/src/file_icons.rs` and is data-only.
+The mapping lives in `crates/graphite-app/src/explorer/file_icons.rs` and is data-only.
 Resolution runs in this order:
 
 1. **Special file names** — `Cargo.toml`, `Cargo.lock`, `package.json`,
@@ -73,7 +73,7 @@ and light themes.
 2. Rebuild the subset with
    `python crates/graphite-render/assets/generate-icons.py --source SymbolsNerdFont-Regular.ttf`.
 3. Add a constant and a mapping entry in
-   `crates/graphite-app/src/file_icons.rs`.
+   `crates/graphite-app/src/explorer/file_icons.rs`.
 4. Run `cargo test -p graphite-render` and
    `cargo test -p graphite-app --bin graphite file_icons`. The tests verify that
    every mapped glyph exists in the subset and rasterizes.

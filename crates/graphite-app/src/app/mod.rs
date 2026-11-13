@@ -1,132 +1,29 @@
 use super::*;
-pub(super) mod accessibility;
-mod accessibility_actions;
-pub(crate) mod activity_bar;
-mod autosave;
-pub(crate) mod cli_ui;
-mod clipboard;
-pub(crate) mod command_center;
-pub(crate) mod command_execution;
-mod command_handlers;
-pub(crate) mod command_palette;
-pub(crate) mod command_registry;
-mod commands;
-mod comments;
-pub(super) mod context_keys;
-mod custom_editors;
-mod decoration_drawing;
-mod document;
-mod drawing;
-pub(super) mod drawing_helpers;
-pub(crate) mod edit_menu;
-mod editor_commands;
-#[allow(dead_code)]
-pub(super) mod editor_groups;
-pub(crate) mod emmet;
-pub(super) mod explorer_files;
-mod extension_snippets;
-mod extension_themes;
-mod external_changes;
-pub(crate) mod file_menu;
-mod focus_regions;
-mod change_navigation;
-mod debug_extra;
-mod editor_history_picker;
-pub(crate) mod outline;
-mod timeline;
-mod explorer_nav;
-mod fold_actions;
-mod fold_commands;
-pub(crate) mod folding;
-pub(crate) mod github_auth;
-pub(crate) mod github_dialog;
-pub(crate) mod go_menu;
-mod group_drawing;
-pub(crate) mod help_menu;
-mod i18n;
-mod ime;
-mod import_settings;
-mod input;
-mod layout;
-mod local_history;
-pub(crate) mod merge_actions;
-pub(crate) mod merge_drawing;
-pub(crate) mod merge_editor;
-pub(crate) mod merge_flow;
-pub(crate) mod merge_resolution;
-pub(crate) mod multi_diff_ui;
-mod notebook_drawing;
-mod notebook_view;
-pub(crate) mod notebook_interactive;
-#[cfg(test)]
-mod notebook_kernel_tests;
-#[cfg(test)]
-mod notebook_view_tests;
-#[cfg(test)]
-mod notebook_interactive_tests;
-#[cfg(test)]
-mod notebook_ui_tests;
-pub(crate) mod notebook_kernel;
-pub(crate) mod notebook_ui;
-pub(super) mod local_search;
-pub(crate) mod lsp_features;
-mod lsp_ui;
-pub(crate) mod menu_bar;
-mod mouse;
-mod phase4_tools;
-#[path = "../phase5.rs"]
-pub(crate) mod phase5;
+
+// Feature areas. Each group re-exports the modules other code reaches via `app::<name>`.
+mod window;
+pub(crate) use window::{accessibility, activity_bar, clipboard, context_keys, focus_regions, layout, titlebar_layout_controls, theme};
+mod menus;
+pub(crate) use menus::{menu_bar, file_menu, edit_menu, selection_menu, view_menu, go_menu, run_menu, terminal_menu, help_menu, settings_menu, profile_menu};
+mod command_system;
+pub(crate) use command_system::{command_center, command_execution, command_palette, command_registry, command_handlers, cli_ui};
+mod editing;
+pub(crate) use editing::{editor_groups, change_navigation, folding, visual_lines, drawing_helpers, group_drawing, emmet, local_history, outline};
+mod navigation;
+pub(crate) use navigation::{explorer_files, explorer_nav, quick_open, local_search, project_search_filters};
+mod source_control;
+pub(crate) use source_control::{scm_ui, scm_branch_ui, scm_remote_ui, merge_editor, github_auth, github_dialog};
+mod debug_ui;
+pub(crate) use debug_ui::{debug_adapters, debug_inline, debug_panel, debugging};
+mod terminal_panel;
+mod notebooks;
+pub(crate) use notebooks::{notebook_kernel, notebook_ui};
+mod language_ui;
+pub(crate) use language_ui::lsp_features;
+mod utilities;
+pub(crate) use utilities::{phase4_tools, phase5, phase6_drawing};
+
 pub(crate) mod plugins;
-mod preview_tabs;
-pub(crate) mod profile_menu;
-mod project_search;
-pub(super) mod project_search_filters;
-pub(super) mod quick_open;
-pub(crate) mod run_menu;
-pub(crate) mod scm_branch_ui;
-pub(crate) mod scm_remote_ui;
-pub(crate) mod scm_ui;
-pub(crate) mod selection_menu;
-pub(crate) mod settings_menu;
-mod smart_selection;
-mod tasks;
-mod terminal_drawing;
-mod terminal_input;
-pub(crate) mod terminal_menu;
-mod terminal_navigation;
-mod terminal_ui;
-pub(super) mod theme;
-pub(crate) mod titlebar_layout_controls;
-pub(crate) mod view_menu;
-mod visual_lines;
-mod window_events;
-mod workspace_edit;
-mod wrap_drawing;
-
-mod debug_adapters;
-pub(crate) mod debug_inline;
-mod debug_panel;
-pub(crate) mod debugging;
-mod document_edit;
-mod phase6_drawing;
-mod ports_ui;
-mod previews_ui;
-
-#[cfg(test)]
-mod document_view_tests;
-
-#[cfg(test)]
-mod command_tests;
-#[cfg(test)]
-mod merge_flow_tests;
-#[cfg(test)]
-mod merge_actions_tests;
-#[cfg(test)]
-mod multi_diff_tests;
-#[cfg(test)]
-mod merge_entry_tests;
-#[cfg(test)]
-mod merge_resolution_tests;
 
 pub(crate) mod extension_host;
 pub(crate) mod services;
