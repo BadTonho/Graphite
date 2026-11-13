@@ -737,5 +737,7 @@
   "notebook.section.none": "The focused cell is not in a section",
   "notebook.section.nothing_to_fold": "There is no section with cells to fold here",
   "notebook.section.nothing_to_unfold": "There is no folded section here",
-  "notebook.section.folded": "{count} cell(s) hidden"
+  "notebook.section.folded": "{count} cell(s) hidden",
+  "sticky_scroll.none": "There are no pinned sticky scroll lines",
+  "sticky_scroll.not_focused": "Sticky scroll is not focused; run Focus sticky scroll first"
 }

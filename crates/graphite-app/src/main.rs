@@ -166,6 +166,8 @@ struct App {
     selecting: bool,
     column_selection_anchor: Option<(usize, usize)>,
     reveal_cursor: bool,
+    /// The pinned sticky scroll header that has keyboard focus, if any.
+    sticky_focus: Option<app::sticky_scroll::StickyFocus>,
     status: String,
     close_confirm: bool,
     close_window_confirm: bool,
@@ -650,6 +652,7 @@ impl App {
             selecting: false,
             column_selection_anchor: None,
             reveal_cursor: true,
+            sticky_focus: None,
             status: language_warning
                 .or(settings_error)
                 .or_else(|| terminal_config_error.clone())

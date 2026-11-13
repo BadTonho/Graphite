@@ -737,5 +737,7 @@
   "notebook.section.none": "A célula em foco não está em uma seção",
   "notebook.section.nothing_to_fold": "Não há seção com células para recolher aqui",
   "notebook.section.nothing_to_unfold": "Não há seção recolhida aqui",
-  "notebook.section.folded": "{count} célula(s) oculta(s)"
+  "notebook.section.folded": "{count} célula(s) oculta(s)",
+  "sticky_scroll.none": "Não há linhas fixadas na rolagem fixa",
+  "sticky_scroll.not_focused": "A rolagem fixa não está em foco; execute Focar a rolagem fixa primeiro"
 }

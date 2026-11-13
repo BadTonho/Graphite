@@ -59,41 +59,8 @@ impl App {
             };
             self.refresh_document_highlights(document);
             self.refresh_notebook(document);
-            let revision = self.documents[document].buffer.revision();
-            let sticky_headers = self.documents[document]
-                .sticky_headers_cache
-                .as_ref()
-                .filter(|(cached_revision, cached_line, _)| {
-                    *cached_revision == revision && *cached_line == view.scroll_line
-                })
-                .map(|(_, _, headers)| headers.clone())
-                .unwrap_or_else(|| {
-                    let tab = &self.documents[document];
-                    let headers = tab
-                        .language
-                        .map(|language| {
-                            graphite_syntax::enclosing_scope_headers(
-                                language,
-                                &tab.buffer.text(),
-                                view.scroll_line,
-                            )
-                        })
-                        .unwrap_or_default();
-                    self.documents[document].sticky_headers_cache =
-                        Some((revision, view.scroll_line, headers.clone()));
-                    headers
-                });
-            let mut sticky_headers = if self.view_preferences.sticky_scroll {
-                sticky_headers
-            } else {
-                Vec::new()
-            }
-            .into_iter()
-            .filter(|header| header.line < view.scroll_line)
-            .collect::<Vec<_>>();
-            if sticky_headers.len() > 5 {
-                sticky_headers.drain(..sticky_headers.len() - 5);
-            }
+            let sticky_headers = self.sticky_headers_for(document, view.scroll_line);
+            let sticky_focus = self.sticky_focus_index(view.id, view.scroll_line);
             let tab = &self.documents[document];
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
@@ -280,7 +247,7 @@ impl App {
                 body_rect.y = body_y;
                 body_rect.height = body_height;
                 self.draw_wrapped_view(r, body_rect, view, text_x, gutter, visible, lh, cw);
-                draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
+                draw_sticky_headers(r, *rect, &sticky_headers, sticky_focus, text_x, tab_height, lh, cw);
                 continue;
             }
             let decoration_uri = buffer
@@ -592,7 +559,7 @@ impl App {
                     );
                 }
             }
-            draw_sticky_headers(r, *rect, &sticky_headers, text_x, tab_height, lh, cw);
+            draw_sticky_headers(r, *rect, &sticky_headers, sticky_focus, text_x, tab_height, lh, cw);
             if minimap_width > 0.0 {
                 let x = rect.x + rect.width - minimap_width;
                 r.draw_rect(
@@ -713,6 +680,7 @@ fn draw_sticky_headers(
     renderer: &mut Renderer,
     rect: GroupRect,
     headers: &[graphite_syntax::ScopeHeader],
+    focused: Option<usize>,
     text_x: f32,
     tab_height: f32,
     line_height: f32,
@@ -730,6 +698,9 @@ fn draw_sticky_headers(
     );
     for (index, header) in headers.iter().enumerate() {
         let y = rect.y + tab_height + line_height * index as f32;
+        if focused == Some(index) {
+            renderer.draw_rect(rect.x, y, rect.width, line_height, rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)));
+        }
         renderer.draw_text(
             &format!("{:>3}", header.line + 1),
             rect.x + PAD,

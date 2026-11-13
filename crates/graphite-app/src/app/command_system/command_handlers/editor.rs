@@ -716,6 +716,46 @@ pub(super) fn editor_toggle_sticky_scroll(
     Ok(())
 }
 
+pub(super) fn editor_focus_sticky_scroll(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.focus_sticky_scroll();
+    Ok(())
+}
+
+pub(super) fn editor_select_next_sticky_scroll_line(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.select_sticky_scroll_line(true);
+    Ok(())
+}
+
+pub(super) fn editor_select_previous_sticky_scroll_line(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.select_sticky_scroll_line(false);
+    Ok(())
+}
+
+pub(super) fn editor_go_to_focused_sticky_scroll_line(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.go_to_focused_sticky_scroll_line();
+    Ok(())
+}
+
+pub(super) fn editor_select_editor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.focus_editor_text();
+    Ok(())
+}
+
 pub(super) fn editor_announce_cursor_position(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -2083,6 +2123,56 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         editor_toggle_sticky_scroll,
+    );
+    add(
+        registry,
+        "editor.action.focusStickyScroll",
+        "Focus sticky scroll",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_focus_sticky_scroll,
+    );
+    add(
+        registry,
+        "editor.action.selectNextStickyScrollLine",
+        "Select the next sticky scroll line",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_select_next_sticky_scroll_line,
+    );
+    add(
+        registry,
+        "editor.action.selectPreviousStickyScrollLine",
+        "Select the previous sticky scroll line",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_select_previous_sticky_scroll_line,
+    );
+    add(
+        registry,
+        "editor.action.goToFocusedStickyScrollLine",
+        "Go to the focused sticky scroll line",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_go_to_focused_sticky_scroll_line,
+    );
+    add(
+        registry,
+        "editor.action.selectEditor",
+        "Focus the editor text",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_select_editor,
     );
     add(
         registry,

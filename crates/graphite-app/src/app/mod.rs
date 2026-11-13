@@ -8,7 +8,7 @@ pub(crate) use menus::{menu_bar, file_menu, edit_menu, selection_menu, view_menu
 mod command_system;
 pub(crate) use command_system::{command_center, command_execution, command_palette, command_registry, command_handlers, cli_ui};
 mod editing;
-pub(crate) use editing::{editor_groups, change_navigation, folding, visual_lines, drawing_helpers, group_drawing, emmet, local_history, outline};
+pub(crate) use editing::{editor_groups, change_navigation, folding, visual_lines, drawing_helpers, group_drawing, emmet, local_history, outline, sticky_scroll};
 mod navigation;
 pub(crate) use navigation::{explorer_files, explorer_nav, quick_open, local_search, project_search_filters};
 mod source_control;

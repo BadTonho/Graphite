@@ -60,7 +60,6 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 **Núcleo do editor**
 - Reindentar linhas: precisa de regras de recuo por linguagem.
 - Modo sobrescrever: o texto digitado e o colado passam pelo mesmo caminho; o modo precisa valer só para a digitação.
-- Ações de foco da rolagem fixa (focar, selecionar a linha seguinte e a anterior, ir para a linha).
 - Peek de declaração, de definição de tipo e de implementação.
 - Comandos do editor de diff: precisam da interface do editor de diff.
 - Comandos de acessibilidade e de inspeção do editor.

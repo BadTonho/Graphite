@@ -60,7 +60,6 @@ Items that were left out because they depend on something the application does n
 **Editor core**
 - Reindent lines: needs per-language indent rules.
 - Overtype mode: typed text and pasted text share one path; the mode needs to apply only to typing.
-- Sticky scroll focus actions (focus, select next and previous line, go to line).
 - Peek declaration, peek type definition, peek implementation.
 - Diff editor commands: need the diff editor interface.
 - Editor accessibility commands and inspection commands.

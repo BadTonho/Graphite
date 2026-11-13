@@ -29,6 +29,7 @@ pub(crate) mod custom_editors;
 pub(crate) mod workspace_edit;
 pub(crate) mod preview_tabs;
 pub(crate) mod outline;
+pub(crate) mod sticky_scroll;
 pub(crate) mod timeline;
 pub(crate) mod comments;
 pub(crate) mod autosave;
