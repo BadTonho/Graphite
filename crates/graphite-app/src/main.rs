@@ -22,6 +22,7 @@ mod file_nesting;
 mod json_schema;
 mod keybindings;
 mod lsp;
+mod merge;
 mod ports;
 mod previews;
 mod process_explorer;
