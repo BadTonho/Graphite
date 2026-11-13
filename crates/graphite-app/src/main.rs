@@ -118,6 +118,8 @@ struct App {
     explorer_selected: Option<PathBuf>,
     /// Whether the explorer, rather than the editor, has keyboard focus.
     explorer_focused: bool,
+    /// First explorer row shown in the side bar.
+    explorer_scroll: usize,
     /// Entry pressed in the explorer, moved if the mouse is released on a folder.
     explorer_drag: Option<PathBuf>,
     explorer_prompt: Option<app::explorer_files::ExplorerPrompt>,
@@ -574,6 +576,7 @@ impl App {
             sidebar_resize_dragging: false,
             explorer_selected: None,
             explorer_focused: false,
+            explorer_scroll: 0,
             explorer_drag: None,
             explorer_prompt: None,
             github_session,

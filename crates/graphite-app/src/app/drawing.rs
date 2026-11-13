@@ -72,7 +72,14 @@ impl App {
                 lh * 0.25,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
-            for (i, row) in self.tree.rows.iter().enumerate() {
+            for (i, row) in self
+                .tree
+                .rows
+                .iter()
+                .enumerate()
+                .skip(self.explorer_scroll)
+                .map(|(i, row)| (i - self.explorer_scroll, row))
+            {
                 let y = sidebar_lh * 1.5 + i as f32 * sidebar_lh;
                 if y > h {
                     break;
@@ -82,7 +89,9 @@ impl App {
                         .buffer
                         .path()
                         .unwrap_or(std::path::Path::new(""));
-                if is_open {
+                let is_selected = self.explorer_focused
+                    && self.explorer_selected.as_deref() == Some(row.entry.path.as_path());
+                if is_open || is_selected {
                     r.draw_rect(
                         ACTIVITY_BAR_WIDTH,
                         y,

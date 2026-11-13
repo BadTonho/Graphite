@@ -333,7 +333,7 @@ impl App {
             let sidebar_lh = self.sidebar_density_line_height(lh);
             let first_row_y = sidebar_lh * 1.5;
             if my >= first_row_y {
-                let row = ((my - first_row_y) / sidebar_lh) as usize;
+                let row = ((my - first_row_y) / sidebar_lh) as usize + self.explorer_scroll;
                 if let Some(entry) = self.tree.rows.get(row).map(|row| row.entry.path.clone()) {
                     self.explorer_select(entry.clone());
                     self.explorer_drag = Some(entry);

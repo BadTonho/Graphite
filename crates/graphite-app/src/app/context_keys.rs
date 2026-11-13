@@ -301,6 +301,15 @@ impl super::App {
             self.search_filters.details.to_string(),
         );
         global.insert(
+            "explorerFocus".into(),
+            (self.explorer_focused
+                && self.view_preferences.primary_sidebar_visible
+                && self.quick_open.is_none()
+                && self.command_palette.is_none()
+                && self.go_picker.is_none())
+            .to_string(),
+        );
+        global.insert(
             "explorerHasSelection".into(),
             self.explorer_has_selection().to_string(),
         );

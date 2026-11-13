@@ -162,6 +162,24 @@ impl FileTree {
         }
     }
 
+    /// Expands or collapses a folder by path. Returns whether anything changed.
+    pub fn set_expanded(&mut self, path: &std::path::Path, expanded: bool) -> bool {
+        let changed = if expanded {
+            self.expanded.insert(path.to_path_buf())
+        } else {
+            self.expanded.remove(path)
+        };
+        if changed {
+            self.rebuild();
+        }
+        changed
+    }
+
+    pub fn collapse_all(&mut self) {
+        self.expanded.clear();
+        self.rebuild();
+    }
+
     fn rebuild(&mut self) {
         let mut rows = Vec::new();
         let roots = self.workspace.roots().to_vec();
