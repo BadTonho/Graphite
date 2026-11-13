@@ -108,6 +108,8 @@ mod merge_flow_tests;
 #[cfg(test)]
 mod merge_actions_tests;
 #[cfg(test)]
+mod merge_entry_tests;
+#[cfg(test)]
 mod merge_resolution_tests;
 
 pub(crate) mod extension_host;

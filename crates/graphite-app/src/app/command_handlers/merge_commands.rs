@@ -103,3 +103,25 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         add(registry, id, title, "Merge", ALL, OPEN, None, handler);
     }
 }
+
+fn open_from_conflict_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let Some(path) = app.conflict_view.as_ref().map(|view| view.path.clone()) else {
+        return Ok(());
+    };
+    app.open_merge_editor(path).map_err(CommandError::Failed)?;
+    app.conflict_view = None;
+    Ok(())
+}
+
+pub(super) fn register_conflict_view(registry: &mut CommandRegistry) {
+    add(
+        registry,
+        "graphite.conflict.openMergeEditor",
+        "Open Conflict in the Merge Editor",
+        "Merge",
+        ALL,
+        "conflictVisible",
+        None,
+        open_from_conflict_view,
+    );
+}

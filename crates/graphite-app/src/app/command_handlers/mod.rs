@@ -179,6 +179,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     outline_commands::register(registry);
     timeline_commands::register(registry);
     merge_commands::register(registry);
+    merge_commands::register_conflict_view(registry);
     merge_action_commands::register(registry);
     merge_resolution_commands::register(registry);
     layout::register(registry);

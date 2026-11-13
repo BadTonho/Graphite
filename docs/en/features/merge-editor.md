@@ -60,3 +60,9 @@ The title line shows how many conflicts are still unresolved.
 | Reset the close warning | | Closing with decisions that were not written warns first and discards on the second request; this makes it warn again. Any new decision does the same. |
 
 Closing with nothing decided does not warn.
+
+## Entry points
+
+- **Source control list:** opening a file that Git lists as conflicted (the open-conflict action, key `R` in the list) opens the merge editor when the file has conflict markers. A conflicted file without markers, for example one side deleted, still opens the three-way view of base, ours and theirs.
+- **Three-way view:** press `M` to continue in the merge editor. If the file has no markers the view stays and the status bar explains why.
+- **Command palette:** **Open merge editor** for the active file.

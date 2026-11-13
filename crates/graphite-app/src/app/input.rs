@@ -222,6 +222,7 @@ impl App {
                     "graphite.conflict.resolve",
                     serde_json::json!({"index":0}),
                 ),
+                "m" => self.run_ui_command("graphite.conflict.openMergeEditor"),
                 "e" => self.run_ui_command_args(
                     "graphite.conflict.resolve",
                     serde_json::json!({"index":3}),

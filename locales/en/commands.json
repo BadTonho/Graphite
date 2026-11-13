@@ -605,5 +605,6 @@
   "command.mergeEditor.acceptAllCombination": "Merge editor: accept all, both sides",
   "command.mergeEditor.resetResultToBaseAndAutoMerge": "Merge editor: reset the result",
   "command.mergeEditor.resetCloseWithConflictsChoice": "Merge editor: reset the close warning",
-  "command.mergeEditor.acceptMerge": "Merge editor: complete merge"
+  "command.mergeEditor.acceptMerge": "Merge editor: complete merge",
+  "command.graphite.conflict.openMergeEditor": "Open the conflict in the merge editor"
 }

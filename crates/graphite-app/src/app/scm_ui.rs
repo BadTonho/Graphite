@@ -831,6 +831,20 @@ impl App {
     }
 
     pub(crate) fn open_selected_conflict(&mut self) {
+        let in_conflict = self
+            .scm_snapshot
+            .files
+            .get(self.scm_selected)
+            .is_some_and(|item| item.conflicted);
+        if in_conflict {
+            if let Some(file) = self.scm_selected_path() {
+                // A file with conflict markers is resolved in the merge editor; anything else
+                // (a deleted side, for example) falls back to the three-way view below.
+                if self.open_merge_editor(file).is_ok() {
+                    return;
+                }
+            }
+        }
         let Some(path) = self.scm_selected_path() else {
             return;
         };

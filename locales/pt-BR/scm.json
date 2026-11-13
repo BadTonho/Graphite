@@ -11,7 +11,7 @@
   "scm.conflict.resolved_staged": "Resolução de conflito gravada e preparada",
   "scm.conflict.save_stage_failed": "Arquivo salvo, mas não foi possível preparar a resolução do conflito: {error}",
   "scm.conflict.saved_staged": "Resolução de conflito salva e preparada",
-  "scm.conflict.shortcuts": "Mesclagem de três vias   O nosso  T deles  B base  E editar  Esc fechar",
+  "scm.conflict.shortcuts": "Mesclagem de três vias   O nosso  T deles  B base  E editar  M editor de mesclagem  Esc fechar",
   "scm.conflict.side_unavailable": "Esse lado do conflito não está disponível",
   "scm.conflict.theirs": "DELES",
   "scm.diff.escape_hint": "{title}   Esc fecha",

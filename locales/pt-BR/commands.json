@@ -605,5 +605,6 @@
   "command.mergeEditor.acceptAllCombination": "Editor de mesclagem: aceitar tudo, os dois lados",
   "command.mergeEditor.resetResultToBaseAndAutoMerge": "Editor de mesclagem: redefinir o resultado",
   "command.mergeEditor.resetCloseWithConflictsChoice": "Editor de mesclagem: redefinir o aviso ao fechar",
-  "command.mergeEditor.acceptMerge": "Editor de mesclagem: concluir a mesclagem"
+  "command.mergeEditor.acceptMerge": "Editor de mesclagem: concluir a mesclagem",
+  "command.graphite.conflict.openMergeEditor": "Abrir o conflito no editor de mesclagem"
 }

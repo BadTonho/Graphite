@@ -11,7 +11,7 @@
   "scm.conflict.resolved_staged": "Conflict resolution written and staged",
   "scm.conflict.save_stage_failed": "Saved file, but could not stage conflict resolution: {error}",
   "scm.conflict.saved_staged": "Saved conflict resolution and staged it",
-  "scm.conflict.shortcuts": "Three-way merge   O ours  T theirs  B base  E edit  Esc close",
+  "scm.conflict.shortcuts": "Three-way merge   O ours  T theirs  B base  E edit  M merge editor  Esc close",
   "scm.conflict.side_unavailable": "That conflict side is unavailable",
   "scm.conflict.theirs": "THEIRS",
   "scm.diff.escape_hint": "{title}   Esc closes",

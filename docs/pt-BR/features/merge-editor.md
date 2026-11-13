@@ -60,3 +60,9 @@ A linha de título mostra quantos conflitos ainda estão pendentes.
 | Redefinir o aviso ao fechar | | Fechar com decisões não gravadas avisa primeiro e descarta no segundo pedido; este comando faz o aviso valer de novo. Qualquer nova decisão faz o mesmo. |
 
 Fechar sem nenhuma decisão não avisa.
+
+## Pontos de entrada
+
+- **Lista do controle de código-fonte:** abrir um arquivo que o Git lista como em conflito (a ação de abrir conflito, tecla `R` na lista) abre o editor de mesclagem quando o arquivo tem marcadores de conflito. Um arquivo em conflito sem marcadores, por exemplo com um dos lados apagado, continua abrindo a visão de três vias com base, nosso e deles.
+- **Visão de três vias:** pressione `M` para continuar no editor de mesclagem. Se o arquivo não tiver marcadores, a visão continua e a barra de status explica o motivo.
+- **Paleta de comandos:** **Abrir editor de mesclagem** para o arquivo ativo.
