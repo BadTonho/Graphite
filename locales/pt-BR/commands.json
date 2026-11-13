@@ -403,5 +403,21 @@
   "command.workbench.action.joinAllGroups": "Juntar todos os grupos de editores",
   "command.workbench.action.focusActiveEditorGroup": "Focar o grupo de editores ativo",
   "command.workbench.action.focusFirstEditorGroup": "Focar o primeiro grupo de editores",
-  "command.workbench.action.focusLastEditorGroup": "Focar o último grupo de editores"
+  "command.workbench.action.focusLastEditorGroup": "Focar o último grupo de editores",
+  "command.workbench.action.closeSidebar": "Fechar barra lateral primária",
+  "command.workbench.action.closePanel": "Fechar painel",
+  "command.workbench.action.closeAuxiliaryBar": "Fechar barra lateral secundária",
+  "command.workbench.action.focusSideBar": "Focar a barra lateral primária",
+  "command.workbench.action.focusPanel": "Focar o painel",
+  "command.workbench.action.focusNextPart": "Focar a próxima parte",
+  "command.workbench.action.focusPreviousPart": "Focar a parte anterior",
+  "command.workbench.action.nextSideBarView": "Próxima vista da barra lateral primária",
+  "command.workbench.action.previousSideBarView": "Vista anterior da barra lateral primária",
+  "command.workbench.action.toggleFullScreen": "Alternar tela cheia",
+  "command.workbench.action.toggleCenteredLayout": "Alternar layout centralizado",
+  "command.workbench.action.showAboutDialog": "Sobre",
+  "command.workbench.action.customizeLayout": "Personalizar layout",
+  "command.workbench.action.navigateBackInNavigationLocations": "Voltar nos locais de navegação",
+  "command.workbench.action.navigatePreviousInNavigationLocations": "Ir ao local de navegação anterior",
+  "command.workbench.action.navigateForwardInNavigationLocations": "Avançar nos locais de navegação"
 }

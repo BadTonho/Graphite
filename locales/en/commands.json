@@ -403,5 +403,21 @@
   "command.workbench.action.joinAllGroups": "Join all editor groups",
   "command.workbench.action.focusActiveEditorGroup": "Focus active editor group",
   "command.workbench.action.focusFirstEditorGroup": "Focus first editor group",
-  "command.workbench.action.focusLastEditorGroup": "Focus last editor group"
+  "command.workbench.action.focusLastEditorGroup": "Focus last editor group",
+  "command.workbench.action.closeSidebar": "Close primary side bar",
+  "command.workbench.action.closePanel": "Close panel",
+  "command.workbench.action.closeAuxiliaryBar": "Close secondary side bar",
+  "command.workbench.action.focusSideBar": "Focus into primary side bar",
+  "command.workbench.action.focusPanel": "Focus into panel",
+  "command.workbench.action.focusNextPart": "Focus next part",
+  "command.workbench.action.focusPreviousPart": "Focus previous part",
+  "command.workbench.action.nextSideBarView": "Next primary side bar view",
+  "command.workbench.action.previousSideBarView": "Previous primary side bar view",
+  "command.workbench.action.toggleFullScreen": "Toggle full screen",
+  "command.workbench.action.toggleCenteredLayout": "Toggle centered layout",
+  "command.workbench.action.showAboutDialog": "About",
+  "command.workbench.action.customizeLayout": "Customize layout",
+  "command.workbench.action.navigateBackInNavigationLocations": "Navigate back in navigation locations",
+  "command.workbench.action.navigatePreviousInNavigationLocations": "Navigate to the previous navigation location",
+  "command.workbench.action.navigateForwardInNavigationLocations": "Navigate forward in navigation locations"
 }

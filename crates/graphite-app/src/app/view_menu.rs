@@ -709,6 +709,10 @@ impl App {
         self.save_view_preferences();
     }
 
+    pub(crate) fn toggle_full_screen(&mut self) {
+        self.execute_view_action(ViewAction::FullScreen, None);
+    }
+
     pub(crate) fn toggle_sticky_scroll(&mut self) {
         self.execute_view_action(ViewAction::StickyScroll, None);
     }

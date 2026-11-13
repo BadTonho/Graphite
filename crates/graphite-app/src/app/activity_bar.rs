@@ -772,6 +772,34 @@ impl App {
         }
     }
 
+    /// Shows the next (or previous) side bar view, skipping the ones hidden from the activity
+    /// bar, and makes the side bar visible.
+    pub(crate) fn cycle_side_bar_view(&mut self, reverse: bool) {
+        let visible: Vec<Activity> = Activity::ALL
+            .into_iter()
+            .filter(|item| {
+                !self
+                    .activity_bar_preferences
+                    .hidden_items
+                    .contains(item.preference_id())
+            })
+            .collect();
+        if visible.is_empty() {
+            return;
+        }
+        let current = self.active_activity();
+        let next = match visible.iter().position(|item| *item == current) {
+            Some(index) if reverse => visible[(index + visible.len() - 1) % visible.len()],
+            Some(index) => visible[(index + 1) % visible.len()],
+            None => visible[0],
+        };
+        if !self.view_preferences.primary_sidebar_visible {
+            self.view_preferences.primary_sidebar_visible = true;
+            self.save_view_preferences_for_command();
+        }
+        self.activate_activity(next);
+    }
+
     fn activate_fallback_activity(&mut self, hidden: Activity) {
         if let Some(next) = Activity::ALL.into_iter().find(|item| {
             *item != hidden

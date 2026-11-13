@@ -14,6 +14,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "workbench.action.customizeLayout",
+        "Customize layout",
+        "View",
+        ALL,
+        "true",
+        None,
+        customize_layout,
+    );
+    add(
+        registry,
         "graphite.layout.togglePrimarySidebar",
         "Toggle Primary Side Bar",
         "Workbench",
