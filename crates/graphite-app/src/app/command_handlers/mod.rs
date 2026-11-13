@@ -11,6 +11,7 @@ mod explorer;
 mod files;
 mod focus;
 mod groups;
+mod history;
 mod input;
 mod layout;
 mod lists;
@@ -159,6 +160,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     misc::register(registry);
     files::register(registry);
     changes::register(registry);
+    history::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

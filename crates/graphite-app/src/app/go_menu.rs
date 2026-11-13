@@ -91,6 +91,10 @@ pub(crate) enum GoPickerKind {
     WorkspaceSymbols,
     LineColumn,
     Locations,
+    /// Saved versions of a file: picking one restores it, compares it, or deletes it.
+    HistoryRestore,
+    HistoryCompare,
+    HistoryDelete,
 }
 
 #[derive(Clone, Debug)]
@@ -802,6 +806,28 @@ impl App {
                 self.editor_mut()
                     .set_cursor_line_col(line.saturating_sub(1), column.saturating_sub(1));
                 self.reveal_cursor = true;
+            }
+            GoPickerKind::HistoryRestore
+            | GoPickerKind::HistoryCompare
+            | GoPickerKind::HistoryDelete => {
+                let Some(item) = self
+                    .go_picker_rows_from(&picker)
+                    .get(picker.selected)
+                    .cloned()
+                else {
+                    return;
+                };
+                let Some(origin) = self.history_origin(&item.path) else {
+                    self.status = self.t("history.no_origin").into();
+                    return;
+                };
+                match picker.kind {
+                    GoPickerKind::HistoryRestore => self.restore_history_version(&item.path, &origin),
+                    GoPickerKind::HistoryCompare => {
+                        self.compare_history_version(item.path, origin)
+                    }
+                    _ => self.delete_history_version(&item.path),
+                }
             }
             _ => {
                 if let Some(item) = self

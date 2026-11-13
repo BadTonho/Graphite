@@ -633,5 +633,13 @@
   "explorer.refreshed": "Explorador atualizado",
   "scm.change.none": "Não há alterações neste arquivo",
   "scm.change.wrapped": "Deu a volta para a outra ponta do arquivo",
-  "scm.error.empty_message": "Digite uma mensagem de commit antes"
+  "scm.error.empty_message": "Digite uma mensagem de commit antes",
+  "history.restored": "Arquivo restaurado do histórico local",
+  "history.deleted": "Entrada do histórico local excluída",
+  "history.all_deleted": "Todo o histórico local deste arquivo foi excluído",
+  "history.created": "Entrada do histórico local criada",
+  "history.unchanged": "O arquivo não mudou desde a última entrada",
+  "history.unreadable": "Não foi possível ler essa entrada do histórico local",
+  "history.no_origin": "Não foi possível achar o arquivo dessa entrada",
+  "history.not_a_version": "O editor aberto não é uma entrada do histórico local"
 }

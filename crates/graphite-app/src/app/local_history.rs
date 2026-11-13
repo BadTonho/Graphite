@@ -134,6 +134,139 @@ impl App {
     }
 }
 
+/// What picking a saved version of the active file does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HistoryAction {
+    Restore,
+    Compare,
+    Delete,
+}
+
+impl App {
+    /// The saved versions of the active file, newest first, and the file they belong to.
+    fn active_file_versions(&self) -> Option<(PathBuf, Vec<PathBuf>)> {
+        let path = self.documents[self.command_document()]
+            .buffer
+            .path()?
+            .to_path_buf();
+        let mut versions = list_versions(&self.local_history_dir(&path));
+        versions.reverse();
+        Some((path, versions))
+    }
+
+    /// The file a saved version was made from, read from the note kept in its folder.
+    pub(crate) fn history_origin(&self, version: &Path) -> Option<PathBuf> {
+        if !self.is_local_history_file(version) {
+            return None;
+        }
+        let note = fs::read_to_string(version.parent()?.join("path.txt")).ok()?;
+        Some(PathBuf::from(note.trim()))
+    }
+
+    /// Opens the version picker for `action`; picking one runs it.
+    pub(crate) fn open_history_picker(&mut self, action: HistoryAction) {
+        if !self.open_local_history() {
+            return;
+        }
+        if let Some(picker) = self.go_picker.as_mut() {
+            picker.kind = match action {
+                HistoryAction::Restore => super::go_menu::GoPickerKind::HistoryRestore,
+                HistoryAction::Compare => super::go_menu::GoPickerKind::HistoryCompare,
+                HistoryAction::Delete => super::go_menu::GoPickerKind::HistoryDelete,
+            };
+        }
+    }
+
+    /// Replaces the text of `target` with the text of a saved version, as one undoable edit.
+    pub(crate) fn restore_history_version(&mut self, version: &Path, target: &Path) {
+        let Ok(text) = fs::read_to_string(version) else {
+            self.status = self.t("history.unreadable").into();
+            return;
+        };
+        self.open_file(target.to_path_buf());
+        {
+            let mut editor = self.editor_mut();
+            let length = editor.len_chars();
+            editor.set_selection(0, length);
+            editor.insert(&text);
+            editor.set_selection(0, 0);
+        }
+        self.status = self.t("history.restored").into();
+    }
+
+    pub(crate) fn compare_history_version(&mut self, version: PathBuf, target: PathBuf) {
+        self.open_diff_paths(version, target);
+    }
+
+    pub(crate) fn delete_history_version(&mut self, version: &Path) {
+        if !self.is_local_history_file(version) {
+            return;
+        }
+        match fs::remove_file(version) {
+            Ok(()) => self.status = self.t("history.deleted").into(),
+            Err(error) => self.status = error.to_string(),
+        }
+    }
+
+    /// Compares the active file with its most recent saved version.
+    pub(crate) fn compare_with_previous_version(&mut self) {
+        let Some((path, versions)) = self.active_file_versions() else {
+            self.status = self.t("history.no_file").into();
+            return;
+        };
+        match versions.into_iter().next() {
+            Some(latest) => self.compare_history_version(latest, path),
+            None => self.status = self.t("history.none").into(),
+        }
+    }
+
+    /// Saves a new version of the active file now.
+    pub(crate) fn create_history_entry(&mut self) {
+        let document = self.command_document();
+        if self.documents[document].buffer.path().is_none() {
+            self.status = self.t("history.no_file").into();
+            return;
+        }
+        let before = self
+            .active_file_versions()
+            .map_or(0, |(_, versions)| versions.len());
+        self.record_local_history(document);
+        let after = self
+            .active_file_versions()
+            .map_or(0, |(_, versions)| versions.len());
+        self.status = if after > before {
+            self.t("history.created").into()
+        } else {
+            self.t("history.unchanged").into()
+        };
+    }
+
+    /// Removes every saved version of the active file.
+    pub(crate) fn delete_all_history(&mut self) {
+        let Some((path, _)) = self.active_file_versions() else {
+            self.status = self.t("history.no_file").into();
+            return;
+        };
+        let _ = fs::remove_dir_all(self.local_history_dir(&path));
+        self.status = self.t("history.all_deleted").into();
+    }
+
+    /// With a saved version open in the editor, puts its text back into the original file.
+    pub(crate) fn restore_open_history_version(&mut self) {
+        let Some(version) = self.documents[self.command_document()]
+            .buffer
+            .path()
+            .map(Path::to_path_buf)
+        else {
+            return;
+        };
+        match self.history_origin(&version) {
+            Some(origin) => self.restore_history_version(&version, &origin),
+            None => self.status = self.t("history.not_a_version").into(),
+        }
+    }
+}
+
 /// Version files of one history folder, oldest first (names sort by time).
 fn list_versions(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -203,5 +336,133 @@ mod tests {
 
         assert!(!app.open_local_history());
         assert!(app.status.len() > 0);
+    }
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+    use crate::test_support::TempDir;
+
+    /// An app with `doc.txt` open and a profile, so versions are written to disk.
+    fn app() -> (App, TempDir, PathBuf) {
+        let dir = TempDir::new();
+        let path = dir.path().join("doc.txt");
+        std::fs::write(&path, "one").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.profile_root = dir.path().join("profile");
+        app.profiles = Some(crate::app::phase5::Profiles::open(dir.path()).unwrap());
+        app.open_file(path.clone());
+        (app, dir, path)
+    }
+
+    fn text(app: &App) -> String {
+        app.editor().text()
+    }
+
+    /// Records "one", then edits to "onex" and records that.
+    fn two_versions(app: &mut App) {
+        let document = app.active_document();
+        app.record_local_history(document);
+        app.editor_mut().insert("x");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        app.record_local_history(document);
+    }
+
+    fn version_count(app: &App, path: &Path) -> usize {
+        list_versions(&app.local_history_dir(path)).len()
+    }
+
+    #[test]
+    fn creating_an_entry_saves_a_version_once_and_reports_no_change_the_second_time() {
+        let (mut app, _dir, path) = app();
+        app.run_ui_command("workbench.action.localHistory.create");
+        assert_eq!(version_count(&app, &path), 1);
+        assert_eq!(app.status, app.t("history.created"));
+        app.run_ui_command("workbench.action.localHistory.create");
+        assert_eq!(version_count(&app, &path), 1);
+        assert_eq!(app.status, app.t("history.unchanged"));
+    }
+
+    #[test]
+    fn deleting_all_history_removes_every_version() {
+        let (mut app, _dir, path) = app();
+        two_versions(&mut app);
+        assert_eq!(version_count(&app, &path), 2);
+        app.run_ui_command("workbench.action.localHistory.deleteAll");
+        assert_eq!(version_count(&app, &path), 0);
+    }
+
+    #[test]
+    fn restoring_from_the_picker_puts_the_chosen_version_back_as_one_undo_step() {
+        let (mut app, _dir, _path) = app();
+        two_versions(&mut app);
+        app.editor_mut().insert("y");
+        let edited = text(&app);
+        assert_ne!(edited, "one");
+        app.run_ui_command("workbench.action.localHistory.restoreViaPicker");
+        let picker = app.go_picker.as_mut().expect("the version picker");
+        assert_eq!(picker.items.len(), 2, "newest first");
+        picker.selected = 1;
+        app.accept_go_picker();
+        assert_eq!(text(&app), "one");
+        assert_eq!(app.status, app.t("history.restored"));
+        app.run_ui_command("undo");
+        assert_eq!(text(&app), edited);
+    }
+
+    #[test]
+    fn deleting_from_the_picker_removes_that_version_only() {
+        let (mut app, _dir, path) = app();
+        two_versions(&mut app);
+        app.run_ui_command("workbench.action.localHistory.delete");
+        app.go_picker.as_mut().unwrap().selected = 0;
+        app.accept_go_picker();
+        assert_eq!(version_count(&app, &path), 1);
+        assert_eq!(app.status, app.t("history.deleted"));
+    }
+
+    #[test]
+    fn restoring_through_an_open_version_writes_it_into_the_original_file() {
+        let (mut app, _dir, path) = app();
+        two_versions(&mut app);
+        let oldest = list_versions(&app.local_history_dir(&path))[0].clone();
+        app.open_file(oldest);
+        app.run_ui_command("workbench.action.localHistory.restoreViaEditor");
+        assert_eq!(text(&app), "one");
+        assert_eq!(
+            app.documents[app.active_document()].buffer.path(),
+            Some(path.as_path())
+        );
+    }
+
+    #[test]
+    fn restoring_from_an_ordinary_file_says_it_is_not_a_version() {
+        let (mut app, _dir, _path) = app();
+        app.run_ui_command("workbench.action.localHistory.restoreViaEditor");
+        assert_eq!(app.status, app.t("history.not_a_version"));
+    }
+
+    #[test]
+    fn comparing_needs_a_saved_version_and_a_window() {
+        let (mut app, _dir, _path) = app();
+        app.run_ui_command("workbench.action.localHistory.compareWithPrevious");
+        assert_eq!(app.status, app.t("history.none"));
+        let document = app.active_document();
+        app.record_local_history(document);
+        app.run_ui_command("workbench.action.localHistory.compareWithPrevious");
+        assert_eq!(
+            app.status,
+            app.t("scm.error.diff_needs_loop"),
+            "it reached the diff"
+        );
+    }
+
+    #[test]
+    fn the_open_command_lists_the_versions() {
+        let (mut app, _dir, _path) = app();
+        two_versions(&mut app);
+        app.run_ui_command("workbench.action.localHistory.open");
+        assert_eq!(app.go_picker.as_ref().unwrap().items.len(), 2);
     }
 }

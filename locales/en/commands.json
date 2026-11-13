@@ -486,5 +486,13 @@
   "command.scm.acceptInput": "Commit staged changes",
   "command.scm.clearInput": "Clear commit message",
   "command.scm.openInTerminal": "Open repository in terminal",
-  "command.scm.openInIntegratedTerminal": "Open repository in integrated terminal"
+  "command.scm.openInIntegratedTerminal": "Open repository in integrated terminal",
+  "command.workbench.action.localHistory.open": "Find local history entry to open",
+  "command.workbench.action.localHistory.restoreViaPicker": "Find local history entry to restore",
+  "command.workbench.action.localHistory.compareWithFile": "Compare local history entry with the file",
+  "command.workbench.action.localHistory.compareWithPrevious": "Compare file with the latest local history entry",
+  "command.workbench.action.localHistory.create": "Create local history entry",
+  "command.workbench.action.localHistory.delete": "Delete local history entry",
+  "command.workbench.action.localHistory.deleteAll": "Delete all local history of the file",
+  "command.workbench.action.localHistory.restoreViaEditor": "Restore the open local history entry"
 }

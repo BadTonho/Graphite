@@ -486,5 +486,13 @@
   "command.scm.acceptInput": "Fazer commit das alterações preparadas",
   "command.scm.clearInput": "Limpar a mensagem de commit",
   "command.scm.openInTerminal": "Abrir o repositório no terminal",
-  "command.scm.openInIntegratedTerminal": "Abrir o repositório no terminal integrado"
+  "command.scm.openInIntegratedTerminal": "Abrir o repositório no terminal integrado",
+  "command.workbench.action.localHistory.open": "Procurar entrada do histórico local para abrir",
+  "command.workbench.action.localHistory.restoreViaPicker": "Procurar entrada do histórico local para restaurar",
+  "command.workbench.action.localHistory.compareWithFile": "Comparar entrada do histórico local com o arquivo",
+  "command.workbench.action.localHistory.compareWithPrevious": "Comparar o arquivo com a última entrada do histórico local",
+  "command.workbench.action.localHistory.create": "Criar entrada do histórico local",
+  "command.workbench.action.localHistory.delete": "Excluir entrada do histórico local",
+  "command.workbench.action.localHistory.deleteAll": "Excluir todo o histórico local do arquivo",
+  "command.workbench.action.localHistory.restoreViaEditor": "Restaurar a entrada do histórico local aberta"
 }
