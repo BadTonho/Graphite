@@ -619,5 +619,6 @@
   "editor.anchor.set": "Âncora definida em {line}:{column}",
   "editor.announce_position": "Linha {line}, coluna {column}",
   "editor.announce_position_selection": "Linha {line}, coluna {column}, {selected} caracteres selecionados",
-  "groups.no_target": "Não há outro grupo de editores"
+  "groups.no_target": "Não há outro grupo de editores",
+  "go.no_editors": "Nenhum editor aberto."
 }

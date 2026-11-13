@@ -419,5 +419,19 @@
   "command.workbench.action.customizeLayout": "Personalizar layout",
   "command.workbench.action.navigateBackInNavigationLocations": "Voltar nos locais de navegação",
   "command.workbench.action.navigatePreviousInNavigationLocations": "Ir ao local de navegação anterior",
-  "command.workbench.action.navigateForwardInNavigationLocations": "Avançar nos locais de navegação"
+  "command.workbench.action.navigateForwardInNavigationLocations": "Avançar nos locais de navegação",
+  "command.workbench.action.quickOpenPreviousRecentlyUsedEditor": "Abrir rápido o editor anterior do histórico",
+  "command.workbench.action.quickOpenPreviousEditor": "Abrir rápido o editor anterior",
+  "command.workbench.action.quickOpenLeastRecentlyUsedEditor": "Abrir rápido o editor menos usado recentemente",
+  "command.workbench.action.quickOpenPreviousRecentlyUsedEditorInGroup": "Abrir rápido o editor anterior do histórico no grupo",
+  "command.workbench.action.quickOpenLeastRecentlyUsedEditorInGroup": "Abrir rápido o editor menos usado recentemente no grupo",
+  "command.workbench.action.acceptSelectedQuickOpenItem": "Aceitar o item selecionado do abrir rápido",
+  "command.workbench.action.alternativeAcceptSelectedQuickOpenItem": "Abrir o item selecionado do abrir rápido em aba permanente",
+  "command.workbench.action.closeQuickOpen": "Fechar o abrir rápido",
+  "command.workbench.action.focusQuickOpen": "Focar o abrir rápido",
+  "command.workbench.action.quickOpenWithModes": "Abrir rápido com modos",
+  "command.workbench.action.openNextRecentlyUsedEditor": "Abrir o próximo editor usado recentemente",
+  "command.workbench.action.openPreviousRecentlyUsedEditor": "Abrir o editor anterior usado recentemente",
+  "command.workbench.action.openNextRecentlyUsedEditorInGroup": "Abrir o próximo editor usado recentemente no grupo",
+  "command.workbench.action.openPreviousRecentlyUsedEditorInGroup": "Abrir o editor anterior usado recentemente no grupo"
 }

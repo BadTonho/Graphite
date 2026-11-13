@@ -12,6 +12,7 @@ mod groups;
 mod input;
 mod layout;
 mod parts;
+mod quick;
 mod scm;
 mod ui;
 mod widget_controls;
@@ -149,6 +150,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     focus::register(registry);
     groups::register(registry);
     parts::register(registry);
+    quick::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

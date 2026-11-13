@@ -419,5 +419,19 @@
   "command.workbench.action.customizeLayout": "Customize layout",
   "command.workbench.action.navigateBackInNavigationLocations": "Navigate back in navigation locations",
   "command.workbench.action.navigatePreviousInNavigationLocations": "Navigate to the previous navigation location",
-  "command.workbench.action.navigateForwardInNavigationLocations": "Navigate forward in navigation locations"
+  "command.workbench.action.navigateForwardInNavigationLocations": "Navigate forward in navigation locations",
+  "command.workbench.action.quickOpenPreviousRecentlyUsedEditor": "Quick open previous editor from history",
+  "command.workbench.action.quickOpenPreviousEditor": "Quick open previous editor",
+  "command.workbench.action.quickOpenLeastRecentlyUsedEditor": "Quick open least recently used editor",
+  "command.workbench.action.quickOpenPreviousRecentlyUsedEditorInGroup": "Quick open previous editor from history in group",
+  "command.workbench.action.quickOpenLeastRecentlyUsedEditorInGroup": "Quick open least recently used editor in group",
+  "command.workbench.action.acceptSelectedQuickOpenItem": "Accept the selected quick open item",
+  "command.workbench.action.alternativeAcceptSelectedQuickOpenItem": "Open the selected quick open item in a permanent tab",
+  "command.workbench.action.closeQuickOpen": "Close quick open",
+  "command.workbench.action.focusQuickOpen": "Focus quick open",
+  "command.workbench.action.quickOpenWithModes": "Quick open with modes",
+  "command.workbench.action.openNextRecentlyUsedEditor": "Open next recently used editor",
+  "command.workbench.action.openPreviousRecentlyUsedEditor": "Open previous recently used editor",
+  "command.workbench.action.openNextRecentlyUsedEditorInGroup": "Open next recently used editor in group",
+  "command.workbench.action.openPreviousRecentlyUsedEditorInGroup": "Open previous recently used editor in group"
 }
