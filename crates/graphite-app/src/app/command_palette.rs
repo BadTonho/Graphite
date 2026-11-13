@@ -225,9 +225,12 @@ mod tests {
         app.open_command_palette();
         assert!(!app.command_palette_rows().is_empty());
         app.command_palette.as_mut().unwrap().query = "quickOpen".into();
-        assert!(app
-            .command_palette_rows()
+        // Many commands match, and only a page of them is shown, so look at all the matches.
+        let palette = app.command_palette.as_ref().unwrap();
+        assert!(palette
+            .items
             .iter()
+            .filter(|item| matches(item, &palette.query))
             .any(|item| item.title == "Quick open"));
     }
 
