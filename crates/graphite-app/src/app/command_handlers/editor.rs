@@ -1125,6 +1125,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "graphite.vsix.requestedCommands",
+        "Show commands requested by extensions",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        show_requested_commands,
+    );
+    add(
+        registry,
         "editor.action.formatSelection",
         "Format selection",
         "Editor",
@@ -1293,6 +1303,14 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         cursor_end_select,
     );
+}
+
+fn show_requested_commands(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.show_requested_vsix_commands();
+    Ok(())
 }
 
 fn run_code_lens(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {

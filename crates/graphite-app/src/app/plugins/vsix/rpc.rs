@@ -23,6 +23,11 @@ impl App {
                 .get(command)
                 .is_none()
             {
+                self.record_requested_vsix_command(
+                    runtime,
+                    command,
+                    super::requested_commands::Source::Extension,
+                );
                 return runtime.session.send(json!({"type":"reply","id":id,"error":format!("Unknown Graphite command: {command}")}));
             }
             let values = args.get(1).unwrap_or(&Value::Null);

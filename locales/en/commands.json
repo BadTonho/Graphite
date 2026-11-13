@@ -312,5 +312,6 @@
   "command.graphite.editor.addCursorBelow": "Add Cursor Below",
   "command.graphite.editor.addCursorsToLineEnds": "Add Cursors to Line Ends",
   "command.editor.action.toggleColumnSelection": "Toggle Column Selection Mode",
-  "command.graphite.editor.toggleMultiCursorModifier": "Switch Multi-Cursor Modifier"
+  "command.graphite.editor.toggleMultiCursorModifier": "Switch Multi-Cursor Modifier",
+  "command.graphite.vsix.requestedCommands": "Show commands requested by extensions"
 }

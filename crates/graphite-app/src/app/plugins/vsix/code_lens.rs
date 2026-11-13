@@ -328,7 +328,7 @@ impl App {
         column >= length && self.run_code_lens_on_cursor_line()
     }
 
-    fn run_lens_command(&mut self, command: LensCommand) {
+    pub(super) fn run_lens_command(&mut self, command: LensCommand) {
         if crate::app::command_registry::registry()
             .get(&command.id)
             .is_some()
@@ -343,6 +343,14 @@ impl App {
             .as_ref()
             .is_some_and(|runtime| runtime.registered.contains(&command.id));
         if !registered {
+            if let Some(mut runtime) = self.plugins.vsix.take() {
+                self.record_requested_vsix_command(
+                    &mut runtime,
+                    &command.id,
+                    super::requested_commands::Source::CodeLens,
+                );
+                self.plugins.vsix = Some(runtime);
+            }
             self.status = format!("The code lens command {} is not available", command.id);
             return;
         }

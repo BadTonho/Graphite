@@ -16,6 +16,7 @@ pub(crate) use hierarchy::Kind as HierarchyKind;
 mod language_results;
 mod passive;
 mod languages;
+mod requested_commands;
 pub(crate) use decorations::LineMark as DecorationMark;
 pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use languages::Feature as VsixLanguageFeature;
@@ -60,6 +61,8 @@ pub(crate) struct Runtime {
     colors: colors::Colors,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
+    /// Commands extensions asked for that Graphite does not have.
+    requested: requested_commands::Requested,
 }
 
 impl Runtime {
@@ -102,6 +105,7 @@ impl Runtime {
             lenses: Default::default(),
             colors: Default::default(),
             unsupported: BTreeSet::new(),
+            requested: Default::default(),
         }
     }
 }
@@ -273,6 +277,7 @@ impl App {
             lenses: Default::default(),
             colors: Default::default(),
             unsupported: BTreeSet::new(),
+            requested: Default::default(),
         });
         Ok(())
     }

@@ -49,6 +49,8 @@ Keybindings, grammars and icon themes are listed in the package but not applied 
 
 Requests outside this list get the error `Graphite does not support <actor>.<method>`, and the extension sees that error. Registrations of capabilities that are not implemented (`$register*`, `$unregister*`, `$emit*`) are accepted without an error so they do not clutter the status bar. Every unsupported call is recorded once per session in `<profile>/code-oss/unsupported-api.log`, which shows what an extension needs that Graphite does not provide yet.
 
+Commands are tracked the same way. When an extension calls `commands.executeCommand` with an id Graphite does not have, or runs a code lens whose command Graphite cannot run, the id is counted, and **Show commands requested by extensions** opens a read-only list of them (requests, command id, whether it came from extension code or a code lens), most requested first. Each id is also appended once to `<profile>/code-oss/requested-commands.log`. Use the list to see which commands to implement for an extension to work; the list is rebuilt from the current session, the log keeps ids across restarts.
+
 ## Features requested automatically
 
 Most providers answer a command (hover, go to definition, format). Seven are asked for without one:

@@ -312,5 +312,6 @@
   "command.graphite.editor.addCursorBelow": "Adicionar Cursor Abaixo",
   "command.graphite.editor.addCursorsToLineEnds": "Adicionar Cursores ao Fim das Linhas",
   "command.editor.action.toggleColumnSelection": "Alternar Modo de Seleção por Coluna",
-  "command.graphite.editor.toggleMultiCursorModifier": "Alternar Modificador de Múltiplos Cursores"
+  "command.graphite.editor.toggleMultiCursorModifier": "Alternar Modificador de Múltiplos Cursores",
+  "command.graphite.vsix.requestedCommands": "Mostrar comandos pedidos pelas extensões"
 }

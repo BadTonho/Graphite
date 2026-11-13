@@ -93,5 +93,7 @@
   "plugins.trust_warning": "This plugin runs local code with your account's access. A separate process is not a security sandbox.",
   "plugins.vsix_enable_hint": "Enable this version, trust the workspace, then run its commands from the command palette.",
   "plugins.window_title": "Graphite — Plugins",
-  "plugins.worker_stopped": "Plugin worker stopped unexpectedly"
+  "plugins.worker_stopped": "Plugin worker stopped unexpectedly",
+  "plugins.requested_commands.header": "Commands that extensions asked for and Graphite does not have.\nColumns: requests, command id, where it was asked from.",
+  "plugins.requested_commands.none": "No extension has asked for a command Graphite lacks in this session."
 }

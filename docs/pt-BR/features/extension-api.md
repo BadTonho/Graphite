@@ -49,6 +49,8 @@ Atalhos de teclado, gramáticas e temas de ícones constam no pacote, mas ainda 
 
 Chamadas fora desta lista recebem o erro `Graphite does not support <actor>.<method>`, e a extensão recebe esse erro. Registros de capacidades não implementadas (`$register*`, `$unregister*`, `$emit*`) são aceitos sem erro para não poluir a barra de status. Cada chamada não suportada é registrada uma vez por sessão em `<perfil>/code-oss/unsupported-api.log`, que mostra o que uma extensão precisa e o Graphite ainda não oferece.
 
+Os comandos são registrados do mesmo modo. Quando uma extensão chama `commands.executeCommand` com um id que o Graphite não tem, ou executa uma code lens cujo comando o Graphite não consegue rodar, o id é contado, e **Mostrar comandos pedidos pelas extensões** abre uma lista somente leitura (pedidos, id do comando, se veio do código da extensão ou de uma code lens), do mais pedido para o menos. Cada id também é anexado uma vez a `<profile>/code-oss/requested-commands.log`. Use a lista para ver quais comandos implementar para a extensão funcionar; a lista é refeita a cada sessão, o log guarda os ids entre reinícios.
+
 ## Recursos pedidos automaticamente
 
 A maioria dos provedores responde a um comando (hover, ir para definição, formatar). Sete são pedidos sem comando:
