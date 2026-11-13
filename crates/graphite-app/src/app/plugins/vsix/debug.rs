@@ -210,24 +210,7 @@ mod tests {
     }
 
     fn runtime(session: Session) -> Runtime {
-        Runtime {
-            session,
-            ready: true,
-            registered: BTreeSet::new(),
-            command: None,
-            sent: false,
-            synced: None,
-            prompt: None,
-            languages: Default::default(),
-            editor_commands: BTreeMap::new(),
-            test_calls: BTreeSet::new(),
-            workbench: Default::default(),
-            terminals: Default::default(),
-            watches: Default::default(),
-            decorations: Default::default(),
-            debug_adapter: None,
-            unsupported: BTreeSet::new(),
-        }
+        Runtime::for_test(session)
     }
 
     /// A trusted app whose extension host is a loopback the test controls.

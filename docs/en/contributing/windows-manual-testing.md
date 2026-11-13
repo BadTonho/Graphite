@@ -46,6 +46,13 @@ Known limits: not drawn in word-wrap mode; ranges do not follow edits until the 
 - [ ] Document symbols (Go to Symbol), Quick Fix code actions, Rename and Signature Help work with a VSIX provider when no LSP is configured.
 - [ ] Windows paths (`C:\...`) and `file:///C:/...` URIs map correctly in results.
 
+## 4b. Extension language providers (range formatting, inlay hints, highlights)
+
+- [ ] An extension with a range formatter: **Format Selection** formats only the selection, or the cursor line when nothing is selected.
+- [ ] An extension with an inlay hints provider (in a language no language server handles) shows hints after the text; they refresh after typing and do not flicker.
+- [ ] An extension with a document highlight provider: resting the cursor on an identifier highlights its other occurrences; moving the cursor clears them immediately.
+- [ ] The CPU stays idle while the cursor and document do not change.
+
 ## 5. Workbench
 
 - [ ] Status bar items from extensions appear and their click command runs.

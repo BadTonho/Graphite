@@ -12,6 +12,8 @@ pub(crate) type Color = [f32; 4];
 const MARK_LIMIT: usize = 20_000;
 /// Longest `after` text drawn, in characters.
 const AFTER_LIMIT: usize = 300;
+/// Decoration type key of the built-in document highlights.
+const HIGHLIGHT_KEY: &str = "graphite.documentHighlight";
 
 /// Text drawn after the end of a line.
 #[derive(Clone, Debug, PartialEq)]
@@ -223,6 +225,37 @@ impl Decorations {
         } else {
             by_key.insert(key.to_owned(), marks);
         }
+    }
+
+    /// Draws the occurrences of the symbol at the cursor, as reported by a document highlight
+    /// provider, with a built-in decoration type.
+    pub(super) fn set_highlights(&mut self, editor: &str, ranges: Vec<((u32, u32), (u32, u32))>) {
+        let color = theme_color("editor.wordHighlightBackground");
+        let look = Look {
+            background: color,
+            ..Look::default()
+        };
+        self.styles
+            .entry(HIGHLIGHT_KEY.to_owned())
+            .or_insert(Style {
+                dark: look.clone(),
+                light: look,
+                whole_line: false,
+            });
+        let marks = ranges
+            .into_iter()
+            .take(MARK_LIMIT)
+            .map(|(start, end)| Mark {
+                start,
+                end,
+                after: None,
+            })
+            .collect();
+        self.set(editor, HIGHLIGHT_KEY, marks);
+    }
+
+    pub(super) fn clear_highlights(&mut self, editor: &str) {
+        self.set(editor, HIGHLIGHT_KEY, Vec::new());
     }
 
     pub(super) fn is_empty(&self) -> bool {

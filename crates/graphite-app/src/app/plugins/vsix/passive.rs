@@ -1,0 +1,686 @@
+//! Language features an extension provides without being asked: inlay hints and document
+//! highlights.
+//!
+//! Unlike hover or definition they are not started by a command. Each tick the drivers below
+//! compare what the editor shows with what the active document needs (its revision, the cursor)
+//! and ask the extension host when something is out of date. Inlay hints reuse the editor's
+//! existing hint display (the same one language servers feed); highlights are drawn as a
+//! built-in decoration.
+
+use super::languages::Feature;
+use super::*;
+use graphite_core_api::{DocumentId, DocumentSnapshot};
+
+/// Replies to passive requests carry ids in `PASSIVE_BASE..PASSIVE_END`.
+pub(super) const PASSIVE_BASE: u64 = 6_000_000;
+const PASSIVE_END: u64 = 7_000_000;
+/// The cursor must rest this long before highlights are requested.
+const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(150);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub(super) fn is_passive_reply(id: u64) -> bool {
+    (PASSIVE_BASE..PASSIVE_END).contains(&id)
+}
+
+/// What a request was made for. A reply is only used while the document still matches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Key {
+    document: DocumentId,
+    revision: u64,
+    cursor: usize,
+}
+
+struct InFlight {
+    id: u64,
+    key: Key,
+    handle: u64,
+    uri: String,
+    deadline: Instant,
+}
+
+#[derive(Default)]
+pub(super) struct Passive {
+    next_id: u64,
+    inlay: Option<InFlight>,
+    highlight: Option<InFlight>,
+    /// Revision of the document the last inlay request covered.
+    inlay_done: Option<(DocumentId, u64)>,
+    /// The cursor state the last highlight request or reply covered.
+    highlight_done: Option<Key>,
+    /// A cursor state waiting out the debounce.
+    highlight_wanted: Option<(Instant, Key)>,
+    /// Document whose highlights are currently drawn.
+    highlight_shown: Option<String>,
+}
+
+impl Passive {
+    /// Whether the event loop should keep ticking for these features.
+    pub(super) fn busy(&self) -> bool {
+        self.inlay.is_some() || self.highlight.is_some() || self.highlight_wanted.is_some()
+    }
+
+    fn next_id(&mut self) -> u64 {
+        self.next_id = (self.next_id + 1) % (PASSIVE_END - PASSIVE_BASE);
+        PASSIVE_BASE + self.next_id
+    }
+}
+
+/// The inlay hints of an `IInlayHintsDto` as language server hints.
+pub(super) fn inlay_hints(result: &Value) -> Vec<lsp_types::InlayHint> {
+    result["hints"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|hint| {
+            let line = hint["position"]["lineNumber"].as_u64()?.checked_sub(1)?;
+            let character = hint["position"]["column"].as_u64()?.checked_sub(1)?;
+            let label = match &hint["label"] {
+                Value::String(text) => json!(text),
+                Value::Array(parts) => Value::Array(
+                    parts
+                        .iter()
+                        .map(|part| json!({"value": part["label"].as_str().unwrap_or_default()}))
+                        .collect(),
+                ),
+                _ => return None,
+            };
+            serde_json::from_value(json!({
+                "position": {"line": line, "character": character},
+                "label": label,
+                // Code OSS and LSP number the kinds alike: 1 type, 2 parameter.
+                "kind": hint["kind"].as_u64().filter(|kind| matches!(kind, 1 | 2)),
+                "paddingLeft": hint["paddingLeft"].as_bool(),
+                "paddingRight": hint["paddingRight"].as_bool(),
+            }))
+            .ok()
+        })
+        .collect()
+}
+
+/// The ranges of an `IDocumentHighlightDto[]`, as 0-based `((line, column), (line, column))`.
+pub(super) fn highlight_ranges(result: &Value) -> Vec<((u32, u32), (u32, u32))> {
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let coordinate = |name: &str| {
+                u32::try_from(item["range"][name].as_u64()?)
+                    .ok()?
+                    .checked_sub(1)
+            };
+            Some((
+                (coordinate("startLineNumber")?, coordinate("startColumn")?),
+                (coordinate("endLineNumber")?, coordinate("endColumn")?),
+            ))
+        })
+        .collect()
+}
+
+impl Runtime {
+    fn provider(&self, feature: Feature, document: &DocumentSnapshot) -> Option<u64> {
+        self.languages.provider_for(feature, document)
+    }
+}
+
+impl App {
+    /// Asks the extension host for whatever inlay hints or highlights are out of date.
+    pub(super) fn drive_vsix_passive(&mut self, runtime: &mut Runtime) -> Result<()> {
+        if !self.vsix_workspace_trusted()
+            || !runtime
+                .languages
+                .has_provider(&[Feature::InlayHints, Feature::DocumentHighlights])
+        {
+            return Ok(());
+        }
+        let now = Instant::now();
+        for in_flight in [&mut runtime.passive.inlay, &mut runtime.passive.highlight] {
+            if in_flight
+                .as_ref()
+                .is_some_and(|request| now >= request.deadline)
+            {
+                if let Some(request) = in_flight.take() {
+                    runtime
+                        .session
+                        .send(json!({"type":"cancelCall","id":request.id}))?;
+                }
+            }
+        }
+        let document = self.active_document();
+        let revision = self.documents[document].buffer.revision();
+        let cursor = self.editor().cursor().char_idx;
+        let key = Key {
+            document,
+            revision,
+            cursor,
+        };
+        let wants_inlay = self.documents[document].inlay_revision != Some(revision)
+            && runtime.passive.inlay_done != Some((document, revision))
+            && !runtime.passive.inlay.as_ref().is_some_and(|request| {
+                request.key.revision == revision && request.key.document == document
+            })
+            && !self.language_server_serves_active_document();
+        let wants_highlight = runtime.passive.highlight_done != Some(key)
+            && runtime
+                .passive
+                .highlight
+                .as_ref()
+                .map(|request| request.key)
+                != Some(key);
+        if !wants_inlay && !wants_highlight {
+            if runtime.passive.highlight_done == Some(key) {
+                runtime.passive.highlight_wanted = None;
+            }
+            return Ok(());
+        }
+        let snapshot = crate::app::services::snapshot_document(document, &self.documents[document])
+            .map_err(|error| error.to_string())?;
+        let uri = snapshot.uri.as_str().to_owned();
+        if wants_inlay {
+            self.request_vsix_inlay_hints(runtime, &snapshot, key)?;
+        }
+        if wants_highlight {
+            // A stale highlight would point at the wrong text, so drop it right away.
+            if runtime
+                .passive
+                .highlight_done
+                .is_some_and(|done| done != key)
+            {
+                if let Some(shown) = runtime.passive.highlight_shown.take() {
+                    runtime.decorations.clear_highlights(&shown);
+                }
+            }
+            match runtime.passive.highlight_wanted {
+                Some((since, wanted)) if wanted == key => {
+                    if now.duration_since(since) >= HIGHLIGHT_DEBOUNCE {
+                        runtime.passive.highlight_wanted = None;
+                        self.request_vsix_highlights(runtime, &snapshot, &uri, key)?;
+                    }
+                }
+                _ => runtime.passive.highlight_wanted = Some((now, key)),
+            }
+        }
+        Ok(())
+    }
+
+    fn language_server_serves_active_document(&self) -> bool {
+        self.documents[self.active_document()]
+            .buffer
+            .path()
+            .is_some_and(|path| self.lsp_manager.supports_path(path))
+    }
+
+    fn request_vsix_inlay_hints(
+        &self,
+        runtime: &mut Runtime,
+        snapshot: &DocumentSnapshot,
+        key: Key,
+    ) -> Result<()> {
+        let Some(handle) = runtime.provider(Feature::InlayHints, snapshot) else {
+            runtime.passive.inlay_done = Some((key.document, key.revision));
+            return Ok(());
+        };
+        if let Some(previous) = runtime.passive.inlay.take() {
+            runtime
+                .session
+                .send(json!({"type":"cancelCall","id":previous.id}))?;
+        }
+        let end = documents::position(&snapshot.text, snapshot.text.chars().count());
+        let id = runtime.passive.next_id();
+        runtime.session.send(json!({
+            "type": "call", "id": id, "actor": "ExtHostLanguageFeatures",
+            "method": "$provideInlayHints", "cancellable": true,
+            "args": [handle, {"$graphiteUri": snapshot.uri}, {
+                "startLineNumber": 1, "startColumn": 1,
+                "endLineNumber": end.line + 1, "endColumn": end.character + 1,
+            }],
+        }))?;
+        runtime.passive.inlay_done = Some((key.document, key.revision));
+        runtime.passive.inlay = Some(InFlight {
+            id,
+            key,
+            handle,
+            uri: snapshot.uri.as_str().to_owned(),
+            deadline: Instant::now() + REQUEST_TIMEOUT,
+        });
+        Ok(())
+    }
+
+    fn request_vsix_highlights(
+        &self,
+        runtime: &mut Runtime,
+        snapshot: &DocumentSnapshot,
+        uri: &str,
+        key: Key,
+    ) -> Result<()> {
+        let Some(handle) = runtime.provider(Feature::DocumentHighlights, snapshot) else {
+            runtime.passive.highlight_done = Some(key);
+            return Ok(());
+        };
+        if let Some(previous) = runtime.passive.highlight.take() {
+            runtime
+                .session
+                .send(json!({"type":"cancelCall","id":previous.id}))?;
+        }
+        let at = documents::position(&snapshot.text, key.cursor);
+        let id = runtime.passive.next_id();
+        runtime.session.send(json!({
+            "type": "call", "id": id, "actor": "ExtHostLanguageFeatures",
+            "method": "$provideDocumentHighlights", "cancellable": true,
+            "args": [handle, {"$graphiteUri": snapshot.uri},
+                {"lineNumber": at.line + 1, "column": at.character + 1}],
+        }))?;
+        runtime.passive.highlight_done = Some(key);
+        runtime.passive.highlight = Some(InFlight {
+            id,
+            key,
+            handle,
+            uri: uri.to_owned(),
+            deadline: Instant::now() + REQUEST_TIMEOUT,
+        });
+        Ok(())
+    }
+
+    /// Applies the reply of a passive request if the document has not moved on.
+    pub(super) fn finish_vsix_passive(&mut self, runtime: &mut Runtime, event: &Value) {
+        let Some(id) = event["id"].as_u64() else {
+            return;
+        };
+        let current = |key: &Key, app: &App| {
+            app.active_document() == key.document
+                && app.documents[key.document].buffer.revision() == key.revision
+        };
+        if runtime.passive.inlay.as_ref().is_some_and(|r| r.id == id) {
+            let request = runtime.passive.inlay.take().unwrap();
+            if event["error"].is_string() {
+                // A provider that fails is not asked again until the document changes, or it
+                // would be asked on every tick.
+                return;
+            }
+            if !current(&request.key, self) {
+                // Ask again for the document as it is now.
+                runtime.passive.inlay_done = None;
+                return;
+            }
+            if let Some(cache) = event["result"]["cacheId"].as_u64() {
+                let _ = runtime.session.send(json!({
+                    "type": "call", "actor": "ExtHostLanguageFeatures",
+                    "method": "$releaseHints", "args": [request.handle, cache],
+                }));
+            }
+            let tab = &mut self.documents[request.key.document];
+            tab.inlay_hints = inlay_hints(&event["result"]);
+            tab.inlay_revision = Some(request.key.revision);
+        } else if runtime
+            .passive
+            .highlight
+            .as_ref()
+            .is_some_and(|r| r.id == id)
+        {
+            let request = runtime.passive.highlight.take().unwrap();
+            let cursor_unmoved = self.editor().cursor().char_idx == request.key.cursor;
+            if event["error"].is_string() || !current(&request.key, self) || !cursor_unmoved {
+                return;
+            }
+            let ranges = highlight_ranges(&event["result"]);
+            runtime.decorations.set_highlights(&request.uri, ranges);
+            runtime.passive.highlight_shown = Some(request.uri);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inlay_hints_convert_positions_labels_kinds_and_padding() {
+        let hints = inlay_hints(&json!({"hints": [
+            {"position": {"lineNumber": 3, "column": 5}, "label": ": number", "kind": 1,
+             "paddingLeft": true},
+            {"position": {"lineNumber": 1, "column": 1},
+             "label": [{"label": "name"}, {"label": ":"}], "kind": 2, "paddingRight": true},
+            {"position": {"lineNumber": 2, "column": 2}, "label": "plain", "kind": 9},
+        ]}));
+        assert_eq!(hints.len(), 3);
+        assert_eq!(hints[0].position, lsp_types::Position::new(2, 4));
+        assert!(
+            matches!(&hints[0].label, lsp_types::InlayHintLabel::String(text) if text == ": number")
+        );
+        assert_eq!(hints[0].kind, Some(lsp_types::InlayHintKind::TYPE));
+        assert_eq!(hints[0].padding_left, Some(true));
+        assert_eq!(hints[1].kind, Some(lsp_types::InlayHintKind::PARAMETER));
+        assert_eq!(hints[1].padding_right, Some(true));
+        let lsp_types::InlayHintLabel::LabelParts(parts) = &hints[1].label else {
+            panic!("expected label parts");
+        };
+        let joined: String = parts.iter().map(|part| part.value.as_str()).collect();
+        assert_eq!(joined, "name:");
+        assert_eq!(hints[2].kind, None, "unknown kinds are dropped");
+    }
+
+    #[test]
+    fn malformed_inlay_hints_are_skipped_not_fatal() {
+        assert!(inlay_hints(&Value::Null).is_empty());
+        assert!(inlay_hints(&json!({"hints": "nope"})).is_empty());
+        let hints = inlay_hints(&json!({"hints": [
+            {"position": {"lineNumber": 0, "column": 1}, "label": "zero line"},
+            {"position": {"lineNumber": 1}, "label": "no column"},
+            {"position": {"lineNumber": 1, "column": 1}},
+            {"position": {"lineNumber": 1, "column": 1}, "label": 5},
+            {"position": {"lineNumber": 1, "column": 1}, "label": "ok"},
+        ]}));
+        assert_eq!(hints.len(), 1);
+        assert!(matches!(&hints[0].label, lsp_types::InlayHintLabel::String(text) if text == "ok"));
+    }
+
+    #[test]
+    fn highlight_ranges_are_zero_based_and_skip_bad_entries() {
+        let ranges = highlight_ranges(&json!([
+            {"range": {"startLineNumber": 1, "startColumn": 2, "endLineNumber": 1, "endColumn": 5}, "kind": 2},
+            {"range": {"startLineNumber": 0, "startColumn": 1, "endLineNumber": 1, "endColumn": 1}},
+            {"range": {"startLineNumber": 4, "startColumn": 1}},
+            {"kind": 1},
+        ]));
+        assert_eq!(ranges, [((0, 1), (0, 4))]);
+        assert!(highlight_ranges(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn reply_ids_are_recognised_by_range() {
+        assert!(is_passive_reply(PASSIVE_BASE));
+        assert!(is_passive_reply(PASSIVE_END - 1));
+        assert!(!is_passive_reply(PASSIVE_END));
+        assert!(!is_passive_reply(5_000_000), "the debug adapter reply");
+        let mut passive = Passive::default();
+        let first = passive.next_id();
+        assert_ne!(first, passive.next_id());
+        assert!(is_passive_reply(first));
+    }
+}
+
+#[cfg(test)]
+mod flow_tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use graphite_extension_host::code_oss::LoopbackHost;
+
+    /// A trusted app with `a.txt` open, a loopback extension host and these providers registered.
+    fn app_with_providers(dir: &TempDir, text: &str, providers: &[&str]) -> (App, LoopbackHost) {
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.workspace_trust =
+            Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+        app.run_ui_command("graphite.security.trustWorkspace");
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, text).unwrap();
+        app.open_file(file);
+        let (session, host) = Session::loopback();
+        let mut runtime = Runtime::for_test(session);
+        for (index, method) in providers.iter().enumerate() {
+            languages::language_rpc(
+                &mut runtime.languages,
+                "MainThreadLanguageFeatures",
+                method,
+                &[json!(index + 1), json!([{"language": "*"}])],
+            )
+            .unwrap()
+            .unwrap();
+        }
+        app.plugins.vsix = Some(runtime);
+        (app, host)
+    }
+
+    /// Everything Graphite sent to the host so far that calls `method`.
+    fn calls(host: &LoopbackHost, method: &str) -> Vec<Value> {
+        std::iter::from_fn(|| host.next_sent())
+            .filter(|message| message["method"] == method)
+            .collect()
+    }
+
+    fn reply(host: &LoopbackHost, id: &Value, result: Value) {
+        host.emit(json!({"type": "result", "id": id, "result": result}));
+    }
+
+    const INLAY: &str = "$registerInlayHintsProvider";
+    const HIGHLIGHT: &str = "$registerDocumentHighlightProvider";
+    const RANGE: &str = "$registerRangeFormattingSupport";
+
+    fn hint(line: u64, column: u64, label: &str) -> Value {
+        json!({"hints": [{"position": {"lineNumber": line, "column": column}, "label": label}]})
+    }
+
+    #[test]
+    fn inlay_hints_are_requested_for_the_document_and_shown_once_answered() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "let x = 1;\nlet y = 2;\n", &[INLAY]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideInlayHints");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][0], 1, "the provider handle");
+        assert_eq!(
+            sent[0]["args"][2]["endLineNumber"], 3,
+            "covers the whole document"
+        );
+        assert_eq!(sent[0]["cancellable"], true);
+
+        reply(&host, &sent[0]["id"], hint(1, 6, ": number"));
+        app.poll_vsix();
+        let tab = &app.documents[app.active_document()];
+        assert_eq!(tab.inlay_hints.len(), 1);
+        assert_eq!(tab.inlay_hints[0].position, lsp_types::Position::new(0, 5));
+        assert_eq!(tab.inlay_revision, Some(tab.buffer.revision()));
+
+        app.poll_vsix();
+        assert!(
+            calls(&host, "$provideInlayHints").is_empty(),
+            "an unchanged document is not asked again"
+        );
+    }
+
+    #[test]
+    fn editing_the_document_asks_for_fresh_inlay_hints() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "let x = 1;\n", &[INLAY]);
+        app.poll_vsix();
+        let first = calls(&host, "$provideInlayHints");
+        reply(&host, &first[0]["id"], hint(1, 6, ": number"));
+        app.poll_vsix();
+
+        app.editor_mut().insert("// note\n");
+        app.poll_vsix();
+        let second = calls(&host, "$provideInlayHints");
+        assert_eq!(second.len(), 1, "the edit changed the revision");
+        assert_ne!(second[0]["id"], first[0]["id"]);
+    }
+
+    #[test]
+    fn an_answer_for_an_outdated_revision_is_dropped_and_asked_again() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "let x = 1;\n", &[INLAY]);
+        app.poll_vsix();
+        let stale = calls(&host, "$provideInlayHints");
+        app.editor_mut().insert("// note\n");
+        reply(&host, &stale[0]["id"], hint(1, 6, "stale"));
+        app.poll_vsix();
+        let tab = &app.documents[app.active_document()];
+        assert!(
+            tab.inlay_hints.is_empty(),
+            "the stale hints must not be shown"
+        );
+        // The poll that dropped the answer also asked for the current revision.
+        app.poll_vsix();
+        assert_eq!(calls(&host, "$provideInlayHints").len(), 1);
+    }
+
+    #[test]
+    fn a_failing_inlay_provider_is_not_asked_again_until_the_document_changes() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "x\n", &[INLAY]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideInlayHints");
+        host.emit(json!({"type": "result", "id": sent[0]["id"], "error": "boom"}));
+        app.poll_vsix();
+        assert!(app.documents[app.active_document()].inlay_hints.is_empty());
+        app.poll_vsix();
+        app.poll_vsix();
+        app.poll_vsix();
+        assert!(
+            calls(&host, "$provideInlayHints").is_empty(),
+            "a failing provider must not be asked on every tick"
+        );
+        app.editor_mut().insert("y");
+        app.poll_vsix();
+        assert_eq!(
+            calls(&host, "$provideInlayHints").len(),
+            1,
+            "asked after an edit"
+        );
+    }
+
+    #[test]
+    fn nothing_is_requested_without_a_provider_or_in_an_untrusted_workspace() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "x\n", &[]);
+        app.poll_vsix();
+        app.poll_vsix();
+        assert!(std::iter::from_fn(|| host.next_sent())
+            .all(|message| message["method"] != "$provideInlayHints"
+                && message["method"] != "$provideDocumentHighlights"));
+
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "x\n", &[INLAY, HIGHLIGHT]);
+        app.workspace_trust = Some(crate::app::phase5::WorkspaceTrust::restricted(
+            dir.path().join("restricted.json"),
+        ));
+        app.poll_vsix();
+        assert!(std::iter::from_fn(|| host.next_sent()).next().is_none());
+    }
+
+    fn range(line: u64, from: u64, to: u64) -> Value {
+        json!({"startLineNumber": line, "startColumn": from, "endLineNumber": line, "endColumn": to})
+    }
+
+    #[test]
+    fn highlights_wait_for_the_cursor_to_rest_and_are_drawn_when_answered() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "foo bar foo\n", &[HIGHLIGHT]);
+        app.editor_mut().set_cursor_line_col(0, 1);
+        app.poll_vsix();
+        assert!(
+            calls(&host, "$provideDocumentHighlights").is_empty(),
+            "the debounce has not elapsed"
+        );
+        std::thread::sleep(HIGHLIGHT_DEBOUNCE + Duration::from_millis(60));
+        app.poll_vsix();
+        let sent = calls(&host, "$provideDocumentHighlights");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][2], json!({"lineNumber": 1, "column": 2}));
+
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!([{"range": range(1, 1, 4)}, {"range": range(1, 9, 12)}]),
+        );
+        app.poll_vsix();
+        let uri = graphite_core_api::DocumentUri::from_path(&dir.path().join("a.txt"))
+            .unwrap()
+            .as_str()
+            .to_owned();
+        let marks = app.vsix_line_decorations(&uri, 0, true);
+        assert_eq!(marks.len(), 2, "both occurrences are marked");
+        assert_eq!(marks[0].start, Some(0));
+        assert_eq!(marks[0].end, Some(3));
+        assert!(marks[0].look.background.is_some());
+    }
+
+    #[test]
+    fn moving_the_cursor_clears_stale_highlights_and_drops_late_answers() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "foo bar foo\n", &[HIGHLIGHT]);
+        let uri = graphite_core_api::DocumentUri::from_path(&dir.path().join("a.txt"))
+            .unwrap()
+            .as_str()
+            .to_owned();
+        app.editor_mut().set_cursor_line_col(0, 1);
+        app.poll_vsix();
+        std::thread::sleep(HIGHLIGHT_DEBOUNCE + Duration::from_millis(60));
+        app.poll_vsix();
+        let first = calls(&host, "$provideDocumentHighlights");
+        reply(&host, &first[0]["id"], json!([{"range": range(1, 1, 4)}]));
+        app.poll_vsix();
+        assert_eq!(app.vsix_line_decorations(&uri, 0, true).len(), 1);
+
+        app.editor_mut().set_cursor_line_col(0, 5);
+        app.poll_vsix();
+        assert!(
+            app.vsix_line_decorations(&uri, 0, true).is_empty(),
+            "highlights for the old cursor position are removed at once"
+        );
+        std::thread::sleep(HIGHLIGHT_DEBOUNCE + Duration::from_millis(60));
+        app.poll_vsix();
+        let second = calls(&host, "$provideDocumentHighlights");
+        assert_eq!(second.len(), 1);
+        app.editor_mut().set_cursor_line_col(0, 9);
+        reply(&host, &second[0]["id"], json!([{"range": range(1, 5, 8)}]));
+        app.poll_vsix();
+        assert!(
+            app.vsix_line_decorations(&uri, 0, true).is_empty(),
+            "an answer for a position the cursor left is not drawn"
+        );
+    }
+
+    #[test]
+    fn range_formatting_sends_the_selection_and_applies_the_edits() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "a  b\nc  d\n", &[RANGE]);
+        app.editor_mut().set_selection(5, 9);
+        assert!(app.request_vsix_language(languages::Feature::FormatRange));
+        let sent = calls(&host, "$provideDocumentRangeFormattingEdits");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(
+            sent[0]["args"][2],
+            json!({"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 5})
+        );
+        assert_eq!(sent[0]["args"][3]["tabSize"], app.tab_size);
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!([{"range": range(2, 2, 4), "text": " "}]),
+        );
+        app.poll_vsix();
+        assert_eq!(app.editor().text(), "a  b\nc d\n", "{}", app.status);
+    }
+
+    #[test]
+    fn range_formatting_without_a_selection_formats_the_cursor_line() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "one\ntwo  words\nthree\n", &[RANGE]);
+        app.editor_mut().set_cursor_line_col(1, 2);
+        assert!(app.request_vsix_language(languages::Feature::FormatRange));
+        let sent = calls(&host, "$provideDocumentRangeFormattingEdits");
+        assert_eq!(sent[0]["args"][2], range(2, 1, 11));
+    }
+
+    #[test]
+    fn range_formatting_is_unavailable_without_a_provider() {
+        let dir = TempDir::new();
+        let (mut app, _host) = app_with_providers(&dir, "x\n", &[INLAY]);
+        assert!(!app.request_vsix_language(languages::Feature::FormatRange));
+    }
+
+    #[test]
+    fn line_ranges_count_utf16_units_and_ignore_line_endings() {
+        assert_eq!(languages::line_range("héllo\r\nx\n", 1), range(1, 1, 6));
+        assert_eq!(languages::line_range("a🌎\n", 1), range(1, 1, 4));
+        assert_eq!(
+            languages::line_range("a\n", 2),
+            range(2, 1, 1),
+            "the empty last line"
+        );
+        assert_eq!(
+            languages::line_range("a\n", 9),
+            range(9, 1, 1),
+            "past the end"
+        );
+    }
+}

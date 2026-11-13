@@ -6,6 +6,8 @@ pub(crate) enum Feature {
     Completion,
     Hover,
     Format,
+    /// Format only the selection (or the cursor line).
+    FormatRange,
     Definition,
     Declaration,
     Implementation,
@@ -15,6 +17,10 @@ pub(crate) enum Feature {
     CodeActions,
     Rename,
     SignatureHelp,
+    /// Inline hints (parameter names, types). Requested automatically, not by a command.
+    InlayHints,
+    /// Occurrences of the symbol at the cursor. Requested automatically.
+    DocumentHighlights,
 }
 
 struct Provider {
@@ -44,6 +50,29 @@ pub(super) struct Languages {
 impl Languages {
     pub(super) fn pending(&self) -> bool {
         self.request.is_some()
+    }
+
+    /// Whether any extension registered one of `features`, for any document.
+    pub(super) fn has_provider(&self, features: &[Feature]) -> bool {
+        self.providers
+            .values()
+            .any(|provider| features.contains(&provider.feature))
+    }
+
+    /// The handle of a provider of `feature` whose selector matches `document`.
+    pub(super) fn provider_for(
+        &self,
+        feature: Feature,
+        document: &DocumentSnapshot,
+    ) -> Option<u64> {
+        self.providers.iter().find_map(|(handle, provider)| {
+            (provider.feature == feature
+                && provider
+                    .selector
+                    .iter()
+                    .any(|selector| matches_document(selector, document)))
+            .then_some(*handle)
+        })
     }
 
     pub(super) fn update(&mut self, session: &Session) -> Result<()> {
@@ -154,6 +183,21 @@ impl App {
                 "$provideDocumentFormattingEdits",
                 json!([handle, uri, {"tabSize":self.tab_size,"insertSpaces":self.insert_spaces}]),
             ),
+            Feature::FormatRange => (
+                "$provideDocumentRangeFormattingEdits",
+                json!([
+                    handle,
+                    uri,
+                    selection
+                        .clone()
+                        .filter(|range| range["startLineNumber"] != range["endLineNumber"]
+                            || range["startColumn"] != range["endColumn"])
+                        .unwrap_or_else(|| line_range(&document.text, position["lineNumber"].as_u64().unwrap_or(1) as usize)),
+                    {"tabSize":self.tab_size,"insertSpaces":self.insert_spaces}
+                ]),
+            ),
+            // Requested by the passive drivers in `passive.rs`, never by a command.
+            Feature::InlayHints | Feature::DocumentHighlights => return Ok(false),
             Feature::Definition => ("$provideDefinition", json!([handle, uri, position])),
             Feature::Declaration => ("$provideDeclaration", json!([handle, uri, position])),
             Feature::Implementation => ("$provideImplementation", json!([handle, uri, position])),
@@ -230,7 +274,7 @@ impl App {
             return Ok(());
         }
         match request.feature {
-            Feature::Format if result.is_array() => {
+            Feature::Format | Feature::FormatRange if result.is_array() => {
                 self.apply_vsix_editor_edits(
                     request.document.uri.as_str(),
                     request.document.version.unwrap(),
@@ -299,7 +343,10 @@ impl App {
             Feature::SignatureHelp => {
                 self.handle_lsp_query("signatureHelp", language_results::signature_help(result));
             }
-            Feature::Format => {}
+            Feature::Format
+            | Feature::FormatRange
+            | Feature::InlayHints
+            | Feature::DocumentHighlights => {}
         }
         Ok(())
     }
@@ -376,6 +423,13 @@ pub(super) fn language_rpc(
             ("MainThreadLanguageFeatures", "$registerHoverProvider") => Feature::Hover,
             ("MainThreadLanguageFeatures", "$registerCompletionsProvider") => Feature::Completion,
             ("MainThreadLanguageFeatures", "$registerDocumentFormattingSupport") => Feature::Format,
+            ("MainThreadLanguageFeatures", "$registerRangeFormattingSupport") => {
+                Feature::FormatRange
+            }
+            ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerDocumentHighlightProvider") => {
+                Feature::DocumentHighlights
+            }
             ("MainThreadLanguageFeatures", "$registerDefinitionSupport") => Feature::Definition,
             ("MainThreadLanguageFeatures", "$registerDeclarationSupport") => Feature::Declaration,
             ("MainThreadLanguageFeatures", "$registerImplementationSupport") => {
@@ -441,6 +495,18 @@ pub(super) fn language_rpc(
         "MainThreadLanguageFeatures" | "MainThreadDiagnostics"
     )
     .then(operation)
+}
+
+/// The whole of the 1-based `line` as a Code OSS range.
+pub(super) fn line_range(text: &str, line: usize) -> Value {
+    let length = text
+        .split('\n')
+        .nth(line.saturating_sub(1))
+        .map_or(0, |line| line.trim_end_matches('\r').encode_utf16().count());
+    json!({
+        "startLineNumber": line, "startColumn": 1,
+        "endLineNumber": line, "endColumn": length + 1,
+    })
 }
 
 fn diagnostic(marker: &Value) -> Option<lsp_types::Diagnostic> {

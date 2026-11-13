@@ -10,6 +10,7 @@ mod decorations;
 mod documents;
 mod file_events;
 mod language_results;
+mod passive;
 mod languages;
 pub(crate) use decorations::LineMark as DecorationMark;
 pub(crate) use file_events::{changes as file_changes, FileChange};
@@ -41,6 +42,8 @@ pub(crate) struct Runtime {
     decorations: decorations::Decorations,
     /// A debug adapter the extension host is being asked to create.
     debug_adapter: Option<debug::PendingAdapter>,
+    /// Inlay hints and highlights that are requested automatically.
+    passive: passive::Passive,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -52,6 +55,33 @@ impl Runtime {
             || !self.editor_commands.is_empty()
             || !self.test_calls.is_empty()
             || self.debug_adapter.is_some()
+            || self.passive.busy()
+    }
+}
+
+#[cfg(test)]
+impl Runtime {
+    /// A ready runtime around `session`, for tests that play the extension host.
+    pub(super) fn for_test(session: Session) -> Self {
+        Self {
+            session,
+            ready: true,
+            registered: BTreeSet::new(),
+            command: None,
+            sent: false,
+            synced: None,
+            prompt: None,
+            languages: Default::default(),
+            editor_commands: BTreeMap::new(),
+            test_calls: BTreeSet::new(),
+            workbench: Default::default(),
+            terminals: Default::default(),
+            watches: Default::default(),
+            decorations: Default::default(),
+            debug_adapter: None,
+            passive: Default::default(),
+            unsupported: BTreeSet::new(),
+        }
     }
 }
 
@@ -206,6 +236,7 @@ impl App {
             watches: Default::default(),
             decorations: Default::default(),
             debug_adapter: None,
+            passive: Default::default(),
             unsupported: BTreeSet::new(),
         });
         Ok(())
@@ -272,6 +303,8 @@ impl App {
                 Some("result") => {
                     if event["id"].as_u64() == Some(debug::ADAPTER_CALL_ID) {
                         self.finish_vsix_debug_adapter(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(passive::is_passive_reply) {
+                        self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64() == Some(1) {
                         runtime.command = None;
                         if let Some(error) = event["error"].as_str() {
@@ -316,6 +349,7 @@ impl App {
             self.drive_vsix_debug_adapter(runtime)?;
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
+            self.drive_vsix_passive(runtime)?;
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
             if let (Some(handle), Some(webview)) =

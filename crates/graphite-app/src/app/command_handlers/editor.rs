@@ -472,7 +472,11 @@ fn format_document(app: &mut App, _invocation: &CommandInvocation) -> Result<(),
     ))
 }
 
+/// Prefers an active VSIX range formatter and falls back to the language server.
 fn format_selection(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::FormatRange) {
+        return Ok(());
+    }
     if app.lsp_format_selection() {
         Ok(())
     } else {

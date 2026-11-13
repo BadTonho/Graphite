@@ -46,6 +46,13 @@ Limites conhecidos: não desenha com quebra de linha; os intervalos não acompan
 - [ ] Símbolos do documento (Ir para Símbolo), Quick Fix, Renomear e Ajuda de Assinatura funcionam com provedor VSIX quando não há LSP configurado.
 - [ ] Caminhos do Windows (`C:\...`) e URIs `file:///C:/...` são convertidos corretamente nos resultados.
 
+## 4b. Provedores de linguagem de extensões (formatação de intervalo, inlay hints, destaques)
+
+- [ ] Uma extensão com formatador de intervalo: **Formatar seleção** formata apenas a seleção, ou a linha do cursor quando nada está selecionado.
+- [ ] Uma extensão com provedor de inlay hints (em uma linguagem que nenhum servidor de linguagem atende) mostra dicas após o texto; elas se atualizam ao digitar e não piscam.
+- [ ] Uma extensão com provedor de destaques de documento: parar o cursor sobre um identificador destaca as outras ocorrências; mover o cursor as remove na hora.
+- [ ] A CPU fica ociosa enquanto o cursor e o documento não mudam.
+
 ## 5. Workbench
 
 - [ ] Itens de status de extensões aparecem e o comando do clique executa.
