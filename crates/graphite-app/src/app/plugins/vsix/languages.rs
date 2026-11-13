@@ -25,11 +25,15 @@ pub(crate) enum Feature {
     FoldingRanges,
     /// Expand Selection: the enclosing ranges of the cursor.
     SelectionRanges,
+    /// Formatting after a trigger character was typed (`editor.formatOnType`).
+    FormatOnType,
 }
 
 struct Provider {
     feature: Feature,
     selector: Vec<Value>,
+    /// Characters that trigger on-type formatting (empty for other features).
+    triggers: Vec<String>,
 }
 
 struct Request {
@@ -93,6 +97,23 @@ impl Languages {
 }
 
 impl App {
+    /// After a character was typed: when `editor.formatOnType` is on and an extension formats on
+    /// that character, asks it to format around the cursor.
+    pub(crate) fn format_on_type(&mut self, typed: &str) {
+        if !self.format_on_type
+            || typed.chars().count() != 1
+            || self.editor().selections().len() > 1
+            || !self
+                .plugins
+                .vsix
+                .as_ref()
+                .is_some_and(|runtime| runtime.languages.has_provider(&[Feature::FormatOnType]))
+        {
+            return;
+        }
+        self.request_vsix_language_with(Feature::FormatOnType, Some(typed.to_owned()));
+    }
+
     pub(crate) fn request_vsix_language(&mut self, feature: Feature) -> bool {
         self.request_vsix_language_with(feature, None)
     }
@@ -151,6 +172,10 @@ impl App {
             .map_err(|e| e.to_string())?;
         let Some((&handle, _)) = runtime.languages.providers.iter().find(|(_, provider)| {
             provider.feature == feature
+                && (feature != Feature::FormatOnType
+                    || argument
+                        .as_deref()
+                        .is_some_and(|typed| provider.triggers.iter().any(|t| t == typed)))
                 && provider
                     .selector
                     .iter()
@@ -187,6 +212,16 @@ impl App {
                 "$provideDocumentFormattingEdits",
                 json!([handle, uri, {"tabSize":self.tab_size,"insertSpaces":self.insert_spaces}]),
             ),
+            Feature::FormatOnType => (
+                "$provideOnTypeFormattingEdits",
+                json!([
+                    handle,
+                    uri,
+                    position,
+                    argument.clone().unwrap_or_default(),
+                    {"tabSize":self.tab_size,"insertSpaces":self.insert_spaces}
+                ]),
+            ),
             Feature::FormatRange => (
                 "$provideDocumentRangeFormattingEdits",
                 json!([
@@ -204,10 +239,9 @@ impl App {
             Feature::InlayHints | Feature::DocumentHighlights | Feature::FoldingRanges => {
                 return Ok(false)
             }
-            Feature::SelectionRanges => (
-                "$provideSelectionRanges",
-                json!([handle, uri, [position]]),
-            ),
+            Feature::SelectionRanges => {
+                ("$provideSelectionRanges", json!([handle, uri, [position]]))
+            }
             Feature::Definition => ("$provideDefinition", json!([handle, uri, position])),
             Feature::Declaration => ("$provideDeclaration", json!([handle, uri, position])),
             Feature::Implementation => ("$provideImplementation", json!([handle, uri, position])),
@@ -284,7 +318,7 @@ impl App {
             return Ok(());
         }
         match request.feature {
-            Feature::Format | Feature::FormatRange if result.is_array() => {
+            Feature::Format | Feature::FormatRange | Feature::FormatOnType if result.is_array() => {
                 self.apply_vsix_editor_edits(
                     request.document.uri.as_str(),
                     request.document.version.unwrap(),
@@ -356,6 +390,7 @@ impl App {
             }
             Feature::Format
             | Feature::FormatRange
+            | Feature::FormatOnType
             | Feature::InlayHints
             | Feature::DocumentHighlights
             | Feature::FoldingRanges => {}
@@ -439,6 +474,9 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerOnTypeFormattingSupport") => {
+                Feature::FormatOnType
+            }
             ("MainThreadLanguageFeatures", "$registerSelectionRangeProvider") => {
                 Feature::SelectionRanges
             }
@@ -503,9 +541,24 @@ pub(super) fn language_rpc(
             .as_array()
             .ok_or("Invalid provider selector")?
             .clone();
-        languages
-            .providers
-            .insert(handle, Provider { feature, selector });
+        let triggers = if feature == Feature::FormatOnType {
+            args.get(2)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|trigger| trigger.as_str().map(str::to_owned))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        languages.providers.insert(
+            handle,
+            Provider {
+                feature,
+                selector,
+                triggers,
+            },
+        );
         Ok(Value::Null)
     };
     matches!(

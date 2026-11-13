@@ -11,7 +11,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Storage | Extension global and workspace storage. |
 | Prompts | `showInputBox`, `showQuickPick`, and `showInformationMessage` with action buttons. |
 | Edits | `TextEditor.edit`, `workspace.applyEdit`, and documents opened or shown in the editor. |
-| Language providers | Hover, completion, document formatting, diagnostics, definition, declaration, type definition, implementation, references, document symbols, code actions, rename, and signature help. Also range formatting (**Format Selection**, the cursor line when nothing is selected), inlay hints, document highlights and folding ranges; the last three are requested automatically (see below). Selection ranges drive **Expand Selection** in place of the syntax-tree expansion when an extension provides them. |
+| Language providers | Hover, completion, document formatting, diagnostics, definition, declaration, type definition, implementation, references, document symbols, code actions, rename, and signature help. Also range formatting (**Format Selection**, the cursor line when nothing is selected), inlay hints, document highlights and folding ranges; the last three are requested automatically (see below). Selection ranges drive **Expand Selection** in place of the syntax-tree expansion when an extension provides them. On-type formatting runs while typing when `editor.formatOnType` is on. |
 | Links | `window.openUri` opens `https://` links in the default browser; other schemes are refused. `env.asExternalUri` returns the link unchanged. |
 | Output | `window.createOutputChannel` writes to a log file. Showing a channel opens its log in a read-only view that refreshes while the extension writes. |
 | Status bar | `window.createStatusBarItem` items appear at the end of the status bar with their text. Clicking an item runs its command: an extension command if registered, otherwise a Graphite command. |
@@ -42,7 +42,7 @@ Keybindings, grammars and icon themes are listed in the package but not applied 
 
 ## Not yet
 
-- Language providers beyond the list above (on-type formatting, semantic tokens, code lenses, call and type hierarchies, links and colors). Code actions that only run an extension command, and file operations inside a rename, are not applied.
+- Language providers beyond the list above (semantic tokens, code lenses, call and type hierarchies, links and colors). Code actions that only run an extension command, and file operations inside a rename, are not applied.
 - Extension-owned pseudoterminals, terminal data events, tasks, debugging, source control, and virtual file systems (`registerFileSystemProvider`).
 - Several webview panels, `asWebviewUri`, and `localResourceRoots`.
 - Custom editors and notebook kernels.
@@ -58,3 +58,7 @@ Most providers answer a command (hover, go to definition, format). Three are ask
 - **Folding ranges** (`registerFoldingRangeProvider`): for the active document, whenever its text changes. While a provider's regions describe the current text, they replace the indentation rules for every fold command and for the fold display; until the first answer, or after an edit, indentation folding applies. Regions that do not span two lines are dropped, and a failing provider is not asked again until the document changes.
 
 Both are requested only in a trusted workspace, for the active document, and answers for an outdated document revision are discarded. Each request has a 10-second limit. These paths are covered by unit tests that play the extension host's side of the protocol; they have not been run against third-party extensions.
+
+### On-type formatting
+
+With `"editor.formatOnType": true` (off by default, like VS Code), typing one of the trigger characters an extension registered with `registerOnTypeFormattingEditProvider` asks it to format around the cursor; the edits are applied as one undoable step. Only single typed characters count (not pasted text), only with one cursor, and only if the document did not change meanwhile. Typing Enter does not trigger it yet.

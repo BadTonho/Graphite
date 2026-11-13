@@ -860,4 +860,106 @@ mod flow_tests {
             .provided_folds()
             .is_none());
     }
+
+    /// An app with `text` open and an on-type formatter for `triggers`.
+    fn app_with_on_type_formatter(
+        dir: &TempDir,
+        text: &str,
+        triggers: &[&str],
+    ) -> (App, LoopbackHost) {
+        let (mut app, host) = app_with_providers(dir, text, &[]);
+        let runtime = app.plugins.vsix.as_mut().unwrap();
+        languages::language_rpc(
+            &mut runtime.languages,
+            "MainThreadLanguageFeatures",
+            "$registerOnTypeFormattingSupport",
+            &[
+                json!(7),
+                json!([{"language": "*"}]),
+                json!(triggers),
+                json!("pub.ext"),
+            ],
+        )
+        .unwrap()
+        .unwrap();
+        (app, host)
+    }
+
+    #[test]
+    fn typing_a_trigger_character_asks_the_extension_to_format_and_applies_the_edits() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_on_type_formatter(&dir, "let x=1\n", &[";", "}"]);
+        app.format_on_type = true;
+        app.editor_mut().set_cursor_line_col(0, 7);
+        app.editor_mut().insert(";");
+        app.format_on_type(";");
+        let sent = calls(&host, "$provideOnTypeFormattingEdits");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][0], 7);
+        assert_eq!(
+            sent[0]["args"][2],
+            json!({"lineNumber": 1, "column": 9}),
+            "after the typed ;"
+        );
+        assert_eq!(sent[0]["args"][3], ";");
+        assert_eq!(sent[0]["args"][4]["tabSize"], app.tab_size);
+
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!([{"range": range(1, 6, 7), "text": " = "}]),
+        );
+        app.poll_vsix();
+        assert_eq!(app.editor().text(), "let x = 1;\n", "{}", app.status);
+    }
+
+    #[test]
+    fn only_trigger_characters_with_the_setting_on_are_sent() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_on_type_formatter(&dir, "x\n", &[";"]);
+        app.format_on_type = true;
+        app.format_on_type("a");
+        assert!(
+            calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
+            "not a trigger"
+        );
+        app.format_on_type(";;");
+        assert!(
+            calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
+            "pasted text, not typing"
+        );
+        app.format_on_type("");
+        assert!(calls(&host, "$provideOnTypeFormattingEdits").is_empty());
+
+        app.format_on_type = false;
+        app.format_on_type(";");
+        assert!(
+            calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
+            "editor.formatOnType is off by default"
+        );
+    }
+
+    #[test]
+    fn on_type_formatting_needs_a_provider_and_a_single_cursor() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "x\n", &[INLAY]);
+        app.format_on_type = true;
+        app.format_on_type(";");
+        assert!(
+            calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
+            "no provider"
+        );
+
+        let (mut app, host) = app_with_on_type_formatter(&dir, "ab\n", &[";"]);
+        app.format_on_type = true;
+        app.editor_mut().set_selections(vec![
+            graphite_text::Selection { anchor: 0, head: 0 },
+            graphite_text::Selection { anchor: 1, head: 1 },
+        ]);
+        app.format_on_type(";");
+        assert!(
+            calls(&host, "$provideOnTypeFormattingEdits").is_empty(),
+            "several cursors"
+        );
+    }
 }

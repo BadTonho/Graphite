@@ -12,6 +12,7 @@ pub fn project_settings(value: &Value, translator: &Translator) -> (Value, Vec<S
         "files.trimTrailingWhitespace",
         "editor.formatOnSave",
         "editor.formatOnPaste",
+        "editor.formatOnType",
         "files.autoSave",
         "files.autoSaveDelay",
         "editor.rulers",
@@ -210,6 +211,7 @@ pub(super) fn read_editor_prefs(
         trim_trailing_whitespace: false,
         format_on_save: false,
         format_on_paste: false,
+        format_on_type: false,
         auto_save: None,
         auto_save_delay_ms: 1000,
         rulers: Vec::new(),
@@ -331,6 +333,11 @@ pub(super) fn read_editor_prefs(
             prefs.format_on_paste = value
                 .as_bool()
                 .ok_or_else(|| invalid("editor.formatOnPaste", path))?;
+        }
+        if let Some(value) = value.get("editor.formatOnType") {
+            prefs.format_on_type = value
+                .as_bool()
+                .ok_or_else(|| invalid("editor.formatOnType", path))?;
         }
         if let Some(value) = value.get("files.autoSave") {
             let text = value.as_str().unwrap_or_default();

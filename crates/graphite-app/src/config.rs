@@ -101,6 +101,7 @@ pub struct EditorPrefs {
     pub trim_trailing_whitespace: bool,
     pub format_on_save: bool,
     pub format_on_paste: bool,
+    pub format_on_type: bool,
     /// `files.autoSave` when set in settings; otherwise the File menu toggle decides.
     pub auto_save: Option<AutoSaveMode>,
     pub auto_save_delay_ms: u64,
@@ -150,6 +151,22 @@ mod tests {
         fs::write(&workspace, r#"{"editor.formatOnSave":"yes"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).is_err());
         fs::write(&workspace, r#"{"editor.formatOnPaste":1}"#).unwrap();
+        assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
+    }
+
+    #[test]
+    fn format_on_type_is_off_by_default_and_read_from_settings() {
+        let temp = crate::test_support::TempDir::new();
+        let workspace = temp.path().join("settings.json");
+        fs::write(&workspace, r#"{"editor.formatOnSave":true}"#).unwrap();
+        let prefs =
+            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+        assert!(!prefs.format_on_type);
+        fs::write(&workspace, r#"{"editor.formatOnType":true}"#).unwrap();
+        let prefs =
+            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+        assert!(prefs.format_on_type);
+        fs::write(&workspace, r#"{"editor.formatOnType":"yes"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
     }
 

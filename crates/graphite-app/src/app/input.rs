@@ -437,6 +437,7 @@ impl App {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {
                     self.editor_mut().insert(text);
+                    self.format_on_type(text);
                 }
             }
         }
