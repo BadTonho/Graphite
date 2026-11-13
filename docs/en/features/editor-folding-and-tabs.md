@@ -17,6 +17,27 @@ A folded line shows ` …` after its text. Folds are stored per view, so the sam
 
 Each tab has a close button (×) at its right end. Click it to close that tab, even when it is not the active one. A tab with unsaved changes still shows the confirmation before closing.
 
+### More fold commands
+
+Regions are nested: a region inside another is one level deeper. Besides indentation, a region can come from `#region` / `#endregion` markers after a comment leader (`// #region`, `# region`, `<!-- #region`), which also work where indentation does not change.
+
+| Command | Shortcut | What it does |
+| --- | --- | --- |
+| Toggle Fold (`editor.toggleFold`) | none | Folds the region at the cursor, or unfolds it if it is folded. |
+| Fold Recursively / Unfold Recursively | `Ctrl+K Ctrl+[` / `Ctrl+K Ctrl+]` | Folds or unfolds the region at the cursor and every region inside it. |
+| Toggle Fold Recursively | `Ctrl+K Ctrl+Shift+L` | Flips the region at the cursor and sets everything inside it to the new state. |
+| Fold Level 1 to 7 | `Ctrl+K Ctrl+1` to `7` | Folds every region of that depth, except the ones that contain a cursor. |
+| Fold / Unfold All Regions Except Selected | `Ctrl+K Ctrl+-` / `Ctrl+K Ctrl+=` | Applies to every region except the one at the cursor and the regions around or inside it. |
+| Fold All Block Comments | `Ctrl+K Ctrl+/` | Folds every region that starts with the language's block comment token. |
+| Fold All Regions / Unfold All Regions | `Ctrl+K Ctrl+8` / `Ctrl+K Ctrl+9` | Folds or unfolds every region that starts on a `#region` marker line. |
+| Go to Next / Previous Folding Range | none | On a region's first line, moves to the next or previous region at the same level inside the same parent. Elsewhere, moves to the nearest region start below or above. |
+| Go to Parent Fold | none | Moves to the first line of the region around the cursor, or of the parent when already on a first line. |
+| Create Folding Range from Selection | `Ctrl+K Ctrl+,` | Makes a region of the selected lines and folds it. |
+| Remove Manual Folding Ranges | `Ctrl+K Ctrl+.` | Removes the manual ranges at the cursor or touched by the selection; a cursor in no manual range removes all of them. |
+| Toggle Import Fold | none | Folds or unfolds the first block of two or more `import` / `use` / `#include` lines. |
+
+Ranges made by hand and the import fold last until the document changes, like the folds themselves. `Ctrl+K Ctrl+L` stays on Unfold.
+
 Limitations in this version:
 
 - Folds are cleared when the document changes. They are not kept across edits.

@@ -29,6 +29,7 @@ mod extension_themes;
 mod external_changes;
 pub(crate) mod file_menu;
 mod focus_regions;
+mod fold_actions;
 mod fold_commands;
 pub(crate) mod folding;
 pub(crate) mod github_auth;

@@ -31,6 +31,12 @@ pub(crate) struct View {
     pub folded: Vec<usize>,
     /// Document revision the fold list was built against; a change clears the folds.
     pub folded_revision: u64,
+    /// Fold ranges made by hand or for the import block, as `(start, end, by_hand)`; a document
+    /// revision change clears them like the folds.
+    pub manual_folds: Vec<(usize, usize, bool)>,
+    /// Regions to use instead of the document's own while the manual ranges apply: the computed
+    /// regions with the manual ones added, and the revision they were built for.
+    pub fold_regions: Option<(u64, super::folding::Provided)>,
     /// Pinned tabs stay open when a preview opens and sort before unpinned tabs.
     pub pinned: bool,
     /// Set while the view is a preview tab: the document revision when it was opened.
@@ -91,6 +97,8 @@ impl EditorGroups {
             scroll_line: 0,
             folded: Vec::new(),
             folded_revision: 0,
+            manual_folds: Vec::new(),
+            fold_regions: None,
             pinned: false,
             preview_revision: None,
         };
@@ -295,6 +303,8 @@ impl EditorGroups {
                 scroll_line: 0,
                 folded: Vec::new(),
                 folded_revision: 0,
+                manual_folds: Vec::new(),
+                fold_regions: None,
                 pinned: false,
                 preview_revision: None,
             });
@@ -349,6 +359,8 @@ impl EditorGroups {
                 scroll_line,
                 folded: Vec::new(),
                 folded_revision: 0,
+                manual_folds: Vec::new(),
+                fold_regions: None,
                 pinned: false,
                 preview_revision: None,
             });

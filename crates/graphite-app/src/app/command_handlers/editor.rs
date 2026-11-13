@@ -334,6 +334,182 @@ pub(super) fn editor_action_transform_kebab(
     Ok(())
 }
 
+pub(super) fn editor_toggle_fold(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.toggle_fold();
+    Ok(())
+}
+
+pub(super) fn editor_fold_recursively(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_recursively();
+    Ok(())
+}
+
+pub(super) fn editor_unfold_recursively(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.unfold_recursively();
+    Ok(())
+}
+
+pub(super) fn editor_toggle_fold_recursively(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.toggle_fold_recursively();
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_1(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(1);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_2(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(2);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_3(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(3);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_4(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(4);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_5(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(5);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_6(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(6);
+    Ok(())
+}
+
+pub(super) fn editor_fold_level_7(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_level(7);
+    Ok(())
+}
+
+pub(super) fn editor_fold_all_except(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_all_except_selection();
+    Ok(())
+}
+
+pub(super) fn editor_unfold_all_except(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.unfold_all_except_selection();
+    Ok(())
+}
+
+pub(super) fn editor_fold_all_block_comments(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.fold_all_block_comments();
+    Ok(())
+}
+
+pub(super) fn editor_fold_all_marker_regions(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_marker_regions(true);
+    Ok(())
+}
+
+pub(super) fn editor_unfold_all_marker_regions(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.set_marker_regions(false);
+    Ok(())
+}
+
+pub(super) fn editor_goto_next_fold(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.go_to_next_fold();
+    Ok(())
+}
+
+pub(super) fn editor_goto_previous_fold(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.go_to_previous_fold();
+    Ok(())
+}
+
+pub(super) fn editor_goto_parent_fold(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.go_to_parent_fold();
+    Ok(())
+}
+
+pub(super) fn editor_create_fold_range(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.create_fold_range_from_selection();
+    Ok(())
+}
+
+pub(super) fn editor_remove_manual_folds(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.remove_manual_fold_ranges();
+    Ok(())
+}
+
+pub(super) fn editor_toggle_import_fold(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.toggle_import_fold();
+    Ok(())
+}
+
 pub(super) fn editor_action_go_to_references(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -1223,6 +1399,226 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         editor_unfold_all,
+    );
+    add(
+        registry,
+        "editor.toggleFold",
+        "Toggle fold",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_toggle_fold,
+    );
+    add(
+        registry,
+        "editor.foldRecursively",
+        "Fold recursively",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_recursively,
+    );
+    add(
+        registry,
+        "editor.unfoldRecursively",
+        "Unfold recursively",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_unfold_recursively,
+    );
+    add(
+        registry,
+        "editor.toggleFoldRecursively",
+        "Toggle fold recursively",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_toggle_fold_recursively,
+    );
+    add(
+        registry,
+        "editor.foldLevel1",
+        "Fold level 1",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_1,
+    );
+    add(
+        registry,
+        "editor.foldLevel2",
+        "Fold level 2",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_2,
+    );
+    add(
+        registry,
+        "editor.foldLevel3",
+        "Fold level 3",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_3,
+    );
+    add(
+        registry,
+        "editor.foldLevel4",
+        "Fold level 4",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_4,
+    );
+    add(
+        registry,
+        "editor.foldLevel5",
+        "Fold level 5",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_5,
+    );
+    add(
+        registry,
+        "editor.foldLevel6",
+        "Fold level 6",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_6,
+    );
+    add(
+        registry,
+        "editor.foldLevel7",
+        "Fold level 7",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_level_7,
+    );
+    add(
+        registry,
+        "editor.foldAllExcept",
+        "Fold all regions except selected",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_all_except,
+    );
+    add(
+        registry,
+        "editor.unfoldAllExcept",
+        "Unfold all regions except selected",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_unfold_all_except,
+    );
+    add(
+        registry,
+        "editor.foldAllBlockComments",
+        "Fold all block comments",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_all_block_comments,
+    );
+    add(
+        registry,
+        "editor.foldAllMarkerRegions",
+        "Fold all regions",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_fold_all_marker_regions,
+    );
+    add(
+        registry,
+        "editor.unfoldAllMarkerRegions",
+        "Unfold all regions",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_unfold_all_marker_regions,
+    );
+    add(
+        registry,
+        "editor.gotoNextFold",
+        "Go to next folding range",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_goto_next_fold,
+    );
+    add(
+        registry,
+        "editor.gotoPreviousFold",
+        "Go to previous folding range",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_goto_previous_fold,
+    );
+    add(
+        registry,
+        "editor.gotoParentFold",
+        "Go to parent fold",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_goto_parent_fold,
+    );
+    add(
+        registry,
+        "editor.createFoldingRangeFromSelection",
+        "Create folding range from selection",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_create_fold_range,
+    );
+    add(
+        registry,
+        "editor.removeManualFoldingRanges",
+        "Remove manual folding ranges",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_remove_manual_folds,
+    );
+    add(
+        registry,
+        "editor.toggleImportFold",
+        "Toggle import fold",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_toggle_import_fold,
     );
     add(
         registry,

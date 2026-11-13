@@ -13,6 +13,18 @@ pub(crate) fn effective_folds(view: &View, revision: u64) -> &[usize] {
     folds_for_revision(&view.folded, view.folded_revision, revision)
 }
 
+/// The regions that apply to `view`: the ones built with its manual ranges, else the ones an
+/// extension provided for the document, else none (the indentation rules apply).
+pub(crate) fn region_source<'a>(
+    view: &'a View,
+    document: &'a crate::document::Document,
+) -> Option<&'a folding::Provided> {
+    match &view.fold_regions {
+        Some((revision, regions)) if *revision == document.buffer.revision() => Some(regions),
+        _ => document.provided_folds(),
+    }
+}
+
 fn folds_for_revision(folded: &[usize], folded_revision: u64, revision: u64) -> &[usize] {
     if folded_revision == revision {
         folded
@@ -30,15 +42,20 @@ impl App {
         let buffer = &self.documents[document].buffer;
         let revision = buffer.revision();
         let tab_size = self.documents[document].indentation.tab_size;
-        let provided = self.documents[document].provided_folds();
         let cursor_line = buffer.rope().char_to_line(cursor.min(buffer.len_chars()));
         let view = self.editor_groups.active_view_mut();
         if view.folded_revision != revision {
             view.folded.clear();
+            view.manual_folds.clear();
+            view.fold_regions = None;
             view.folded_revision = revision;
         }
+        let provided =
+            region_source(self.editor_groups.active_view(), &self.documents[document]).cloned();
+        let buffer = &self.documents[document].buffer;
+        let view = self.editor_groups.active_view_mut();
         view.folded.retain(|&start| {
-            !folding::region_end(buffer, start, tab_size, provided)
+            !folding::region_end(buffer, start, tab_size, provided.as_ref())
                 .is_some_and(|end| start < cursor_line && cursor_line <= end)
         });
     }
@@ -53,7 +70,7 @@ impl App {
             &tab.buffer,
             effective_folds(view, tab.buffer.revision()),
             tab.indentation.tab_size,
-            tab.provided_folds(),
+            region_source(view, tab),
         );
         folding::visible_lines(&tab.buffer, &hidden, view.scroll_line, row + 1)
             .last()
@@ -62,18 +79,18 @@ impl App {
             .min(last)
     }
 
-    fn cursor_line(&self) -> usize {
+    pub(super) fn cursor_line(&self) -> usize {
         let document = self.active_document();
         let buffer = &self.documents[document].buffer;
         let cursor = self.editor().cursor().char_idx;
         buffer.rope().char_to_line(cursor.min(buffer.len_chars()))
     }
 
-    fn set_cursor_to_line(&mut self, line: usize) {
+    pub(super) fn set_cursor_to_line(&mut self, line: usize) {
         self.editor_mut().set_cursor_line_col(line, 0);
     }
 
-    fn fold_unavailable_with_wrap(&mut self) -> bool {
+    pub(super) fn fold_unavailable_with_wrap(&mut self) -> bool {
         if self.word_wrap {
             self.status = self.t("fold.unavailable_wrap").to_owned();
             true
@@ -98,7 +115,7 @@ impl App {
                 &self.documents[document].buffer,
                 line,
                 tab_size,
-                self.documents[document].provided_folds(),
+                region_source(self.editor_groups.active_view(), &self.documents[document]),
             ) else {
                 self.status = self.t("fold.no_region").to_owned();
                 return;
@@ -129,7 +146,8 @@ impl App {
         let document = self.active_document();
         let tab_size = self.documents[document].indentation.tab_size;
         let line = self.cursor_line();
-        let provided = self.documents[document].provided_folds();
+        let provided =
+            region_source(self.editor_groups.active_view(), &self.documents[document]).cloned();
         let buffer = &self.documents[document].buffer;
         let view = self.editor_groups.active_view_mut();
         let target = view
@@ -138,7 +156,7 @@ impl App {
             .copied()
             .filter(|&start| {
                 start == line
-                    || folding::region_end(buffer, start, tab_size, provided)
+                    || folding::region_end(buffer, start, tab_size, provided.as_ref())
                         .is_some_and(|end| start < line && line <= end)
             })
             .max();
@@ -154,13 +172,15 @@ impl App {
         }
         self.sync_active_folds();
         let document = self.active_document();
+        let provided =
+            region_source(self.editor_groups.active_view(), &self.documents[document]).cloned();
         let tab = &self.documents[document];
         let tab_size = tab.indentation.tab_size;
         let revision = tab.buffer.revision();
         let mut starts = Vec::new();
         let mut line = 0;
         while line < tab.buffer.len_lines() {
-            match folding::region_end(&tab.buffer, line, tab_size, tab.provided_folds()) {
+            match folding::region_end(&tab.buffer, line, tab_size, provided.as_ref()) {
                 Some(end) => {
                     starts.push(line);
                     line = end + 1;
@@ -174,7 +194,7 @@ impl App {
                 &self.documents[document].buffer,
                 &starts,
                 tab_size,
-                self.documents[document].provided_folds(),
+                provided.as_ref(),
             ),
             cursor_line,
         );

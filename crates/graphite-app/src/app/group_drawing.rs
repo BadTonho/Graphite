@@ -280,7 +280,7 @@ impl App {
                     buffer,
                     folds,
                     tab.indentation.tab_size,
-                    tab.provided_folds(),
+                    super::fold_commands::region_source(view, tab),
                 );
             let rows =
                 super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
