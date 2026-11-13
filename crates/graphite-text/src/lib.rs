@@ -7,6 +7,8 @@ use std::{
 };
 
 mod brackets;
+mod case;
+pub use case::CaseTransform;
 pub use brackets::{bracket_levels, matching_bracket};
 mod edit;
 mod editor;
@@ -16,6 +18,7 @@ pub use editor::{
 mod file_io;
 mod indentation;
 pub use indentation::Indentation;
+mod line_ops;
 mod lines;
 mod multicursor;
 mod navigation;

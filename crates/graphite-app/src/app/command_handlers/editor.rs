@@ -227,6 +227,113 @@ pub(super) fn editor_action_join_lines(
     Ok(())
 }
 
+pub(super) fn editor_action_indent_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let document = app.command_document();
+    let indentation = app.documents[document].indentation;
+    app.editor_mut().indent_lines(indentation);
+    Ok(())
+}
+
+pub(super) fn editor_action_outdent_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let document = app.command_document();
+    let indentation = app.documents[document].indentation;
+    app.editor_mut().outdent_lines(indentation);
+    Ok(())
+}
+
+pub(super) fn editor_action_reverse_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().reverse_lines();
+    Ok(())
+}
+
+pub(super) fn editor_action_sort_lines_descending(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().sort_lines_ordered(true);
+    Ok(())
+}
+
+pub(super) fn editor_action_transpose(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().transpose_characters();
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_upper(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Upper);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_lower(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Lower);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_title(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Title);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_snake(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Snake);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_camel(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Camel);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_pascal(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Pascal);
+    Ok(())
+}
+
+pub(super) fn editor_action_transform_kebab(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut()
+        .transform_case(graphite_text::CaseTransform::Kebab);
+    Ok(())
+}
+
 pub(super) fn editor_action_go_to_references(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -707,7 +814,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
-        "graphite.editor.duplicateSelection",
+        "editor.action.duplicateSelection",
         "Duplicate Selection",
         "Editor",
         VIEW,
@@ -860,6 +967,126 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "editorWritable",
         None,
         editor_action_join_lines,
+    );
+    add(
+        registry,
+        "editor.action.indentLines",
+        "Indent line",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_indent_lines,
+    );
+    add(
+        registry,
+        "editor.action.outdentLines",
+        "Outdent line",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_outdent_lines,
+    );
+    add(
+        registry,
+        "editor.action.reverseLines",
+        "Reverse lines",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_reverse_lines,
+    );
+    add(
+        registry,
+        "editor.action.sortLinesDescending",
+        "Sort lines descending",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_sort_lines_descending,
+    );
+    add(
+        registry,
+        "editor.action.transpose",
+        "Transpose characters around the cursor",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transpose,
+    );
+    add(
+        registry,
+        "editor.action.transformToUppercase",
+        "Transform to uppercase",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_upper,
+    );
+    add(
+        registry,
+        "editor.action.transformToLowercase",
+        "Transform to lowercase",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_lower,
+    );
+    add(
+        registry,
+        "editor.action.transformToTitlecase",
+        "Transform to title case",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_title,
+    );
+    add(
+        registry,
+        "editor.action.transformToSnakecase",
+        "Transform to snake case",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_snake,
+    );
+    add(
+        registry,
+        "editor.action.transformToCamelcase",
+        "Transform to camel case",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_camel,
+    );
+    add(
+        registry,
+        "editor.action.transformToPascalcase",
+        "Transform to Pascal case",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_pascal,
+    );
+    add(
+        registry,
+        "editor.action.transformToKebabcase",
+        "Transform to kebab case",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_transform_kebab,
     );
     add(
         registry,

@@ -316,6 +316,16 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
         "editorTextFocus",
     ),
     (
+        "ctrl+]",
+        "editor.action.indentLines",
+        "editorTextFocus",
+    ),
+    (
+        "ctrl+[",
+        "editor.action.outdentLines",
+        "editorTextFocus",
+    ),
+    (
         "ctrl+shift+alt+s",
         "editor.action.sortLinesAscending",
         "editorTextFocus",

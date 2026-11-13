@@ -285,7 +285,7 @@ impl App {
             C::CopyLineDown => self.run_ui_command("editor.action.copyLinesDownAction"),
             C::MoveLineUp => self.run_ui_command("editor.action.moveLinesUpAction"),
             C::MoveLineDown => self.run_ui_command("editor.action.moveLinesDownAction"),
-            C::DuplicateSelection => self.run_ui_command("graphite.editor.duplicateSelection"),
+            C::DuplicateSelection => self.run_ui_command("editor.action.duplicateSelection"),
             C::AddCursorAbove => self.run_ui_command("graphite.editor.addCursorAbove"),
             C::AddCursorBelow => self.run_ui_command("graphite.editor.addCursorBelow"),
             C::AddCursorsToLineEnds => self.run_ui_command("graphite.editor.addCursorsToLineEnds"),

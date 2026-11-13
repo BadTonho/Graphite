@@ -10,7 +10,7 @@ struct LinePosition {
 
 impl Editor<'_> {
     /// Convert all selected ranges to disjoint, contiguous line blocks.
-    fn selected_line_blocks(&self) -> Vec<Range<usize>> {
+    pub(super) fn selected_line_blocks(&self) -> Vec<Range<usize>> {
         let mut blocks: Vec<_> = self
             .selections()
             .into_iter()
@@ -275,7 +275,7 @@ impl Editor<'_> {
 
     /// Sort lines independently in each selected block.
     pub fn sort_lines(&mut self) {
-        self.transform_selected_lines(false);
+        self.sort_lines_ordered(false);
     }
 
     /// Remove duplicate lines independently in each selected block, keeping the first.
@@ -365,7 +365,7 @@ impl Editor<'_> {
     }
 }
 
-fn split_line_ending(value: &str) -> (&str, &str) {
+pub(super) fn split_line_ending(value: &str) -> (&str, &str) {
     if let Some(content) = value.strip_suffix("\r\n") {
         (content, "\r\n")
     } else if let Some(content) = value.strip_suffix('\n') {

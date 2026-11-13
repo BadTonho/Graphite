@@ -7,6 +7,8 @@ use super::command_registry::{
 use super::context_keys::{ContextKeyService, WidgetKind};
 use super::*;
 use serde_json::{json, Value};
+#[path = "command_tests/line_commands.rs"]
+mod line_commands;
 #[path = "command_tests/parity.rs"]
 mod parity;
 
