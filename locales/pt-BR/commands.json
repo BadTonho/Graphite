@@ -453,5 +453,20 @@
   "command.list.selectAndPreserveFocus": "Selecionar e manter o foco",
   "command.list.scrollUp": "Rolar para cima",
   "command.list.scrollDown": "Rolar para baixo",
-  "command.category.list": "Lista"
+  "command.category.list": "Lista",
+  "command.workbench.action.activityBarLocation.default": "Mover a barra de atividades para o lado",
+  "command.workbench.action.activityBarLocation.top": "Mover a barra de atividades para o topo",
+  "command.workbench.action.activityBarLocation.bottom": "Mover a barra de atividades para baixo",
+  "command.workbench.action.activityBarLocation.hide": "Ocultar a barra de atividades",
+  "command.breadcrumbs.toggle": "Alternar trilha de navegação",
+  "command.breadcrumbs.toggleToOn": "Mostrar trilha de navegação",
+  "command.breadcrumbs.copyPath": "Copiar caminho da trilha de navegação",
+  "command.workbench.action.newWindow": "Nova janela",
+  "command.workbench.action.clearEditorHistory": "Limpar histórico de editores",
+  "command.workbench.action.clearEditorHistoryWithoutConfirm": "Limpar histórico de editores sem confirmação",
+  "command.workbench.action.revertAndCloseActiveEditor": "Reverter e fechar o editor",
+  "command.workbench.action.duplicateActiveEditorGroupLeft": "Duplicar grupo de editores à esquerda",
+  "command.workbench.action.duplicateActiveEditorGroupRight": "Duplicar grupo de editores à direita",
+  "command.workbench.action.duplicateActiveEditorGroupUp": "Duplicar grupo de editores acima",
+  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicar grupo de editores abaixo"
 }

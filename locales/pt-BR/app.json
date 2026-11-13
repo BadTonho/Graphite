@@ -620,5 +620,9 @@
   "editor.announce_position": "Linha {line}, coluna {column}",
   "editor.announce_position_selection": "Linha {line}, coluna {column}, {selected} caracteres selecionados",
   "groups.no_target": "Não há outro grupo de editores",
-  "go.no_editors": "Nenhum editor aberto."
+  "go.no_editors": "Nenhum editor aberto.",
+  "misc.no_path": "Este editor não tem caminho de arquivo",
+  "misc.clipboard_failed": "Não foi possível copiar para a área de transferência",
+  "misc.path_copied": "Caminho copiado",
+  "misc.history_cleared": "Histórico de editores limpo"
 }

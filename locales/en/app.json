@@ -620,5 +620,9 @@
   "editor.announce_position": "Line {line}, column {column}",
   "editor.announce_position_selection": "Line {line}, column {column}, {selected} characters selected",
   "groups.no_target": "There is no other editor group",
-  "go.no_editors": "No open editors."
+  "go.no_editors": "No open editors.",
+  "misc.no_path": "This editor has no file path",
+  "misc.clipboard_failed": "Could not copy to the clipboard",
+  "misc.path_copied": "Path copied",
+  "misc.history_cleared": "Editor history cleared"
 }

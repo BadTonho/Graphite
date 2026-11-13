@@ -453,5 +453,20 @@
   "command.list.selectAndPreserveFocus": "Select and preserve focus",
   "command.list.scrollUp": "Scroll up",
   "command.list.scrollDown": "Scroll down",
-  "command.category.list": "List"
+  "command.category.list": "List",
+  "command.workbench.action.activityBarLocation.default": "Move activity bar to the side",
+  "command.workbench.action.activityBarLocation.top": "Move activity bar to the top",
+  "command.workbench.action.activityBarLocation.bottom": "Move activity bar to the bottom",
+  "command.workbench.action.activityBarLocation.hide": "Hide activity bar",
+  "command.breadcrumbs.toggle": "Toggle breadcrumbs",
+  "command.breadcrumbs.toggleToOn": "Show breadcrumbs",
+  "command.breadcrumbs.copyPath": "Copy breadcrumbs path",
+  "command.workbench.action.newWindow": "New window",
+  "command.workbench.action.clearEditorHistory": "Clear editor history",
+  "command.workbench.action.clearEditorHistoryWithoutConfirm": "Clear editor history without confirmation",
+  "command.workbench.action.revertAndCloseActiveEditor": "Revert and close editor",
+  "command.workbench.action.duplicateActiveEditorGroupLeft": "Duplicate editor group to the left",
+  "command.workbench.action.duplicateActiveEditorGroupRight": "Duplicate editor group to the right",
+  "command.workbench.action.duplicateActiveEditorGroupUp": "Duplicate editor group up",
+  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicate editor group down"
 }

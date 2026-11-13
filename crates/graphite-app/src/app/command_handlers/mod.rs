@@ -12,6 +12,7 @@ mod groups;
 mod input;
 mod layout;
 mod lists;
+mod misc;
 mod parts;
 mod quick;
 mod scm;
@@ -153,6 +154,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     parts::register(registry);
     quick::register(registry);
     lists::register(registry);
+    misc::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

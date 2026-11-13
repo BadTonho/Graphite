@@ -846,7 +846,7 @@ impl App {
         }
     }
 
-    fn revert_active_file(&mut self) {
+    pub(crate) fn revert_active_file(&mut self) {
         let document = self.active_document();
         if self.documents[document].buffer.path().is_none() {
             return;
