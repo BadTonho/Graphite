@@ -105,7 +105,7 @@ fn close_in_other_groups(app: &mut App, _: &CommandInvocation) -> Result<(), Com
     Ok(())
 }
 
-fn close_all_groups(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+pub(super) fn close_all_groups(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     let views = app.editor_groups.ordered_view_ids();
     close_views(app, views);
     Ok(())

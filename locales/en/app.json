@@ -624,5 +624,11 @@
   "misc.no_path": "This editor has no file path",
   "misc.clipboard_failed": "Could not copy to the clipboard",
   "misc.path_copied": "Path copied",
-  "misc.history_cleared": "Editor history cleared"
+  "misc.history_cleared": "Editor history cleared",
+  "explorer.new_file.prompt": "New file name (a folder path creates the folders too):",
+  "explorer.new_folder.prompt": "New folder name:",
+  "explorer.new.hint": "Enter to create, Escape to cancel",
+  "explorer.new.exists": "An entry with that name already exists",
+  "explorer.new.done": "Created",
+  "explorer.refreshed": "Explorer refreshed"
 }

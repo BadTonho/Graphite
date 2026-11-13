@@ -624,5 +624,11 @@
   "misc.no_path": "Este editor não tem caminho de arquivo",
   "misc.clipboard_failed": "Não foi possível copiar para a área de transferência",
   "misc.path_copied": "Caminho copiado",
-  "misc.history_cleared": "Histórico de editores limpo"
+  "misc.history_cleared": "Histórico de editores limpo",
+  "explorer.new_file.prompt": "Nome do novo arquivo (um caminho com pastas também cria as pastas):",
+  "explorer.new_folder.prompt": "Nome da nova pasta:",
+  "explorer.new.hint": "Enter para criar, Esc para cancelar",
+  "explorer.new.exists": "Já existe uma entrada com esse nome",
+  "explorer.new.done": "Criado",
+  "explorer.refreshed": "Explorador atualizado"
 }

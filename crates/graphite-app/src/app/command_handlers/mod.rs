@@ -7,6 +7,7 @@ use super::*;
 pub(crate) mod configuration;
 mod editor;
 mod explorer;
+mod files;
 mod focus;
 mod groups;
 mod input;
@@ -155,6 +156,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     quick::register(registry);
     lists::register(registry);
     misc::register(registry);
+    files::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

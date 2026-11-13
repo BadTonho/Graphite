@@ -4,11 +4,24 @@ use super::*;
 use std::fs;
 use winit::keyboard::{Key, NamedKey};
 
-/// Name typed into the explorer rename prompt. A value with folders moves the entry.
+/// What the explorer prompt is asking for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExplorerPromptKind {
+    /// A new name for `path`.
+    Rename,
+    /// The name of a file to create inside the folder `path`.
+    NewFile,
+    /// The name of a folder to create inside the folder `path`.
+    NewFolder,
+}
+
+/// Name typed into the explorer prompt. A value with folders moves the entry (rename) or creates
+/// the missing folders (new file or folder).
 #[derive(Clone, Debug)]
 pub(crate) struct ExplorerPrompt {
     pub(crate) path: PathBuf,
     pub(crate) value: String,
+    pub(crate) kind: ExplorerPromptKind,
 }
 
 /// Moves `from` to `to`, creating missing parent folders. Never overwrites an existing entry.
@@ -55,8 +68,96 @@ impl App {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        self.explorer_prompt = Some(ExplorerPrompt { path, value });
+        self.explorer_prompt = Some(ExplorerPrompt {
+            path,
+            value,
+            kind: ExplorerPromptKind::Rename,
+        });
         self.status = self.t("explorer.rename.hint").into();
+    }
+
+    /// Reads the workspace folders from disk again.
+    pub(crate) fn refresh_explorer(&mut self) {
+        self.tree.refresh();
+        self.status = self.t("explorer.refreshed").into();
+    }
+
+    /// Opens the selected file as a preview and leaves the keyboard focus in the explorer.
+    pub(crate) fn explorer_open_preserving_focus(&mut self) {
+        let Some(path) = self.explorer_selected.clone().filter(|path| path.is_file()) else {
+            return;
+        };
+        self.open_file_preview(path);
+        self.explorer_focused = true;
+    }
+
+    /// Asks for the name of a new file or folder, created inside the selected folder (the
+    /// folder of the selected file, or the workspace folder when nothing is selected).
+    pub(crate) fn explorer_new_entry(&mut self, folder: bool) {
+        let parent = match self.explorer_selected.clone() {
+            Some(selected) if selected.is_dir() => selected,
+            Some(selected) => selected
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| self.tree.root().to_path_buf()),
+            None => self.tree.root().to_path_buf(),
+        };
+        self.explorer_prompt = Some(ExplorerPrompt {
+            path: parent,
+            value: String::new(),
+            kind: if folder {
+                ExplorerPromptKind::NewFolder
+            } else {
+                ExplorerPromptKind::NewFile
+            },
+        });
+        self.status = self.t("explorer.new.hint").into();
+    }
+
+    fn apply_explorer_creation(&mut self, prompt: ExplorerPrompt) {
+        let Some(relative) = Self::checked_relative_name(prompt.value.trim()) else {
+            self.status = self.t("explorer.rename.invalid").into();
+            return;
+        };
+        let target = prompt.path.join(relative);
+        if target.exists() {
+            self.status = self.t("explorer.new.exists").into();
+            return;
+        }
+        let created = if prompt.kind == ExplorerPromptKind::NewFolder {
+            fs::create_dir_all(&target)
+        } else {
+            target
+                .parent()
+                .map_or(Ok(()), fs::create_dir_all)
+                .and_then(|()| fs::File::create_new(&target).map(drop))
+        };
+        if let Err(error) = created {
+            self.status = error.to_string();
+            return;
+        }
+        self.tree.set_expanded(&prompt.path, true);
+        self.tree.refresh();
+        self.explorer_select(target.clone());
+        if prompt.kind == ExplorerPromptKind::NewFile {
+            self.open_file(target);
+        }
+        self.status = self.t("explorer.new.done").into();
+    }
+
+    /// The name as a relative path, or `None` when it is empty, absolute or climbs out of the
+    /// folder.
+    fn checked_relative_name(value: &str) -> Option<&Path> {
+        let relative = Path::new(value);
+        let escapes = relative.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        });
+        (!(value.is_empty() || relative.is_absolute() || escapes)).then_some(relative)
     }
 
     /// Routes keys to the explorer rename prompt while it is open.
@@ -68,7 +169,11 @@ impl App {
             Key::Named(NamedKey::Escape) => self.explorer_prompt = None,
             Key::Named(NamedKey::Enter) => {
                 if let Some(prompt) = self.explorer_prompt.take() {
-                    self.apply_explorer_rename(prompt);
+                    if prompt.kind == ExplorerPromptKind::Rename {
+                        self.apply_explorer_rename(prompt);
+                    } else {
+                        self.apply_explorer_creation(prompt);
+                    }
                 }
             }
             Key::Named(NamedKey::Backspace) => {
@@ -251,7 +356,12 @@ impl App {
             panel_height - 2.0,
             bg,
         );
-        renderer.draw_text(self.t("explorer.rename.prompt"), x + 16.0, y + 18.0, text);
+        let (title, hint) = match prompt.kind {
+            ExplorerPromptKind::Rename => ("explorer.rename.prompt", "explorer.rename.hint"),
+            ExplorerPromptKind::NewFile => ("explorer.new_file.prompt", "explorer.new.hint"),
+            ExplorerPromptKind::NewFolder => ("explorer.new_folder.prompt", "explorer.new.hint"),
+        };
+        renderer.draw_text(self.t(title), x + 16.0, y + 18.0, text);
         let max_chars = ((panel_width - 32.0) / cw.max(1.0)).floor() as usize;
         let input = Self::help_menu_visible_label(
             &format!("{}▏", prompt.value),
@@ -260,7 +370,7 @@ impl App {
         );
         renderer.draw_rect(x + 12.0, y + 48.0, panel_width - 24.0, 28.0, border);
         renderer.draw_text(&input, x + 18.0, y + 54.0, text);
-        renderer.draw_text(self.t("explorer.rename.hint"), x + 16.0, y + 90.0, dim);
+        renderer.draw_text(self.t(hint), x + 16.0, y + 90.0, dim);
     }
 }
 

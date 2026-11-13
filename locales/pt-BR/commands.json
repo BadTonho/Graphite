@@ -468,5 +468,15 @@
   "command.workbench.action.duplicateActiveEditorGroupLeft": "Duplicar grupo de editores à esquerda",
   "command.workbench.action.duplicateActiveEditorGroupRight": "Duplicar grupo de editores à direita",
   "command.workbench.action.duplicateActiveEditorGroupUp": "Duplicar grupo de editores acima",
-  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicar grupo de editores abaixo"
+  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicar grupo de editores abaixo",
+  "command.workbench.files.action.createFileFromExplorer": "Novo arquivo...",
+  "command.workbench.files.action.createFolderFromExplorer": "Nova pasta...",
+  "command.workbench.files.action.refreshFilesExplorer": "Atualizar o explorador",
+  "command.workbench.files.action.collapseExplorerFolders": "Recolher pastas no explorador",
+  "command.filesExplorer.openFilePreserveFocus": "Abrir arquivo mantendo o foco no explorador",
+  "command.workbench.action.files.copyPathOfActiveFile": "Copiar o caminho do arquivo ativo",
+  "command.openEditors.newUntitledFile": "Novo arquivo de texto sem título",
+  "command.workbench.action.files.newUntitledFileFromNewTabButton": "Novo arquivo de texto sem título pela barra de abas",
+  "command.openEditors.closeAll": "Fechar todos os editores",
+  "command.workbench.action.toggleEditorGroupLayout": "Alternar layout vertical/horizontal dos editores"
 }

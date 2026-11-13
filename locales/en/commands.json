@@ -468,5 +468,15 @@
   "command.workbench.action.duplicateActiveEditorGroupLeft": "Duplicate editor group to the left",
   "command.workbench.action.duplicateActiveEditorGroupRight": "Duplicate editor group to the right",
   "command.workbench.action.duplicateActiveEditorGroupUp": "Duplicate editor group up",
-  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicate editor group down"
+  "command.workbench.action.duplicateActiveEditorGroupDown": "Duplicate editor group down",
+  "command.workbench.files.action.createFileFromExplorer": "New file...",
+  "command.workbench.files.action.createFolderFromExplorer": "New folder...",
+  "command.workbench.files.action.refreshFilesExplorer": "Refresh explorer",
+  "command.workbench.files.action.collapseExplorerFolders": "Collapse folders in explorer",
+  "command.filesExplorer.openFilePreserveFocus": "Open file and keep focus in explorer",
+  "command.workbench.action.files.copyPathOfActiveFile": "Copy path of active file",
+  "command.openEditors.newUntitledFile": "New untitled text file",
+  "command.workbench.action.files.newUntitledFileFromNewTabButton": "New untitled text file from the tab bar",
+  "command.openEditors.closeAll": "Close all editors",
+  "command.workbench.action.toggleEditorGroupLayout": "Toggle vertical/horizontal editor layout"
 }

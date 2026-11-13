@@ -18,6 +18,10 @@ fn set_breadcrumbs(app: &mut App, visible: bool) -> Result<(), CommandError> {
 }
 
 fn copy_breadcrumbs_path(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    copy_path_of_active_file(app)
+}
+
+pub(super) fn copy_path_of_active_file(app: &mut App) -> Result<(), CommandError> {
     let Some(path) = app.documents[app.command_document()]
         .buffer
         .path()
