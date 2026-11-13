@@ -21,6 +21,7 @@ impl App {
             && !self.branch_picker
             && self.diff_view.is_none()
             && self.conflict_view.is_none()
+            && self.merge_editor.is_none()
             && !self.close_confirm
             && !self.close_window_confirm
     }

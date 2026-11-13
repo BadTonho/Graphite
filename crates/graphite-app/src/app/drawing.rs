@@ -733,6 +733,7 @@ impl App {
         if !self.zen_mode {
             self.draw_phase4_overlays(r, w, h, lh);
             self.draw_phase6_overlays(r, w, h, lh);
+            self.draw_merge_editor(r, w, h, lh);
         }
         if !self.zen_mode && self.view_preferences.primary_sidebar_visible {
             let split = self.sidebar_width_px();

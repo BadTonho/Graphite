@@ -67,6 +67,10 @@ impl App {
             return;
         }
 
+        if self.merge_editor.is_some() {
+            self.merge_handle_click(mx, my);
+            return;
+        }
         if self.diff_view.is_some() {
             if my < lh * 1.5 {
                 self.run_ui_command("graphite.diff.toggleLayout");

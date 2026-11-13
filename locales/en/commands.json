@@ -575,5 +575,16 @@
   "command.debug.setVariable": "Set variable value",
   "command.debug.startFromConfig": "Start debugging with a configuration",
   "command.workbench.action.showLogs": "Show logs",
-  "command.workbench.action.openLogFile": "Open log file"
+  "command.workbench.action.openLogFile": "Open log file",
+  "command.graphite.merge.open": "Open merge editor",
+  "command.graphite.merge.close": "Close merge editor",
+  "command.merge.columnLayout": "Merge editor: column layout",
+  "command.merge.mixedLayout": "Merge editor: mixed layout",
+  "command.merge.showBase": "Merge editor: show base",
+  "command.merge.showBaseTop": "Merge editor: show base at the top",
+  "command.merge.showBaseCenter": "Merge editor: show base in the center",
+  "command.merge.showNonConflictingChanges": "Merge editor: show or hide text without conflicts",
+  "command.merge.goToNextUnhandledConflict": "Merge editor: go to next unhandled conflict",
+  "command.merge.goToPreviousUnhandledConflict": "Merge editor: go to previous unhandled conflict",
+  "command.category.merge": "Merge"
 }

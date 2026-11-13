@@ -575,5 +575,16 @@
   "command.debug.setVariable": "Alterar o valor de uma variável",
   "command.debug.startFromConfig": "Iniciar a depuração com uma configuração",
   "command.workbench.action.showLogs": "Mostrar logs",
-  "command.workbench.action.openLogFile": "Abrir arquivo de log"
+  "command.workbench.action.openLogFile": "Abrir arquivo de log",
+  "command.graphite.merge.open": "Abrir editor de mesclagem",
+  "command.graphite.merge.close": "Fechar editor de mesclagem",
+  "command.merge.columnLayout": "Editor de mesclagem: layout em colunas",
+  "command.merge.mixedLayout": "Editor de mesclagem: layout misto",
+  "command.merge.showBase": "Editor de mesclagem: mostrar a base",
+  "command.merge.showBaseTop": "Editor de mesclagem: mostrar a base no topo",
+  "command.merge.showBaseCenter": "Editor de mesclagem: mostrar a base no centro",
+  "command.merge.showNonConflictingChanges": "Editor de mesclagem: mostrar ou ocultar o texto sem conflito",
+  "command.merge.goToNextUnhandledConflict": "Editor de mesclagem: ir ao próximo conflito pendente",
+  "command.merge.goToPreviousUnhandledConflict": "Editor de mesclagem: ir ao conflito pendente anterior",
+  "command.category.merge": "Mesclagem"
 }

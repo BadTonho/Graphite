@@ -198,6 +198,10 @@ impl App {
             }
             return;
         }
+        if self.merge_editor.is_some() {
+            self.handle_merge_key(event);
+            return;
+        }
         if self.conflict_view.is_some() {
             match event
                 .text

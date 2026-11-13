@@ -73,6 +73,33 @@ impl MergeState {
         }
     }
 
+    /// Parses `text` again and keeps the decision of every conflict whose markers did not
+    /// change, so the file can be edited while the merge is open.
+    pub(crate) fn reload(&mut self, text: &str) {
+        let old: Vec<(String, Resolution)> = self
+            .parsed
+            .conflicts()
+            .zip(&self.resolutions)
+            .map(|(block, resolution)| (block.raw.clone(), *resolution))
+            .collect();
+        let mut fresh = MergeState::new(text);
+        let mut from = 0;
+        let kept: Vec<(usize, Resolution)> = fresh
+            .parsed
+            .conflicts()
+            .enumerate()
+            .filter_map(|(index, block)| {
+                let found = old[from..].iter().position(|(raw, _)| *raw == block.raw)?;
+                from += found + 1;
+                Some((index, old[from - 1].1))
+            })
+            .collect();
+        for (index, resolution) in kept {
+            fresh.resolutions[index] = resolution;
+        }
+        *self = fresh;
+    }
+
     pub(crate) fn parsed(&self) -> &Parsed {
         &self.parsed
     }

@@ -283,6 +283,10 @@ impl super::App {
             global.insert(key.into(), value.to_string());
         }
         global.insert("diffLoading".into(), self.diff_loading.to_string());
+        global.insert(
+            "mergeEditorVisible".into(),
+            self.merge_editor.is_some().to_string(),
+        );
         global.insert("pluginsVisible".into(), self.plugins.visible.to_string());
         global.insert("pluginsFocus".into(), self.plugins.focused.to_string());
         global.insert(

@@ -92,6 +92,7 @@ impl App {
                 self.sync_lsp_document(document);
                 self.lsp_manager.save(&snapshot.path, snapshot.text.clone());
                 self.stage_saved_conflict(&snapshot.path);
+                self.reload_merge_editor_for(&snapshot.path);
                 self.refresh_scm_async();
                 self.status = if active.warnings.is_empty() {
                     self.t("save.saved").into()
