@@ -494,5 +494,17 @@
   "command.workbench.action.localHistory.create": "Criar entrada do histórico local",
   "command.workbench.action.localHistory.delete": "Excluir entrada do histórico local",
   "command.workbench.action.localHistory.deleteAll": "Excluir todo o histórico local do arquivo",
-  "command.workbench.action.localHistory.restoreViaEditor": "Restaurar a entrada do histórico local aberta"
+  "command.workbench.action.localHistory.restoreViaEditor": "Restaurar a entrada do histórico local aberta",
+  "command.workbench.action.openGlobalSettings": "Ábrir configurações do usuário",
+  "command.workbench.action.openSettingsJson": "Abrir configurações do usuário (JSON)",
+  "command.workbench.action.openApplicationSettingsJson": "Abrir configurações do aplicativo (JSON)",
+  "command.workbench.action.openSettings2": "Abrir configurações",
+  "command.workbench.action.openAccessibilitySettings": "Abrir configurações de acessibilidade",
+  "command.workbench.action.openWorkspaceSettings": "Abrir configurações do espaço de trabalho",
+  "command.workbench.action.openWorkspaceSettingsFile": "Abrir configurações do espaço de trabalho (JSON)",
+  "command.workbench.action.openFolderSettings": "Abrir configurações da pasta",
+  "command.workbench.action.openFolderSettingsFile": "Abrir configurações da pasta (JSON)",
+  "command.workbench.action.openGlobalKeybindingsFile": "Abrir atalhos de teclado (JSON)",
+  "command.workbench.action.openDefaultKeybindingsFile": "Abrir atalhos de teclado padrão (JSON)",
+  "command.category.preferences": "Preferências"
 }

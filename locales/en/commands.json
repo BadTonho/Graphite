@@ -494,5 +494,17 @@
   "command.workbench.action.localHistory.create": "Create local history entry",
   "command.workbench.action.localHistory.delete": "Delete local history entry",
   "command.workbench.action.localHistory.deleteAll": "Delete all local history of the file",
-  "command.workbench.action.localHistory.restoreViaEditor": "Restore the open local history entry"
+  "command.workbench.action.localHistory.restoreViaEditor": "Restore the open local history entry",
+  "command.workbench.action.openGlobalSettings": "Open user settings",
+  "command.workbench.action.openSettingsJson": "Open user settings (JSON)",
+  "command.workbench.action.openApplicationSettingsJson": "Open application settings (JSON)",
+  "command.workbench.action.openSettings2": "Open settings",
+  "command.workbench.action.openAccessibilitySettings": "Open accessibility settings",
+  "command.workbench.action.openWorkspaceSettings": "Open workspace settings",
+  "command.workbench.action.openWorkspaceSettingsFile": "Open workspace settings (JSON)",
+  "command.workbench.action.openFolderSettings": "Open folder settings",
+  "command.workbench.action.openFolderSettingsFile": "Open folder settings (JSON)",
+  "command.workbench.action.openGlobalKeybindingsFile": "Open keyboard shortcuts (JSON)",
+  "command.workbench.action.openDefaultKeybindingsFile": "Open default keyboard shortcuts (JSON)",
+  "command.category.preferences": "Preferences"
 }

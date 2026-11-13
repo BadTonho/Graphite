@@ -17,6 +17,7 @@ mod layout;
 mod lists;
 mod misc;
 mod parts;
+mod preferences;
 mod quick;
 mod scm;
 mod ui;
@@ -161,6 +162,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     files::register(registry);
     changes::register(registry);
     history::register(registry);
+    preferences::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

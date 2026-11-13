@@ -406,6 +406,21 @@ mod tests {
     }
 }
 
+/// The default bindings as the JSON list a keybindings file uses, for showing them read-only.
+pub(crate) fn default_keybindings_json() -> String {
+    let entries: Vec<serde_json::Value> = defaults::BINDINGS
+        .iter()
+        .map(|(key, command, when)| {
+            let mut entry = serde_json::json!({"key": key, "command": command});
+            if *when != "true" {
+                entry["when"] = serde_json::json!(when);
+            }
+            entry
+        })
+        .collect();
+    serde_json::to_string_pretty(&entries).unwrap_or_default() + "\n"
+}
+
 #[cfg(test)]
 pub(crate) fn default_command_ids() -> Vec<&'static str> {
     defaults::BINDINGS.iter().map(|(_, id, _)| *id).collect()

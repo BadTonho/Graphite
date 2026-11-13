@@ -722,6 +722,35 @@ impl App {
         self.open_file(path);
     }
 
+    /// Opens `<workspace>/.vscode/settings.json`, creating an empty one first.
+    pub(crate) fn open_workspace_settings_file(&mut self) {
+        let path = self.tree.root().join(".vscode").join("settings.json");
+        if !path.exists() {
+            let created = path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&path, b"{}\n"));
+            if let Err(error) = created {
+                self.status = error.to_string();
+                return;
+            }
+        }
+        self.open_file(path);
+    }
+
+    /// Shows the built-in keyboard shortcuts in a read-only view.
+    pub(crate) fn open_default_keybindings_view(&mut self) {
+        let path = self.profile_root.join("default-keybindings.json");
+        let text = crate::keybindings::default_keybindings_json();
+        match self.documents.id_for_path(&path) {
+            Some(id) => {
+                let _ = self.documents[id].buffer.reload_text(&text);
+                self.activate_editor_document(id);
+            }
+            None => self.open_read_only_view(path, &text),
+        }
+    }
+
     pub(crate) fn open_snippet_configuration(&mut self) {
         if let Err(error) = std::fs::create_dir_all(self.profile_root.join("snippets")) {
             self.status = error.to_string();
