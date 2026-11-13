@@ -8,6 +8,7 @@ use std::{
 
 mod brackets;
 mod case;
+mod cursor_ops;
 pub use case::CaseTransform;
 pub use brackets::{bracket_levels, matching_bracket};
 mod edit;

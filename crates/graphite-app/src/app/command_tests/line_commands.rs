@@ -67,3 +67,50 @@ fn indent_commands_follow_the_document_indentation_and_default_keys() {
     app.run_ui_command("editor.action.indentLines");
     assert_eq!(app.editor().text(), "\ta\n\tb");
 }
+
+#[test]
+fn cursor_commands_use_the_standard_ids() {
+    // Adding a cursor above or below needs the window's text metrics, so only the ids are
+    // checked here.
+    for id in [
+        "editor.action.insertCursorAbove",
+        "editor.action.insertCursorBelow",
+        "editor.action.insertCursorAtEndOfEachLineSelected",
+    ] {
+        assert!(registry().get(id).is_some(), "{id}");
+    }
+    for old in [
+        "graphite.editor.addCursorAbove",
+        "graphite.editor.addCursorBelow",
+        "graphite.editor.addCursorsToLineEnds",
+    ] {
+        assert!(registry().get(old).is_none(), "{old}");
+    }
+
+    let (mut app, _dir) = app_with("ab\ncd\nef");
+    app.editor_mut().set_selection(1, 1);
+    app.run_ui_command("editor.action.addCursorsToBottom");
+    assert_eq!(app.editor().selections().len(), 3);
+    app.run_ui_command("editor.action.focusNextCursor");
+    assert_eq!(app.editor().cursor().char_idx, 4);
+
+    app.editor_mut().set_selection(0, 2);
+    app.run_ui_command("editor.action.changeAll");
+    assert_eq!(
+        app.editor().selections().len(),
+        1,
+        "a single match stays one selection"
+    );
+}
+
+#[test]
+fn moving_the_selection_to_the_next_find_match_uses_the_chord() {
+    let (mut app, _dir) = app_with("x y x");
+    app.editor_mut().set_selection(0, 1);
+    assert!(app.handle_keybinding_stroke("ctrl+k"));
+    assert!(app.handle_keybinding_stroke("ctrl+d"));
+    assert_eq!(
+        app.editor().selections(),
+        vec![graphite_text::Selection { anchor: 4, head: 5 }]
+    );
+}

@@ -510,6 +510,62 @@ pub(super) fn editor_toggle_import_fold(
     Ok(())
 }
 
+pub(super) fn editor_add_cursors_to_bottom(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().add_cursors_to_edge(true);
+    Ok(())
+}
+
+pub(super) fn editor_add_cursors_to_top(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().add_cursors_to_edge(false);
+    Ok(())
+}
+
+pub(super) fn editor_change_all(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().select_occurrences(true);
+    Ok(())
+}
+
+pub(super) fn editor_focus_next_cursor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().focus_cursor(true);
+    Ok(())
+}
+
+pub(super) fn editor_focus_previous_cursor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().focus_cursor(false);
+    Ok(())
+}
+
+pub(super) fn editor_move_selection_to_next_match(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().move_selection_to_occurrence(true);
+    Ok(())
+}
+
+pub(super) fn editor_move_selection_to_previous_match(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_mut().move_selection_to_occurrence(false);
+    Ok(())
+}
+
 pub(super) fn editor_action_go_to_references(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -1000,7 +1056,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
-        "graphite.editor.addCursorAbove",
+        "editor.action.insertCursorAbove",
         "Add Cursor Above",
         "Editor",
         VIEW,
@@ -1010,7 +1066,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
-        "graphite.editor.addCursorBelow",
+        "editor.action.insertCursorBelow",
         "Add Cursor Below",
         "Editor",
         VIEW,
@@ -1020,7 +1076,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
-        "graphite.editor.addCursorsToLineEnds",
+        "editor.action.insertCursorAtEndOfEachLineSelected",
         "Add Cursors to Line Ends",
         "Editor",
         VIEW,
@@ -1619,6 +1675,76 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         editor_toggle_import_fold,
+    );
+    add(
+        registry,
+        "editor.action.addCursorsToBottom",
+        "Add cursors to bottom",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_add_cursors_to_bottom,
+    );
+    add(
+        registry,
+        "editor.action.addCursorsToTop",
+        "Add cursors to top",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_add_cursors_to_top,
+    );
+    add(
+        registry,
+        "editor.action.changeAll",
+        "Change all occurrences",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_change_all,
+    );
+    add(
+        registry,
+        "editor.action.focusNextCursor",
+        "Focus next cursor",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_focus_next_cursor,
+    );
+    add(
+        registry,
+        "editor.action.focusPreviousCursor",
+        "Focus previous cursor",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_focus_previous_cursor,
+    );
+    add(
+        registry,
+        "editor.action.moveSelectionToNextFindMatch",
+        "Move last selection to next find match",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_move_selection_to_next_match,
+    );
+    add(
+        registry,
+        "editor.action.moveSelectionToPreviousFindMatch",
+        "Move last selection to previous find match",
+        "Editor",
+        VIEW,
+        "documentAvailable",
+        None,
+        editor_move_selection_to_previous_match,
     );
     add(
         registry,

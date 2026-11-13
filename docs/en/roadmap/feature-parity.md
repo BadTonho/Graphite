@@ -13,7 +13,7 @@ Result: **949** commands found in the reference editor, **47** already present i
 Limits of the count:
 
 - Ids built from constants are not found, so the real total is higher.
-- Graphite may have a command under another id (for example `graphite.editor.addCursorsToLineEnds` does what `editor.action.insertCursorAtEndOfEachLineSelected` does), so some "missing" entries are only renames.
+- Graphite may have a command under another id (for example a command that was bound under a `graphite.` prefix), so some "missing" entries are only renames.
 - The same command can differ in behavior even when the id matches.
 
 The full list, grouped by area, is kept in the local checklist (`Itens/comandos-faltando.md`, not committed).

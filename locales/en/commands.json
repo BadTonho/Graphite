@@ -308,9 +308,9 @@
   "command.debug.installAdditionalDebuggers": "Install Additional Debuggers",
   "command.editor.action.addSelectionToPreviousFindMatch": "Add selection to previous find match",
   "command.editor.action.duplicateSelection": "Duplicate Selection",
-  "command.graphite.editor.addCursorAbove": "Add Cursor Above",
-  "command.graphite.editor.addCursorBelow": "Add Cursor Below",
-  "command.graphite.editor.addCursorsToLineEnds": "Add Cursors to Line Ends",
+  "command.editor.action.insertCursorAbove": "Add Cursor Above",
+  "command.editor.action.insertCursorBelow": "Add Cursor Below",
+  "command.editor.action.insertCursorAtEndOfEachLineSelected": "Add Cursors to Line Ends",
   "command.editor.action.toggleColumnSelection": "Toggle Column Selection Mode",
   "command.graphite.editor.toggleMultiCursorModifier": "Switch Multi-Cursor Modifier",
   "command.graphite.vsix.requestedCommands": "Show commands requested by extensions",
@@ -347,5 +347,12 @@
   "command.editor.gotoParentFold": "Go to parent fold",
   "command.editor.createFoldingRangeFromSelection": "Create folding range from selection",
   "command.editor.removeManualFoldingRanges": "Remove manual folding ranges",
-  "command.editor.toggleImportFold": "Toggle import fold"
+  "command.editor.toggleImportFold": "Toggle import fold",
+  "command.editor.action.addCursorsToBottom": "Add cursors to bottom",
+  "command.editor.action.addCursorsToTop": "Add cursors to top",
+  "command.editor.action.changeAll": "Change all occurrences",
+  "command.editor.action.focusNextCursor": "Focus next cursor",
+  "command.editor.action.focusPreviousCursor": "Focus previous cursor",
+  "command.editor.action.moveSelectionToNextFindMatch": "Move last selection to next find match",
+  "command.editor.action.moveSelectionToPreviousFindMatch": "Move last selection to previous find match"
 }

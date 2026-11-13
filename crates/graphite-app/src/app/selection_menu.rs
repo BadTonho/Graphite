@@ -286,9 +286,9 @@ impl App {
             C::MoveLineUp => self.run_ui_command("editor.action.moveLinesUpAction"),
             C::MoveLineDown => self.run_ui_command("editor.action.moveLinesDownAction"),
             C::DuplicateSelection => self.run_ui_command("editor.action.duplicateSelection"),
-            C::AddCursorAbove => self.run_ui_command("graphite.editor.addCursorAbove"),
-            C::AddCursorBelow => self.run_ui_command("graphite.editor.addCursorBelow"),
-            C::AddCursorsToLineEnds => self.run_ui_command("graphite.editor.addCursorsToLineEnds"),
+            C::AddCursorAbove => self.run_ui_command("editor.action.insertCursorAbove"),
+            C::AddCursorBelow => self.run_ui_command("editor.action.insertCursorBelow"),
+            C::AddCursorsToLineEnds => self.run_ui_command("editor.action.insertCursorAtEndOfEachLineSelected"),
             C::AddNextOccurrence => {
                 self.run_ui_command("editor.action.addSelectionToNextFindMatch")
             }

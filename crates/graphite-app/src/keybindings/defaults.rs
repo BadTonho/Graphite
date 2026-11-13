@@ -277,17 +277,17 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "shift+alt+i",
-        "graphite.editor.addCursorsToLineEnds",
+        "editor.action.insertCursorAtEndOfEachLineSelected",
         "editorTextFocus",
     ),
     (
         "ctrl+alt+up",
-        "graphite.editor.addCursorAbove",
+        "editor.action.insertCursorAbove",
         "editorTextFocus",
     ),
     (
         "ctrl+alt+down",
-        "graphite.editor.addCursorBelow",
+        "editor.action.insertCursorBelow",
         "editorTextFocus",
     ),
     (
@@ -506,6 +506,8 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+k ctrl+l", "editor.unfold", "editorTextFocus"),
     ("ctrl+k ctrl+0", "editor.foldAll", "editorTextFocus"),
     ("ctrl+k ctrl+j", "editor.unfoldAll", "editorTextFocus"),
+    ("ctrl+f2", "editor.action.changeAll", "editorTextFocus"),
+    ("ctrl+k ctrl+d", "editor.action.moveSelectionToNextFindMatch", "editorTextFocus"),
     ("ctrl+k ctrl+shift+l", "editor.toggleFoldRecursively", "editorTextFocus"),
     ("ctrl+k ctrl+[", "editor.foldRecursively", "editorTextFocus"),
     ("ctrl+k ctrl+]", "editor.unfoldRecursively", "editorTextFocus"),

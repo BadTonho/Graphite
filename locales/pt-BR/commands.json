@@ -308,9 +308,9 @@
   "command.debug.installAdditionalDebuggers": "Instalar Depuradores Adicionais",
   "command.editor.action.addSelectionToPreviousFindMatch": "Adicionar seleção à ocorrência anterior",
   "command.editor.action.duplicateSelection": "Duplicar Seleção",
-  "command.graphite.editor.addCursorAbove": "Adicionar Cursor Acima",
-  "command.graphite.editor.addCursorBelow": "Adicionar Cursor Abaixo",
-  "command.graphite.editor.addCursorsToLineEnds": "Adicionar Cursores ao Fim das Linhas",
+  "command.editor.action.insertCursorAbove": "Adicionar Cursor Acima",
+  "command.editor.action.insertCursorBelow": "Adicionar Cursor Abaixo",
+  "command.editor.action.insertCursorAtEndOfEachLineSelected": "Adicionar Cursores ao Fim das Linhas",
   "command.editor.action.toggleColumnSelection": "Alternar Modo de Seleção por Coluna",
   "command.graphite.editor.toggleMultiCursorModifier": "Alternar Modificador de Múltiplos Cursores",
   "command.graphite.vsix.requestedCommands": "Mostrar comandos pedidos pelas extensões",
@@ -347,5 +347,12 @@
   "command.editor.gotoParentFold": "Ir para a dobra pai",
   "command.editor.createFoldingRangeFromSelection": "Criar intervalo de dobra a partir da seleção",
   "command.editor.removeManualFoldingRanges": "Remover intervalos de dobra manuais",
-  "command.editor.toggleImportFold": "Alternar dobra de imports"
+  "command.editor.toggleImportFold": "Alternar dobra de imports",
+  "command.editor.action.addCursorsToBottom": "Adicionar cursores até o fim",
+  "command.editor.action.addCursorsToTop": "Adicionar cursores até o topo",
+  "command.editor.action.changeAll": "Alterar todas as ocorrências",
+  "command.editor.action.focusNextCursor": "Focar o próximo cursor",
+  "command.editor.action.focusPreviousCursor": "Focar o cursor anterior",
+  "command.editor.action.moveSelectionToNextFindMatch": "Mover a última seleção para a próxima correspondência",
+  "command.editor.action.moveSelectionToPreviousFindMatch": "Mover a última seleção para a correspondência anterior"
 }

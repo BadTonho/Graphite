@@ -13,7 +13,7 @@ Resultado: **949** comandos no editor de referência, **47** já no Graphite com
 Limites da contagem:
 
 - Ids montados a partir de constantes não são encontrados, então o total real é maior.
-- O Graphite pode ter o comando com outro id (por exemplo, `graphite.editor.addCursorsToLineEnds` faz o que `editor.action.insertCursorAtEndOfEachLineSelected` faz), então parte dos "faltando" são só nomes diferentes.
+- O Graphite pode ter o comando com outro id (por exemplo, um comando que estava sob o prefixo `graphite.`), então parte dos "faltando" são só nomes diferentes.
 - O mesmo id pode ter comportamento diferente.
 
 A lista completa, agrupada por área, fica no checklist local (`Itens/comandos-faltando.md`, fora do commit).
