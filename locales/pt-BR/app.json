@@ -730,5 +730,12 @@
   "notebook.interactive.not_open": "O editor ativo não é uma janela interativa",
   "notebook.interactive.nothing_to_send": "Não há código para enviar",
   "notebook.interactive.hint_window": "Shift+Enter executa · Enter nova linha · Cima/Baixo histórico · Esc células",
-  "notebook.interactive.hint_repl": "Enter executa · Shift+Enter nova linha · Cima/Baixo histórico · Esc células"
+  "notebook.interactive.hint_repl": "Enter executa · Shift+Enter nova linha · Cima/Baixo histórico · Esc células",
+  "notebook.find.cell": "célula {number}",
+  "notebook.find.empty": "O notebook não tem texto para buscar",
+  "notebook.find.none": "Nenhum resultado para a última busca",
+  "notebook.section.none": "A célula em foco não está em uma seção",
+  "notebook.section.nothing_to_fold": "Não há seção com células para recolher aqui",
+  "notebook.section.nothing_to_unfold": "Não há seção recolhida aqui",
+  "notebook.section.folded": "{count} célula(s) oculta(s)"
 }

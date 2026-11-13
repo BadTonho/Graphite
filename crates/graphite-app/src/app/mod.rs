@@ -56,9 +56,12 @@ pub(crate) mod merge_flow;
 pub(crate) mod merge_resolution;
 pub(crate) mod multi_diff_ui;
 mod notebook_drawing;
+mod notebook_view;
 pub(crate) mod notebook_interactive;
 #[cfg(test)]
 mod notebook_kernel_tests;
+#[cfg(test)]
+mod notebook_view_tests;
 #[cfg(test)]
 mod notebook_interactive_tests;
 #[cfg(test)]

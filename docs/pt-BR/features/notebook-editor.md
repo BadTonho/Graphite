@@ -87,3 +87,21 @@ Limites impedem que uma saída descontrolada trave a janela: no máximo 5000 lin
 As imagens são desenhadas pelo atlas de imagens do renderizador. O desenho precisa de uma janela, então não foi conferido visualmente; a decodificação, a redução, o dimensionamento e o layout são testados.
 
 As saídas podem ser recolhidas (uma linha avisa) e limpas como qualquer outra saída. Uma célula executada de novo troca as saídas quando a execução começa.
+
+## Seções, busca e estrutura
+
+Uma **seção** é uma célula markdown que começa com um título (`#` a `######` e um espaço) e as células depois dela, até o próximo título do mesmo nível ou de nível mais alto.
+
+| Comando | O que faz |
+| --- | --- |
+| Recolher / expandir a seção, Recolher / expandir seção | Oculta as células sob o título em que o foco está (ou as mostra de novo). Um título recolhido diz quantas células oculta. Cima e Baixo pulam as células ocultas. |
+| Recolher todas as seções / Expandir todas as seções | Faz isso com todos os títulos. |
+| Executar as células da seção / Executar só a célula | Executa as células de código da seção da célula em foco / só a célula em foco. |
+| Alternar a rolagem fixa | Mantém o título da seção que está sendo lida fixo no topo depois que a célula dele saiu da tela. |
+| Buscar no notebook | Uma lista das linhas de todas as células que se reduz conforme você digita; escolher uma vai até ela, com o resultado selecionado. |
+| Buscar o próximo / o anterior, Ocultar a busca | Vai ao próximo ou ao anterior resultado da última busca, entre células e dando a volta no notebook, abrindo as seções recolhidas que o escondem. |
+| Definir o perfil do kernel | O mesmo que Selecionar kernel do notebook. |
+
+Recolher, rolagem fixa e números de linha são configurações de visualização: não modificam o arquivo.
+
+A visão de estrutura de um notebook lista os títulos das células markdown como uma árvore, com as células de código (e, se pedido, as funções e classes que declaram) sob o título que as precede. Clicar numa entrada vai até a célula e abre a seção recolhida que a escondia. **Estrutura: mostrar células de código**, **mostrar símbolos das células de código** e **mostrar só os títulos markdown** mudam o que é listado.

@@ -127,6 +127,12 @@ pub(crate) struct Session {
     pub(super) kernel: super::execution::KernelSlot,
     /// Set for the interactive window and the REPL.
     pub(super) interactive: Option<super::interactive::Interactive>,
+    /// Headings whose sections are folded, by cell uid.
+    pub(super) folded: std::collections::HashSet<u64>,
+    /// Keep the heading of the section being read pinned at the top.
+    pub sticky_scroll: bool,
+    /// What the last search in the notebook looked for.
+    pub find_query: Option<String>,
 }
 
 impl Session {
@@ -147,6 +153,9 @@ impl Session {
             synced_revision: 0,
             kernel: Default::default(),
             interactive: None,
+            folded: Default::default(),
+            sticky_scroll: false,
+            find_query: None,
         };
         let cells = std::mem::take(&mut session.base.cells);
         for cell in cells {
@@ -173,6 +182,8 @@ impl Session {
     pub(crate) fn reload(&mut self, notebook: Notebook) {
         let focus = self.focus;
         let line_numbers = self.line_numbers;
+        let sticky_scroll = self.sticky_scroll;
+        let find_query = self.find_query.take();
         let scroll = self.scroll;
         // The kernel stays; the cells it was running are gone, so its requests are dropped.
         let mut kernel = std::mem::take(&mut self.kernel);
@@ -188,6 +199,8 @@ impl Session {
         self.focus = focus.min(self.cells.len() - 1);
         self.anchor = self.focus;
         self.line_numbers = line_numbers;
+        self.sticky_scroll = sticky_scroll;
+        self.find_query = find_query;
         self.scroll = scroll;
     }
 
@@ -257,8 +270,7 @@ impl Session {
     }
 
     pub(crate) fn focus_by(&mut self, delta: isize, extend: bool) {
-        let target = (self.focus as isize + delta).clamp(0, self.cells.len() as isize - 1);
-        self.set_focus(target as usize, extend);
+        self.focus_visible_by(delta, extend);
     }
 
     pub(crate) fn select_all_cells(&mut self) {

@@ -87,3 +87,21 @@ Limits keep a runaway output from freezing the window: at most 5000 lines per ce
 Images are drawn by the renderer's image atlas. Drawing needs a window, so it was not checked visually; the decoding, scaling, sizing and layout are tested.
 
 Outputs can be collapsed (a line says so) and cleared like any other output. A cell that is selected and run again replaces its outputs when the run starts.
+
+## Sections, search and outline
+
+A **section** is a markdown cell that starts with a heading (`#` to `######` and a space) and the cells after it, up to the next heading of the same or a higher level.
+
+| Command | What it does |
+| --- | --- |
+| Fold / unfold the section, Fold / expand section | Hides the cells under the heading the focus is in (or shows them again). A folded heading says how many cells it hides. Up and Down skip hidden cells. |
+| Fold all sections / Unfold all sections | Does it for every heading. |
+| Run the cells of the section / Run only the cell | Runs the code cells of the section of the focused cell / only the focused cell. |
+| Toggle sticky scroll | Keeps the heading of the section being read pinned at the top once its own cell has scrolled away. |
+| Find in the notebook | A list of the lines of all cells that narrows as you type; picking one goes to it, with the match selected. |
+| Find next / previous, Hide the search | Goes to the next or previous match of the last search, across cells and around the notebook, opening folded sections that hide it. |
+| Set the kernel profile | The same as Select notebook kernel. |
+
+Folding, sticky scroll and line numbers are view settings: they do not modify the file.
+
+The outline view of a notebook lists the headings of its markdown cells as a tree, with the code cells (and, if asked, the functions and classes they declare) under the heading they follow. Clicking an entry goes to its cell and opens a fold that hid it. **Outline: show code cells**, **show code cell symbols** and **show markdown headers only** change what is listed.

@@ -49,12 +49,13 @@ pub(crate) fn visible_output_lines(state: &CellState, line_height: f32) -> usize
 /// Positions of all cells for a given line height.
 pub(crate) fn layout(session: &Session, line_height: f32) -> Vec<CellLayout> {
     let mut top = 0.0;
+    let hidden = session.hidden_cells();
     session
         .cells
         .iter()
         .enumerate()
         .map(|(index, state)| {
-            if session.is_hidden_cell(index) {
+            if hidden[index] {
                 return CellLayout {
                     top,
                     height: 0.0,

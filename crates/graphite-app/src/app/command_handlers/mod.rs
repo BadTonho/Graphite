@@ -30,6 +30,7 @@ mod merge_action_commands;
 mod merge_commands;
 mod notebook_commands;
 mod notebook_run_commands;
+mod notebook_view_commands;
 mod multi_diff_commands;
 mod merge_resolution_commands;
 mod timeline_commands;
@@ -185,6 +186,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     merge_commands::register(registry);
     notebook_commands::register(registry);
     notebook_run_commands::register(registry);
+    notebook_view_commands::register(registry);
     interactive_commands::register(registry);
     multi_diff_commands::register(registry);
     merge_commands::register_conflict_view(registry);

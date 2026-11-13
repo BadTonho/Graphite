@@ -1,9 +1,12 @@
 //! Notebooks: the `.ipynb` document model, the editing session, layout and outputs.
 
 mod execution;
+mod find;
+mod folding;
 mod interactive;
 pub(crate) mod kernel;
 mod layout;
+pub(crate) mod sections;
 mod model;
 mod output;
 pub(crate) mod rich;

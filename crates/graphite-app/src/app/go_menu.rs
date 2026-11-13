@@ -99,6 +99,8 @@ pub(crate) enum GoPickerKind {
     Timeline,
     /// The installed kernels: picking one starts it for the active notebook.
     Kernel,
+    /// Search through the cells of the active notebook: picking a line goes to it.
+    NotebookFind,
 }
 
 #[derive(Clone, Debug)]
@@ -818,6 +820,15 @@ impl App {
                     .cloned()
                 {
                     self.select_kernel(item.line);
+                }
+            }
+            GoPickerKind::NotebookFind => {
+                if let Some(item) = self
+                    .go_picker_rows_from(&picker)
+                    .get(picker.selected)
+                    .cloned()
+                {
+                    self.notebook_find_goto(item.line, &picker.query);
                 }
             }
             GoPickerKind::Timeline => {

@@ -730,5 +730,12 @@
   "notebook.interactive.not_open": "The active editor is not an interactive window",
   "notebook.interactive.nothing_to_send": "There is no code to send",
   "notebook.interactive.hint_window": "Shift+Enter run · Enter new line · Up/Down history · Esc cells",
-  "notebook.interactive.hint_repl": "Enter run · Shift+Enter new line · Up/Down history · Esc cells"
+  "notebook.interactive.hint_repl": "Enter run · Shift+Enter new line · Up/Down history · Esc cells",
+  "notebook.find.cell": "cell {number}",
+  "notebook.find.empty": "The notebook has no text to search",
+  "notebook.find.none": "No match for the last search",
+  "notebook.section.none": "The focused cell is not in a section",
+  "notebook.section.nothing_to_fold": "There is no section with cells to fold here",
+  "notebook.section.nothing_to_unfold": "There is no folded section here",
+  "notebook.section.folded": "{count} cell(s) hidden"
 }

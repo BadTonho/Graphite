@@ -35,6 +35,7 @@ impl App {
         let body_height = (rect.height - top - lh - input_height).max(0.0);
         let active_group = rect.id == self.editor_groups.focused();
         let layouts = notebook::layout(session, lh);
+        let hidden = session.hidden_cells();
         r.set_clip(Some([rect.x, body_top, rect.x + rect.width, body_top + body_height]));
         r.draw_rect(rect.x, body_top, rect.width, body_height, rgb(Theme::color(Theme::BG, 0xffffff)));
         let left = rect.x + 16.0;
@@ -42,7 +43,7 @@ impl App {
         let text_left = left + gutter;
         let columns = (((rect.x + rect.width - text_left - PAD) / cw).max(1.0)) as usize;
         for (index, (state, cell)) in session.cells.iter().zip(&layouts).enumerate() {
-            if session.is_hidden_cell(index) {
+            if hidden[index] {
                 continue;
             }
             let y = body_top + cell.top - session.scroll;
@@ -68,6 +69,9 @@ impl App {
                     Some(count) => format!("[{count}]"),
                     None => "[ ]".to_owned(),
                 },
+                CellKind::Markdown if session.is_folded(index) => {
+                    format!("markdown ▸ {}", self.tf("notebook.section.folded", &[("count", &session.folded_count(index))]))
+                }
                 CellKind::Markdown => "markdown".to_owned(),
                 CellKind::Raw => "raw".to_owned(),
             };
@@ -153,6 +157,14 @@ impl App {
                         }
                     }
                 }
+            }
+        }
+        // The heading of the section being read stays pinned at the top.
+        if session.sticky_scroll {
+            if let Some(heading) = notebook::sections::sticky_heading(session, &layouts, session.scroll) {
+                let title = notebook::sections::heading_text(session, heading).unwrap_or_default();
+                r.draw_rect(rect.x, body_top, rect.width, lh, tint(0x2d2d30, 0xececec));
+                r.draw_text(&title.chars().take(columns).collect::<String>(), left, body_top, text);
             }
         }
         r.set_clip(None);

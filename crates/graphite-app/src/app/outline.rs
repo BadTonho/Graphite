@@ -22,6 +22,12 @@ pub(crate) struct OutlineState {
     pub filter: String,
     /// Declaration lines whose children are hidden.
     pub collapsed: BTreeSet<usize>,
+    /// For a notebook: also list its code cells.
+    pub notebook_code_cells: bool,
+    /// For a notebook: also list the functions and classes declared in code cells.
+    pub notebook_symbols: bool,
+    /// For a notebook: only the headings of its markdown cells.
+    pub notebook_headers_only: bool,
     /// Whether typing goes to the filter (the outline was clicked last).
     pub focused: bool,
 }
@@ -34,6 +40,9 @@ impl Default for OutlineState {
             filter_on_type: false,
             filter: String::new(),
             collapsed: BTreeSet::new(),
+            notebook_code_cells: true,
+            notebook_symbols: false,
+            notebook_headers_only: false,
             focused: false,
         }
     }
@@ -163,8 +172,57 @@ pub(crate) fn build_rows(
 }
 
 impl App {
+    /// The outline of a notebook: the headings of its markdown cells and, as the view is set,
+    /// its code cells and what they declare. The "line" of each entry is the index of the cell.
+    fn notebook_outline_entries(&self, session: &crate::notebook::Session) -> Vec<(usize, String, usize)> {
+        use crate::notebook::{sections, CellKind};
+        let mut entries = Vec::new();
+        // Depth of what is under the heading that was seen last.
+        let mut depth = 0;
+        for (index, state) in session.cells.iter().enumerate() {
+            if let Some(level) = sections::heading_level(session, index) {
+                let text = sections::heading_text(session, index).unwrap_or_default();
+                entries.push((index, format!("{} {text}", "#".repeat(level)), level - 1));
+                depth = level;
+                continue;
+            }
+            if self.outline.notebook_headers_only || state.cell.kind != CellKind::Code {
+                continue;
+            }
+            let source = state.text();
+            if self.outline.notebook_code_cells {
+                let label = source
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .map(|line| line.trim().to_owned())
+                    .unwrap_or_else(|| "…".to_owned());
+                let count = state
+                    .cell
+                    .execution_count
+                    .map_or_else(|| "[ ]".to_owned(), |count| format!("[{count}]"));
+                entries.push((index, format!("{count} {label}"), depth));
+            }
+            if self.outline.notebook_symbols {
+                for line in source.lines() {
+                    let trimmed = line.trim();
+                    let declares = ["def ", "async def ", "class ", "function ", "fn "]
+                        .iter()
+                        .any(|keyword| trimmed.starts_with(keyword));
+                    if declares {
+                        let header = trimmed.trim_end_matches([':', '{', ' ']).to_owned();
+                        entries.push((index, header, depth + 1 + usize::from(self.outline.notebook_code_cells)));
+                    }
+                }
+            }
+        }
+        entries
+    }
+
     /// The declarations of the active file as `(line, text, depth)`.
     fn outline_entries(&self) -> Vec<(usize, String, usize)> {
+        if let Some(session) = self.active_notebook() {
+            return self.notebook_outline_entries(session);
+        }
         let document = &self.documents[self.active_document()];
         let Some(language) = document.language else {
             return Vec::new();
@@ -189,7 +247,10 @@ impl App {
 
     pub(crate) fn outline_rows(&self) -> Vec<OutlineRow> {
         let cursor = if self.outline.follow_cursor {
-            self.editor().cursor_line_col().0
+            match self.active_notebook() {
+                Some(session) => session.focus,
+                None => self.editor().cursor_line_col().0,
+            }
         } else {
             usize::MAX
         };
@@ -269,6 +330,15 @@ impl App {
             if !self.outline.collapsed.remove(&entry.line) {
                 self.outline.collapsed.insert(entry.line);
             }
+            return;
+        }
+        if self.active_notebook().is_some() {
+            let cell = entry.line;
+            self.with_notebook(|session| {
+                session.reveal(cell);
+                session.set_focus(cell, false);
+                session.exit_edit();
+            });
             return;
         }
         self.run_ui_command_args(
