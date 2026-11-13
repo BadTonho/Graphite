@@ -1,8 +1,12 @@
 //! State of the merge editor: which file is being merged, how the panes are laid out, what is
 //! visible and which conflict is active. The text logic lives in [`crate::merge`].
 
+use crate::file_format::{Encoding, LineEnding};
 use crate::merge::{aligned_rows, MergeState, Pane, Row};
 use std::path::PathBuf;
+
+/// Encoding and line ending of the file, kept to write the result back the way it was read.
+pub(crate) type MergeFormat = (Encoding, LineEnding);
 
 /// Unchanged rows kept around a conflict when plain text is hidden.
 const CONTEXT_ROWS: usize = 2;
@@ -102,8 +106,9 @@ pub(crate) struct MergeEditor {
     pub active: Option<usize>,
     /// Which input the compare commands use: 0 current, 1 incoming.
     pub focused_input: usize,
-    /// The result is being written and staged; further completion requests are ignored.
-    pub completing: bool,
+    pub format: MergeFormat,
+    /// A close request already warned about decisions that were not written.
+    pub close_armed: bool,
     rows: Vec<Row>,
     visible: Vec<usize>,
 }
@@ -119,7 +124,8 @@ impl MergeEditor {
             scroll: 0,
             active: None,
             focused_input: 0,
-            completing: false,
+            format: MergeFormat::default(),
+            close_armed: false,
             rows: Vec::new(),
             visible: Vec::new(),
         };

@@ -45,4 +45,18 @@ The decision applies to the active conflict. Accepting moves on to the next unre
 | Compare base with result | | Same, against the result so far. |
 | Open result in the editor | `O` | Closes the merge editor and opens the file with the result so far; conflicts still undecided keep their markers, so the rest can be finished by hand. The file on disk changes only when saved. |
 
-The result pane cannot be typed into. Edit by hand with **Open result in the editor**; saving the file there stages it when it has no conflict left.
+The result pane cannot be typed into. Edit by hand with **Open result in the editor**; saving a file that Git lists as conflicted stages it.
+
+## Finishing the merge
+
+The title line shows how many conflicts are still unresolved.
+
+| Command | Key | What it does |
+| --- | --- | --- |
+| Accept all from current / incoming | | Takes that side for every conflict. |
+| Accept all, both sides | | Takes both sides, current first, for every conflict. |
+| Reset the result | | Forgets every decision; the first conflict becomes active again. |
+| Complete merge | `Enter` | Needs every conflict decided. Writes the result to the file with its original encoding and line endings and, when Git lists the file as conflicted, stages it. The merge editor closes. If the file has unsaved edits, or writing fails, nothing is changed and the merge editor stays open. |
+| Reset the close warning | | Closing with decisions that were not written warns first and discards on the second request; this makes it warn again. Any new decision does the same. |
+
+Closing with nothing decided does not warn.

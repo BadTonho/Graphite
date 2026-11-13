@@ -1,6 +1,6 @@
 //! Opening, closing and driving the merge editor.
 
-use super::merge_editor::{BasePlacement, MergeEditor, MergeLayout};
+use super::merge_editor::{BasePlacement, MergeEditor, MergeFormat, MergeLayout};
 use super::*;
 
 impl App {
@@ -12,32 +12,51 @@ impl App {
         })
     }
 
-    /// Text of a file for merging: the open document when there is one, otherwise the disk.
-    fn merge_source_text(&self, path: &Path) -> Result<String, String> {
+    /// Text and on-disk format of a file for merging: the open document when there is one,
+    /// otherwise the disk.
+    fn merge_source(&self, path: &Path) -> Result<(String, MergeFormat), String> {
         if let Some(index) = self.documents.id_for_path(path) {
-            return Ok(self.documents[index].buffer.text());
+            let document = &self.documents[index];
+            return Ok((document.buffer.text(), document.saved_format));
         }
         crate::file_format::read(path, &self.translator)
-            .map(|decoded| decoded.text)
-            .map_err(|error| error.to_string())
+            .map(|decoded| (decoded.text, (decoded.encoding, decoded.line_ending)))
     }
 
     /// Opens the merge editor on a file that has conflict markers.
     pub(crate) fn open_merge_editor(&mut self, path: PathBuf) -> Result<(), String> {
-        let text = self.merge_source_text(&path)?;
-        let editor = MergeEditor::new(path, &text);
+        let (text, format) = self.merge_source(&path)?;
+        let mut editor = MergeEditor::new(path, &text);
         if editor.state.is_empty() {
             return Err(self.t("merge.error.no_conflicts").into());
         }
+        editor.format = format;
         let count = editor.state.len();
         self.merge_editor = Some(editor);
         self.status = self.tf("merge.opened", &[("count", &count)]);
         Ok(())
     }
 
+    /// Closes the merge editor. Decisions that were not written to the file are lost, so the
+    /// first request with decisions pending only warns; asking again discards them.
     pub(crate) fn close_merge_editor(&mut self) {
-        if self.merge_editor.take().is_some() {
-            self.status = self.t("merge.closed").into();
+        let Some(editor) = self.merge_editor.as_mut() else {
+            return;
+        };
+        let decided = editor.state.len() - editor.state.unresolved_count();
+        if decided > 0 && !editor.close_armed {
+            editor.close_armed = true;
+            self.status = self.tf("merge.close_warning", &[("count", &decided)]);
+            return;
+        }
+        self.merge_editor = None;
+        self.status = self.t("merge.closed").into();
+    }
+
+    /// Forgets the warning of a close request, so closing warns again.
+    pub(crate) fn merge_reset_close_choice(&mut self) {
+        if let Some(editor) = self.merge_editor.as_mut() {
+            editor.close_armed = false;
         }
     }
 
@@ -50,7 +69,7 @@ impl App {
         {
             return;
         }
-        let Ok(text) = self.merge_source_text(path) else {
+        let Ok((text, _)) = self.merge_source(path) else {
             return;
         };
         if let Some(editor) = self.merge_editor.as_mut() {
@@ -133,6 +152,7 @@ impl App {
             Key::Named(NamedKey::ArrowUp) => {
                 self.run_ui_command("merge.goToPreviousUnhandledConflict")
             }
+            Key::Named(NamedKey::Enter) => self.run_ui_command("mergeEditor.acceptMerge"),
             Key::Named(NamedKey::PageDown) => self.merge_scroll_page(true),
             Key::Named(NamedKey::PageUp) => self.merge_scroll_page(false),
             _ => {

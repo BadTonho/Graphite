@@ -853,6 +853,31 @@ fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
+/// Puts a file of an initialised repository in the conflicted state, with base, ours and theirs
+/// stored as index stages, the way a stopped merge leaves it.
+#[cfg(test)]
+pub(crate) fn mark_conflicted_for_tests(root: &Path, name: &str, base: &str, ours: &str, theirs: &str) {
+    let repository = gix::discover(root).unwrap();
+    let mut index = open_or_default_index(&repository).unwrap();
+    index.remove_entries(|_, path, _| path == name.as_bytes().as_bstr());
+    for (stage, text) in [
+        (gix::index::entry::Stage::Base, base),
+        (gix::index::entry::Stage::Ours, ours),
+        (gix::index::entry::Stage::Theirs, theirs),
+    ] {
+        let id = repository.write_blob(text).unwrap().detach();
+        index.dangerously_push_entry(
+            Default::default(),
+            id,
+            stage.into(),
+            gix::index::entry::Mode::FILE,
+            name.as_bytes().as_bstr(),
+        );
+    }
+    index.sort_entries();
+    index.write(gix::index::write::Options::default()).unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -676,7 +676,7 @@
   "merge.state.ignored": "Ignored",
   "merge.all_resolved": "all conflicts resolved",
   "merge.unresolved_count": "{count} unresolved conflict(s)",
-  "merge.hint": "C current   I incoming   B both   N ignore   R revert   Up/Down conflicts   L layout   S base   O open result   Esc close",
+  "merge.hint": "C current   I incoming   B both   N ignore   R revert   Up/Down conflicts   L layout   S base   O open result   Enter complete   Esc close",
   "merge.opened": "Merge editor opened with {count} conflict(s)",
   "merge.closed": "Merge editor closed",
   "merge.none_left": "There are no unresolved conflicts",
@@ -686,5 +686,9 @@
   "merge.none_active": "There is no active conflict to change",
   "merge.focused_input": "Compare commands now start from: {input}",
   "merge.compare_title": "Base ↔ {input}",
-  "merge.result_opened": "Result opened in the editor; undecided conflicts keep their markers"
+  "merge.result_opened": "Result opened in the editor; undecided conflicts keep their markers",
+  "merge.close_warning": "{count} decision(s) are not written to the file. Close again to discard them, or complete the merge",
+  "merge.error.unresolved": "{count} conflict(s) are still unresolved",
+  "merge.error.unsaved": "The file has unsaved edits; save or discard them before completing the merge",
+  "merge.written": "Merge result written to the file"
 }

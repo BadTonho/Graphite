@@ -676,7 +676,7 @@
   "merge.state.ignored": "Ignorado",
   "merge.all_resolved": "todos os conflitos resolvidos",
   "merge.unresolved_count": "{count} conflito(s) pendente(s)",
-  "merge.hint": "C atual   I recebido   B ambos   N ignorar   R reverter   Cima/Baixo conflitos   L layout   S base   O abrir resultado   Esc fechar",
+  "merge.hint": "C atual   I recebido   B ambos   N ignorar   R reverter   Cima/Baixo conflitos   L layout   S base   O abrir resultado   Enter concluir   Esc fechar",
   "merge.opened": "Editor de mesclagem aberto com {count} conflito(s)",
   "merge.closed": "Editor de mesclagem fechado",
   "merge.none_left": "Não há conflitos pendentes",
@@ -686,5 +686,9 @@
   "merge.none_active": "Não há conflito ativo para alterar",
   "merge.focused_input": "Os comandos de comparação agora partem de: {input}",
   "merge.compare_title": "Base ↔ {input}",
-  "merge.result_opened": "Resultado aberto no editor; conflitos sem decisão mantêm seus marcadores"
+  "merge.result_opened": "Resultado aberto no editor; conflitos sem decisão mantêm seus marcadores",
+  "merge.close_warning": "{count} decisão(ões) não foram gravadas no arquivo. Feche de novo para descartá-las, ou conclua a mesclagem",
+  "merge.error.unresolved": "{count} conflito(s) ainda estão pendentes",
+  "merge.error.unsaved": "O arquivo tem edições não salvas; salve ou descarte antes de concluir a mesclagem",
+  "merge.written": "Resultado da mesclagem gravado no arquivo"
 }

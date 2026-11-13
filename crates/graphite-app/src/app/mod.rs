@@ -53,6 +53,7 @@ pub(crate) mod merge_actions;
 pub(crate) mod merge_drawing;
 pub(crate) mod merge_editor;
 pub(crate) mod merge_flow;
+pub(crate) mod merge_resolution;
 pub(super) mod local_search;
 pub(crate) mod lsp_features;
 mod lsp_ui;
@@ -106,6 +107,8 @@ mod command_tests;
 mod merge_flow_tests;
 #[cfg(test)]
 mod merge_actions_tests;
+#[cfg(test)]
+mod merge_resolution_tests;
 
 pub(crate) mod extension_host;
 pub(crate) mod services;

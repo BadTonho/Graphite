@@ -599,5 +599,11 @@
   "command.mergeEditor.compareInput1WithBase": "Merge editor: compare current with base",
   "command.mergeEditor.compareInput2WithBase": "Merge editor: compare incoming with base",
   "command.merge.openBaseEditor": "Merge editor: compare base with result",
-  "command.merge.openResult": "Merge editor: open result in the editor"
+  "command.merge.openResult": "Merge editor: open result in the editor",
+  "command.merge.acceptAllInput1": "Merge editor: accept all from current",
+  "command.merge.acceptAllInput2": "Merge editor: accept all from incoming",
+  "command.mergeEditor.acceptAllCombination": "Merge editor: accept all, both sides",
+  "command.mergeEditor.resetResultToBaseAndAutoMerge": "Merge editor: reset the result",
+  "command.mergeEditor.resetCloseWithConflictsChoice": "Merge editor: reset the close warning",
+  "command.mergeEditor.acceptMerge": "Merge editor: complete merge"
 }

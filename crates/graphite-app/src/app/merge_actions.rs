@@ -33,6 +33,7 @@ impl App {
             return;
         }
         editor.refresh();
+        editor.close_armed = false;
         if advance {
             editor.goto_next_unresolved();
         }

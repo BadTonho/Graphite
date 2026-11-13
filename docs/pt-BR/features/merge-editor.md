@@ -45,4 +45,18 @@ A decisão vale para o conflito ativo. Aceitar passa para o próximo conflito pe
 | Comparar a base com o resultado | | O mesmo, contra o resultado até agora. |
 | Abrir o resultado no editor | `O` | Fecha o editor de mesclagem e abre o arquivo com o resultado até agora; conflitos ainda sem decisão mantêm seus marcadores, para o resto ser terminado à mão. O arquivo em disco só muda ao salvar. |
 
-O painel de resultado não aceita digitação. Para editar à mão use **Abrir o resultado no editor**; salvar o arquivo ali o adiciona ao índice quando não resta conflito.
+O painel de resultado não aceita digitação. Para editar à mão use **Abrir o resultado no editor**; salvar um arquivo que o Git lista como em conflito o adiciona ao índice.
+
+## Concluindo a mesclagem
+
+A linha de título mostra quantos conflitos ainda estão pendentes.
+
+| Comando | Tecla | O que faz |
+| --- | --- | --- |
+| Aceitar tudo do atual / do recebido | | Fica com aquele lado em todos os conflitos. |
+| Aceitar tudo, os dois lados | | Fica com os dois lados, atual primeiro, em todos os conflitos. |
+| Redefinir o resultado | | Esquece todas as decisões; o primeiro conflito volta a ser o ativo. |
+| Concluir a mesclagem | `Enter` | Exige todos os conflitos decididos. Grava o resultado no arquivo com a codificação e as quebras de linha originais e, quando o Git lista o arquivo como em conflito, o adiciona ao índice. O editor de mesclagem fecha. Se o arquivo tiver edições não salvas, ou a gravação falhar, nada muda e o editor de mesclagem continua aberto. |
+| Redefinir o aviso ao fechar | | Fechar com decisões não gravadas avisa primeiro e descarta no segundo pedido; este comando faz o aviso valer de novo. Qualquer nova decisão faz o mesmo. |
+
+Fechar sem nenhuma decisão não avisa.
