@@ -162,6 +162,32 @@ pub(crate) fn python_fallback(path: &std::ffi::OsStr) -> Option<KernelSpec> {
     None
 }
 
+/// Which of `specs` a notebook should run on: the one it names, else the only one for its
+/// language, else the only one there is. `None` when the choice is the user's.
+pub(crate) fn pick_spec(
+    kernel_name: Option<&str>,
+    language: Option<&str>,
+    specs: &[KernelSpec],
+) -> Option<usize> {
+    if let Some(name) = kernel_name {
+        if let Some(index) = specs.iter().position(|spec| spec.name == name) {
+            return Some(index);
+        }
+    }
+    if let Some(language) = language.filter(|language| !language.is_empty()) {
+        let matching: Vec<usize> = specs
+            .iter()
+            .enumerate()
+            .filter(|(_, spec)| spec.language.eq_ignore_ascii_case(language))
+            .map(|(index, _)| index)
+            .collect();
+        if matching.len() == 1 {
+            return Some(matching[0]);
+        }
+    }
+    (specs.len() == 1).then_some(0)
+}
+
 /// All kernels available on this machine.
 pub(crate) fn installed() -> Vec<KernelSpec> {
     let env = |name: &str| std::env::var(name).ok();
@@ -258,6 +284,35 @@ mod tests {
         assert!(search_dirs(&none, None).len() <= 3);
     }
 
+
+    fn spec_named(name: &str, language: &str) -> KernelSpec {
+        KernelSpec {
+            name: name.into(),
+            display_name: name.into(),
+            language: language.into(),
+            argv: vec!["x".into()],
+            env: BTreeMap::new(),
+            interrupt_mode: "signal".into(),
+        }
+    }
+
+    #[test]
+    fn the_kernel_a_notebook_asks_for_is_picked_by_name_then_language_then_being_alone() {
+        let specs = [
+            spec_named("python3", "python"),
+            spec_named("py-venv", "python"),
+            spec_named("julia", "julia"),
+        ];
+        assert_eq!(pick_spec(Some("py-venv"), Some("julia"), &specs), Some(1));
+        // The name is unknown: a language with one kernel decides.
+        assert_eq!(pick_spec(Some("gone"), Some("Julia"), &specs), Some(2));
+        // Two kernels for the language: the user has to choose.
+        assert_eq!(pick_spec(Some("gone"), Some("python"), &specs), None);
+        assert_eq!(pick_spec(None, None, &specs), None);
+        assert_eq!(pick_spec(None, Some(""), &specs), None);
+        assert_eq!(pick_spec(None, None, &specs[..1]), Some(0));
+        assert_eq!(pick_spec(None, None, &[]), None);
+    }
     #[test]
     fn a_python_on_the_path_adds_its_prefix_and_is_the_fallback() {
         let root = TempDir::new();

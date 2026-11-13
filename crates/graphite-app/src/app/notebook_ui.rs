@@ -86,7 +86,7 @@ impl App {
             .into_iter()
             .find(|rect| rect.id == focused);
         let body = rect.map_or(height as f32, |rect| rect.height) - self.editor_tab_strip_height(lh);
-        (body.max(lh * 3.0), lh, cw)
+        ((body - lh).max(lh * 3.0), lh, cw)
     }
 
     /// Runs a change on the active notebook, then keeps the document text and the scroll in step.
@@ -136,6 +136,13 @@ impl App {
             return;
         }
         match &event.logical_key {
+            Key::Named(NamedKey::Enter) if shift => {
+                self.run_ui_command("notebook.cell.executeAndSelectBelow")
+            }
+            Key::Named(NamedKey::Enter) if ctrl => self.run_ui_command("notebook.cell.execute"),
+            Key::Named(NamedKey::Enter) if alt => {
+                self.run_ui_command("notebook.cell.executeAndInsertBelow")
+            }
             Key::Named(NamedKey::Enter) => self.run_ui_command("notebook.cell.edit"),
             Key::Named(NamedKey::ArrowDown) if shift => {
                 self.with_notebook(|session| session.focus_by(1, true))
@@ -221,9 +228,16 @@ impl App {
         }
         match &event.logical_key {
             Key::Named(NamedKey::Escape) => self.run_ui_command("notebook.cell.quitEdit"),
-            Key::Named(NamedKey::Enter) if ctrl || shift => {
+            Key::Named(NamedKey::Enter) if shift => {
                 self.run_ui_command("notebook.cell.quitEdit");
-                self.run_ui_command("notebook.focusNextEditor");
+                self.run_ui_command("notebook.cell.executeAndSelectBelow");
+            }
+            Key::Named(NamedKey::Enter) if ctrl => {
+                self.run_ui_command("notebook.cell.quitEdit");
+                self.run_ui_command("notebook.cell.execute");
+            }
+            Key::Named(NamedKey::Enter) if alt => {
+                self.run_ui_command("notebook.cell.executeAndInsertBelow")
             }
             Key::Named(NamedKey::Enter) => {
                 self.with_notebook(|session| session.edit(|editor| editor.insert_newline()))
@@ -288,7 +302,7 @@ impl App {
     pub(crate) fn notebook_click(&mut self, mx: f32, my: f32, rect: super::editor_groups::GroupRect) {
         let document = self.active_document();
         let (_, line_height, char_width) = self.notebook_viewport();
-        let top = rect.y + self.editor_tab_strip_height(line_height);
+        let top = rect.y + self.editor_tab_strip_height(line_height) + line_height;
         let Some(session) = self.documents[document].notebook.as_ref() else {
             return;
         };

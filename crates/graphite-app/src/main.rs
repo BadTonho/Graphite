@@ -284,6 +284,11 @@ struct App {
     diff_loading: bool,
     conflict_view: Option<app::scm_ui::ConflictView>,
     merge_editor: Option<app::merge_editor::MergeEditor>,
+    /// Kernels found on the machine, looked up on first use.
+    kernel_specs: Option<Vec<notebook::kernel::KernelSpec>>,
+    kernel_factory: app::notebook_kernel::KernelFactory,
+    /// Lists the installed kernels; replaced in tests.
+    kernel_lister: fn() -> Vec<notebook::kernel::KernelSpec>,
     multi_diff: Option<multi_diff::MultiDiff>,
     zen_mode: bool,
     centered_editor: bool,
@@ -763,6 +768,9 @@ impl App {
             diff_loading: false,
             conflict_view: None,
             merge_editor: None,
+            kernel_specs: None,
+            kernel_factory: notebook::kernel::launch,
+            kernel_lister: notebook::kernel::installed,
             multi_diff: None,
             zen_mode: false,
             centered_editor: false,

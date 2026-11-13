@@ -43,3 +43,30 @@ Ctrl+`Z` and Ctrl+`Y` (or Ctrl+Shift+`Z`) undo and redo in both modes, over one 
 The notebook is a normal document: it shows as modified in the tab, saves with the usual commands and is reloaded when the file changes on disk and has no unsaved edits.
 
 Every command is also available from the command palette under **Notebook**.
+
+## Running cells
+
+A strip above the cells names the kernel of the notebook and what it is doing (not started, starting, idle, busy, stopped). Code cells run on a Jupyter kernel that this program starts as a local process and talks to over the Jupyter protocol; nothing needs to be running beforehand, but a kernel has to be installed (for Python, `ipykernel`).
+
+**Choosing the kernel.** The first time a cell runs, the kernel the notebook asks for in its metadata is used. When it does not name one that is installed, the only kernel for its language is used, or the only kernel there is. When the choice is yours the kernel picker opens instead and nothing runs. **Select notebook kernel** opens the picker at any time. The choice is written to the notebook metadata, as Jupyter does, so the notebook is shown as modified. Kernels are found in the Jupyter kernelspec directories (`JUPYTER_PATH`, the user directory and the system directories) and next to the Python programs on `PATH`; with none registered, the first Python on `PATH` is offered.
+
+| Command | Key | What it does |
+| --- | --- | --- |
+| Run cell | Ctrl+Enter | Runs the selected cells. |
+| Run cell and select below | Shift+Enter | Runs, then moves to the next cell; after the last cell it adds a new one. |
+| Run cell and insert below | Alt+Enter | Runs, then adds a cell below and edits it. |
+| Run all cells | | Runs every code cell in order. |
+| Run cells above / Run cell and all below | | Runs the cells before the selection / the selection and everything after it. |
+| Interrupt the kernel | | Stops what is running. |
+| Restart the kernel | | Ends the kernel and starts it again; cells that were running stop. |
+| Restart the kernel and run all cells | | The same, then runs everything. |
+| Shut down the kernel | | Asks the kernel to exit; the next run starts a new one. |
+| Clear cell outputs / Clear all outputs | | Removes outputs and execution counts. |
+
+Cells are sent to the kernel in order, and it runs them one after the other. A cell shows `[*]` from the moment it is sent until it finishes, then its execution count. Its old outputs are replaced when its run starts. Streams, results, errors, `clear_output` and updatable displays (`update_display_data`) are applied as the kernel reports them. Outputs and counts are part of the notebook, so they are saved with it. If a cell fails, the kernel skips the cells queued behind it. Empty cells and markdown cells are not sent. Editing a cell that is waiting does not change what was sent.
+
+Interrupting uses the interrupt event of the kernel on Windows and SIGINT elsewhere. On Windows, Python only notices an interrupt once a call such as `time.sleep` returns.
+
+If the kernel ends on its own, the strip says it stopped and the next run starts a new one. Closing the notebook ends its kernel. If the file is reloaded from disk while cells are running, the runs in flight are dropped and the kernel is kept.
+
+Outputs are shown as text for now: images and rich output appear as their text form or not at all.

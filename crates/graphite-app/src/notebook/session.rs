@@ -96,6 +96,8 @@ pub(crate) struct Session {
     pub delete_pending: bool,
     /// Revision of the document buffer this session was last in step with.
     pub synced_revision: u64,
+    /// The kernel this notebook runs on, with the state of its runs.
+    pub(super) kernel: super::execution::KernelSlot,
 }
 
 impl Session {
@@ -114,6 +116,7 @@ impl Session {
             next_uid: 1,
             delete_pending: false,
             synced_revision: 0,
+            kernel: Default::default(),
         };
         let cells = std::mem::take(&mut session.base.cells);
         for cell in cells {
@@ -141,7 +144,11 @@ impl Session {
         let focus = self.focus;
         let line_numbers = self.line_numbers;
         let scroll = self.scroll;
+        // The kernel stays; the cells it was running are gone, so its requests are dropped.
+        let mut kernel = std::mem::take(&mut self.kernel);
+        kernel.forget_requests();
         *self = Session::from_notebook(notebook);
+        self.kernel = kernel;
         self.focus = focus.min(self.cells.len() - 1);
         self.anchor = self.focus;
         self.line_numbers = line_numbers;
@@ -150,6 +157,21 @@ impl Session {
 
     pub(crate) fn metadata(&self) -> &Notebook {
         &self.base
+    }
+
+    /// Records the kernel the notebook runs on in its metadata, as Jupyter does. Returns whether
+    /// the metadata changed.
+    pub(crate) fn set_kernelspec(&mut self, name: &str, display_name: &str, language: &str) -> bool {
+        let wanted = serde_json::json!({
+            "display_name": display_name,
+            "language": language,
+            "name": name,
+        });
+        if self.base.metadata.get("kernelspec") == Some(&wanted) {
+            return false;
+        }
+        self.base.metadata.insert("kernelspec".into(), wanted);
+        true
     }
 
     /// The notebook with the current text of every cell.

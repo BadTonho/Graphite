@@ -706,5 +706,22 @@
   "multi_diff.gap": "{count} linha(s) sem alteração",
   "multi_diff.file_missing": "{path} não está na árvore de trabalho",
   "notebook.input_collapsed": "entrada recolhida",
-  "notebook.output_collapsed": "saída recolhida"
+  "notebook.output_collapsed": "saída recolhida",
+  "notebook.running": "Executando {count} célula(s)",
+  "notebook.interrupted": "Interrupção enviada ao kernel",
+  "notebook.nothing_running": "Nenhuma célula está executando",
+  "notebook.select_kernel": "Escolha um kernel para executar este notebook",
+  "notebook.error.no_notebook": "O editor ativo não é um notebook",
+  "notebook.error.no_kernels": "Nenhum kernel Jupyter instalado (instale o ipykernel para Python)",
+  "notebook.error.no_kernel": "Este notebook ainda não tem kernel; execute uma célula para iniciar um",
+  "notebook.error.start": "Não foi possível iniciar o kernel: {error}",
+  "notebook.no_kernel": "Sem kernel",
+  "notebook.kernel_started": "{name} iniciado",
+  "notebook.kernel_restarted": "Kernel reiniciado",
+  "notebook.kernel_stopped": "Kernel sendo encerrado",
+  "notebook.kernel.not_started": "não iniciado",
+  "notebook.kernel.starting": "iniciando",
+  "notebook.kernel.idle": "ocioso",
+  "notebook.kernel.busy": "ocupado",
+  "notebook.kernel.stopped": "parado"
 }

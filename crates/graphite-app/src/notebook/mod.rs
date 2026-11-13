@@ -1,6 +1,7 @@
 //! Notebooks: the `.ipynb` document model, the editing session, layout and outputs.
 
-mod kernel;
+mod execution;
+pub(crate) mod kernel;
 mod layout;
 mod model;
 mod output;
@@ -14,3 +15,5 @@ pub(crate) use model::{new_cell_id, Cell, CellKind, Notebook};
 pub(crate) use output::output_lines;
 #[allow(unused_imports)]
 pub(crate) use session::{CellState, Mode, Session};
+#[allow(unused_imports)]
+pub(crate) use execution::{KernelStatus, RunState};

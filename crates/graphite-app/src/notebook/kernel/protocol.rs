@@ -210,6 +210,18 @@ pub(crate) enum KernelEvent {
 
 /// Turns a message received from the kernel into an event, if it is one we use.
 pub(crate) fn event_from(message: &Message) -> Option<KernelEvent> {
+    let mut event = plain_event(message)?;
+    // An output that can be updated later carries its display id, which the notebook does not
+    // store; whoever applies the event takes it off again.
+    if let (KernelEvent::Output { output, .. }, Some(id)) =
+        (&mut event, message.content["transient"]["display_id"].as_str())
+    {
+        output["transient"] = json!({"display_id": id});
+    }
+    Some(event)
+}
+
+fn plain_event(message: &Message) -> Option<KernelEvent> {
     let content = &message.content;
     let parent = message.parent_id().map(str::to_owned);
     let with_parent = |parent: Option<String>| parent.unwrap_or_default();
@@ -396,6 +408,21 @@ mod tests {
             panic!("expected an output");
         };
         assert_eq!(output["metadata"], json!({}));
+    }
+
+    #[test]
+    fn an_updatable_output_carries_its_display_id() {
+        let Some(KernelEvent::Output { output, .. }) = event(
+            "display_data",
+            json!({"data": {"text/plain": "x"}, "transient": {"display_id": "d9"}}),
+        ) else {
+            panic!("expected an output");
+        };
+        assert_eq!(output["transient"]["display_id"], "d9");
+        let Some(KernelEvent::Output { output, .. }) = event("display_data", json!({"data": {}})) else {
+            panic!("expected an output");
+        };
+        assert!(output.get("transient").is_none());
     }
 
     #[test]

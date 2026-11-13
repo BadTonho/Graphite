@@ -533,7 +533,15 @@ mod tests {
     fn executing_code_reports_input_outputs_status_and_the_reply() {
         let (handle, _kernel) = connected();
         let id = handle.execute("hello");
-        let events = wait_for(&handle, |events| finished(events, &id));
+        // The reply comes on the shell channel and the outputs on IOPub, in either order; the
+        // idle status is the last thing IOPub says about the request.
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| matches!(
+                    event,
+                    KernelEvent::Status { state: KernelState::Idle, parent: Some(parent) } if parent == &id
+                ))
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Info { language: Some(language), .. } if language == "fake"
@@ -544,7 +552,7 @@ mod tests {
             .filter(|event| match event {
                 KernelEvent::Output { parent, .. }
                 | KernelEvent::ExecuteInput { parent, .. }
-                | KernelEvent::Reply { parent, .. } => parent == &id,
+                => parent == &id,
                 _ => false,
             })
             .collect();
@@ -553,7 +561,7 @@ mod tests {
         assert_eq!(output["text"], "hello\n");
         let KernelEvent::Output { output, .. } = mine[2] else { panic!("expected a result") };
         assert_eq!(output["data"]["text/plain"], "'hello'");
-        assert!(matches!(mine[3], KernelEvent::Reply { ok: true, count: Some(1), .. }));
+        assert!(events.iter().any(|event| matches!(event, KernelEvent::Reply { ok: true, count: Some(1), .. })));
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Status { state: KernelState::Busy, parent: Some(parent) } if parent == &id

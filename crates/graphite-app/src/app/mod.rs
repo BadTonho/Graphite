@@ -57,7 +57,10 @@ pub(crate) mod merge_resolution;
 pub(crate) mod multi_diff_ui;
 mod notebook_drawing;
 #[cfg(test)]
+mod notebook_kernel_tests;
+#[cfg(test)]
 mod notebook_ui_tests;
+pub(crate) mod notebook_kernel;
 pub(crate) mod notebook_ui;
 pub(super) mod local_search;
 pub(crate) mod lsp_features;

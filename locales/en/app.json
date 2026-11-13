@@ -706,5 +706,22 @@
   "multi_diff.gap": "{count} unchanged line(s)",
   "multi_diff.file_missing": "{path} is not in the working tree",
   "notebook.input_collapsed": "input collapsed",
-  "notebook.output_collapsed": "output collapsed"
+  "notebook.output_collapsed": "output collapsed",
+  "notebook.running": "Running {count} cell(s)",
+  "notebook.interrupted": "Interrupt sent to the kernel",
+  "notebook.nothing_running": "No cell is running",
+  "notebook.select_kernel": "Choose a kernel to run this notebook",
+  "notebook.error.no_notebook": "The active editor is not a notebook",
+  "notebook.error.no_kernels": "No Jupyter kernels are installed (install ipykernel for Python)",
+  "notebook.error.no_kernel": "This notebook has no kernel yet; run a cell to start one",
+  "notebook.error.start": "Could not start the kernel: {error}",
+  "notebook.no_kernel": "No kernel",
+  "notebook.kernel_started": "Started {name}",
+  "notebook.kernel_restarted": "Kernel restarted",
+  "notebook.kernel_stopped": "Kernel shutting down",
+  "notebook.kernel.not_started": "not started",
+  "notebook.kernel.starting": "starting",
+  "notebook.kernel.idle": "idle",
+  "notebook.kernel.busy": "busy",
+  "notebook.kernel.stopped": "stopped"
 }

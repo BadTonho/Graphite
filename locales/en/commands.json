@@ -651,5 +651,18 @@
   "command.notebook.toggleLineNumbers": "Notebook: toggle line numbers",
   "command.notebook.cell.toggleLineNumbers": "Notebook: toggle cell line numbers",
   "command.notebook.cell.nullAction": "Notebook: do nothing",
-  "command.category.notebook": "Notebook"
+  "command.category.notebook": "Notebook",
+  "command.notebook.cell.execute": "Notebook: run cell",
+  "command.notebook.cell.executeAndSelectBelow": "Notebook: run cell and select below",
+  "command.notebook.cell.executeAndInsertBelow": "Notebook: run cell and insert below",
+  "command.notebook.execute": "Notebook: run all cells",
+  "command.notebook.cell.executeCellsAbove": "Notebook: run cells above",
+  "command.notebook.cell.executeCellAndBelow": "Notebook: run cell and all below",
+  "command.notebook.cancelExecution": "Notebook: interrupt the kernel",
+  "command.notebook.cell.clearOutputs": "Notebook: clear cell outputs",
+  "command.notebook.clearAllCellsOutputs": "Notebook: clear all outputs",
+  "command.notebook.selectKernel": "Notebook: select kernel",
+  "command.graphite.notebook.restartKernel": "Notebook: restart the kernel",
+  "command.graphite.notebook.restartKernelAndRunAll": "Notebook: restart the kernel and run all cells",
+  "command.graphite.notebook.shutdownKernel": "Notebook: shut down the kernel"
 }

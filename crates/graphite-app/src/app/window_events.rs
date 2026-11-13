@@ -632,6 +632,7 @@ impl App {
             }
             UserEvent::FileEvents(changes) => self.forward_vsix_file_events(&changes),
             UserEvent::ExternalChangeCheck => self.sync_external_changes(),
+            UserEvent::KernelWake => self.poll_kernels(),
             UserEvent::MultiDiffReady { set, result } => {
                 self.show_multi_diff(set, result);
                 if let Some(gpu) = &self.gpu {

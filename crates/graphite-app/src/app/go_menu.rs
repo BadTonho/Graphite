@@ -97,6 +97,8 @@ pub(crate) enum GoPickerKind {
     HistoryDelete,
     /// The timeline of a file: picking an entry compares it with the file.
     Timeline,
+    /// The installed kernels: picking one starts it for the active notebook.
+    Kernel,
 }
 
 #[derive(Clone, Debug)]
@@ -808,6 +810,15 @@ impl App {
                 self.editor_mut()
                     .set_cursor_line_col(line.saturating_sub(1), column.saturating_sub(1));
                 self.reveal_cursor = true;
+            }
+            GoPickerKind::Kernel => {
+                if let Some(item) = self
+                    .go_picker_rows_from(&picker)
+                    .get(picker.selected)
+                    .cloned()
+                {
+                    self.select_kernel(item.line);
+                }
             }
             GoPickerKind::Timeline => {
                 if let Some(item) = self

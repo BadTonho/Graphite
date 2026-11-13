@@ -43,3 +43,30 @@ Ctrl+`Z` e Ctrl+`Y` (ou Ctrl+Shift+`Z`) desfazem e refazem nos dois modos, em um
 O notebook é um documento comum: aparece como modificado na aba, salva com os comandos de sempre e é recarregado quando o arquivo muda no disco e não tem edições não salvas.
 
 Todos os comandos também estão na paleta de comandos, na categoria **Notebook**.
+
+## Executando células
+
+Uma faixa acima das células mostra o kernel do notebook e o que ele está fazendo (não iniciado, iniciando, ocioso, ocupado, parado). As células de código rodam em um kernel Jupyter que este programa inicia como um processo local e com o qual fala pelo protocolo Jupyter; nada precisa estar rodando antes, mas é preciso ter um kernel instalado (para Python, o `ipykernel`).
+
+**Escolhendo o kernel.** Na primeira execução usa-se o kernel que o notebook pede nos metadados. Se ele não nomear um que esteja instalado, usa-se o único kernel da linguagem, ou o único que existe. Quando a escolha é sua, abre-se o seletor de kernel e nada é executado. **Selecionar kernel do notebook** abre o seletor a qualquer momento. A escolha é gravada nos metadados do notebook, como o Jupyter faz, então o notebook aparece como modificado. Os kernels são procurados nos diretórios de kernelspec do Jupyter (`JUPYTER_PATH`, o diretório do usuário e os do sistema) e ao lado dos programas Python do `PATH`; se nenhum estiver registrado, oferece-se o primeiro Python do `PATH`.
+
+| Comando | Tecla | O que faz |
+| --- | --- | --- |
+| Executar célula | Ctrl+Enter | Executa as células selecionadas. |
+| Executar célula e selecionar a de baixo | Shift+Enter | Executa e vai para a próxima célula; depois da última, cria uma nova. |
+| Executar célula e inserir abaixo | Alt+Enter | Executa, cria uma célula abaixo e a edita. |
+| Executar todas as células | | Executa todas as células de código em ordem. |
+| Executar as células acima / a célula e todas abaixo | | Executa as células antes da seleção / a seleção e tudo que vem depois. |
+| Interromper o kernel | | Para o que está rodando. |
+| Reiniciar o kernel | | Encerra o kernel e o inicia de novo; as células em execução param. |
+| Reiniciar o kernel e executar todas as células | | O mesmo, e depois executa tudo. |
+| Encerrar o kernel | | Pede ao kernel que saia; a próxima execução inicia um novo. |
+| Limpar as saídas da célula / todas as saídas | | Remove saídas e contagens de execução. |
+
+As células são enviadas ao kernel em ordem, e ele as executa uma após a outra. Uma célula mostra `[*]` do envio até terminar, e depois a contagem de execução. As saídas antigas são trocadas quando a execução dela começa. Fluxos, resultados, erros, `clear_output` e exibições atualizáveis (`update_display_data`) são aplicados conforme o kernel informa. Saídas e contagens fazem parte do notebook, então são salvas com ele. Se uma célula falha, o kernel pula as células que estavam na fila atrás dela. Células vazias e células markdown não são enviadas. Editar uma célula que está esperando não muda o que foi enviado.
+
+A interrupção usa o evento de interrupção do kernel no Windows e SIGINT nos outros sistemas. No Windows, o Python só percebe a interrupção quando uma chamada como `time.sleep` retorna.
+
+Se o kernel terminar sozinho, a faixa avisa que parou e a próxima execução inicia um novo. Fechar o notebook encerra o kernel dele. Se o arquivo for recarregado do disco com células em execução, as execuções em andamento são descartadas e o kernel é mantido.
+
+As saídas aparecem como texto por enquanto: imagens e saídas ricas aparecem na forma de texto ou não aparecem.

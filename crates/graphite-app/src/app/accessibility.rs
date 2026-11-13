@@ -340,6 +340,8 @@ pub(crate) enum UserEvent {
     GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
+    /// A notebook kernel has events to collect.
+    KernelWake,
     /// The files of a multi-file diff were read on a background thread.
     MultiDiffReady {
         set: crate::scm_changes::ChangeSet,

@@ -24,8 +24,13 @@ impl App {
         };
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x616161));
-        let body_top = rect.y + top;
-        let body_height = (rect.height - top).max(0.0);
+        // The strip above the cells names the kernel and what it is doing.
+        let strip_top = rect.y + top;
+        r.set_clip(Some([rect.x, strip_top, rect.x + rect.width, strip_top + lh]));
+        r.draw_rect(rect.x, strip_top, rect.width, lh, rgb(Theme::color(0x2d2d30, 0xececec)));
+        r.draw_text(&self.notebook_kernel_label(session), rect.x + 16.0, strip_top, dim);
+        let body_top = strip_top + lh;
+        let body_height = (rect.height - top - lh).max(0.0);
         let active_group = rect.id == self.editor_groups.focused();
         let layouts = notebook::layout(session, lh);
         r.set_clip(Some([rect.x, body_top, rect.x + rect.width, body_top + body_height]));
@@ -54,6 +59,7 @@ impl App {
             }
             let header = match state.cell.kind {
                 CellKind::Code => match state.cell.execution_count {
+                    _ if session.run_state(state.uid).is_some() => "[*]".to_owned(),
                     Some(count) => format!("[{count}]"),
                     None => "[ ]".to_owned(),
                 },
@@ -130,5 +136,24 @@ impl App {
             }
         }
         r.set_clip(None);
+    }
+}
+
+impl App {
+    /// The kernel and its state, for the strip above the cells.
+    pub(super) fn notebook_kernel_label(&self, session: &notebook::Session) -> String {
+        let name = session
+            .kernel_spec()
+            .map(|spec| spec.display_name.clone())
+            .or_else(|| session.metadata().kernel_name().map(str::to_owned))
+            .unwrap_or_else(|| self.t("notebook.no_kernel").to_owned());
+        let state = match session.kernel_status() {
+            notebook::KernelStatus::None => "notebook.kernel.not_started",
+            notebook::KernelStatus::Starting => "notebook.kernel.starting",
+            notebook::KernelStatus::Idle => "notebook.kernel.idle",
+            notebook::KernelStatus::Busy => "notebook.kernel.busy",
+            notebook::KernelStatus::Dead(_) => "notebook.kernel.stopped",
+        };
+        format!("{name} — {}", self.t(state))
     }
 }
