@@ -10,7 +10,7 @@ Plano do trabalho de paridade de recursos que ainda falta fazer. As etapas 1 a 3
 | 2. Shell do workbench | Grupos de editores, partes da janela, abrir rápido, navegação em listas, barra de atividades, breadcrumbs | Feita, com as sobras abaixo |
 | 3. Ferramentas do dia a dia | Explorador, controle de código-fonte, histórico local, linha do tempo, outline, preferências, tarefas, depuração, extensões, snippets, saída | Feita, com as sobras abaixo |
 | 4. Editores de merge e de diff | Editor de merge de três vias, diff de vários arquivos | Feita, com as sobras abaixo |
-| 5. Notebooks | Editor de notebook, janela interativa, REPL | A fazer |
+| 5. Notebooks | Editor de notebook, janela interativa, REPL | Feita, com as sobras abaixo |
 | 6. Serviços | Chat, sync, remoto, atualização e afins | A fazer, exige decisões |
 
 ## Etapa 4: editor de merge e diff de vários arquivos
@@ -39,7 +39,7 @@ Cerca de 76 comandos. Um subsistema à parte.
 5. **Janela interativa e REPL.** Um notebook de rascunho ligado a um kernel, com uma caixa de entrada embaixo.
 6. **Comandos, testes e documentação.** Os ids de comando de notebook, documentação em EN e PT-BR, testes com um kernel falso.
 
-Pontos em aberto: qual protocolo de kernel suportar primeiro, e como o renderizador desenha as saídas ricas.
+Decisões: o protocolo é o do Jupyter sobre um transporte ZeroMQ próprio, falando com um kernel que o aplicativo inicia como processo local (nada de dependência externa de ZeroMQ). As saídas ricas têm limites de tamanho: imagens passam por um segundo atlas RGBA do renderizador, e HTML, Markdown, LaTeX e JSON aparecem como texto. Veja [Editor de notebook](../features/notebook-editor.md) e [Janela interativa](../features/interactive-window.md).
 
 ## Etapa 6: recursos que dependem de serviços
 
@@ -88,6 +88,17 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - O painel da base só tem o que os marcadores de conflito trazem; calcular uma base para marcadores de duas vias exige os estágios do índice.
 - Digitar direto no painel de resultado (use Abrir o resultado no editor).
 - Comandos do editor de diff (trocar lados, reverter, recolher regiões sem alteração, código movido) e o diff de notebook: exigem que a vista de diff de dois arquivos vire um editor.
+
+**Notebooks**
+- Saídas ricas: SVG, HTML desenhado como página (hoje é lido como texto), widgets interativos e saídas de aplicativos.
+- Kernels remotos ou de servidor Jupyter: só kernels locais são iniciados.
+- Formatar o notebook ou a célula: depende de ligar a formatação por linguagem às células.
+- Multi-cursor dentro de uma célula e os comandos de cursor de notebook.
+- Selecionar toda a saída de uma célula, mostrar saídas vazias, posição da barra de ferramentas da célula, ordem dos tipos MIME e os comandos de layout e de diagnóstico de layout.
+- Diff de notebook (próximo, anterior, reverter entrada, saídas e metadados): exige que a vista de diff vire um editor.
+- Comandos de chat em células: pertencem à Etapa 6.
+- Testes contra um `ipykernel` real: existe um teste ignorado por padrão (defina `GRAPHITE_TEST_KERNEL_PYTHON`); o restante usa um kernel falso que fala o protocolo de verdade por sockets de verdade.
+- O desenho das imagens e das células precisa de uma janela e não foi verificado visualmente.
 
 ## Regras de trabalho para cada etapa
 

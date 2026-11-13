@@ -10,7 +10,7 @@ Plan for the feature parity work that is still to do. Stages 1 to 3 are done as 
 | 2. Workbench shell | Editor groups, window parts, quick open, list navigation, activity bar, breadcrumbs | Done, with the leftovers below |
 | 3. Daily tools | Explorer, source control, local history, timeline, outline, preferences, tasks, debug, extensions, snippets, output | Done, with the leftovers below |
 | 4. Merge and diff editors | Three-way merge editor, multi-file diff | Done, with the leftovers below |
-| 5. Notebooks | Notebook editor, interactive window, REPL | To do |
+| 5. Notebooks | Notebook editor, interactive window, REPL | Done, with the leftovers below |
 | 6. Services | Chat, sync, remote, update and similar | To do, needs decisions |
 
 ## Stage 4: merge editor and multi-file diff
@@ -39,7 +39,7 @@ About 76 commands. A subsystem of its own.
 5. **Interactive window and REPL.** A scratch notebook bound to a kernel, with an input box at the bottom.
 6. **Commands, tests and docs.** The notebook command ids, EN and PT-BR documentation, tests with a fake kernel.
 
-Open points: which kernel protocol to support first, and how rich outputs are drawn by the renderer.
+Decisions: the protocol is Jupyter's, over a built-in ZeroMQ transport, talking to a kernel that the program starts as a local process (no external ZeroMQ dependency). Rich outputs have size limits: images go through a second RGBA atlas of the renderer, and HTML, Markdown, LaTeX and JSON are shown as text. See [Notebook editor](../features/notebook-editor.md) and [Interactive window](../features/interactive-window.md).
 
 ## Stage 6: service-dependent features
 
@@ -88,6 +88,17 @@ Items that were left out because they depend on something the application does n
 - The base pane only has what the conflict markers carry; computing a base for two-way markers needs the index stages.
 - Typing directly in the result pane (use Open result in the editor instead).
 - Diff editor commands (switch sides, revert, collapse unchanged regions, moved code) and the notebook diff: they need the two-file diff view to become an editor.
+
+**Notebooks**
+- Rich outputs: SVG, HTML drawn as a page (today it is read as text), interactive widgets and app outputs.
+- Remote or Jupyter server kernels: only local kernels are started.
+- Format the notebook or the cell: needs the per-language formatting wired to cells.
+- Multi-cursor inside a cell and the notebook cursor commands.
+- Select all of a cell's output, show empty outputs, cell toolbar position, MIME type order and the layout and layout troubleshooting commands.
+- Notebook diff (next, previous, revert input, outputs and metadata): needs the diff view to become an editor.
+- Chat commands on cells: they belong to Stage 6.
+- Tests against a real `ipykernel`: one test exists and is ignored by default (set `GRAPHITE_TEST_KERNEL_PYTHON`); the rest use a fake kernel that speaks the real protocol over real sockets.
+- Drawing of images and cells needs a window and was not checked visually.
 
 ## Working rules for every stage
 
