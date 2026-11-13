@@ -30,6 +30,7 @@ impl App {
         let buffer = &self.documents[document].buffer;
         let revision = buffer.revision();
         let tab_size = self.documents[document].indentation.tab_size;
+        let provided = self.documents[document].provided_folds();
         let cursor_line = buffer.rope().char_to_line(cursor.min(buffer.len_chars()));
         let view = self.editor_groups.active_view_mut();
         if view.folded_revision != revision {
@@ -37,7 +38,7 @@ impl App {
             view.folded_revision = revision;
         }
         view.folded.retain(|&start| {
-            !folding::region_end(buffer, start, tab_size)
+            !folding::region_end(buffer, start, tab_size, provided)
                 .is_some_and(|end| start < cursor_line && cursor_line <= end)
         });
     }
@@ -52,6 +53,7 @@ impl App {
             &tab.buffer,
             effective_folds(view, tab.buffer.revision()),
             tab.indentation.tab_size,
+            tab.provided_folds(),
         );
         folding::visible_lines(&tab.buffer, &hidden, view.scroll_line, row + 1)
             .last()
@@ -92,9 +94,12 @@ impl App {
         let revision = self.documents[document].buffer.revision();
         let mut line = self.cursor_line();
         loop {
-            let Some((start, _)) =
-                folding::innermost_region(&self.documents[document].buffer, line, tab_size)
-            else {
+            let Some((start, _)) = folding::innermost_region(
+                &self.documents[document].buffer,
+                line,
+                tab_size,
+                self.documents[document].provided_folds(),
+            ) else {
                 self.status = self.t("fold.no_region").to_owned();
                 return;
             };
@@ -124,6 +129,7 @@ impl App {
         let document = self.active_document();
         let tab_size = self.documents[document].indentation.tab_size;
         let line = self.cursor_line();
+        let provided = self.documents[document].provided_folds();
         let buffer = &self.documents[document].buffer;
         let view = self.editor_groups.active_view_mut();
         let target = view
@@ -132,7 +138,7 @@ impl App {
             .copied()
             .filter(|&start| {
                 start == line
-                    || folding::region_end(buffer, start, tab_size)
+                    || folding::region_end(buffer, start, tab_size, provided)
                         .is_some_and(|end| start < line && line <= end)
             })
             .max();
@@ -154,7 +160,7 @@ impl App {
         let mut starts = Vec::new();
         let mut line = 0;
         while line < tab.buffer.len_lines() {
-            match folding::region_end(&tab.buffer, line, tab_size) {
+            match folding::region_end(&tab.buffer, line, tab_size, tab.provided_folds()) {
                 Some(end) => {
                     starts.push(line);
                     line = end + 1;
@@ -164,7 +170,12 @@ impl App {
         }
         let cursor_line = self.cursor_line();
         let owner = folding::visible_owner(
-            &folding::hidden_ranges(&self.documents[document].buffer, &starts, tab_size),
+            &folding::hidden_ranges(
+                &self.documents[document].buffer,
+                &starts,
+                tab_size,
+                self.documents[document].provided_folds(),
+            ),
             cursor_line,
         );
         if owner != cursor_line {

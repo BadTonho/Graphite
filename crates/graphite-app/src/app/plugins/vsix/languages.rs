@@ -21,6 +21,8 @@ pub(crate) enum Feature {
     InlayHints,
     /// Occurrences of the symbol at the cursor. Requested automatically.
     DocumentHighlights,
+    /// Code folding regions. Requested automatically.
+    FoldingRanges,
 }
 
 struct Provider {
@@ -197,7 +199,9 @@ impl App {
                 ]),
             ),
             // Requested by the passive drivers in `passive.rs`, never by a command.
-            Feature::InlayHints | Feature::DocumentHighlights => return Ok(false),
+            Feature::InlayHints | Feature::DocumentHighlights | Feature::FoldingRanges => {
+                return Ok(false)
+            }
             Feature::Definition => ("$provideDefinition", json!([handle, uri, position])),
             Feature::Declaration => ("$provideDeclaration", json!([handle, uri, position])),
             Feature::Implementation => ("$provideImplementation", json!([handle, uri, position])),
@@ -346,7 +350,8 @@ impl App {
             Feature::Format
             | Feature::FormatRange
             | Feature::InlayHints
-            | Feature::DocumentHighlights => {}
+            | Feature::DocumentHighlights
+            | Feature::FoldingRanges => {}
         }
         Ok(())
     }
@@ -427,6 +432,9 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerFoldingRangeProvider") => {
+                Feature::FoldingRanges
+            }
             ("MainThreadLanguageFeatures", "$registerDocumentHighlightProvider") => {
                 Feature::DocumentHighlights
             }

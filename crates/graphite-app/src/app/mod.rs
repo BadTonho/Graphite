@@ -30,7 +30,7 @@ mod external_changes;
 pub(crate) mod file_menu;
 mod focus_regions;
 mod fold_commands;
-mod folding;
+pub(crate) mod folding;
 pub(crate) mod github_auth;
 pub(crate) mod github_dialog;
 pub(crate) mod go_menu;

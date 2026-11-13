@@ -447,6 +447,7 @@ impl App {
                 diagnostics: Vec::new(),
                 inlay_hints: Vec::new(),
                 inlay_revision: None,
+                provided_folds: None,
                 schema_diagnostics: Vec::new(),
                 schema_revision: None,
                 lsp_revision: None,

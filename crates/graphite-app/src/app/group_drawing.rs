@@ -276,7 +276,12 @@ impl App {
                 .map(|uri| uri.as_str().to_owned());
             let folds = super::fold_commands::effective_folds(view, buffer.revision());
             let fold_hidden =
-                super::folding::hidden_ranges(buffer, folds, tab.indentation.tab_size);
+                super::folding::hidden_ranges(
+                    buffer,
+                    folds,
+                    tab.indentation.tab_size,
+                    tab.provided_folds(),
+                );
             let rows =
                 super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
             for (row, &line) in rows.iter().enumerate() {

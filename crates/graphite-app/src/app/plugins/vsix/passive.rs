@@ -42,6 +42,9 @@ struct InFlight {
 pub(super) struct Passive {
     next_id: u64,
     inlay: Option<InFlight>,
+    fold: Option<InFlight>,
+    /// Revision of the document the last folding request covered.
+    fold_done: Option<(DocumentId, u64)>,
     highlight: Option<InFlight>,
     /// Revision of the document the last inlay request covered.
     inlay_done: Option<(DocumentId, u64)>,
@@ -56,7 +59,10 @@ pub(super) struct Passive {
 impl Passive {
     /// Whether the event loop should keep ticking for these features.
     pub(super) fn busy(&self) -> bool {
-        self.inlay.is_some() || self.highlight.is_some() || self.highlight_wanted.is_some()
+        self.inlay.is_some()
+            || self.fold.is_some()
+            || self.highlight.is_some()
+            || self.highlight_wanted.is_some()
     }
 
     fn next_id(&mut self) -> u64 {
@@ -97,6 +103,25 @@ pub(super) fn inlay_hints(result: &Value) -> Vec<lsp_types::InlayHint> {
         .collect()
 }
 
+/// The regions of an `IFoldingRangeDto[]` as 0-based start line to last line. Several regions
+/// starting on one line keep the longest; regions that do not span two lines are dropped.
+pub(super) fn folding_ranges(result: &Value) -> crate::app::folding::Provided {
+    let mut regions = crate::app::folding::Provided::new();
+    for item in result.as_array().into_iter().flatten() {
+        let (Some(start), Some(end)) = (item["start"].as_u64(), item["end"].as_u64()) else {
+            continue;
+        };
+        let (Some(start), Some(end)) = (start.checked_sub(1), end.checked_sub(1)) else {
+            continue;
+        };
+        if end > start {
+            let entry = regions.entry(start as usize).or_insert(end as usize);
+            *entry = (*entry).max(end as usize);
+        }
+    }
+    regions
+}
+
 /// The ranges of an `IDocumentHighlightDto[]`, as 0-based `((line, column), (line, column))`.
 pub(super) fn highlight_ranges(result: &Value) -> Vec<((u32, u32), (u32, u32))> {
     result
@@ -127,14 +152,20 @@ impl App {
     /// Asks the extension host for whatever inlay hints or highlights are out of date.
     pub(super) fn drive_vsix_passive(&mut self, runtime: &mut Runtime) -> Result<()> {
         if !self.vsix_workspace_trusted()
-            || !runtime
-                .languages
-                .has_provider(&[Feature::InlayHints, Feature::DocumentHighlights])
+            || !runtime.languages.has_provider(&[
+                Feature::InlayHints,
+                Feature::DocumentHighlights,
+                Feature::FoldingRanges,
+            ])
         {
             return Ok(());
         }
         let now = Instant::now();
-        for in_flight in [&mut runtime.passive.inlay, &mut runtime.passive.highlight] {
+        for in_flight in [
+            &mut runtime.passive.inlay,
+            &mut runtime.passive.fold,
+            &mut runtime.passive.highlight,
+        ] {
             if in_flight
                 .as_ref()
                 .is_some_and(|request| now >= request.deadline)
@@ -160,6 +191,15 @@ impl App {
                 request.key.revision == revision && request.key.document == document
             })
             && !self.language_server_serves_active_document();
+        let wants_fold = self.documents[document]
+            .provided_folds
+            .as_ref()
+            .map(|(revision, _)| *revision)
+            != Some(revision)
+            && runtime.passive.fold_done != Some((document, revision))
+            && !runtime.passive.fold.as_ref().is_some_and(|request| {
+                request.key.revision == revision && request.key.document == document
+            });
         let wants_highlight = runtime.passive.highlight_done != Some(key)
             && runtime
                 .passive
@@ -167,7 +207,7 @@ impl App {
                 .as_ref()
                 .map(|request| request.key)
                 != Some(key);
-        if !wants_inlay && !wants_highlight {
+        if !wants_inlay && !wants_highlight && !wants_fold {
             if runtime.passive.highlight_done == Some(key) {
                 runtime.passive.highlight_wanted = None;
             }
@@ -178,6 +218,9 @@ impl App {
         let uri = snapshot.uri.as_str().to_owned();
         if wants_inlay {
             self.request_vsix_inlay_hints(runtime, &snapshot, key)?;
+        }
+        if wants_fold {
+            self.request_vsix_folds(runtime, &snapshot, key)?;
         }
         if wants_highlight {
             // A stale highlight would point at the wrong text, so drop it right away.
@@ -237,6 +280,37 @@ impl App {
         }))?;
         runtime.passive.inlay_done = Some((key.document, key.revision));
         runtime.passive.inlay = Some(InFlight {
+            id,
+            key,
+            handle,
+            uri: snapshot.uri.as_str().to_owned(),
+            deadline: Instant::now() + REQUEST_TIMEOUT,
+        });
+        Ok(())
+    }
+
+    fn request_vsix_folds(
+        &self,
+        runtime: &mut Runtime,
+        snapshot: &DocumentSnapshot,
+        key: Key,
+    ) -> Result<()> {
+        runtime.passive.fold_done = Some((key.document, key.revision));
+        let Some(handle) = runtime.provider(Feature::FoldingRanges, snapshot) else {
+            return Ok(());
+        };
+        if let Some(previous) = runtime.passive.fold.take() {
+            runtime
+                .session
+                .send(json!({"type":"cancelCall","id":previous.id}))?;
+        }
+        let id = runtime.passive.next_id();
+        runtime.session.send(json!({
+            "type": "call", "id": id, "actor": "ExtHostLanguageFeatures",
+            "method": "$provideFoldingRanges", "cancellable": true,
+            "args": [handle, {"$graphiteUri": snapshot.uri}, {}],
+        }))?;
+        runtime.passive.fold = Some(InFlight {
             id,
             key,
             handle,
@@ -311,6 +385,19 @@ impl App {
             let tab = &mut self.documents[request.key.document];
             tab.inlay_hints = inlay_hints(&event["result"]);
             tab.inlay_revision = Some(request.key.revision);
+        } else if runtime.passive.fold.as_ref().is_some_and(|r| r.id == id) {
+            let request = runtime.passive.fold.take().unwrap();
+            if event["error"].is_string() {
+                // Not asked again until the document changes.
+                return;
+            }
+            if !current(&request.key, self) {
+                runtime.passive.fold_done = None;
+                return;
+            }
+            let regions = folding_ranges(&event["result"]);
+            self.documents[request.key.document].provided_folds =
+                Some((request.key.revision, regions));
         } else if runtime
             .passive
             .highlight
@@ -682,5 +769,95 @@ mod flow_tests {
             range(9, 1, 1),
             "past the end"
         );
+    }
+
+    #[test]
+    fn folding_ranges_convert_to_zero_based_regions_and_keep_the_longest() {
+        let regions = folding_ranges(&json!([
+            {"start": 1, "end": 3},
+            {"start": 1, "end": 6, "kind": 3},
+            {"start": 4, "end": 4},
+            {"start": 0, "end": 5},
+            {"start": 7},
+            {"end": 9},
+            "nope",
+        ]));
+        assert_eq!(regions.into_iter().collect::<Vec<_>>(), [(0, 5)]);
+        assert!(folding_ranges(&Value::Null).is_empty());
+    }
+
+    const FOLD: &str = "$registerFoldingRangeProvider";
+
+    #[test]
+    fn folding_ranges_are_requested_stored_and_used_by_the_fold_commands() {
+        let dir = TempDir::new();
+        // No indentation, so the built-in rules find nothing to fold here.
+        let (mut app, host) = app_with_providers(&dir, "one\ntwo\nthree\nfour\n", &[FOLD]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideFoldingRanges");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][0], 1);
+
+        app.editor_mut().set_cursor_line_col(0, 0);
+        app.fold_at_cursor();
+        assert!(
+            app.editor_groups.active_view().folded.is_empty(),
+            "nothing to fold until the extension answers"
+        );
+
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!([{"start": 1, "end": 3}, {"start": 2, "end": 2}]),
+        );
+        app.poll_vsix();
+        let tab = &app.documents[app.active_document()];
+        assert_eq!(tab.provided_folds().unwrap().len(), 1);
+
+        app.fold_at_cursor();
+        assert_eq!(app.editor_groups.active_view().folded, [0]);
+        app.poll_vsix();
+        assert!(
+            calls(&host, "$provideFoldingRanges").is_empty(),
+            "the answer is reused while the text is unchanged"
+        );
+    }
+
+    #[test]
+    fn provided_regions_describe_one_revision_and_are_asked_again_after_an_edit() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "a\nb\nc\n", &[FOLD]);
+        app.poll_vsix();
+        let first = calls(&host, "$provideFoldingRanges");
+        reply(&host, &first[0]["id"], json!([{"start": 1, "end": 3}]));
+        app.poll_vsix();
+        assert!(app.documents[app.active_document()]
+            .provided_folds()
+            .is_some());
+
+        app.editor_mut().insert("x");
+        assert!(
+            app.documents[app.active_document()]
+                .provided_folds()
+                .is_none(),
+            "regions for an older text must not be used"
+        );
+        app.poll_vsix();
+        assert_eq!(calls(&host, "$provideFoldingRanges").len(), 1);
+    }
+
+    #[test]
+    fn a_failing_folding_provider_is_not_asked_again_until_the_document_changes() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_providers(&dir, "a\nb\n", &[FOLD]);
+        app.poll_vsix();
+        let sent = calls(&host, "$provideFoldingRanges");
+        host.emit(json!({"type": "result", "id": sent[0]["id"], "error": "boom"}));
+        app.poll_vsix();
+        app.poll_vsix();
+        assert!(calls(&host, "$provideFoldingRanges").is_empty());
+        assert!(app.documents[app.active_document()]
+            .provided_folds()
+            .is_none());
     }
 }
