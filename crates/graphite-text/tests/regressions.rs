@@ -1047,3 +1047,27 @@ fn join_lines_joins_cursor_line_with_next_and_selected_blocks_as_one_undo_step()
     b.undo();
     assert_eq!(b.text(), "one  \n   two\n  three\nfour");
 }
+
+#[test]
+fn derived_text_keeps_the_saved_baseline_and_drops_history() {
+    let mut buffer = Buffer::from_text("n.ipynb", "one");
+    buffer.set_derived_text("two");
+    assert_eq!(buffer.text(), "two");
+    assert!(buffer.is_dirty());
+    assert!(!buffer.can_undo());
+    let revision = buffer.revision();
+    // The same text again changes nothing.
+    buffer.set_derived_text("two");
+    assert_eq!(buffer.revision(), revision);
+    // Going back to the saved text makes the buffer clean again.
+    buffer.set_derived_text("one");
+    assert!(!buffer.is_dirty());
+    assert!(buffer.revision() > revision);
+    // A read-only buffer is updated too, and stays read-only.
+    buffer.set_read_only(true);
+    buffer.set_derived_text("three");
+    assert_eq!(buffer.text(), "three");
+    assert!(buffer.is_read_only());
+    buffer.mark_saved_snapshot("three");
+    assert!(!buffer.is_dirty());
+}

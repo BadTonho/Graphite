@@ -159,6 +159,26 @@ impl Buffer {
         self.dirty = false;
         self.outcome_since(revision)
     }
+    /// Replaces the whole text with a value computed from another model (a notebook, for
+    /// example), without touching what counts as saved: the buffer is dirty exactly when the new
+    /// text differs from the last saved text. Text history is dropped, as the other model keeps
+    /// its own.
+    pub fn set_derived_text(&mut self, text: &str) {
+        if self.rope == text {
+            return;
+        }
+        let read_only = self.read_only;
+        self.read_only = false;
+        self.apply_transaction(&[TextReplacement {
+            range: 0..self.len_chars(),
+            text: text.into(),
+        }])
+        .expect("complete document replacement is valid");
+        self.read_only = read_only;
+        self.undo.clear();
+        self.redo.clear();
+        self.dirty = self.rope != self.saved_text;
+    }
     pub fn outcome_since(&self, revision: u64) -> TransactionOutcome {
         TransactionOutcome {
             revision: self.revision,
