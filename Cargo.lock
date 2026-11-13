@@ -2995,6 +2995,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-chat"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "graphite-core-api"
 version = "0.1.0"
 dependencies = [
