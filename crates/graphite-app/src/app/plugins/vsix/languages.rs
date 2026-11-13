@@ -29,6 +29,8 @@ pub(crate) enum Feature {
     FormatOnType,
     /// Clickable links in the text. Requested automatically.
     DocumentLinks,
+    /// Semantic highlighting. Requested automatically.
+    SemanticTokens,
     /// Call hierarchy (callers and callees). Started by a command, with several steps.
     CallHierarchy,
     /// Type hierarchy (supertypes and subtypes).
@@ -40,6 +42,8 @@ struct Provider {
     selector: Vec<Value>,
     /// Characters that trigger on-type formatting (empty for other features).
     triggers: Vec<String>,
+    /// Token type names of a semantic token provider, by index.
+    legend: Vec<String>,
 }
 
 struct Request {
@@ -67,6 +71,14 @@ impl Languages {
     }
 
     /// Whether any extension registered one of `features`, for any document.
+    /// The legend (token type names) registered for the semantic token provider `handle`.
+    pub(super) fn legend(&self, handle: u64) -> Vec<String> {
+        self.providers
+            .get(&handle)
+            .map(|provider| provider.legend.clone())
+            .unwrap_or_default()
+    }
+
     pub(super) fn has_provider(&self, features: &[Feature]) -> bool {
         self.providers
             .values()
@@ -247,6 +259,7 @@ impl App {
             | Feature::FoldingRanges
             | Feature::CallHierarchy
             | Feature::TypeHierarchy
+            | Feature::SemanticTokens
             | Feature::DocumentLinks => return Ok(false),
             Feature::SelectionRanges => {
                 ("$provideSelectionRanges", json!([handle, uri, [position]]))
@@ -399,6 +412,7 @@ impl App {
             }
             Feature::Format
             | Feature::FormatRange
+            | Feature::SemanticTokens
             | Feature::DocumentLinks
             | Feature::CallHierarchy
             | Feature::TypeHierarchy
@@ -486,6 +500,9 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerDocumentSemanticTokensProvider") => {
+                Feature::SemanticTokens
+            }
             ("MainThreadLanguageFeatures", "$registerDocumentLinkProvider") => {
                 Feature::DocumentLinks
             }
@@ -572,12 +589,23 @@ pub(super) fn language_rpc(
         } else {
             Vec::new()
         };
+        let legend = if feature == Feature::SemanticTokens {
+            args.get(2)
+                .and_then(|legend| legend["tokenTypes"].as_array())
+                .into_iter()
+                .flatten()
+                .map(|name| name.as_str().unwrap_or_default().to_owned())
+                .collect()
+        } else {
+            Vec::new()
+        };
         languages.providers.insert(
             handle,
             Provider {
                 feature,
                 selector,
                 triggers,
+                legend,
             },
         );
         Ok(Value::Null)

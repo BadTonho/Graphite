@@ -418,9 +418,24 @@ impl App {
                         );
                     }
                 }
+                let semantic = decoration_uri
+                    .as_deref()
+                    .map(|uri| self.vsix_semantic_spans(uri, buffer.revision(), line, &text))
+                    .unwrap_or_default();
+                let layered;
+                let syntax = if semantic.is_empty() {
+                    spans_for(&tab.highlights, line)
+                } else {
+                    layered = super::drawing_helpers::overlay_spans(
+                        &text,
+                        spans_for(&tab.highlights, line),
+                        &semantic,
+                    );
+                    &layered
+                };
                 let merged = super::drawing_helpers::overlay_classes(
                     &text,
-                    spans_for(&tab.highlights, line),
+                    syntax,
                     &bracket_overlays,
                 );
                 draw_code_line(r, &text, &merged, text_x, y, cw, tab.indentation.tab_size);

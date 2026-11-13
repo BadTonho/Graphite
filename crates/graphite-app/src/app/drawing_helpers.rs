@@ -237,6 +237,33 @@ pub(crate) fn overlay_classes(
     out
 }
 
+/// `base` with the classes of `top` painted over it, as spans covering the whole line. Used for
+/// semantic tokens over syntax highlighting.
+pub(crate) fn overlay_spans(line: &str, base: &[Span], top: &[Span]) -> Vec<Span> {
+    let mut classes = vec![Class::Default; line.len()];
+    for span in base.iter().chain(top) {
+        for byte in span.range.clone() {
+            if let Some(slot) = classes.get_mut(byte) {
+                *slot = span.class;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut start = 0;
+    for index in 1..=classes.len() {
+        if index == classes.len() || classes[index] != classes[start] {
+            if start < index {
+                out.push(Span {
+                    range: start..index,
+                    class: classes[start],
+                });
+            }
+            start = index;
+        }
+    }
+    out
+}
+
 /// Display columns where indent guides are drawn for a line; blank lines have none.
 pub(crate) fn indent_guide_columns(line: &str, tab_width: usize) -> Vec<usize> {
     if line.chars().all(|ch| ch.is_whitespace()) {

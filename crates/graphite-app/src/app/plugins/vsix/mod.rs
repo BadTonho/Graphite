@@ -20,6 +20,7 @@ pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
 mod selection_ranges;
+mod semantic;
 mod storage;
 mod terminals;
 mod testing;

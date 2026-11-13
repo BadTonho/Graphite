@@ -360,6 +360,16 @@ async function executeCommand(extensionId, command, args) {
     return rpc.getProxy(ExtHostContext.ExtHostCommands).$executeContributedCommand(command, ...args);
 }
 
+// The 32-bit little-endian words of a VSBuffer (ignoring a trailing partial word).
+function words(buffer) {
+    const bytes = buffer.buffer;
+    const length = bytes.byteLength - (bytes.byteLength % 4);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, length);
+    const result = new Array(length / 4);
+    for (let index = 0; index < result.length; index++) result[index] = view.getUint32(index * 4, true);
+    return result;
+}
+
 async function receive(message) {
     switch (message.type) {
         case 'start':
@@ -405,7 +415,9 @@ async function receive(message) {
                 const args = message.args.map(arg => arg?.$graphiteUri ? URI.parse(arg.$graphiteUri) : arg);
                 if (token) args.push(token.token);
                 const result = await actor[message.method](...args);
-                if (message.id != null) send({ type: 'result', id: message.id, result });
+                // Binary answers (semantic tokens) reach Graphite as little-endian 32-bit words.
+                const reply = result instanceof VSBuffer ? { $u32: words(result) } : result;
+                if (message.id != null) send({ type: 'result', id: message.id, result: reply });
             } catch (error) {
                 if (message.id != null) send({ type: 'result', id: message.id, error: String(error) });
             } finally {

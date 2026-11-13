@@ -24,18 +24,18 @@ pub(super) fn is_passive_reply(id: u64) -> bool {
 
 /// What a request was made for. A reply is only used while the document still matches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Key {
-    document: DocumentId,
-    revision: u64,
-    cursor: usize,
+pub(super) struct Key {
+    pub(super) document: DocumentId,
+    pub(super) revision: u64,
+    pub(super) cursor: usize,
 }
 
-struct InFlight {
-    id: u64,
-    key: Key,
-    handle: u64,
-    uri: String,
-    deadline: Instant,
+pub(super) struct InFlight {
+    pub(super) id: u64,
+    pub(super) key: Key,
+    pub(super) handle: u64,
+    pub(super) uri: String,
+    pub(super) deadline: Instant,
 }
 
 #[derive(Default)]
@@ -44,6 +44,10 @@ pub(super) struct Passive {
     inlay: Option<InFlight>,
     fold: Option<InFlight>,
     links_request: Option<InFlight>,
+    pub(super) semantic_request: Option<InFlight>,
+    pub(super) semantic_done: Option<(DocumentId, u64)>,
+    /// The semantic tokens of the active document, drawn over the syntax colors.
+    pub(crate) semantic: Option<super::semantic::SemanticTokens>,
     /// Revision of the document the last link request covered.
     links_done: Option<(DocumentId, u64)>,
     /// The links of the active document, for Ctrl+click.
@@ -67,11 +71,12 @@ impl Passive {
         self.inlay.is_some()
             || self.fold.is_some()
             || self.links_request.is_some()
+            || self.semantic_request.is_some()
             || self.highlight.is_some()
             || self.highlight_wanted.is_some()
     }
 
-    fn next_id(&mut self) -> u64 {
+    pub(super) fn next_id(&mut self) -> u64 {
         self.next_id = (self.next_id + 1) % (PASSIVE_END - PASSIVE_BASE);
         PASSIVE_BASE + self.next_id
     }
@@ -241,7 +246,7 @@ impl App {
 }
 
 impl Runtime {
-    fn provider(&self, feature: Feature, document: &DocumentSnapshot) -> Option<u64> {
+    pub(super) fn provider(&self, feature: Feature, document: &DocumentSnapshot) -> Option<u64> {
         self.languages.provider_for(feature, document)
     }
 }
@@ -255,6 +260,7 @@ impl App {
                 Feature::DocumentHighlights,
                 Feature::FoldingRanges,
                 Feature::DocumentLinks,
+                Feature::SemanticTokens,
             ])
         {
             return Ok(());
@@ -264,6 +270,7 @@ impl App {
             &mut runtime.passive.inlay,
             &mut runtime.passive.fold,
             &mut runtime.passive.links_request,
+            &mut runtime.passive.semantic_request,
             &mut runtime.passive.highlight,
         ] {
             if in_flight
@@ -308,6 +315,14 @@ impl App {
                 .is_some_and(|request| {
                     request.key.revision == revision && request.key.document == document
                 });
+        let wants_semantic = runtime.passive.semantic_done != Some((document, revision))
+            && !runtime
+                .passive
+                .semantic_request
+                .as_ref()
+                .is_some_and(|request| {
+                    request.key.revision == revision && request.key.document == document
+                });
         let wants_highlight = runtime.passive.highlight_done != Some(key)
             && runtime
                 .passive
@@ -315,7 +330,7 @@ impl App {
                 .as_ref()
                 .map(|request| request.key)
                 != Some(key);
-        if !wants_inlay && !wants_highlight && !wants_fold && !wants_links {
+        if !wants_inlay && !wants_highlight && !wants_fold && !wants_links && !wants_semantic {
             if runtime.passive.highlight_done == Some(key) {
                 runtime.passive.highlight_wanted = None;
             }
@@ -332,6 +347,9 @@ impl App {
         }
         if wants_links {
             self.request_vsix_links(runtime, &snapshot, key)?;
+        }
+        if wants_semantic {
+            self.request_vsix_semantic_tokens(runtime, &snapshot, key)?;
         }
         if wants_highlight {
             // A stale highlight would point at the wrong text, so drop it right away.
@@ -531,6 +549,13 @@ impl App {
             let tab = &mut self.documents[request.key.document];
             tab.inlay_hints = inlay_hints(&event["result"]);
             tab.inlay_revision = Some(request.key.revision);
+        } else if runtime
+            .passive
+            .semantic_request
+            .as_ref()
+            .is_some_and(|r| r.id == id)
+        {
+            self.finish_vsix_semantic_tokens(runtime, event);
         } else if runtime
             .passive
             .links_request
@@ -1267,5 +1292,140 @@ mod flow_tests {
         app.editor_mut().set_cursor_line_col(0, 7);
         assert!(app.open_document_link_at_cursor());
         assert!(app.status.contains("does not exist"), "{}", app.status);
+    }
+
+    /// A semantic token provider whose legend is `keyword`, `variable`.
+    fn app_with_semantic_tokens(dir: &TempDir, text: &str) -> (App, LoopbackHost) {
+        let (mut app, host) = app_with_providers(dir, text, &[]);
+        let runtime = app.plugins.vsix.as_mut().unwrap();
+        languages::language_rpc(
+            &mut runtime.languages,
+            "MainThreadLanguageFeatures",
+            "$registerDocumentSemanticTokensProvider",
+            &[
+                json!(5),
+                json!([{"language": "*"}]),
+                json!({"tokenTypes": ["keyword", "variable"], "tokenModifiers": []}),
+                json!(null),
+            ],
+        )
+        .unwrap()
+        .unwrap();
+        (app, host)
+    }
+
+    fn doc_uri(dir: &TempDir) -> String {
+        graphite_core_api::DocumentUri::from_path(&dir.path().join("a.txt"))
+            .unwrap()
+            .as_str()
+            .to_owned()
+    }
+
+    #[test]
+    fn semantic_tokens_are_requested_and_drawn_over_the_syntax_colors() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_semantic_tokens(&dir, "let x\nx\n");
+        app.poll_vsix();
+        let sent = calls(&host, "$provideDocumentSemanticTokens");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][0], 5);
+        assert_eq!(sent[0]["args"][2], 0, "no previous result id");
+
+        // `let` (keyword) at 0..3 and `x` (variable) at 4..5 on line 0; `x` again on line 1.
+        reply(
+            &host,
+            &sent[0]["id"],
+            json!({"$u32": [9, 1, 15, 0, 0, 3, 0, 0, 0, 4, 1, 1, 0, 1, 0, 1, 1, 0]}),
+        );
+        app.poll_vsix();
+        let revision = app.documents[app.active_document()].buffer.revision();
+        let uri = doc_uri(&dir);
+        let first = app.vsix_semantic_spans(&uri, revision, 0, "let x\n");
+        let classes: Vec<_> = first.iter().map(|s| (s.range.clone(), s.class)).collect();
+        assert_eq!(
+            classes,
+            [
+                (0..3, graphite_syntax::Class::Keyword),
+                (4..5, graphite_syntax::Class::Variable)
+            ]
+        );
+        assert_eq!(app.vsix_semantic_spans(&uri, revision, 1, "x\n").len(), 1);
+        assert!(app.vsix_semantic_spans(&uri, revision, 2, "").is_empty());
+        assert!(
+            app.vsix_semantic_spans(&uri, revision + 1, 0, "let x\n")
+                .is_empty(),
+            "tokens for an older text are not drawn"
+        );
+        assert!(app
+            .vsix_semantic_spans("file:///other", revision, 0, "let x\n")
+            .is_empty());
+
+        app.poll_vsix();
+        assert!(
+            calls(&host, "$provideDocumentSemanticTokens").is_empty(),
+            "reused while unchanged"
+        );
+    }
+
+    #[test]
+    fn an_edit_asks_again_and_a_delta_answer_is_ignored() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_semantic_tokens(&dir, "x\n");
+        app.poll_vsix();
+        let first = calls(&host, "$provideDocumentSemanticTokens");
+        // A delta answer (kind 2) is not understood: no tokens are kept.
+        reply(&host, &first[0]["id"], json!({"$u32": [1, 2, 0]}));
+        app.poll_vsix();
+        let revision = app.documents[app.active_document()].buffer.revision();
+        assert!(app
+            .vsix_semantic_spans(&doc_uri(&dir), revision, 0, "x\n")
+            .is_empty());
+
+        app.editor_mut().insert("y");
+        app.poll_vsix();
+        assert_eq!(calls(&host, "$provideDocumentSemanticTokens").len(), 1);
+    }
+
+    #[test]
+    fn a_failing_semantic_provider_is_not_asked_again_until_the_text_changes() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_semantic_tokens(&dir, "x\n");
+        app.poll_vsix();
+        let sent = calls(&host, "$provideDocumentSemanticTokens");
+        host.emit(json!({"type": "result", "id": sent[0]["id"], "error": "boom"}));
+        app.poll_vsix();
+        app.poll_vsix();
+        assert!(calls(&host, "$provideDocumentSemanticTokens").is_empty());
+    }
+
+    #[test]
+    fn semantic_spans_replace_syntax_classes_in_the_overlay() {
+        use crate::app::drawing_helpers::overlay_spans;
+        use graphite_syntax::{Class, Span};
+        let base = [
+            Span {
+                range: 0..3,
+                class: Class::Keyword,
+            },
+            Span {
+                range: 4..9,
+                class: Class::String,
+            },
+        ];
+        let top = [Span {
+            range: 2..6,
+            class: Class::Variable,
+        }];
+        let merged = overlay_spans("let \"abc\"", &base, &top);
+        let classes: Vec<_> = merged.iter().map(|s| (s.range.clone(), s.class)).collect();
+        assert_eq!(
+            classes,
+            [
+                (0..2, Class::Keyword),
+                (2..6, Class::Variable),
+                (6..9, Class::String)
+            ]
+        );
+        assert!(overlay_spans("", &[], &[]).is_empty());
     }
 }
