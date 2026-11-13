@@ -71,6 +71,17 @@ A seleção vale durante a sessão da janela; não é salva entre execuções. N
 
 **Iniciar depuração** no menu Executar não exige mais um `"adapter"` explícito: qualquer configuração do `launch.json` o habilita.
 
+## Valores inline
+
+Com o programa pausado, os valores das variáveis locais aparecem no fim das linhas da função parada, como `total = 5, count = 2`, em uma cor discreta.
+
+- Só o arquivo parado, quando está aberto no editor, é anotado, de até 60 linhas acima da linha de parada até a própria linha de parada.
+- Uma variável aparece numa linha quando o nome dela está ali como identificador inteiro (`count` não é achado dentro de `counter`). Cada variável aparece uma vez por linha, no máximo quatro por linha, e valores longos ou de várias linhas são reduzidos a uma linha de 40 caracteres.
+- As variáveis são as do primeiro escopo não caro (normalmente *Locals*) do frame selecionado, já buscadas para a coluna de variáveis. Selecionar outro frame, expandir um escopo ou dar um passo atualiza os valores.
+- Os valores somem assim que o documento é editado, ou quando o programa volta a rodar.
+
+É o recurso genérico que o VS Code usa quando o adaptador não informa valores inline: ele não entende a linguagem, então uma variável com nome igual a uma palavra dentro de uma string ou comentário também é anotada, e o provedor `inlineValues` do adaptador não é usado.
+
 ## Tarefas ao redor da sessão
 
 Uma configuração de lançamento pode citar tarefas de `.vscode/tasks.json`:
@@ -88,6 +99,6 @@ Uma configuração de lançamento pode citar tarefas de `.vscode/tasks.json`:
 
 ## Limites
 
-- Valores inline ao lado do código não estão implementados.
+- O provedor de valores inline do próprio adaptador não é usado (veja Valores inline).
 - Os valores das variáveis aparecem em uma linha e são cortados pela largura da coluna; não há edição de valor nem hover.
 - Verificado por testes unitários do tratamento do protocolo, do modelo de linhas e da detecção de cliques. O painel não foi conferido visualmente em uma janela em execução.

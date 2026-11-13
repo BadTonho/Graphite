@@ -431,6 +431,17 @@ impl App {
                     );
                 }
                 if self.view_preferences.whitespace != config::WhitespaceRendering::None {
+                if let Some(uri) = &decoration_uri {
+                    self.draw_debug_inline_value(
+                        r,
+                        uri,
+                        buffer.revision(),
+                        line,
+                        &text,
+                        tab.indentation.tab_size,
+                        (text_x, y, cw),
+                    );
+                }
                     draw_whitespace_markers(
                         r,
                         &text,

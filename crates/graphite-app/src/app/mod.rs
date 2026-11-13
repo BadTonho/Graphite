@@ -78,6 +78,7 @@ mod workspace_edit;
 mod wrap_drawing;
 
 mod debug_adapters;
+pub(crate) mod debug_inline;
 mod debug_panel;
 pub(crate) mod debugging;
 mod document_edit;

@@ -71,6 +71,17 @@ The selection lives for the current session of the window; it is not saved betwe
 
 **Start Debugging** in the Run menu no longer requires an explicit `"adapter"`: any configuration in `launch.json` enables it.
 
+## Inline values
+
+While the program is paused, the values of the local variables are shown at the end of the lines of the stopped function, like `total = 5, count = 2`, in a muted color.
+
+- Only the stopped file, when it is open in the editor, is annotated, from up to 60 lines above the stop line to the stop line itself.
+- A variable is shown on a line when its name appears there as a whole identifier (`count` is not found inside `counter`). Each variable appears once per line, at most four per line, and long or multi-line values are shortened to one line of 40 characters.
+- The variables are those of the first non-expensive scope (normally *Locals*) of the selected frame, as already fetched for the variables column. Selecting another frame, expanding a scope or stepping updates the values.
+- Values are hidden as soon as the document is edited, or when the program runs again.
+
+This is the generic fallback that VS Code uses when the adapter gives no inline-value information: it does not understand the language, so a variable named like a word inside a string or a comment is annotated too, and the adapter's `inlineValues` provider is not used.
+
 ## Tasks around a session
 
 A launch configuration may name tasks from `.vscode/tasks.json`:
@@ -88,6 +99,6 @@ A launch configuration may name tasks from `.vscode/tasks.json`:
 
 ## Limits
 
-- Inline values next to the code are not implemented.
+- The adapter's own inline-value provider is not used (see Inline values).
 - Variable values are shown on one line and are truncated by the column width; there is no value editing or hover.
 - Verified by unit tests of the protocol handling, the row model and hit testing. The panel has not been checked visually in a running window.

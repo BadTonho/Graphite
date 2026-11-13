@@ -279,6 +279,8 @@ struct App {
     debug_panel_visible: bool,
     debug_input: String,
     debug_input_focused: bool,
+    /// Values drawn after the lines of the stopped function while debugging.
+    debug_inline: Option<app::debug_inline::InlineValues>,
     /// Configuration waiting for its `preLaunchTask` to finish.
     debug_pending_launch: Option<debugger::LaunchConfig>,
     debug_scroll: [usize; 3],
@@ -738,6 +740,7 @@ impl App {
             debug_panel_visible: false,
             debug_input: String::new(),
             debug_input_focused: false,
+            debug_inline: None,
             debug_pending_launch: None,
             debug_scroll: [0; 3],
             test_explorer: test_explorer::TestExplorer::default(),

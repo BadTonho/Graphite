@@ -2,6 +2,7 @@ use super::*;
 
 impl App {
     pub(crate) fn draw(&mut self) {
+        self.refresh_debug_inline_values();
         self.resize_terminal();
         let sidebar_width = self.sidebar_layout_width_px();
         let Some(mut gpu) = self.gpu.take() else {

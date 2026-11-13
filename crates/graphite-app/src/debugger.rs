@@ -209,6 +209,8 @@ pub struct DebugRuntime {
     pub output: Vec<DebugOutput>,
     pub frames: Vec<StackFrame>,
     pub selected_frame: usize,
+    /// Bumped whenever the stack, scopes or variables change, so views can tell they are stale.
+    pub version: u64,
     /// The file open in the editor when the session started, for `${file}`.
     pub active_file: Option<PathBuf>,
     pub scopes: Vec<Scope>,
@@ -371,6 +373,7 @@ impl DebugRuntime {
 
     /// Drops everything that only describes the paused program.
     fn clear_stop_state(&mut self) {
+        self.version = self.version.wrapping_add(1);
         self.frames.clear();
         self.selected_frame = 0;
         self.scopes.clear();
@@ -481,6 +484,7 @@ impl DebugRuntime {
         };
         let frame_id = frame.id;
         self.selected_frame = index;
+        self.version = self.version.wrapping_add(1);
         self.scopes.clear();
         self.children.clear();
         self.expanded.clear();
@@ -517,6 +521,41 @@ impl DebugRuntime {
             )?;
         self.pending_variables.insert(seq, reference);
         Ok(())
+    }
+
+    /// `(name, value)` of the variables directly inside the cheap scopes (normally the locals) of
+    /// the selected frame, as far as they have been fetched. Used for inline values.
+    pub fn local_variables(&self) -> Vec<(String, String)> {
+        self.scopes
+            .iter()
+            .filter(|scope| !scope.expensive)
+            .filter_map(|scope| self.children.get(&scope.reference))
+            .flatten()
+            .map(|variable| (variable.name.clone(), variable.value.clone()))
+            .collect()
+    }
+
+    /// Gives the selected frame these local variables, as if the adapter had sent them.
+    #[cfg(test)]
+    pub(crate) fn set_locals_for_test(&mut self, locals: &[(&str, &str)]) {
+        self.scopes = vec![Scope {
+            name: "Locals".into(),
+            reference: 1,
+            expensive: false,
+        }];
+        self.children.insert(
+            1,
+            locals
+                .iter()
+                .map(|(name, value)| Variable {
+                    name: (*name).into(),
+                    value: (*value).into(),
+                    type_name: None,
+                    reference: 0,
+                })
+                .collect(),
+        );
+        self.version = self.version.wrapping_add(1);
     }
 
     /// The visible rows of the variables tree: scopes, then expanded children.
@@ -701,6 +740,7 @@ impl DebugRuntime {
     }
 
     fn handle_message(&mut self, message: Value, workspace: &Path) -> Result<(), DebugError> {
+        self.version = self.version.wrapping_add(1);
         match message["type"].as_str() {
             Some("event") => self.handle_event(&message, workspace),
             Some("response") => self.handle_response(&message, workspace),
