@@ -645,5 +645,8 @@
   "tasks.no_test_task": "No default test task is configured",
   "tasks.no_clean_task": "No clean task is configured",
   "tasks.no_rebuild_task": "No rebuild task is configured",
-  "tasks.no_last_task": "No task has run yet"
+  "tasks.no_last_task": "No task has run yet",
+  "debug.no_breakpoints": "There are no breakpoints in this file",
+  "debug.no_breakpoint_here": "There is no breakpoint on this line",
+  "debug.console_copied": "Debug console copied"
 }

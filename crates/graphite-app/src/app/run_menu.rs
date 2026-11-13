@@ -537,7 +537,7 @@ impl App {
             C::StepInto => self.run_ui_command("workbench.action.debug.stepInto"),
             C::StepOut => self.run_ui_command("workbench.action.debug.stepOut"),
             C::Continue => self.run_ui_command("workbench.action.debug.continue"),
-            C::ToggleBreakpoint => self.run_ui_command("graphite.debug.toggleBreakpoint"),
+            C::ToggleBreakpoint => self.run_ui_command("editor.debug.action.toggleBreakpoint"),
             C::ConditionalBreakpoint => {
                 self.begin_breakpoint_prompt(BreakpointPromptKind::Conditional)
             }

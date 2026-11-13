@@ -9,7 +9,7 @@ pub(super) const BINDINGS: &[(&str, &str, &str)] = &[
     ("f10", "workbench.action.debug.stepOver", "true"),
     ("f11", "workbench.action.debug.stepInto", "true"),
     ("shift+f11", "workbench.action.debug.stepOut", "true"),
-    ("f9", "graphite.debug.toggleBreakpoint", "true"),
+    ("f9", "editor.debug.action.toggleBreakpoint", "true"),
     ("ctrl+shift+x", "graphite.plugins.open", "true"),
     (
         "left",

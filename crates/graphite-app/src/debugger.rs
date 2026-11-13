@@ -422,6 +422,11 @@ impl DebugRuntime {
         Ok(())
     }
 
+    /// Collapses every expanded variable and scope in the variables tree.
+    pub fn collapse_variables(&mut self) {
+        self.expanded.clear();
+    }
+
     pub fn set_breakpoints(
         &mut self,
         source: &Path,

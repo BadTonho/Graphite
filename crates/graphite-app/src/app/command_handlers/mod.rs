@@ -6,6 +6,7 @@ use super::context_keys::WidgetKind;
 use super::*;
 pub(crate) mod configuration;
 mod changes;
+mod debug_extra;
 mod editor;
 mod explorer;
 mod files;
@@ -165,6 +166,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     history::register(registry);
     preferences::register(registry);
     task_commands::register(registry);
+    debug_extra::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [
