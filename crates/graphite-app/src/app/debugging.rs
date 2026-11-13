@@ -31,6 +31,24 @@ impl App {
             .first()
             .cloned()
             .ok_or("No launch configuration is available")?;
+        if self.debug_pending_launch.is_some() {
+            return Err("A debug session is already waiting for its preLaunchTask".into());
+        }
+        if let Some(label) = config.pre_launch_task.clone() {
+            // The session starts from `finish_debug_pre_launch` once the task succeeds.
+            self.task_file()?
+                .get(&label)
+                .ok_or_else(|| format!("preLaunchTask '{label}' was not found in tasks.json"))?;
+            self.run_task(&label)?;
+            self.debug_pending_launch = Some(config);
+            self.debug_panel_visible = true;
+            self.status = format!("Running preLaunchTask: {label}");
+            return Ok(());
+        }
+        self.begin_debug_session(config)
+    }
+
+    fn begin_debug_session(&mut self, config: crate::debugger::LaunchConfig) -> Result<(), String> {
         self.debug
             .start(config, self.tree.root())
             .map_err(|error| error.to_string())?;
@@ -38,7 +56,47 @@ impl App {
         Ok(())
     }
 
+    /// Called when a task ends. Starts the debug session that was waiting for it, but only if
+    /// the task succeeded; a failed `preLaunchTask` aborts the launch like in VS Code.
+    pub(crate) fn finish_debug_pre_launch(&mut self, result: &Result<i32, String>) {
+        let Some(config) = self.debug_pending_launch.take() else {
+            return;
+        };
+        let label = config.pre_launch_task.clone().unwrap_or_default();
+        match result {
+            Ok(0) => {
+                if let Err(error) = self.begin_debug_session(config) {
+                    self.status = error;
+                }
+            }
+            Ok(code) => {
+                self.status = format!(
+                    "Debugging not started: preLaunchTask '{label}' exited with code {code}"
+                )
+            }
+            Err(error) => {
+                self.status =
+                    format!("Debugging not started: preLaunchTask '{label}' failed: {error}")
+            }
+        }
+    }
+
+    /// Runs the `postDebugTask` of a session that has just ended.
+    pub(crate) fn run_pending_post_debug_task(&mut self) {
+        let Some(label) = self.debug.take_post_debug_task() else {
+            return;
+        };
+        if let Err(error) = self.run_task(&label) {
+            self.status = format!("postDebugTask '{label}' did not run: {error}");
+        }
+    }
+
     pub(crate) fn stop_debugging(&mut self) -> Result<(), String> {
+        if self.debug_pending_launch.take().is_some() {
+            // Stopping while the preLaunchTask runs abandons the launch.
+            self.cancel_task();
+            self.status = "Debugging cancelled".into();
+        }
         self.debug.stop().map_err(|error| error.to_string())
     }
 
@@ -389,5 +447,144 @@ pub(super) fn register(registry: &mut super::command_registry::CommandRegistry) 
                 handler: |_, _| Ok(()),
             })
             .expect("unique unavailable debug command");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::debugger::LaunchConfig;
+    use std::sync::{atomic::Ordering, Arc};
+
+    fn config(pre: Option<&str>) -> LaunchConfig {
+        serde_json::from_value(serde_json::json!({
+            "name": "x", "type": "t", "request": "launch", "preLaunchTask": pre,
+        }))
+        .unwrap()
+    }
+
+    fn trusted_app(dir: &crate::test_support::TempDir) -> App {
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.workspace_trust =
+            Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+        app.run_ui_command("graphite.security.trustWorkspace");
+        app
+    }
+
+    #[test]
+    fn a_successful_pre_launch_task_starts_the_session() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.debug_pending_launch = Some(config(Some("build")));
+        app.finish_debug_pre_launch(&Ok(0));
+        assert!(app.debug_pending_launch.is_none());
+        // The fixture declares no adapter, so reaching this error proves the launch was attempted.
+        assert!(
+            app.status.contains("adapter executable is not configured"),
+            "status was: {}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn a_failing_pre_launch_task_aborts_the_launch() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        for (result, expected) in [
+            (Ok(2), "exited with code 2"),
+            (Err("Task cancelled".to_owned()), "failed: Task cancelled"),
+        ] {
+            app.debug_pending_launch = Some(config(Some("build")));
+            app.finish_debug_pre_launch(&result);
+            assert!(app.debug_pending_launch.is_none());
+            assert!(
+                app.status.contains("Debugging not started"),
+                "{}",
+                app.status
+            );
+            assert!(app.status.contains("'build'"), "{}", app.status);
+            assert!(app.status.contains(expected), "{}", app.status);
+            assert!(app.debug.session.is_none());
+        }
+    }
+
+    #[test]
+    fn a_finished_task_unrelated_to_debugging_changes_nothing() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.status = "unchanged".into();
+        app.finish_debug_pre_launch(&Ok(0));
+        assert_eq!(app.status, "unchanged");
+    }
+
+    #[test]
+    fn starting_with_an_unknown_pre_launch_task_reports_it_and_does_not_wait() {
+        let dir = crate::test_support::TempDir::new();
+        std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
+        std::fs::write(
+            dir.path().join(".vscode/launch.json"),
+            r#"{"configurations":[{"name":"x","type":"t","request":"launch","preLaunchTask":"nope"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(".vscode/tasks.json"),
+            r#"{"tasks":[{"label":"build","type":"process","command":"echo"}]}"#,
+        )
+        .unwrap();
+        let mut app = trusted_app(&dir);
+        let error = app.start_debugging().unwrap_err();
+        assert!(
+            error.contains("'nope'") && error.contains("not found"),
+            "{error}"
+        );
+        assert!(app.debug_pending_launch.is_none());
+        assert!(app.task_cancel.is_none(), "no task was started");
+    }
+
+    #[test]
+    fn stopping_while_the_pre_launch_task_runs_abandons_the_launch() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        app.task_cancel = Some(cancel.clone());
+        app.debug_pending_launch = Some(config(Some("build")));
+        app.stop_debugging().unwrap();
+        assert!(app.debug_pending_launch.is_none());
+        assert!(cancel.load(Ordering::Acquire), "the task is cancelled");
+        assert_eq!(app.status, "Debugging cancelled");
+    }
+
+    #[test]
+    fn a_second_start_while_waiting_for_the_task_is_refused() {
+        let dir = crate::test_support::TempDir::new();
+        std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
+        std::fs::write(
+            dir.path().join(".vscode/launch.json"),
+            r#"{"configurations":[{"name":"x","type":"t","request":"launch"}]}"#,
+        )
+        .unwrap();
+        let mut app = trusted_app(&dir);
+        app.debug_pending_launch = Some(config(Some("build")));
+        assert!(app
+            .start_debugging()
+            .unwrap_err()
+            .contains("already waiting"));
+    }
+
+    #[test]
+    fn a_post_debug_task_that_cannot_run_is_reported() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.debug.queue_post_debug_task_for_test("clean");
+        app.run_pending_post_debug_task();
+        assert!(
+            app.status.contains("postDebugTask 'clean' did not run"),
+            "status was: {}",
+            app.status
+        );
+        // It is handed out only once.
+        app.status.clear();
+        app.run_pending_post_debug_task();
+        assert!(app.status.is_empty());
     }
 }

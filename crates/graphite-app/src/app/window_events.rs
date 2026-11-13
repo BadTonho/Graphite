@@ -62,6 +62,7 @@ impl ApplicationHandler<UserEvent> for App {
                 gpu.window.request_redraw();
             }
         }
+        self.run_pending_post_debug_task();
         let host_pending = self.extension_host.enabled
             && (self.extension_host.supervisor.as_ref().is_some_and(|host| {
                 host.state == graphite_extension_host::HostState::Starting
@@ -580,11 +581,12 @@ impl App {
                 self.task_cancel = None;
                 self.task_running_label = None;
                 self.task_diagnostics = diagnostics;
-                self.status = match result {
+                self.status = match &result {
                     Ok(0) => "Task completed successfully".into(),
                     Ok(code) => format!("Task exited with code {code}"),
                     Err(error) => format!("Task failed: {error}"),
                 };
+                self.finish_debug_pre_launch(&result);
                 if let Some(label) = self.task_restart_pending.take() {
                     if let Err(error) = self.run_task(&label) {
                         self.status = error;

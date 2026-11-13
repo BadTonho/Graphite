@@ -34,6 +34,12 @@ pub struct LaunchConfig {
     pub cwd: Option<PathBuf>,
     #[serde(default)]
     pub stop_on_entry: bool,
+    /// Label of a `tasks.json` task that must succeed before the session starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_launch_task: Option<String>,
+    /// Label of a `tasks.json` task that runs once the session has ended.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_debug_task: Option<String>,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
     /// Graphite's executable declaration for a local stdio adapter.
@@ -199,6 +205,10 @@ pub struct DebugRuntime {
     pending_variables: BTreeMap<i64, i64>,
     pending_evaluations: BTreeMap<i64, PendingEvaluation>,
     pending_breakpoints: BTreeMap<i64, PathBuf>,
+    /// `postDebugTask` of the running session, held until the session ends.
+    post_debug_task: Option<String>,
+    /// A `postDebugTask` whose session has ended and which has not been run yet.
+    ready_post_task: Option<String>,
 }
 
 impl Default for DebugState {
@@ -239,10 +249,28 @@ impl DebugRuntime {
         self.pending_evaluations.clear();
         self.clear_stop_state();
         self.output.clear();
+        self.post_debug_task = config.post_debug_task.clone();
         self.active_config = Some(config);
         self.state = DebugState::Initializing;
         self.session = Some(session);
         Ok(())
+    }
+
+    /// Marks the session as over: its `postDebugTask`, if any, becomes ready to run once.
+    fn end_session(&mut self) {
+        if let Some(task) = self.post_debug_task.take() {
+            self.ready_post_task = Some(task);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue_post_debug_task_for_test(&mut self, label: &str) {
+        self.ready_post_task = Some(label.to_owned());
+    }
+
+    /// The `postDebugTask` of a session that has just ended, handed out exactly once.
+    pub fn take_post_debug_task(&mut self) -> Option<String> {
+        self.ready_post_task.take()
     }
 
     pub fn poll(&mut self, workspace: &Path) -> Result<bool, DebugError> {
@@ -259,12 +287,14 @@ impl DebugRuntime {
                 AdapterEvent::Closed => {
                     self.session = None;
                     self.state = DebugState::Stopped;
+                    self.end_session();
                     break;
                 }
                 AdapterEvent::Failed(error) => {
                     self.state = DebugState::Failed(error.clone());
                     self.push_output("stderr", error);
                     self.session = None;
+                    self.end_session();
                     break;
                 }
                 AdapterEvent::Message(message) => self.handle_message(message, workspace)?,
@@ -277,6 +307,7 @@ impl DebugRuntime {
         {
             self.session = None;
             self.state = DebugState::Stopped;
+            self.end_session();
             redraw = true;
         }
         Ok(redraw)
@@ -289,6 +320,7 @@ impl DebugRuntime {
         self.state = DebugState::Stopped;
         self.active_config = None;
         self.clear_stop_state();
+        self.end_session();
         Ok(())
     }
 
@@ -657,7 +689,12 @@ impl DebugRuntime {
             self.adopt_exception_filters(&message["body"]);
             let config = self.active_config.as_ref().ok_or(DebugError::Stopped)?;
             let mut arguments = serde_json::to_value(config)?;
-            arguments.as_object_mut().unwrap().remove("adapter");
+            if let Some(object) = arguments.as_object_mut() {
+                // Graphite-side settings that the adapter must not see.
+                for key in ["adapter", "preLaunchTask", "postDebugTask"] {
+                    object.remove(key);
+                }
+            }
             if let Some(program) = config.program.as_ref() {
                 arguments["program"] = serde_json::json!(absolute(workspace, program));
             }
@@ -814,6 +851,7 @@ impl DebugRuntime {
             "terminated" | "exited" => {
                 self.state = DebugState::Stopped;
                 self.clear_stop_state();
+                self.end_session();
             }
             "output" => {
                 let body = &message["body"];
@@ -1181,6 +1219,106 @@ mod tests {
         (runtime, writer)
     }
 
+    fn config_with_tasks(pre: Option<&str>, post: Option<&str>) -> LaunchConfig {
+        LaunchConfig {
+            name: "x".into(),
+            adapter_type: "t".into(),
+            request: RequestKind::Launch,
+            program: None,
+            args: Vec::new(),
+            cwd: None,
+            stop_on_entry: false,
+            pre_launch_task: pre.map(str::to_owned),
+            post_debug_task: post.map(str::to_owned),
+            env: BTreeMap::new(),
+            adapter: None,
+            extra: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn launch_profiles_read_pre_launch_and_post_debug_tasks() {
+        let root = crate::test_support::TempDir::new();
+        std::fs::create_dir_all(root.path().join(".vscode")).unwrap();
+        std::fs::write(
+            root.path().join(".vscode/launch.json"),
+            r#"{"configurations":[
+                {"name":"a","type":"t","request":"launch","preLaunchTask":"build","postDebugTask":"clean"},
+                {"name":"b","type":"t","request":"launch"}
+            ]}"#,
+        )
+        .unwrap();
+        let configs = load_launch_configs(root.path()).unwrap();
+        assert_eq!(configs[0].pre_launch_task.as_deref(), Some("build"));
+        assert_eq!(configs[0].post_debug_task.as_deref(), Some("clean"));
+        assert_eq!(configs[1].pre_launch_task, None);
+        assert!(
+            !configs[0].extra.contains_key("preLaunchTask"),
+            "task fields are modelled, not passed through"
+        );
+    }
+
+    #[test]
+    fn the_adapter_never_sees_graphite_side_launch_settings() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.initialize_seq = Some(1);
+        runtime.active_config = Some(config_with_tasks(Some("build"), Some("clean")));
+        respond(&mut runtime, 1, serde_json::json!({}));
+        let launch = writer.last();
+        assert_eq!(launch["command"], "launch");
+        let arguments = launch["arguments"].as_object().unwrap();
+        for key in ["preLaunchTask", "postDebugTask", "adapter"] {
+            assert!(!arguments.contains_key(key), "{key} leaked to the adapter");
+        }
+        assert_eq!(arguments["name"], "x");
+    }
+
+    #[test]
+    fn the_post_debug_task_is_ready_once_when_the_session_is_stopped() {
+        let (mut runtime, _writer) = paused_runtime();
+        runtime.post_debug_task = Some("clean".into());
+        assert_eq!(runtime.take_post_debug_task(), None, "not while running");
+        runtime.stop().unwrap();
+        assert_eq!(runtime.take_post_debug_task().as_deref(), Some("clean"));
+        assert_eq!(runtime.take_post_debug_task(), None, "handed out once");
+        runtime.stop().unwrap();
+        assert_eq!(
+            runtime.take_post_debug_task(),
+            None,
+            "a second stop adds nothing"
+        );
+    }
+
+    #[test]
+    fn the_post_debug_task_is_ready_when_the_program_terminates() {
+        let (mut runtime, _writer) = paused_runtime();
+        runtime.post_debug_task = Some("clean".into());
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"event","event":"terminated"}),
+                Path::new("."),
+            )
+            .unwrap();
+        assert_eq!(runtime.take_post_debug_task().as_deref(), Some("clean"));
+    }
+
+    #[test]
+    fn the_post_debug_task_is_ready_when_the_adapter_connection_closes() {
+        // A detached session's channel has no sender, so polling sees the adapter close.
+        let (mut runtime, _writer) = paused_runtime();
+        runtime.post_debug_task = Some("clean".into());
+        runtime.poll(Path::new(".")).unwrap();
+        assert!(runtime.session.is_none());
+        assert_eq!(runtime.take_post_debug_task().as_deref(), Some("clean"));
+    }
+
+    #[test]
+    fn sessions_without_a_post_debug_task_hand_out_nothing() {
+        let (mut runtime, _writer) = paused_runtime();
+        runtime.stop().unwrap();
+        assert_eq!(runtime.take_post_debug_task(), None);
+    }
+
     #[test]
     fn a_stop_loads_the_first_cheap_scope_and_lists_its_variables() {
         let (runtime, writer) = paused_with_locals();
@@ -1332,18 +1470,7 @@ mod tests {
     fn exception_filters_come_from_the_adapter_and_are_sent_when_toggled() {
         let (mut runtime, writer) = paused_runtime();
         runtime.initialize_seq = Some(1);
-        runtime.active_config = Some(LaunchConfig {
-            name: "x".into(),
-            adapter_type: "t".into(),
-            request: RequestKind::Launch,
-            program: None,
-            args: Vec::new(),
-            cwd: None,
-            stop_on_entry: false,
-            env: BTreeMap::new(),
-            adapter: None,
-            extra: BTreeMap::new(),
-        });
+        runtime.active_config = Some(config_with_tasks(None, None));
         respond(
             &mut runtime,
             1,
