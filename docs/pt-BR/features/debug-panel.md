@@ -54,7 +54,18 @@ Quando a extensão que fornece o `type` não declara `program` mas tem um ponto 
 
 A espera termina com uma mensagem se a extensão falhar, não devolver adaptador ou não responder em 30 segundos. `Shift+F5` durante a espera abandona o lançamento; uma resposta tardia é ignorada.
 
-Limites conhecidos: os provedores `resolveDebugConfiguration` e `provideDebugConfigurations` não são chamados, então extensões que dependem deles para completar ou reescrever a configuração (muitas de linguagens) podem ainda não funcionar. Este caminho exige o runtime Code OSS empacotado; é coberto por testes unitários que fazem o papel do host no protocolo e por um teste de integração ignorado (`official_host_creates_a_debug_adapter_from_an_extension_factory`), mas não foi executado com extensões reais de terceiros.
+### Provedores de configuração
+
+O mesmo passo no extension host também executa os provedores de configuração de depuração da extensão, então vale para todo depurador cuja extensão esteja habilitada, aprovada e tenha código, com ou sem `program`:
+
+1. Depois da expansão das variáveis, cada provedor registrado para o `type` executa `resolveDebugConfiguration` e depois `resolveDebugConfigurationWithSubstitutedVariables`, na ordem de registro. Cada um recebe a configuração devolvida pelo anterior.
+2. A configuração resolvida substitui a do `launch.json` campo a campo. As configurações do Graphite (`adapter`, `preLaunchTask`, `postDebugTask`) são mantidas e um provedor não consegue alterá-las. Uma configuração que não pode ser lida é informada e nada inicia.
+3. Um provedor que devolve `undefined` cancela o lançamento (status: "Debugging cancelled by ..."); um que devolve `null` também abre o `launch.json`, como no VS Code.
+4. Se a extensão tem `program`, esse adaptador é usado, a menos que a fábrica da extensão devolva outro.
+
+Uma extensão não aprovada é ignorada quando traz um `program` (o depurador ainda inicia, sem seus provedores), e é informada quando o adaptador só pode ser criado em código.
+
+Limites conhecidos: `provideDebugConfigurations` (as sugestões de "adicionar configuração") e configurações dinâmicas não são chamados.
 
 ### Variáveis
 

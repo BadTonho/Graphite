@@ -163,18 +163,30 @@ impl App {
             let bundled_node = graphite_extension_host::code_oss::Session::bundled_runtime()
                 .map(|runtime| runtime.join(if cfg!(windows) { "node.exe" } else { "node" }))
                 .filter(|node| node.is_file());
-            return match adapter_command(
+            let adapter = adapter_command(
                 contribution,
                 &extension_dir,
                 debugger_platform(),
                 bundled_node.as_deref(),
-            )? {
-                Some(adapter) => {
+            )?;
+            // An approved extension with code gets to resolve the configuration (and, without a
+            // `program`, to create the adapter) in the extension host.
+            let runs_code = vsix.main.is_some() && super::plugins::vsix_extension_runnable(record);
+            return match (adapter, runs_code) {
+                (adapter, true) => {
+                    config.adapter = adapter;
+                    Ok(AdapterSource::Extension(vsix.id.clone()))
+                }
+                (Some(adapter), false) => {
                     config.adapter = Some(adapter);
                     Ok(AdapterSource::Ready)
                 }
-                None if vsix.main.is_some() => Ok(AdapterSource::Extension(vsix.id.clone())),
-                None => Err(format!(
+                (None, false) if vsix.main.is_some() => Err(format!(
+                    "The '{}' debugger in {} creates its adapter in code. Enable and approve the \
+                     extension in Plugins first",
+                    config.adapter_type, vsix.id
+                )),
+                (None, false) => Err(format!(
                     "The '{}' debugger in {} declares no program and the extension has no code to \
                      create an adapter",
                     config.adapter_type, vsix.id
@@ -519,17 +531,66 @@ mod tests {
         }
     }
 
+    /// Approves the installed extension, so it may run code in the extension host.
+    fn approve(app: &mut App) {
+        let version = app.plugins.installed[0].metadata.version().to_owned();
+        app.plugins.installed[0].trusted_version = Some(version);
+    }
+
     #[test]
     fn a_debugger_without_a_program_is_created_by_the_extension_code() {
         let dir = crate::test_support::TempDir::new();
         let mut app = app_with_debugger(&dir, true, None);
         set_main(&mut app, Some("extension.js"));
+        approve(&mut app);
         let mut config = launch("demo");
         assert_eq!(
             app.resolve_debug_adapter(&mut config).unwrap(),
             AdapterSource::Extension("pub.demo".into())
         );
         assert!(config.adapter.is_none());
+    }
+
+    #[test]
+    fn an_unapproved_extension_cannot_create_an_adapter_in_code() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = app_with_debugger(&dir, true, None);
+        set_main(&mut app, Some("extension.js"));
+        let error = app.resolve_debug_adapter(&mut launch("demo")).unwrap_err();
+        assert!(
+            error.contains("creates its adapter in code") && error.contains("approve"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_approved_extension_with_a_program_still_resolves_its_configuration_in_the_host() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = app_with_debugger(&dir, true, Some("bin/adapter"));
+        set_main(&mut app, Some("extension.js"));
+        approve(&mut app);
+        let mut config = launch("demo");
+        assert_eq!(
+            app.resolve_debug_adapter(&mut config).unwrap(),
+            AdapterSource::Extension("pub.demo".into())
+        );
+        assert!(
+            config.adapter.is_some(),
+            "the program is kept as the adapter unless the host returns another"
+        );
+    }
+
+    #[test]
+    fn an_unapproved_extension_with_a_program_still_starts_without_its_providers() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = app_with_debugger(&dir, true, Some("bin/adapter"));
+        set_main(&mut app, Some("extension.js"));
+        let mut config = launch("demo");
+        assert_eq!(
+            app.resolve_debug_adapter(&mut config).unwrap(),
+            AdapterSource::Ready
+        );
+        assert!(config.adapter.is_some());
     }
 
     #[test]

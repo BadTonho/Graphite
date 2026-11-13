@@ -49,6 +49,33 @@ pub(super) fn adapter_request(
     }))
 }
 
+/// `base` with the configuration an extension resolved laid over it: resolved fields win, and
+/// fields the resolver did not mention (including Graphite's own `adapter`, `server` and task
+/// settings, which the extension never sees) are kept.
+pub(super) fn apply_resolved_configuration(
+    base: &LaunchConfig,
+    resolved: &serde_json::Map<String, Value>,
+) -> Result<LaunchConfig> {
+    let mut merged = serde_json::to_value(base)
+        .map_err(|error| error.to_string())?
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    for (key, value) in resolved {
+        // The adapter and task fields are Graphite's; a provider cannot change them.
+        if !matches!(key.as_str(), "adapter" | "preLaunchTask" | "postDebugTask") {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    let mut config: LaunchConfig = serde_json::from_value(Value::Object(merged))
+        .map_err(|error| format!("The resolved debug configuration is invalid: {error}"))?;
+    config.adapter = base.adapter.clone();
+    config.server = base.server.clone();
+    config.pre_launch_task = base.pre_launch_task.clone();
+    config.post_debug_task = base.post_debug_task.clone();
+    Ok(config)
+}
+
 impl App {
     /// Asks the extension `owner` to create the adapter for `config`. The session starts from
     /// [`Self::finish_vsix_debug_adapter`] when the extension host answers.
@@ -140,7 +167,8 @@ impl App {
         Ok(())
     }
 
-    /// Handles the host's answer: starts the session with the adapter the extension described.
+    /// Handles the host's answer: applies the configuration the extension resolved and starts the
+    /// session with the adapter it described (or the one Graphite already found).
     pub(super) fn finish_vsix_debug_adapter(&mut self, runtime: &mut Runtime, event: &Value) {
         let Some(pending) = runtime.debug_adapter.take() else {
             // The request was cancelled before the answer arrived.
@@ -148,18 +176,42 @@ impl App {
         };
         if let Some(error) = event["error"].as_str() {
             self.status = format!(
-                "{} could not create the debug adapter: {error}",
+                "{} could not prepare the debug session: {error}",
                 pending.owner
             );
             return;
         }
+        let result = &event["result"];
+        if result["cancelled"].as_bool() == Some(true) {
+            self.status = format!("Debugging cancelled by {}", pending.owner);
+            if result["openLaunchJson"].as_bool() == Some(true) {
+                self.open_debug_configuration(false);
+            }
+            return;
+        }
         let mut config = pending.config;
-        match adapter_from_descriptor(&event["result"]) {
-            Ok(AdapterEndpoint::Command(command)) => config.adapter = Some(command),
-            Ok(AdapterEndpoint::Server(server)) => config.server = Some(server),
-            Err(error) => {
-                self.status = format!("{}: {error}", pending.owner);
+        if let Some(resolved) = result["configuration"].as_object() {
+            match apply_resolved_configuration(&config, resolved) {
+                Ok(resolved) => config = resolved,
+                Err(error) => {
+                    self.status = format!("{}: {error}", pending.owner);
+                    return;
+                }
+            }
+        }
+        if result["descriptor"].is_null() {
+            if config.adapter.is_none() && config.server.is_none() {
+                self.status = format!("{} did not return a debug adapter", pending.owner);
                 return;
+            }
+        } else {
+            match adapter_from_descriptor(&result["descriptor"]) {
+                Ok(AdapterEndpoint::Command(command)) => config.adapter = Some(command),
+                Ok(AdapterEndpoint::Server(server)) => config.server = Some(server),
+                Err(error) => {
+                    self.status = format!("{}: {error}", pending.owner);
+                    return;
+                }
             }
         }
         if let Err(error) = self.start_resolved_debug_session(config) {
@@ -327,7 +379,10 @@ mod tests {
         app.request_vsix_debug_adapter(config("python"), OWNER)
             .unwrap();
         app.poll_vsix();
-        answer(&host, json!({"result": {"type": "server", "port": port}}));
+        answer(
+            &host,
+            json!({"result": {"descriptor": {"type": "server", "port": port}}}),
+        );
         app.poll_vsix();
 
         assert!(!app.vsix_debug_adapter_pending());
@@ -363,14 +418,14 @@ mod tests {
         app.poll_vsix();
         answer(
             &host,
-            json!({"result": {"type": "executable", "command": "graphite-no-such-adapter-binary"}}),
+            json!({"result": {"descriptor": {"type": "executable", "command": "graphite-no-such-adapter-binary"}}}),
         );
         app.poll_vsix();
         // The command does not exist, so starting it fails, but only after the descriptor was used.
         assert!(!app.vsix_debug_adapter_pending());
         assert!(app.debug.session.is_none());
         assert!(
-            !app.status.contains("did not return") && !app.status.contains("could not create"),
+            !app.status.contains("did not return") && !app.status.contains("could not prepare"),
             "{}",
             app.status
         );
@@ -381,15 +436,15 @@ mod tests {
         for (body, expected) in [
             (
                 json!({"error": "Error: boom"}),
-                "could not create the debug adapter: Error: boom",
+                "could not prepare the debug session: Error: boom",
             ),
             (json!({"result": null}), "did not return a debug adapter"),
             (
-                json!({"result": {"type": "implementation"}}),
+                json!({"result": {"descriptor": {"type": "implementation"}}}),
                 "inside the extension host are not supported yet",
             ),
             (
-                json!({"result": {"type": "server", "port": 0}}),
+                json!({"result": {"descriptor": {"type": "server", "port": 0}}}),
                 "valid port",
             ),
         ] {
@@ -419,7 +474,7 @@ mod tests {
         app.poll_vsix();
         answer(
             &host,
-            json!({"result": {"type": "server", "host": "192.0.2.1", "port": 9}}),
+            json!({"result": {"descriptor": {"type": "server", "host": "192.0.2.1", "port": 9}}}),
         );
         app.poll_vsix();
         assert!(app.debug.session.is_none());
@@ -438,7 +493,10 @@ mod tests {
         assert!(!app.vsix_debug_adapter_pending());
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        answer(&host, json!({"result": {"type": "server", "port": port}}));
+        answer(
+            &host,
+            json!({"result": {"descriptor": {"type": "server", "port": port}}}),
+        );
         app.poll_vsix();
         assert!(
             app.debug.session.is_none(),
@@ -465,5 +523,132 @@ mod tests {
         assert!(app
             .status
             .contains("did not create the debug adapter in time"));
+    }
+
+    #[test]
+    fn a_resolved_configuration_replaces_fields_and_keeps_graphite_settings() {
+        let mut base = config("python");
+        base.adapter = Some(crate::debugger::AdapterCommand {
+            command: "adapter".into(),
+            ..Default::default()
+        });
+        let resolved = json!({
+            "name": "Run it", "type": "python", "request": "attach",
+            "program": "/resolved/app.py", "justMyCode": false,
+            "preLaunchTask": "evil", "adapter": {"command": "evil"},
+        });
+        let merged = apply_resolved_configuration(&base, resolved.as_object().unwrap()).unwrap();
+        assert_eq!(merged.request, crate::debugger::RequestKind::Attach);
+        assert_eq!(merged.program, Some("/resolved/app.py".into()));
+        assert_eq!(merged.extra["justMyCode"], false);
+        assert_eq!(merged.args, ["${fileBasename}"], "unmentioned fields stay");
+        assert_eq!(merged.pre_launch_task.as_deref(), Some("build"));
+        assert_eq!(
+            merged.adapter.unwrap().command,
+            std::path::PathBuf::from("adapter"),
+            "a provider cannot swap the adapter"
+        );
+    }
+
+    #[test]
+    fn an_invalid_resolved_configuration_is_reported() {
+        let base = config("python");
+        let bad = json!({"request": 5});
+        let error = apply_resolved_configuration(&base, bad.as_object().unwrap()).unwrap_err();
+        assert!(
+            error.contains("resolved debug configuration is invalid"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_session_starts_with_the_configuration_the_providers_resolved() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
+        app.poll_vsix();
+        answer(
+            &host,
+            json!({"result": {
+                "configuration": {
+                    "name": "Run it", "type": "python", "request": "launch",
+                    "program": "/resolved/app.py", "justMyCode": false
+                },
+                "descriptor": {"type": "server", "port": port}
+            }}),
+        );
+        app.poll_vsix();
+        assert!(app.debug.session.is_some(), "status: {}", app.status);
+        let active = app.debug.active_config.clone().unwrap();
+        assert_eq!(active.program, Some("/resolved/app.py".into()));
+        assert_eq!(active.extra["justMyCode"], false);
+        assert_eq!(active.pre_launch_task.as_deref(), Some("build"));
+        app.debug.stop().unwrap();
+    }
+
+    #[test]
+    fn a_configuration_only_answer_uses_the_adapter_graphite_already_found() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut launch = config("python");
+        launch.server = Some(crate::debugger::AdapterServer {
+            host: "127.0.0.1".into(),
+            port: listener.local_addr().unwrap().port(),
+        });
+        app.request_vsix_debug_adapter(launch, OWNER).unwrap();
+        app.poll_vsix();
+        answer(
+            &host,
+            json!({"result": {
+                "configuration": {"name": "Run it", "type": "python", "request": "launch", "stopOnEntry": true},
+                "descriptor": null
+            }}),
+        );
+        app.poll_vsix();
+        assert!(app.debug.session.is_some(), "status: {}", app.status);
+        assert!(app.debug.active_config.clone().unwrap().stop_on_entry);
+        app.debug.stop().unwrap();
+    }
+
+    #[test]
+    fn a_provider_that_cancels_the_launch_stops_it_with_a_message() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
+        app.poll_vsix();
+        answer(
+            &host,
+            json!({"result": {"cancelled": true, "openLaunchJson": false}}),
+        );
+        app.poll_vsix();
+        assert!(!app.vsix_debug_adapter_pending());
+        assert!(app.debug.session.is_none());
+        assert_eq!(app.status, "Debugging cancelled by pub.coder");
+    }
+
+    #[test]
+    fn an_invalid_resolved_configuration_ends_the_launch_with_a_message() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
+        app.poll_vsix();
+        answer(
+            &host,
+            json!({"result": {"configuration": {"request": 5}, "descriptor": {"type": "server", "port": 9}}}),
+        );
+        app.poll_vsix();
+        assert!(app.debug.session.is_none());
+        assert!(
+            app.status
+                .contains("resolved debug configuration is invalid"),
+            "{}",
+            app.status
+        );
     }
 }

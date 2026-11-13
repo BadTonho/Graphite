@@ -54,7 +54,18 @@ When the extension that provides the `type` declares no `program` but has a code
 
 The wait ends with a message if the extension fails, returns no adapter, or does not answer within 30 seconds. `Shift+F5` while waiting abandons the launch; a late answer is ignored.
 
-Known limits: `resolveDebugConfiguration` and `provideDebugConfigurations` providers are not called, so extensions that rely on them to fill in or rewrite a configuration (many language extensions do) may not work yet. This path needs the packaged Code OSS runtime; it is covered by unit tests that play the host's side of the protocol and by an ignored integration test (`official_host_creates_a_debug_adapter_from_an_extension_factory`), but it has not been run against real third-party extensions.
+### Configuration providers
+
+The same extension-host step also runs the extension's debug configuration providers, so it applies to every debugger whose extension is enabled, approved and has code, with or without a `program`:
+
+1. After the variables are expanded, each provider registered for the `type` runs `resolveDebugConfiguration`, then `resolveDebugConfigurationWithSubstitutedVariables`, in registration order. Each receives the configuration the previous one returned.
+2. The resolved configuration replaces the one from `launch.json` field by field. Graphite's own settings (`adapter`, `preLaunchTask`, `postDebugTask`) are kept and cannot be changed by a provider. A configuration that does not parse is reported and nothing starts.
+3. A provider that returns `undefined` cancels the launch (status: "Debugging cancelled by ..."); one that returns `null` also opens `launch.json`, like VS Code.
+4. If the extension has a `program`, that adapter is used unless the extension's factory returns another.
+
+An extension that is not approved is skipped when it ships a `program` (the debugger still starts, without its providers), and reported when its adapter can only be created in code.
+
+Known limits: `provideDebugConfigurations` (the "add configuration" suggestions) and dynamic configurations are not called.
 
 ### Variables
 

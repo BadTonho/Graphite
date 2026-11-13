@@ -93,7 +93,7 @@ impl Drop for Runtime {
     }
 }
 
-fn eligible(record: &Installed) -> bool {
+pub(crate) fn eligible(record: &Installed) -> bool {
     matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_some())
         && record.enabled
         && record.trusted_version.as_deref() == Some(record.metadata.version())

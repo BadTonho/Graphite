@@ -11,7 +11,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { VSBuffer } from './code/out/vs/base/common/buffer.js';
-import { CancellationTokenSource } from './code/out/vs/base/common/cancellation.js';
+import { CancellationToken, CancellationTokenSource } from './code/out/vs/base/common/cancellation.js';
 import { URI } from './code/out/vs/base/common/uri.js';
 import { PersistentProtocol } from './code/out/vs/base/parts/ipc/common/ipc.net.js';
 import { NodeSocket } from './code/out/vs/base/parts/ipc/node/ipc.net.js';
@@ -33,6 +33,8 @@ const documents = new Map();
 let activeEditor = null;
 // Debug adapter factories extensions registered, by debug type, so Graphite can ask for one.
 const debugFactories = new Map();
+// Debug configuration providers by handle: { type, hasResolve, hasResolve2 }.
+const debugConfigProviders = new Map();
 let workspaceRootUri;
 
 function send(message) {
@@ -301,11 +303,18 @@ function trackDebugFactory(method, args) {
         for (const [type, handle] of debugFactories) {
             if (handle === args[0]) debugFactories.delete(type);
         }
+    } else if (method === '$registerDebugConfigurationProvider') {
+        // (type, triggerKind, hasProvide, hasResolve, hasResolve2, handle)
+        debugConfigProviders.set(args[5], { type: args[0], hasResolve: !!args[3], hasResolve2: !!args[4] });
+    } else if (method === '$unregisterDebugConfigurationProvider') {
+        debugConfigProviders.delete(args[0]);
     }
 }
 
-// Activates the extension that provides `debugType`, runs its adapter factory and returns the
-// descriptor (executable, server, ...) for Graphite to start.
+// Prepares a debug session for Graphite: activates the extension that provides `debugType`, lets
+// its configuration providers resolve the configuration, and asks its adapter factory (if any)
+// for the adapter descriptor. Replies with `{ configuration, descriptor }`, or `{ cancelled }`
+// when a provider cancels the launch (VS Code's `undefined` / `null` results).
 async function provideDebugAdapter({ id, owner, debugType, session }) {
     try {
         await synchronization;
@@ -315,16 +324,26 @@ async function provideDebugAdapter({ id, owner, debugType, session }) {
         if (!activated) {
             throw new Error(`Could not activate ${owner}. Check its entry point, dependencies and supported Code OSS version.`);
         }
-        const handle = debugFactories.get(debugType);
-        if (handle === undefined) {
-            throw new Error(`${owner} did not register a debug adapter factory for '${debugType}'`);
+        const debug = rpc.getProxy(ExtHostContext.ExtHostDebugService);
+        const folderUri = workspaceRootUri ? URI.parse(workspaceRootUri) : undefined;
+        let configuration = session.configuration;
+        for (const [method, flag] of [['$resolveDebugConfiguration', 'hasResolve'],
+                ['$resolveDebugConfigurationWithSubstitutedVariables', 'hasResolve2']]) {
+            for (const [handle, provider] of debugConfigProviders) {
+                if (provider.type !== debugType || !provider[flag]) continue;
+                const resolved = await debug[method](handle, folderUri, configuration, CancellationToken.None);
+                if (resolved === undefined || resolved === null) {
+                    send({ type: 'result', id, result: { cancelled: true, openLaunchJson: resolved === null } });
+                    return;
+                }
+                configuration = resolved;
+            }
         }
-        const descriptor = await rpc.getProxy(ExtHostContext.ExtHostDebugService).$provideDebugAdapter(handle, {
-            id: randomUUID(), type: session.type, name: session.name,
-            folderUri: workspaceRootUri ? URI.parse(workspaceRootUri) : undefined,
-            configuration: session.configuration,
+        const factory = debugFactories.get(debugType);
+        const descriptor = factory === undefined ? null : await debug.$provideDebugAdapter(factory, {
+            id: randomUUID(), type: session.type, name: session.name, folderUri, configuration,
         });
-        send({ type: 'result', id, result: descriptor ?? null });
+        send({ type: 'result', id, result: { configuration, descriptor: descriptor ?? null } });
     } catch (error) {
         send({ type: 'result', id, error: String(error?.message ?? error) });
     }
