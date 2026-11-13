@@ -11,7 +11,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Storage | Extension global and workspace storage. |
 | Prompts | `showInputBox`, `showQuickPick`, and `showInformationMessage` with action buttons. |
 | Edits | `TextEditor.edit`, `workspace.applyEdit`, and documents opened or shown in the editor. |
-| Language providers | Hover, completion, document formatting, diagnostics, definition, declaration, type definition, implementation, references, document symbols, code actions, rename, and signature help. Also range formatting (**Format Selection**, the cursor line when nothing is selected), inlay hints, document highlights and folding ranges; the last three are requested automatically (see below). |
+| Language providers | Hover, completion, document formatting, diagnostics, definition, declaration, type definition, implementation, references, document symbols, code actions, rename, and signature help. Also range formatting (**Format Selection**, the cursor line when nothing is selected), inlay hints, document highlights and folding ranges; the last three are requested automatically (see below). Selection ranges drive **Expand Selection** in place of the syntax-tree expansion when an extension provides them. |
 | Links | `window.openUri` opens `https://` links in the default browser; other schemes are refused. `env.asExternalUri` returns the link unchanged. |
 | Output | `window.createOutputChannel` writes to a log file. Showing a channel opens its log in a read-only view that refreshes while the extension writes. |
 | Status bar | `window.createStatusBarItem` items appear at the end of the status bar with their text. Clicking an item runs its command: an extension command if registered, otherwise a Graphite command. |
@@ -42,7 +42,7 @@ Keybindings, grammars and icon themes are listed in the package but not applied 
 
 ## Not yet
 
-- Language providers beyond the list above (on-type formatting, semantic tokens, code lenses, selection ranges, call and type hierarchies, links and colors). Code actions that only run an extension command, and file operations inside a rename, are not applied.
+- Language providers beyond the list above (on-type formatting, semantic tokens, code lenses, call and type hierarchies, links and colors). Code actions that only run an extension command, and file operations inside a rename, are not applied.
 - Extension-owned pseudoterminals, terminal data events, tasks, debugging, source control, and virtual file systems (`registerFileSystemProvider`).
 - Several webview panels, `asWebviewUri`, and `localResourceRoots`.
 - Custom editors and notebook kernels.

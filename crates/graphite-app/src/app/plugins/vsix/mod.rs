@@ -17,6 +17,7 @@ pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
+mod selection_ranges;
 mod storage;
 mod terminals;
 mod testing;

@@ -1,5 +1,6 @@
 use super::*;
 use graphite_text::Selection;
+use std::ops::Range;
 
 impl App {
     pub(crate) fn smart_select(&mut self, expand: bool) {
@@ -38,6 +39,11 @@ impl App {
             }
             return;
         }
+        // An extension's selection range provider answers asynchronously; its answer is applied
+        // by `apply_smart_range` like the syntax-tree result below.
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::SelectionRanges) {
+            return;
+        }
         self.refresh_document_highlights(self.command_document());
         let before = self.editor().selection().unwrap_or(Selection {
             anchor: self.editor().cursor().char_idx,
@@ -57,19 +63,25 @@ impl App {
             .map(|range| rope.byte_to_char(range.start)..rope.byte_to_char(range.end))
             .find(|range| range.start < start || range.end > end);
         if let Some(next) = next {
-            self.editor_groups
-                .active_view_mut()
-                .smart_selection_history
-                .push(before);
-            self.editor_mut().set_selection(next.start, next.end);
-            self.command_view_mut().smart_selection_guard = Some((
-                self.command_document(),
-                guard.1,
-                Selection {
-                    anchor: next.start,
-                    head: next.end,
-                },
-            ));
+            self.apply_smart_range(before, next);
         }
+    }
+
+    /// Selects `next`, remembering `before` so shrinking can go back to it.
+    pub(crate) fn apply_smart_range(&mut self, before: Selection, next: Range<usize>) {
+        let revision = self.documents[self.command_document()].buffer.revision();
+        self.editor_groups
+            .active_view_mut()
+            .smart_selection_history
+            .push(before);
+        self.editor_mut().set_selection(next.start, next.end);
+        self.command_view_mut().smart_selection_guard = Some((
+            self.command_document(),
+            revision,
+            Selection {
+                anchor: next.start,
+                head: next.end,
+            },
+        ));
     }
 }

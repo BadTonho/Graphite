@@ -23,6 +23,8 @@ pub(crate) enum Feature {
     DocumentHighlights,
     /// Code folding regions. Requested automatically.
     FoldingRanges,
+    /// Expand Selection: the enclosing ranges of the cursor.
+    SelectionRanges,
 }
 
 struct Provider {
@@ -202,6 +204,10 @@ impl App {
             Feature::InlayHints | Feature::DocumentHighlights | Feature::FoldingRanges => {
                 return Ok(false)
             }
+            Feature::SelectionRanges => (
+                "$provideSelectionRanges",
+                json!([handle, uri, [position]]),
+            ),
             Feature::Definition => ("$provideDefinition", json!([handle, uri, position])),
             Feature::Declaration => ("$provideDeclaration", json!([handle, uri, position])),
             Feature::Implementation => ("$provideImplementation", json!([handle, uri, position])),
@@ -343,6 +349,7 @@ impl App {
                 self.quick_fix_index = 0;
                 self.quick_fix_visible = true;
             }
+            Feature::SelectionRanges => self.apply_vsix_selection_ranges(&request.document, result),
             Feature::Rename => self.finish_vsix_rename(result),
             Feature::SignatureHelp => {
                 self.handle_lsp_query("signatureHelp", language_results::signature_help(result));
@@ -432,6 +439,9 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerSelectionRangeProvider") => {
+                Feature::SelectionRanges
+            }
             ("MainThreadLanguageFeatures", "$registerFoldingRangeProvider") => {
                 Feature::FoldingRanges
             }

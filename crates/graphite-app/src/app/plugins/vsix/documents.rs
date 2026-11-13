@@ -93,6 +93,27 @@ pub(super) fn position(text: &str, char_offset: usize) -> Position {
     position
 }
 
+/// The char offset of a 0-based line and UTF-16 column, clamped to the end of that line (or of
+/// the text, for a line past the end). The inverse of [`position`].
+pub(super) fn char_offset(text: &str, line: u32, utf16_column: u32) -> usize {
+    let mut offset = 0;
+    let mut current = 0;
+    let mut column = 0;
+    for ch in text.chars() {
+        if current == line {
+            if ch == '\n' || column >= utf16_column {
+                return offset;
+            }
+            column += ch.len_utf16() as u32;
+        }
+        if ch == '\n' {
+            current += 1;
+        }
+        offset += 1;
+    }
+    offset
+}
+
 pub(super) fn text_edit(edit: &Value) -> Result<TextEdit> {
     let range = &edit["range"];
     let coordinate = |name| {
