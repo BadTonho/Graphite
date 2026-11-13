@@ -25,6 +25,9 @@ pub(crate) struct CellState {
     pub selection: SelectionState,
     pub input_collapsed: bool,
     pub output_collapsed: bool,
+    /// Counts changes to the outputs, so the drawn form is rebuilt only when they change.
+    outputs_rev: u64,
+    rendered: std::cell::RefCell<Option<((u64, usize), std::sync::Arc<Vec<super::rich::Block>>)>>,
 }
 
 impl CellState {
@@ -37,11 +40,35 @@ impl CellState {
             selection: SelectionState::default(),
             input_collapsed: false,
             output_collapsed: false,
+            outputs_rev: 0,
+            rendered: Default::default(),
         }
     }
 
     pub(crate) fn text(&self) -> String {
         self.buffer.text()
+    }
+
+    /// Records that the outputs changed.
+    pub(super) fn touch_outputs(&mut self) {
+        self.outputs_rev += 1;
+    }
+
+    /// The outputs as they are drawn: text lines and decoded images. Built on first use and
+    /// again after the outputs change.
+    pub(crate) fn blocks(&self) -> std::sync::Arc<Vec<super::rich::Block>> {
+        let key = (self.outputs_rev, self.cell.outputs.len());
+        if let Some((cached, blocks)) = self.rendered.borrow().as_ref() {
+            if *cached == key {
+                return blocks.clone();
+            }
+        }
+        let blocks = std::sync::Arc::new(super::rich::blocks(
+            &self.cell.outputs,
+            &super::rich::Limits::default(),
+        ));
+        *self.rendered.borrow_mut() = Some((key, blocks.clone()));
+        blocks
     }
 
     /// The cell with its current text.
@@ -455,6 +482,7 @@ impl Session {
                 execution_count: state.cell.execution_count,
             });
             state.cell.set_kind(kind);
+            state.touch_outputs();
         }
         if !group.is_empty() {
             self.record(Entry::Group(group));
@@ -615,6 +643,7 @@ impl Session {
                         ),
                     };
                     cell.kind = kind;
+                    self.cells[index].touch_outputs();
                     self.focus = index;
                     current
                 }

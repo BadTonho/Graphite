@@ -2,6 +2,7 @@
 
 use super::editor_groups::GroupRect;
 use super::*;
+use crate::notebook::rich::Block;
 use crate::notebook::{self, CellKind, Mode};
 
 fn tint(dark: u32, light: u32) -> Color {
@@ -123,16 +124,31 @@ impl App {
             // The outputs.
             if cell.output_lines > 0 {
                 let output_y = y + cell.output_top(lh) - cell.top;
-                for (line, content) in notebook::output_lines(&state.cell.outputs).iter().enumerate() {
-                    r.draw_text(
-                        &content.chars().take(columns).collect::<String>(),
-                        text_left,
-                        output_y + lh * line as f32,
-                        dim,
-                    );
+                if state.output_collapsed {
+                    r.draw_text(&format!("… {}", self.t("notebook.output_collapsed")), text_left, output_y, dim);
+                } else {
+                    let mut row = 0usize;
+                    for block in state.blocks().iter() {
+                        let rows = block.rows(lh);
+                        match block {
+                            Block::Lines(lines) => {
+                                for content in lines {
+                                    let line_y = output_y + lh * row as f32;
+                                    row += 1;
+                                    // Long outputs are only drawn where they can be seen.
+                                    if line_y + lh < body_top || line_y > body_top + body_height {
+                                        continue;
+                                    }
+                                    r.draw_text(&content.chars().take(columns).collect::<String>(), text_left, line_y, dim);
+                                }
+                            }
+                            Block::Image(image) => {
+                                r.draw_image(&image.image, text_left, output_y + lh * row as f32, image.width, image.height);
+                                row += rows;
+                            }
+                        }
+                    }
                 }
-            } else if state.output_collapsed && !state.cell.outputs.is_empty() && state.cell.kind == CellKind::Code {
-                r.draw_text(&format!("… {}", self.t("notebook.output_collapsed")), text_left, y + cell.output_top(lh) - cell.top, dim);
             }
         }
         r.set_clip(None);

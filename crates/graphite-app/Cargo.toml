@@ -37,7 +37,8 @@ ring = "0.17"
 sysinfo = "0.40"
 regex = "1"
 thiserror = "2"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+base64 = "0.22"
 wry = "0.57.1"
 rfd = { version = "0.16.0", default-features = false, features = ["gtk3"] }
 

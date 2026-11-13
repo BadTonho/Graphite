@@ -173,6 +173,7 @@ impl Session {
         for &index in indices {
             if let Some(state) = self.cells.get_mut(index) {
                 state.cell.outputs.clear();
+                state.touch_outputs();
                 state.cell.execution_count = None;
             }
         }
@@ -234,9 +235,10 @@ impl Session {
                 self.kernel.run_states.insert(uid, RunState::Running);
                 self.kernel.displays.retain(|_, owner| *owner != uid);
                 self.kernel.clear_pending.remove(&uid);
-                let cell = &mut self.cells[index].cell;
-                cell.execution_count = Some(count);
-                cell.outputs.clear();
+                let state = &mut self.cells[index];
+                state.cell.execution_count = Some(count);
+                state.cell.outputs.clear();
+                state.touch_outputs();
                 true
             }
             KernelEvent::Output { parent, mut output } => {
@@ -254,8 +256,10 @@ impl Session {
                 }
                 if self.kernel.clear_pending.remove(&uid) {
                     self.cells[index].cell.outputs.clear();
+                    self.cells[index].touch_outputs();
                 }
                 push_output(&mut self.cells[index].cell.outputs, output);
+                self.cells[index].touch_outputs();
                 true
             }
             KernelEvent::UpdateDisplay { display_id, mut output, .. } => {
@@ -279,6 +283,7 @@ impl Session {
                     Some(existing) => *existing = output,
                     None => state.cell.outputs.push(output),
                 }
+                state.touch_outputs();
                 true
             }
             KernelEvent::ClearOutput { parent, wait } => {
@@ -290,6 +295,7 @@ impl Session {
                     self.kernel.clear_pending.insert(uid);
                 } else {
                     self.cells[index].cell.outputs.clear();
+                    self.cells[index].touch_outputs();
                 }
                 true
             }
@@ -643,6 +649,34 @@ mod tests {
         assert!(matches!(new_commands.recv().unwrap(), Command::Kill));
     }
 
+
+    #[test]
+    fn the_drawn_outputs_are_built_once_and_rebuilt_when_they_change() {
+        let (mut session, scripted) = running(&["x"]);
+        session.run_cells(&[0]).unwrap();
+        let id = sent_ids(&scripted).remove(0);
+        feed(&mut session, &scripted, input(&id, 1));
+        feed(&mut session, &scripted, stream(&id, "stdout", "one\n"));
+        let first = session.cells[0].blocks();
+        let again = session.cells[0].blocks();
+        assert!(std::sync::Arc::ptr_eq(&first, &again));
+        feed(&mut session, &scripted, stream(&id, "stdout", "two\n"));
+        let changed = session.cells[0].blocks();
+        assert!(!std::sync::Arc::ptr_eq(&first, &changed));
+        let super::super::rich::Block::Lines(lines) = &changed[0] else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines, &["one", "two"]);
+        // Clearing and changing the kind rebuild it too.
+        session.clear_outputs(&[0]);
+        assert!(session.cells[0].blocks().is_empty());
+        session.cells[0].cell.outputs = vec![json!({"output_type": "stream", "name": "stdout", "text": "x\n"})];
+        assert_eq!(session.cells[0].blocks().len(), 1);
+        session.set_kind(CellKind::Markdown);
+        assert!(session.cells[0].blocks().is_empty());
+        session.undo();
+        assert_eq!(session.cells[0].blocks().len(), 1);
+    }
     #[test]
     fn info_events_report_the_language_without_asking_for_a_redraw() {
         let (mut session, scripted) = running(&["a"]);

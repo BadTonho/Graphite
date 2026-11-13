@@ -69,4 +69,21 @@ A interrupção usa o evento de interrupção do kernel no Windows e SIGINT nos 
 
 Se o kernel terminar sozinho, a faixa avisa que parou e a próxima execução inicia um novo. Fechar o notebook encerra o kernel dele. Se o arquivo for recarregado do disco com células em execução, as execuções em andamento são descartadas e o kernel é mantido.
 
-As saídas aparecem como texto por enquanto: imagens e saídas ricas aparecem na forma de texto ou não aparecem.
+
+## Saídas
+
+Cada saída é desenhada sob a sua célula, na ordem em que o kernel a produziu.
+
+| Saída | Como aparece |
+| --- | --- |
+| Fluxos de texto (`stdout`, `stderr`) | Como texto; pedaços do mesmo fluxo são juntados, e um retorno de carro reescreve a linha (barras de progresso). |
+| Erros | O traceback, sem as cores do terminal. |
+| Imagens (`image/png`, `image/jpeg`) | Como imagem, reduzida para caber numa caixa de 900 x 480 sem ampliar. Um tamanho nos metadados da saída é usado quando existe. |
+| Resultados e exibições com outros dados | O primeiro destes que existir: o texto simples; o HTML lido como texto (tags removidas, listas com marcadores, tabelas alinhadas em colunas, scripts e estilos removidos); o código Markdown ou LaTeX; JSON formatado. |
+| Qualquer outra coisa (por exemplo só SVG) | Uma linha com os tipos de dados que não foram mostrados. |
+
+Limites impedem que uma saída descontrolada trave a janela: no máximo 5000 linhas por célula, 10000 caracteres por linha, uma imagem de no máximo 25 MB em base64 e 40 milhões de pixels, e as imagens são reduzidas para no máximo 2000 pixels de lado para o desenho. A saída que passa de um limite é cortada e diz quanto ficou de fora; uma imagem acima do limite é trocada por uma linha dizendo o motivo. O arquivo do notebook não é cortado: tudo o que o kernel enviou é salvo.
+
+As imagens são desenhadas pelo atlas de imagens do renderizador. O desenho precisa de uma janela, então não foi conferido visualmente; a decodificação, a redução, o dimensionamento e o layout são testados.
+
+As saídas podem ser recolhidas (uma linha avisa) e limpas como qualquer outra saída. Uma célula executada de novo troca as saídas quando a execução começa.

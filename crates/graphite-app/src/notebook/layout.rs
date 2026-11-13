@@ -1,7 +1,6 @@
 //! Vertical layout of the cells of a notebook, shared by drawing, scrolling and hit testing.
 
 use super::model::CellKind;
-use super::output::output_lines;
 use super::session::{CellState, Session};
 
 /// Space after each cell, in lines.
@@ -33,15 +32,17 @@ impl CellLayout {
     }
 }
 
-pub(crate) fn visible_output_lines(state: &CellState) -> usize {
+pub(crate) fn visible_output_lines(state: &CellState, line_height: f32) -> usize {
     if state.cell.kind != CellKind::Code {
         return 0;
     }
-    match output_lines(&state.cell.outputs).len() {
+    let blocks = state.blocks();
+    let rows: usize = blocks.iter().map(|block| block.rows(line_height)).sum();
+    match rows {
         0 => 0,
         // A collapsed output leaves one line saying so.
         _ if state.output_collapsed => 1,
-        count => count,
+        rows => rows,
     }
 }
 
@@ -57,7 +58,7 @@ pub(crate) fn layout(session: &Session, line_height: f32) -> Vec<CellLayout> {
             } else {
                 state.buffer.len_lines().max(1)
             };
-            let output_lines = visible_output_lines(state);
+            let output_lines = visible_output_lines(state, line_height);
             let height = line_height * (1.0 + input_lines as f32 + output_lines as f32 + GAP);
             let cell = CellLayout {
                 top,
@@ -147,6 +148,26 @@ mod tests {
         assert!(collapsed.height < full);
     }
 
+
+    #[test]
+    fn an_image_output_takes_the_rows_of_its_height() {
+        use base64::Engine;
+        let image = image::RgbaImage::from_pixel(40, 65, image::Rgba([1, 2, 3, 255]));
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        let mut cell = Cell::new(CellKind::Code, "plot()");
+        cell.outputs = vec![
+            json!({"output_type": "stream", "name": "stdout", "text": "a\nb\n"}),
+            json!({"output_type": "display_data", "metadata": {},
+                   "data": {"image/png": base64::engine::general_purpose::STANDARD.encode(bytes)}}),
+        ];
+        let session = session(vec![cell]);
+        let layouts = layout(&session, 10.0);
+        // Two text lines and an image of 65 pixels, which is seven 10-pixel rows.
+        assert_eq!(layouts[0].output_lines, 2 + 7);
+    }
     #[test]
     fn text_cells_never_show_outputs() {
         let mut cell = Cell::new(CellKind::Markdown, "# t");

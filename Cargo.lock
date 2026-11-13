@@ -2949,6 +2949,7 @@ dependencies = [
  "accesskit_winit",
  "alacritty_terminal",
  "arboard",
+ "base64 0.22.1",
  "gix",
  "globset",
  "graphite-auth",
@@ -3515,6 +3516,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

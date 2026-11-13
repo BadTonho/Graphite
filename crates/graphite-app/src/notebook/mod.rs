@@ -5,6 +5,7 @@ pub(crate) mod kernel;
 mod layout;
 mod model;
 mod output;
+pub(crate) mod rich;
 mod session;
 
 #[allow(unused_imports)]

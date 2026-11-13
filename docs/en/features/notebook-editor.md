@@ -69,4 +69,21 @@ Interrupting uses the interrupt event of the kernel on Windows and SIGINT elsewh
 
 If the kernel ends on its own, the strip says it stopped and the next run starts a new one. Closing the notebook ends its kernel. If the file is reloaded from disk while cells are running, the runs in flight are dropped and the kernel is kept.
 
-Outputs are shown as text for now: images and rich output appear as their text form or not at all.
+
+## Outputs
+
+Each output is drawn under its cell, in the order the kernel produced it.
+
+| Output | How it is shown |
+| --- | --- |
+| Text streams (`stdout`, `stderr`) | As text; chunks of one stream are joined, and a carriage return rewrites its line (progress bars). |
+| Errors | The traceback, with terminal colors removed. |
+| Images (`image/png`, `image/jpeg`) | As an image, scaled to fit a 900 x 480 box without enlarging it. A size in the output's metadata is used when there is one. |
+| Results and displays with other data | The first of these that exists: the plain text; the HTML read as text (tags dropped, lists bulleted, tables aligned in columns, scripts and styles removed); Markdown or LaTeX source; JSON, formatted. |
+| Anything else (for example SVG alone) | A line naming the kinds of data that were not shown. |
+
+Limits keep a runaway output from freezing the window: at most 5000 lines per cell, 10000 characters per line, an image of at most 25 MB of base64 and 40 million pixels, and images are scaled down to at most 2000 pixels on a side for drawing. Output that goes past a limit is cut and says how much was left out; an image past a limit is replaced by a line saying why. The notebook file itself is not cut: everything the kernel sent is saved.
+
+Images are drawn by the renderer's image atlas. Drawing needs a window, so it was not checked visually; the decoding, scaling, sizing and layout are tested.
+
+Outputs can be collapsed (a line says so) and cleared like any other output. A cell that is selected and run again replaces its outputs when the run starts.
