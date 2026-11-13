@@ -616,5 +616,7 @@
   "command_center.forward": "Avançar",
   "command_center.suggestions": "Sugestões de acesso rápido",
   "editor.anchor.none": "Nenhuma âncora de seleção foi definida",
-  "editor.anchor.set": "Âncora definida em {line}:{column}"
+  "editor.anchor.set": "Âncora definida em {line}:{column}",
+  "editor.announce_position": "Linha {line}, coluna {column}",
+  "editor.announce_position_selection": "Linha {line}, coluna {column}, {selected} caracteres selecionados"
 }

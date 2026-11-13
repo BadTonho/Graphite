@@ -692,6 +692,38 @@ pub(super) fn editor_jump_to_bracket(
     Ok(())
 }
 
+pub(super) fn editor_find_references(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_references();
+    Ok(())
+}
+
+pub(super) fn editor_reference_search(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_references();
+    Ok(())
+}
+
+pub(super) fn editor_toggle_sticky_scroll(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.toggle_sticky_scroll();
+    Ok(())
+}
+
+pub(super) fn editor_announce_cursor_position(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.announce_cursor_position();
+    Ok(())
+}
+
 pub(super) fn editor_action_go_to_references(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -2021,6 +2053,46 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "documentAvailable",
         None,
         editor_jump_to_bracket,
+    );
+    add(
+        registry,
+        "editor.action.findReferences",
+        "Find all references",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        editor_find_references,
+    );
+    add(
+        registry,
+        "editor.action.referenceSearch.trigger",
+        "Find all references (search view)",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        editor_reference_search,
+    );
+    add(
+        registry,
+        "editor.action.toggleStickyScroll",
+        "Toggle sticky scroll",
+        "View",
+        VIEW,
+        "true",
+        None,
+        editor_toggle_sticky_scroll,
+    );
+    add(
+        registry,
+        "editor.action.announceCursorPosition",
+        "Announce cursor position",
+        "Editor",
+        VIEW,
+        "true",
+        None,
+        editor_announce_cursor_position,
     );
     add(
         registry,

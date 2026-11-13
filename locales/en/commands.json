@@ -368,5 +368,9 @@
   "command.editor.action.inPlaceReplace.down": "Replace with next value",
   "command.editor.action.fontZoomIn": "Increase editor font size",
   "command.editor.action.fontZoomOut": "Decrease editor font size",
-  "command.editor.action.fontZoomReset": "Reset editor font size"
+  "command.editor.action.fontZoomReset": "Reset editor font size",
+  "command.editor.action.findReferences": "Find all references",
+  "command.editor.action.referenceSearch.trigger": "Find all references (search view)",
+  "command.editor.action.toggleStickyScroll": "Toggle sticky scroll",
+  "command.editor.action.announceCursorPosition": "Announce cursor position"
 }

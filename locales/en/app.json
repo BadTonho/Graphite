@@ -616,5 +616,7 @@
   "command_center.forward": "Go forward",
   "command_center.suggestions": "Quick access suggestions",
   "editor.anchor.none": "No selection anchor is set",
-  "editor.anchor.set": "Anchor set at {line}:{column}"
+  "editor.anchor.set": "Anchor set at {line}:{column}",
+  "editor.announce_position": "Line {line}, column {column}",
+  "editor.announce_position_selection": "Line {line}, column {column}, {selected} characters selected"
 }

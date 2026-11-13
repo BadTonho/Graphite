@@ -47,6 +47,30 @@ impl App {
         );
     }
 
+    /// Says where the cursor is, and how much is selected, in the status bar.
+    pub(crate) fn announce_cursor_position(&mut self) {
+        let (line, column) = self.editor().cursor_line_col();
+        let selected = self
+            .editor()
+            .selections()
+            .iter()
+            .map(|s| s.anchor.abs_diff(s.head))
+            .sum::<usize>();
+        let key = if selected > 0 {
+            "editor.announce_position_selection"
+        } else {
+            "editor.announce_position"
+        };
+        self.status = self.tf(
+            key,
+            &[
+                ("line", &(line + 1).to_string()),
+                ("column", &(column + 1).to_string()),
+                ("selected", &selected.to_string()),
+            ],
+        );
+    }
+
     pub(crate) fn cancel_selection_anchor(&mut self) {
         self.editor_mut().clear_selection_anchor();
     }

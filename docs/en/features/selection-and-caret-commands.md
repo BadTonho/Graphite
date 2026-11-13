@@ -34,3 +34,9 @@ Brackets are `()`, `[]` and `{}`, paired by text, so brackets inside strings and
 ## Editor font size
 
 **Increase / Decrease / Reset Editor Font Size** (`editor.action.fontZoomIn`, `fontZoomOut`, `fontZoomReset`) use the same zoom as the View menu entries: steps of 10%, up to 200%.
+
+## Other editor commands
+
+- **Announce Cursor Position** shows `Line X, column Y` (and how many characters are selected) in the status bar.
+- **Toggle Sticky Scroll** flips the same setting as the View menu entry.
+- **Find All References** (`editor.action.findReferences`, `editor.action.referenceSearch.trigger`) runs the same search as Go to References.

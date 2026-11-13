@@ -34,3 +34,9 @@ Colchetes são `()`, `[]` e `{}`, pareados pelo texto, então colchetes dentro d
 ## Tamanho da fonte do editor
 
 **Aumentar / Diminuir / Restaurar a fonte do editor** (`editor.action.fontZoomIn`, `fontZoomOut`, `fontZoomReset`) usam o mesmo zoom das entradas do menu Exibir: passos de 10%, até 200%.
+
+## Outros comandos do editor
+
+- **Anunciar a posição do cursor** mostra `Linha X, coluna Y` (e quantos caracteres estão selecionados) na barra de status.
+- **Alternar rolagem fixa** muda a mesma opção da entrada do menu Exibir.
+- **Encontrar todas as referências** (`editor.action.findReferences`, `editor.action.referenceSearch.trigger`) faz a mesma busca de Ir para referências.

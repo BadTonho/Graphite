@@ -709,6 +709,10 @@ impl App {
         self.save_view_preferences();
     }
 
+    pub(crate) fn toggle_sticky_scroll(&mut self) {
+        self.execute_view_action(ViewAction::StickyScroll, None);
+    }
+
     /// Zooms the editor text in (1), out (-1) or back to 100% (0).
     pub(crate) fn run_font_zoom(&mut self, step: i8) {
         let action = match step {

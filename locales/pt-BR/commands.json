@@ -368,5 +368,9 @@
   "command.editor.action.inPlaceReplace.down": "Substituir pelo próximo valor",
   "command.editor.action.fontZoomIn": "Aumentar a fonte do editor",
   "command.editor.action.fontZoomOut": "Diminuir a fonte do editor",
-  "command.editor.action.fontZoomReset": "Restaurar a fonte do editor"
+  "command.editor.action.fontZoomReset": "Restaurar a fonte do editor",
+  "command.editor.action.findReferences": "Encontrar todas as referências",
+  "command.editor.action.referenceSearch.trigger": "Encontrar todas as referências (busca)",
+  "command.editor.action.toggleStickyScroll": "Alternar rolagem fixa",
+  "command.editor.action.announceCursorPosition": "Anunciar a posição do cursor"
 }

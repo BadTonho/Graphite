@@ -178,3 +178,28 @@ fn in_place_replace_and_font_zoom_commands_work() {
     app.run_ui_command("editor.action.fontZoomReset");
     assert_eq!(app.view_preferences.zoom_percent, 100);
 }
+
+#[test]
+fn announce_position_and_sticky_scroll_commands_work() {
+    let (mut app, _dir) = app_with("ab\ncd");
+    app.editor_mut().set_selection(4, 4);
+    app.run_ui_command("editor.action.announceCursorPosition");
+    assert_eq!(app.status, "Line 2, column 2");
+    app.editor_mut().set_selection(0, 3);
+    app.run_ui_command("editor.action.announceCursorPosition");
+    assert!(
+        app.status.contains("3 characters selected"),
+        "{}",
+        app.status
+    );
+
+    let before = app.view_preferences.sticky_scroll;
+    app.run_ui_command("editor.action.toggleStickyScroll");
+    assert_ne!(app.view_preferences.sticky_scroll, before);
+    for id in [
+        "editor.action.findReferences",
+        "editor.action.referenceSearch.trigger",
+    ] {
+        assert!(registry().get(id).is_some(), "{id}");
+    }
+}
