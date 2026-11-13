@@ -19,6 +19,8 @@ pub(crate) struct Document {
     pub(crate) saved_format: (file_format::Encoding, file_format::LineEnding),
     pub(crate) encoding: file_format::Encoding,
     pub(crate) line_ending: file_format::LineEnding,
+    /// The notebook this document is the file of; its buffer holds the file text.
+    pub(crate) notebook: Option<Box<crate::notebook::Session>>,
 }
 
 impl Document {

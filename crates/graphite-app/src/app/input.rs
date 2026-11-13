@@ -454,6 +454,10 @@ impl App {
             }
             return;
         }
+        if self.active_notebook().is_some() && !self.editor_groups.active_view_mut().ime_composing {
+            self.handle_notebook_key(event);
+            return;
+        }
         if !ctrl && !self.editor_groups.active_view_mut().ime_composing {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {

@@ -137,6 +137,7 @@ impl App {
             ),
             encoding: crate::file_format::Encoding::Utf8,
             line_ending: crate::file_format::LineEnding::Lf,
+                    notebook: None,
         };
         self.push_navigation_location();
         let id = self.documents.push(tab);
@@ -146,6 +147,7 @@ impl App {
     }
 
     /// Opens a notebook as a readable view. Returns false when the file is not a notebook.
+    #[allow(dead_code)]
     pub(crate) fn try_open_notebook_view(&mut self, path: &Path) -> bool {
         let is_notebook = path
             .extension()
@@ -204,26 +206,15 @@ mod tests {
     }
 
     #[test]
-    fn binary_files_open_as_read_only_hex_and_notebooks_cannot_be_saved_over() {
+    fn binary_files_open_as_read_only_hex() {
         let dir = crate::test_support::TempDir::new();
         let binary = dir.path().join("data.bin");
         std::fs::write(&binary, [0u8, 159, 146, 150]).unwrap();
-        let notebook = dir.path().join("nb.ipynb");
-        let original = r#"{"cells":[{"cell_type":"code","source":"x=1","outputs":[]}]}"#;
-        std::fs::write(&notebook, original).unwrap();
         let mut app = App::new_with_options(dir.path().into(), None, true);
-
         app.open_file(binary.clone());
         let id = app.active_document();
         assert!(app.documents[id].buffer.is_read_only());
         assert!(app.editor().text().starts_with("00000000  00 9f 92 96"));
-
-        app.open_file(notebook.clone());
-        let id = app.active_document();
-        assert!(app.editor().text().contains("x=1"));
-        assert!(app.documents[id].buffer.is_read_only());
-        app.save_document(id);
-        app.wait_for_saves();
-        assert_eq!(std::fs::read_to_string(&notebook).unwrap(), original);
+        assert!(app.documents[id].notebook.is_none());
     }
 }

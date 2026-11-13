@@ -320,6 +320,7 @@ impl App {
                     saved_format: (decoded.encoding, decoded.line_ending),
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
+                    notebook: None,
                 })
             } else {
                 None

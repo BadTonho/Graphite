@@ -571,6 +571,7 @@ impl App {
                     saved_format: (file_format::Encoding::Utf8, file_format::LineEnding::Lf),
                     encoding: file_format::Encoding::Utf8,
                     line_ending: file_format::LineEnding::Lf,
+                    notebook: None,
                 },
             ),
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),

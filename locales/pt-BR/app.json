@@ -704,5 +704,7 @@
   "multi_diff.no_changes": "Não há alterações nesta visão",
   "multi_diff.binary": "arquivo binário",
   "multi_diff.gap": "{count} linha(s) sem alteração",
-  "multi_diff.file_missing": "{path} não está na árvore de trabalho"
+  "multi_diff.file_missing": "{path} não está na árvore de trabalho",
+  "notebook.input_collapsed": "entrada recolhida",
+  "notebook.output_collapsed": "saída recolhida"
 }

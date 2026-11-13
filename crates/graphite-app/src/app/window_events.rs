@@ -469,6 +469,8 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(terminal) = self.terminals.get(self.focused_terminal) {
                         terminal.scroll((lines * 3.0) as i32);
                     }
+                } else if self.active_notebook().is_some() {
+                    self.notebook_scroll(lines);
                 } else {
                     let tab = &self.documents[self.active_document()];
                     let max = if self.word_wrap {

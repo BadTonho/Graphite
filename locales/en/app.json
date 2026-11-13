@@ -704,5 +704,7 @@
   "multi_diff.no_changes": "There are no changes in this view",
   "multi_diff.binary": "binary file",
   "multi_diff.gap": "{count} unchanged line(s)",
-  "multi_diff.file_missing": "{path} is not in the working tree"
+  "multi_diff.file_missing": "{path} is not in the working tree",
+  "notebook.input_collapsed": "input collapsed",
+  "notebook.output_collapsed": "output collapsed"
 }

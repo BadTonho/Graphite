@@ -57,9 +57,6 @@ impl App {
             self.status = path.display().to_string();
             return;
         }
-        if self.try_open_notebook_view(&path) {
-            return;
-        }
         match crate::file_format::read(&path, &self.translator) {
             Ok(decoded) => {
                 let mut buffer = Buffer::from_text(&path, &decoded.text);
@@ -116,7 +113,10 @@ impl App {
                     saved_format: (decoded.encoding, decoded.line_ending),
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
+                    notebook: None,
                 };
+                let mut tab = tab;
+                super::notebook_ui::attach_notebook(&mut tab);
                 if self.documents.len() == 1
                     && self.editor_groups.group_count() == 1
                     && self.documents[self.active_document()]

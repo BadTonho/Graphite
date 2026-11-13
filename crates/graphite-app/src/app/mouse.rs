@@ -415,6 +415,10 @@ impl App {
                 self.graphite_detail_tab_click(rect.id, mx);
                 return;
             }
+            if self.active_notebook().is_some() {
+                self.notebook_click(mx, my, rect);
+                return;
+            }
             let text_x = rect.x + self.gutter_width(cw);
             if self.word_wrap {
                 let row = self.editor_groups.active_view_mut().scroll_line

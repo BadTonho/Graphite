@@ -476,20 +476,28 @@ impl Session {
 
     // Collapsing.
 
-    pub(crate) fn toggle_input_collapsed(&mut self) {
+    pub(crate) fn set_input_collapsed(&mut self, collapse: bool) {
         let (low, high) = self.selected();
-        let collapse = !self.cells[self.focus].input_collapsed;
         for state in &mut self.cells[low..=high] {
             state.input_collapsed = collapse;
         }
     }
 
-    pub(crate) fn toggle_output_collapsed(&mut self) {
+    pub(crate) fn set_output_collapsed(&mut self, collapse: bool) {
         let (low, high) = self.selected();
-        let collapse = !self.cells[self.focus].output_collapsed;
         for state in &mut self.cells[low..=high] {
             state.output_collapsed = collapse;
         }
+    }
+
+    pub(crate) fn toggle_input_collapsed(&mut self) {
+        let collapse = !self.cells[self.focus].input_collapsed;
+        self.set_input_collapsed(collapse);
+    }
+
+    pub(crate) fn toggle_output_collapsed(&mut self) {
+        let collapse = !self.cells[self.focus].output_collapsed;
+        self.set_output_collapsed(collapse);
     }
 
     // History.

@@ -51,6 +51,7 @@ impl App {
                 continue;
             };
             self.refresh_document_highlights(document);
+            self.refresh_notebook(document);
             let revision = self.documents[document].buffer.revision();
             let sticky_headers = self.documents[document]
                 .sticky_headers_cache
@@ -193,6 +194,11 @@ impl App {
                 .is_some_and(|(group, _)| *group == rect.id)
             {
                 self.draw_graphite_detail_page(r, *rect, lh, cw);
+                r.set_clip(None);
+                continue;
+            }
+            if self.documents[document].notebook.is_some() {
+                self.draw_notebook(r, *rect, tab_height, lh, cw, document);
                 r.set_clip(None);
                 continue;
             }

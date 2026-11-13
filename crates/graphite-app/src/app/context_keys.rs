@@ -283,6 +283,13 @@ impl super::App {
             global.insert(key.into(), value.to_string());
         }
         global.insert("diffLoading".into(), self.diff_loading.to_string());
+        let (in_notebook, editing_notebook) = self.notebook_context();
+        global.insert("notebookFocus".into(), in_notebook.to_string());
+        global.insert("notebookEditing".into(), editing_notebook.to_string());
+        global.insert(
+            "notebookCommandMode".into(),
+            (in_notebook && !editing_notebook).to_string(),
+        );
         global.insert("multiDiffVisible".into(), self.multi_diff.is_some().to_string());
         global.insert(
             "mergeEditorVisible".into(),
@@ -361,6 +368,7 @@ impl super::App {
                     (
                         "editorTextFocus".into(),
                         (view.id == focused
+                            && document.notebook.is_none()
                             && !self.terminal_focused
                             && !self.explorer_focused
                             && !overlays
