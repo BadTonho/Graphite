@@ -15,6 +15,8 @@ pub(crate) enum BranchPickerAction {
     Merge,
     /// Rebase the current branch onto the branch.
     Rebase,
+    /// Choose the commits and actions of a rebase onto the branch, in an editable plan.
+    RebaseInteractive,
     /// Delete the local branch (git refuses it when it is not fully merged).
     Delete,
     /// Delete the local branch even if it is not fully merged.
@@ -28,10 +30,19 @@ impl BranchPickerAction {
             Self::Checkout => "scm.branch.prompt",
             Self::Merge => "scm.branch.prompt_merge",
             Self::Rebase => "scm.branch.prompt_rebase",
+            Self::RebaseInteractive => "scm.branch.prompt_rebase_interactive",
             Self::Delete => "scm.branch.prompt_delete",
             Self::DeleteForce => "scm.branch.prompt_delete_force",
         }
     }
+}
+
+/// An interactive rebase whose plan is open for editing.
+#[derive(Clone, Debug)]
+pub(crate) struct InteractiveRebase {
+    pub(crate) onto: String,
+    pub(crate) path: PathBuf,
+    pub(crate) commits: Vec<crate::scm_branches::Commit>,
 }
 
 /// The branch name being typed for **Git: Create Branch**.
@@ -62,7 +73,9 @@ impl App {
             BranchPickerAction::Delete | BranchPickerAction::DeleteForce => {
                 others(&snapshot.branches)
             }
-            BranchPickerAction::Merge | BranchPickerAction::Rebase => {
+            BranchPickerAction::Merge
+            | BranchPickerAction::Rebase
+            | BranchPickerAction::RebaseInteractive => {
                 let mut entries = others(&snapshot.branches);
                 entries.extend(snapshot.remote_branches.iter().cloned());
                 entries
@@ -85,6 +98,17 @@ impl App {
         let action = self.branch_picker_action;
         match action {
             BranchPickerAction::Checkout => self.checkout_selected_branch(),
+            BranchPickerAction::RebaseInteractive => {
+                let Some(branch) = self
+                    .branch_picker_entries()
+                    .get(self.branch_selected)
+                    .cloned()
+                else {
+                    return;
+                };
+                self.close_branch_picker();
+                self.begin_interactive_rebase(branch);
+            }
             _ => {
                 let Some(branch) = self
                     .branch_picker_entries()
@@ -109,6 +133,82 @@ impl App {
     pub(crate) fn close_branch_picker(&mut self) {
         self.branch_picker = false;
         self.branch_picker_action = BranchPickerAction::Checkout;
+    }
+
+    /// Writes the plan of an interactive rebase onto `onto` to a file in the profile and opens it
+    /// for editing; **Git: Run Interactive Rebase** then runs it.
+    pub(crate) fn begin_interactive_rebase(&mut self, onto: String) {
+        let root = self.scm_workspace_root();
+        let commits = match crate::scm_branches::commits_to_rebase(&root, &onto) {
+            Ok(commits) => commits,
+            Err(error) => {
+                self.status = error;
+                return;
+            }
+        };
+        if commits.is_empty() {
+            self.status = self.tf("scm.rebase.nothing", &[("branch", &onto)]);
+            return;
+        }
+        let path = self.profile_root.join("git-rebase-plan.txt");
+        if let Err(error) = std::fs::create_dir_all(&self.profile_root)
+            .and_then(|_| std::fs::write(&path, crate::scm_branches::format_plan(&commits)))
+        {
+            self.status = error.to_string();
+            return;
+        }
+        self.interactive_rebase = Some(InteractiveRebase {
+            onto,
+            path: path.clone(),
+            commits,
+        });
+        // A plan left open from an earlier attempt is reloaded from disk.
+        if let Some(id) = self.documents.id_for_path(&path) {
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let _ = self.documents[id].buffer.reload_text(&text);
+        }
+        self.open_file(path);
+        self.status = self.t("scm.rebase.plan_opened").into();
+    }
+
+    /// Validates the plan in the editor and starts the rebase it describes.
+    pub(crate) fn run_interactive_rebase(&mut self) {
+        let Some(plan) = self.interactive_rebase.clone() else {
+            self.status = self.t("scm.rebase.no_plan").into();
+            return;
+        };
+        let text = match self.documents.id_for_path(&plan.path) {
+            Some(id) => self.documents[id].buffer.text(),
+            None => std::fs::read_to_string(&plan.path).unwrap_or_default(),
+        };
+        let todo = match crate::scm_branches::plan_to_todo(&text, &plan.commits) {
+            Ok(todo) => todo,
+            Err(error) => {
+                self.status = error;
+                return;
+            }
+        };
+        // The plan itself is edited, so only the other documents have to be saved.
+        let plan_id = self.documents.id_for_path(&plan.path);
+        let others_unsaved = self
+            .documents
+            .iter()
+            .any(|tab| Some(tab.id) != plan_id && tab.is_dirty());
+        if others_unsaved {
+            self.status = self.t("scm.error.unsaved_for_git_operation").into();
+            return;
+        }
+        self.interactive_rebase = None;
+        self.run_scm_remote(RemoteOp::RebaseInteractive(plan.onto, todo));
+    }
+
+    /// Forgets the plan without running it.
+    pub(crate) fn cancel_interactive_rebase(&mut self) {
+        if self.interactive_rebase.take().is_some() {
+            self.status = self.t("scm.rebase.cancelled").into();
+        } else {
+            self.status = self.t("scm.rebase.no_plan").into();
+        }
     }
 
     pub(crate) fn open_create_branch_prompt(&mut self) {
@@ -480,5 +580,175 @@ mod tests {
     fn deleting_never_needs_saved_documents() {
         assert!(!RemoteOp::DeleteBranch("topic".into(), false).needs_saved_documents());
         assert!(!RemoteOp::DeleteBranch("topic".into(), true).needs_saved_documents());
+    }
+
+    /// A workspace that is a git repository with `main` and a `work` branch of three commits.
+    fn repository_app(dir: &TempDir) -> App {
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .current_dir(dir.path())
+                .env("GIT_AUTHOR_NAME", "T")
+                .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
+                .env("GIT_COMMITTER_NAME", "T")
+                .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "core.autocrlf", "false"]);
+        std::fs::write(dir.path().join("base.txt"), "base\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", "base"]);
+        git(&["switch", "-q", "-c", "work"]);
+        for name in ["a", "b", "c"] {
+            std::fs::write(dir.path().join(format!("{name}.txt")), name).unwrap();
+            git(&["add", "-A"]);
+            git(&["commit", "-q", "-m", &format!("add {name}")]);
+        }
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.profile_root = dir.path().join("profile");
+        app
+    }
+
+    #[test]
+    fn the_interactive_picker_lists_like_rebase_and_has_its_own_heading() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.branch_picker_action = BranchPickerAction::RebaseInteractive;
+        assert_eq!(
+            app.branch_picker_entries(),
+            ["topic", "origin/main", "origin/topic"]
+        );
+        let translator = graphite_i18n::Translator::english();
+        assert!(translator.has(BranchPickerAction::RebaseInteractive.prompt_key()));
+        app.run_ui_command("graphite.scm.interactiveRebase");
+        assert_eq!(
+            app.branch_picker_action,
+            BranchPickerAction::RebaseInteractive
+        );
+    }
+
+    #[test]
+    fn starting_an_interactive_rebase_opens_an_editable_plan_of_the_commits() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.begin_interactive_rebase("main".into());
+        let plan = app.interactive_rebase.clone().expect("a plan is pending");
+        assert_eq!(plan.onto, "main");
+        assert_eq!(plan.commits.len(), 3);
+        let text = app.editor().text();
+        assert_eq!(
+            text.lines()
+                .take(3)
+                .filter(|line| line.starts_with("pick "))
+                .count(),
+            3
+        );
+        assert!(text.contains("add a") && text.contains("add c"));
+        assert_eq!(app.status, app.t("scm.rebase.plan_opened"));
+        assert!(plan.path.ends_with("git-rebase-plan.txt"));
+    }
+
+    #[test]
+    fn there_is_nothing_to_plan_without_commits_or_with_a_bad_base() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.begin_interactive_rebase("work".into());
+        assert!(app.interactive_rebase.is_none());
+        assert!(
+            app.status.contains("no commits to rebase onto work"),
+            "{}",
+            app.status
+        );
+        app.begin_interactive_rebase("--all".into());
+        assert!(app.interactive_rebase.is_none());
+        assert!(
+            app.status.contains("not a valid branch name"),
+            "{}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn running_validates_the_edited_plan_and_hands_the_todo_to_git() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.run_ui_command("graphite.scm.runInteractiveRebase");
+        assert_eq!(app.status, app.t("scm.rebase.no_plan"));
+
+        app.begin_interactive_rebase("main".into());
+        // An invalid edit is reported and the plan stays open.
+        let id = app.active_document();
+        let _ = app.documents[id].buffer.reload_text("reword abc\n");
+        app.run_ui_command("graphite.scm.runInteractiveRebase");
+        assert!(
+            app.status.contains("unknown action 'reword'"),
+            "{}",
+            app.status
+        );
+        assert!(app.interactive_rebase.is_some());
+
+        // A valid plan is accepted; with no event loop in tests it stops at that point.
+        let first = app.interactive_rebase.as_ref().unwrap().commits[0]
+            .hash
+            .clone();
+        let _ = app.documents[id]
+            .buffer
+            .reload_text(&format!("pick {first} add a\n"));
+        app.run_ui_command("graphite.scm.runInteractiveRebase");
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+        assert!(app.interactive_rebase.is_none(), "the plan is consumed");
+    }
+
+    #[test]
+    fn other_unsaved_documents_block_the_run_but_the_plan_itself_does_not() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.begin_interactive_rebase("main".into());
+        let plan_id = app.active_document();
+        app.editor_mut().insert("# edited\n");
+        assert!(
+            app.documents[plan_id].is_dirty(),
+            "the plan has unsaved edits"
+        );
+        let other = dir.path().join("other.txt");
+        std::fs::write(&other, "x").unwrap();
+        app.open_file(other);
+        app.editor_mut().insert("unsaved ");
+        app.run_ui_command("graphite.scm.runInteractiveRebase");
+        assert_eq!(app.status, app.t("scm.error.unsaved_for_git_operation"));
+        assert!(app.interactive_rebase.is_some());
+    }
+
+    #[test]
+    fn cancelling_forgets_the_plan() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.begin_interactive_rebase("main".into());
+        app.run_ui_command("graphite.scm.cancelInteractiveRebase");
+        assert!(app.interactive_rebase.is_none());
+        assert_eq!(app.status, app.t("scm.rebase.cancelled"));
+        app.run_ui_command("graphite.scm.cancelInteractiveRebase");
+        assert_eq!(app.status, app.t("scm.rebase.no_plan"));
+    }
+
+    #[test]
+    fn restarting_reloads_a_plan_left_open() {
+        let dir = TempDir::new();
+        let mut app = repository_app(&dir);
+        app.begin_interactive_rebase("main".into());
+        let id = app.active_document();
+        let _ = app.documents[id].buffer.reload_text("garbage\n");
+        app.begin_interactive_rebase("main".into());
+        assert!(
+            app.editor().text().starts_with("pick "),
+            "the plan is regenerated"
+        );
     }
 }

@@ -18,6 +18,8 @@ pub(crate) enum RemoteOp {
     Rebase(String),
     /// Delete a local branch; `true` deletes it even if it is not fully merged.
     DeleteBranch(String, bool),
+    /// Rebase onto the branch, replaying the commits as this (validated) todo text says.
+    RebaseInteractive(String, String),
     /// Abandon the merge or rebase that stopped on conflicts.
     AbortOperation,
     /// Continue a rebase (or finish a merge) after the conflicts were resolved.
@@ -37,6 +39,9 @@ impl RemoteOp {
             RemoteOp::CreateBranch(name) => branches::create_branch(root, name),
             RemoteOp::Merge(branch) => branches::merge(root, branch),
             RemoteOp::Rebase(onto) => branches::rebase(root, onto),
+            RemoteOp::RebaseInteractive(onto, todo) => {
+                branches::rebase_interactive(root, onto, todo)
+            }
             RemoteOp::DeleteBranch(name, force) => branches::delete_branch(root, name, *force),
             RemoteOp::AbortOperation => branches::abort(root),
             RemoteOp::ContinueOperation => branches::continue_operation(root),

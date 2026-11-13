@@ -267,6 +267,8 @@ struct App {
     branch_picker: bool,
     branch_selected: usize,
     branch_picker_action: app::scm_branch_ui::BranchPickerAction,
+    /// The plan of an interactive rebase that is open for editing.
+    interactive_rebase: Option<app::scm_branch_ui::InteractiveRebase>,
     branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
     scm_commit_message: String,
     scm_commit_prompt: bool,
@@ -734,6 +736,7 @@ impl App {
             branch_picker: false,
             branch_selected: 0,
             branch_picker_action: Default::default(),
+            interactive_rebase: None,
             branch_name_prompt: None,
             scm_commit_message: String::new(),
             scm_commit_prompt: false,

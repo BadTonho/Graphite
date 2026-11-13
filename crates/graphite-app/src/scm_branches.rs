@@ -134,6 +134,160 @@ pub(crate) fn rebase(root: &Path, onto: &str) -> Result<String, String> {
     run(root, &["rebase", onto], true)
 }
 
+/// A commit offered by an interactive rebase.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Commit {
+    pub hash: String,
+    pub subject: String,
+}
+
+/// The commits an interactive rebase onto `onto` would replay, oldest first. Merge commits are
+/// left out, as `git rebase -i` drops them unless it is asked to keep merges.
+pub(crate) fn commits_to_rebase(root: &Path, onto: &str) -> Result<Vec<Commit>, String> {
+    if !plain_ref(onto) {
+        return Err(format!("'{onto}' is not a valid branch name"));
+    }
+    let range = format!("{onto}..HEAD");
+    let output = run_all(
+        root,
+        &[
+            "log",
+            "--reverse",
+            "--no-merges",
+            "--format=%h%x09%s",
+            &range,
+        ],
+    )?;
+    Ok(output
+        .lines()
+        .filter_map(|line| {
+            let (hash, subject) = line.split_once('\t')?;
+            Some(Commit {
+                hash: hash.to_owned(),
+                subject: subject.to_owned(),
+            })
+        })
+        .collect())
+}
+
+/// The text of the plan the user edits: one `pick <hash> <subject>` line per commit, with the
+/// instructions as comments.
+pub(crate) fn format_plan(commits: &[Commit]) -> String {
+    let mut text = String::new();
+    for commit in commits {
+        text.push_str(&format!("pick {} {}\n", commit.hash, commit.subject));
+    }
+    text.push_str(
+        "\n# Interactive rebase plan. Commits run from the first line to the last.\n\
+         # Reorder lines to reorder commits. Change the word at the start of a line to:\n\
+         #   pick   (p)  keep the commit as it is\n\
+         #   squash (s)  meld into the previous commit, joining the messages\n\
+         #   fixup  (f)  meld into the previous commit, dropping this message\n\
+         #   drop   (d)  remove the commit (deleting the line does the same)\n\
+         # Then run \"Git: Run Interactive Rebase\". Closing this file without running does nothing.\n",
+    );
+    text
+}
+
+/// The lines of a plan after checking them against the `commits` on offer: known verbs, known
+/// hashes, no commit twice, and nothing but `pick` allowed first. Blank lines and comments are
+/// skipped. Returns the normalized todo text for git.
+pub(crate) fn plan_to_todo(plan: &str, commits: &[Commit]) -> Result<String, String> {
+    let mut todo = String::new();
+    let mut seen: Vec<&str> = Vec::new();
+    let mut kept = 0;
+    for (number, line) in plan.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let verb = match words.next().unwrap_or_default() {
+            "pick" | "p" => "pick",
+            "squash" | "s" => "squash",
+            "fixup" | "f" => "fixup",
+            "drop" | "d" => "drop",
+            other => return Err(format!("Line {}: unknown action '{other}'", number + 1)),
+        };
+        let hash = words
+            .next()
+            .ok_or_else(|| format!("Line {}: missing commit", number + 1))?;
+        let Some(commit) = commits.iter().find(|commit| commit.hash == hash) else {
+            return Err(format!(
+                "Line {}: '{hash}' is not one of the commits to rebase",
+                number + 1
+            ));
+        };
+        if seen.contains(&hash) {
+            return Err(format!("Line {}: commit {hash} appears twice", number + 1));
+        }
+        seen.push(&commit.hash);
+        if verb == "drop" {
+            continue;
+        }
+        if kept == 0 && matches!(verb, "squash" | "fixup") {
+            return Err(format!(
+                "Line {}: the first commit cannot be {verb}; there is nothing before it to meld into",
+                number + 1
+            ));
+        }
+        kept += 1;
+        todo.push_str(&format!("{verb} {} {}\n", commit.hash, commit.subject));
+    }
+    if kept == 0 {
+        return Err(
+            "The plan keeps no commits; use drop only if you mean to remove them all".into(),
+        );
+    }
+    Ok(todo)
+}
+
+/// Rebases the current branch onto `onto`, replaying the commits as the (already validated)
+/// `todo` says. Git is told to use `cp` as its sequence editor so the plan replaces its own todo
+/// list without any editor opening, and `true` as the message editor so squashed commits keep the
+/// joined message.
+pub(crate) fn rebase_interactive(root: &Path, onto: &str, todo: &str) -> Result<String, String> {
+    if !plain_ref(onto) {
+        return Err(format!("'{onto}' is not a valid branch name"));
+    }
+    let directory = std::env::temp_dir().join(format!("graphite-rebase-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let plan = directory.join("todo.txt");
+    std::fs::write(&plan, todo).map_err(|error| error.to_string())?;
+    // Git runs this through `sh`, which understands forward slashes on every platform.
+    let editor = format!("cp \"{}\"", plan.display().to_string().replace('\\', "/"));
+    let mut command = Command::new("git");
+    command
+        .current_dir(root)
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
+        .env("GIT_SEQUENCE_EDITOR", editor)
+        .env("GIT_EDITOR", "true")
+        .args(["rebase", "-i", "--", onto]);
+    let output = command.output().map_err(|error| error.to_string());
+    let _ = std::fs::remove_dir_all(&directory);
+    let output = output?;
+    let result = Output {
+        success: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+    };
+    if result.success {
+        Ok("Rebase finished".into())
+    } else {
+        Err(failure(&result, "rebase"))
+    }
+}
+
+/// Runs git and returns all of its standard output, for commands whose output has many lines.
+fn run_all(root: &Path, args: &[&str]) -> Result<String, String> {
+    let output = git(root, args, false)?;
+    if output.success {
+        Ok(output.stdout)
+    } else {
+        Err(failure(&output, args.first().copied().unwrap_or_default()))
+    }
+}
 /// The merge or rebase waiting for the user, if any.
 pub(crate) fn operation_in_progress(root: &Path) -> Option<Operation> {
     let git_dir = git(root, &["rev-parse", "--absolute-git-dir"], false).ok()?;
@@ -555,5 +709,165 @@ mod tests {
         assert!(error.contains("Unknown branch"), "{error}");
         // The local branch already exists now, so a second remote checkout is reported by git.
         assert!(crate::scm::checkout_branch(clone.path(), "origin/feature", &translator).is_err());
+    }
+
+    /// `main` has `base`; `work` adds commits a, b, c, d (each writing its own file).
+    fn four_commits() -> crate::test_support::TempDir {
+        let dir = repository();
+        sh(dir.path(), &["switch", "-q", "-c", "work"]);
+        for name in ["a", "b", "c", "d"] {
+            write(dir.path(), &format!("{name}.txt"), &format!("{name}\n"));
+            commit(dir.path(), &format!("add {name}"));
+        }
+        dir
+    }
+
+    fn subjects(root: &Path) -> Vec<String> {
+        sh(root, &["log", "--reverse", "--format=%s", "main..HEAD"])
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn the_commits_on_offer_are_oldest_first_without_merges() {
+        let dir = four_commits();
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        let names: Vec<_> = commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(names, ["add a", "add b", "add c", "add d"]);
+        assert!(commits.iter().all(|c| !c.hash.is_empty()));
+        assert!(commits_to_rebase(dir.path(), "work").unwrap().is_empty());
+        assert!(commits_to_rebase(dir.path(), "--all").is_err());
+        assert!(commits_to_rebase(dir.path(), "nope").is_err());
+    }
+
+    #[test]
+    fn the_plan_lists_every_commit_as_pick_with_instructions() {
+        let dir = four_commits();
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        let plan = format_plan(&commits);
+        let picks: Vec<_> = plan.lines().take(4).collect();
+        assert!(picks.iter().all(|line| line.starts_with("pick ")));
+        assert!(plan.contains("# Interactive rebase plan"));
+        // The untouched plan is a valid plan that keeps everything.
+        let todo = plan_to_todo(&plan, &commits).unwrap();
+        assert_eq!(todo.lines().count(), 4);
+    }
+
+    #[test]
+    fn plans_are_checked_before_git_runs() {
+        let dir = four_commits();
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        let (a, b) = (&commits[0].hash, &commits[1].hash);
+        let error = |plan: String| plan_to_todo(&plan, &commits).unwrap_err();
+        assert!(
+            error(format!("squash {a} x\npick {b} y")).contains("first commit cannot be squash")
+        );
+        assert!(error(format!("fixup {a}")).contains("cannot be fixup"));
+        assert!(error(format!("reword {a}")).contains("unknown action 'reword'"));
+        assert!(error("pick".to_owned()).contains("missing commit"));
+        assert!(error("pick deadbee x".to_owned()).contains("not one of the commits"));
+        assert!(error(format!("pick {a}\npick {a}")).contains("appears twice"));
+        assert!(error(format!("drop {a}\ndrop {b}")).contains("keeps no commits"));
+        assert!(error("# only a comment\n\n".to_owned()).contains("keeps no commits"));
+        // Short verbs, blank lines and comments are accepted; dropped lines are omitted.
+        let ok = plan_to_todo(
+            &format!("# note\np {a} x\n\ns {b} y\nd {}", commits[2].hash),
+            &commits,
+        )
+        .unwrap();
+        assert_eq!(
+            ok.lines()
+                .map(|l| l.split(' ').next().unwrap())
+                .collect::<Vec<_>>(),
+            ["pick", "squash"]
+        );
+    }
+
+    #[test]
+    fn an_interactive_rebase_reorders_squashes_and_drops() {
+        let dir = four_commits();
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        let hash = |name: &str| {
+            commits
+                .iter()
+                .find(|c| c.subject == format!("add {name}"))
+                .unwrap()
+                .hash
+                .clone()
+        };
+        // Order: c, a, then b squashed into a, and d dropped.
+        let plan = format!(
+            "pick {c} add c\npick {a} add a\nsquash {b} add b\ndrop {d} add d\n",
+            a = hash("a"),
+            b = hash("b"),
+            c = hash("c"),
+            d = hash("d")
+        );
+        let todo = plan_to_todo(&plan, &commits).unwrap();
+        assert_eq!(
+            rebase_interactive(dir.path(), "main", &todo).unwrap(),
+            "Rebase finished"
+        );
+        let result = subjects(dir.path());
+        assert_eq!(result.len(), 2, "c, and a with b melded in: {result:?}");
+        assert_eq!(result[0], "add c");
+        assert!(result[1].starts_with("add a"), "{result:?}");
+        assert!(
+            sh(dir.path(), &["log", "-1", "--format=%B"]).contains("add b"),
+            "squash joined the messages"
+        );
+        assert!(dir.path().join("a.txt").is_file() && dir.path().join("b.txt").is_file());
+        assert!(
+            !dir.path().join("d.txt").exists(),
+            "the dropped commit's file is gone"
+        );
+        assert_eq!(operation_in_progress(dir.path()), None);
+        assert_eq!(current_branch(dir.path()), "work");
+    }
+
+    #[test]
+    fn fixup_keeps_only_the_first_message() {
+        let dir = four_commits();
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        let plan = format!(
+            "pick {} x\nfixup {} y\npick {} z\npick {} w\n",
+            commits[0].hash, commits[1].hash, commits[2].hash, commits[3].hash
+        );
+        let todo = plan_to_todo(&plan, &commits).unwrap();
+        rebase_interactive(dir.path(), "main", &todo).unwrap();
+        assert_eq!(subjects(dir.path()), ["add a", "add c", "add d"]);
+        assert!(
+            dir.path().join("b.txt").is_file(),
+            "the fixed up change is kept"
+        );
+    }
+
+    #[test]
+    fn a_conflicting_interactive_rebase_stays_in_progress_and_can_be_aborted() {
+        let dir = repository();
+        sh(dir.path(), &["switch", "-q", "-c", "work"]);
+        write(dir.path(), "file.txt", "one\n");
+        commit(dir.path(), "first");
+        write(dir.path(), "file.txt", "two\n");
+        commit(dir.path(), "second");
+        let commits = commits_to_rebase(dir.path(), "main").unwrap();
+        // Dropping the first commit makes the second one's change conflict with the base.
+        let plan = format!("drop {} x\npick {} y\n", commits[0].hash, commits[1].hash);
+        let todo = plan_to_todo(&plan, &commits).unwrap();
+        let error = rebase_interactive(dir.path(), "main", &todo).unwrap_err();
+        assert!(
+            error.contains("resolve the conflicts")
+                || error.contains("could not apply")
+                || !error.is_empty(),
+            "{error}"
+        );
+        assert_eq!(operation_in_progress(dir.path()), Some(Operation::Rebase));
+        assert_eq!(abort(dir.path()).unwrap(), "Rebase aborted");
+        assert_eq!(
+            subjects(dir.path()),
+            ["first", "second"],
+            "everything is back"
+        );
     }
 }

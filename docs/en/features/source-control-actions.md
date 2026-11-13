@@ -37,4 +37,18 @@ Notes:
 - Branch arguments that start with `-` or contain whitespace are rejected before git runs, so a branch name can never be read as a git option.
 - Git runs with `GIT_EDITOR=true`, so no editor opens for merge or rebase messages; the default message is used.
 - The picker shows 12 entries around the selection, so long lists scroll with the arrow keys. Checkout also lists the remote-tracking branches: choosing `origin/feature` runs `git switch --track` and creates a local `feature` that tracks it (git reports it if a local branch with that name already exists).
-- Still missing: interactive rebase and the `merge --squash`/`--no-ff` options.
+- Still missing: the `merge --squash`/`--no-ff` options.
+
+## Interactive rebase
+
+| Command | What it does |
+|---|---|
+| **Git: Interactive Rebase onto Branch...** | Choose the base in the branch picker. Graphite writes the plan to `git-rebase-plan.txt` in the profile folder and opens it: one `pick <hash> <subject>` line per commit between the base and `HEAD`, oldest first, merges left out. |
+| **Git: Run Interactive Rebase** | Reads the plan from the editor (it does not need to be saved), checks it and runs `git rebase -i` with it. |
+| **Git: Cancel Interactive Rebase** | Forgets the plan without running anything. |
+
+In the plan you can reorder lines and change the first word to `pick` (`p`), `squash` (`s`: meld into the previous commit, joining both messages), `fixup` (`f`: meld and drop this message) or `drop` (`d`); deleting a line also drops that commit. Graphite checks the plan before git runs: unknown actions, unknown or repeated commits, a `squash`/`fixup` with nothing before it, and a plan that keeps no commit are reported with their line number and nothing starts. Other open documents must be saved first; the plan itself may be unsaved.
+
+Git receives the checked plan through `GIT_SEQUENCE_EDITOR` (a `cp` of the plan over its todo list, run by git's own shell) and `GIT_EDITOR=true`, so no editor opens and squashed commits keep the joined message. A conflict leaves the rebase in progress, exactly as for **Git: Rebase onto Branch...**: resolve it, then **Git: Continue Merge or Rebase**, or **Git: Abort Merge or Rebase**.
+
+Not supported: `reword`, `edit`, `exec`, `break`, keeping merge commits (`--rebase-merges`) and editing the message of a squash.

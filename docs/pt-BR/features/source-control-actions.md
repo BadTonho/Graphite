@@ -37,4 +37,18 @@ Observações:
 - Argumentos de branch que começam com `-` ou contêm espaços são rejeitados antes de o git rodar, então um nome de branch nunca é lido como opção do git.
 - O Git roda com `GIT_EDITOR=true`, então nenhum editor abre para mensagens de merge ou rebase; a mensagem padrão é usada.
 - O seletor mostra 12 entradas em volta da seleção, então listas longas rolam com as setas. O checkout também lista as branches de rastreamento remoto: escolher `origin/feature` executa `git switch --track` e cria uma `feature` local que a rastreia (o git informa se já existe uma branch local com esse nome).
-- Ainda faltam: rebase interativo e as opções `merge --squash`/`--no-ff`.
+- Ainda faltam: as opções `merge --squash`/`--no-ff`.
+
+## Rebase interativo
+
+| Comando | O que faz |
+|---|---|
+| **Git: Rebase interativo sobre branch...** | Escolha a base no seletor de branch. O Graphite grava o plano em `git-rebase-plan.txt` na pasta do perfil e o abre: uma linha `pick <hash> <assunto>` por commit entre a base e o `HEAD`, do mais antigo ao mais novo, sem commits de merge. |
+| **Git: Executar rebase interativo** | Lê o plano do editor (não precisa estar salvo), valida e executa `git rebase -i` com ele. |
+| **Git: Cancelar rebase interativo** | Esquece o plano sem executar nada. |
+
+No plano você pode reordenar as linhas e trocar a primeira palavra por `pick` (`p`), `squash` (`s`: funde no commit anterior juntando as duas mensagens), `fixup` (`f`: funde e descarta esta mensagem) ou `drop` (`d`); apagar uma linha também remove o commit. O Graphite confere o plano antes de o git rodar: ações desconhecidas, commits desconhecidos ou repetidos, um `squash`/`fixup` sem nada antes e um plano que não mantém nenhum commit são informados com o número da linha e nada começa. Os outros documentos abertos precisam estar salvos; o próprio plano pode estar sem salvar.
+
+O Git recebe o plano conferido por `GIT_SEQUENCE_EDITOR` (um `cp` do plano sobre a lista de tarefas, executado pelo shell do próprio git) e `GIT_EDITOR=true`, então nenhum editor abre e os commits fundidos ficam com a mensagem combinada. Um conflito deixa o rebase em andamento, como em **Git: Rebase sobre branch...**: resolva e use **Git: Continuar merge ou rebase**, ou **Git: Abortar merge ou rebase**.
+
+Não suportado: `reword`, `edit`, `exec`, `break`, manter commits de merge (`--rebase-merges`) e editar a mensagem de um squash.

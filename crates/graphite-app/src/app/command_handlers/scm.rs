@@ -194,7 +194,7 @@ fn scm_continue_operation(app: &mut App, _: &CommandInvocation) -> Result<(), Co
 
 /// The `Git:` commands of the palette (and of the SCM view's "…" button).
 pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 16] = [
+    let commands: [(&'static str, &'static str, Handler); 19] = [
         ("graphite.scm.pull", "Git: Pull", scm_pull),
         ("graphite.scm.push", "Git: Push", scm_push),
         ("graphite.scm.fetch", "Git: Fetch", scm_fetch),
@@ -226,6 +226,21 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
             "graphite.scm.rebase",
             "Git: Rebase onto Branch...",
             scm_rebase,
+        ),
+        (
+            "graphite.scm.interactiveRebase",
+            "Git: Interactive Rebase onto Branch...",
+            scm_interactive_rebase,
+        ),
+        (
+            "graphite.scm.runInteractiveRebase",
+            "Git: Run Interactive Rebase",
+            scm_run_interactive_rebase,
+        ),
+        (
+            "graphite.scm.cancelInteractiveRebase",
+            "Git: Cancel Interactive Rebase",
+            scm_cancel_interactive_rebase,
         ),
         (
             "graphite.scm.deleteBranch",
@@ -260,5 +275,20 @@ fn scm_delete_branch(app: &mut App, _: &CommandInvocation) -> Result<(), Command
 
 fn scm_delete_branch_force(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.open_branch_picker_for(crate::app::scm_branch_ui::BranchPickerAction::DeleteForce);
+    Ok(())
+}
+
+fn scm_interactive_rebase(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_branch_picker_for(crate::app::scm_branch_ui::BranchPickerAction::RebaseInteractive);
+    Ok(())
+}
+
+fn scm_run_interactive_rebase(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_interactive_rebase();
+    Ok(())
+}
+
+fn scm_cancel_interactive_rebase(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.cancel_interactive_rebase();
     Ok(())
 }
