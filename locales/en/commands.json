@@ -535,5 +535,17 @@
   "command.variables.collapse": "Collapse variables",
   "command.watch.collapse": "Collapse watch expressions",
   "command.callStack.collapse": "Collapse call stack",
-  "command.loadedScripts.collapse": "Collapse loaded scripts"
+  "command.loadedScripts.collapse": "Collapse loaded scripts",
+  "command.workbench.extensions.action.enableAll": "Enable all extensions",
+  "command.workbench.extensions.action.disableAll": "Disable all installed extensions",
+  "command.workbench.extensions.action.showPopularExtensions": "Show popular extensions",
+  "command.workbench.extensions.action.showRecommendedExtensions": "Show recommended extensions",
+  "command.workbench.extensions.action.recentlyPublishedExtensions": "Show recently published extensions",
+  "command.workbench.action.showLanguageExtensions": "Search language extensions",
+  "command.workbench.extensions.action.showExtensionsForLanguage": "Search extensions for the active language",
+  "command.workbench.extensions.action.showLanguageExtensions": "Search language extensions for this file",
+  "command.workbench.extensions.search": "Search extensions",
+  "command.workbench.extensions.installExtension": "Install extension",
+  "command.workbench.extensions.uninstallExtension": "Uninstall extension",
+  "command.category.extensions": "Extensions"
 }

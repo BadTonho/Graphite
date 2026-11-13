@@ -487,3 +487,130 @@ fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
     app.plugins.focused = false;
     assert!(!app.plugin_owns_keyboard());
 }
+
+/// An app whose plugin store is a temporary folder and whose background jobs are switched off,
+/// so commands that would search or download over the network only change state.
+fn app_without_network() -> (App, crate::test_support::TempDir) {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.plugins.store = Some(Store::new(temp.path().join("plugins")));
+    app.plugins.worker = Some(mpsc::channel().1);
+    (app, temp)
+}
+
+fn run_with_argument(app: &mut App, id: &str, argument: &str) -> CommandResult {
+    let ticket = app.execute_command(CommandRequest {
+        id: id.into(),
+        arguments: json!({"text": argument}),
+        target: CommandTarget::Global,
+    });
+    ticket.try_result().expect("the command finishes at once")
+}
+
+#[test]
+fn the_search_command_opens_the_open_vsx_tab_with_the_text() {
+    let (mut app, _temp) = app_without_network();
+    run_with_argument(&mut app, "workbench.extensions.search", "rust analyzer").unwrap();
+    assert!(app.plugins.visible);
+    assert_eq!(app.plugins.tab, PluginsTab::OpenVsx);
+    assert_eq!(app.plugins.query, "rust analyzer");
+    for id in [
+        "workbench.extensions.action.showPopularExtensions",
+        "workbench.extensions.action.showRecommendedExtensions",
+        "workbench.extensions.action.recentlyPublishedExtensions",
+    ] {
+        app.plugins.tab = PluginsTab::Installed;
+        app.run_ui_command(id);
+        assert_eq!(app.plugins.tab, PluginsTab::OpenVsx, "{id}");
+        assert_eq!(app.plugins.query, "", "{id}");
+    }
+}
+
+#[test]
+fn the_language_search_uses_the_language_of_the_active_file() {
+    let (mut app, temp) = app_without_network();
+    let file = temp.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}").unwrap();
+    app.open_file(file);
+    app.run_ui_command("workbench.action.showLanguageExtensions");
+    assert_eq!(app.plugins.tab, PluginsTab::OpenVsx);
+    assert_eq!(app.plugins.query, "rust");
+}
+
+#[test]
+fn installing_needs_a_publisher_dot_name_id_and_uninstalling_a_known_extension() {
+    let (mut app, _temp) = app_without_network();
+    for bad in ["", "noname", "a.b.c", ".x", "x."] {
+        assert!(
+            run_with_argument(&mut app, "workbench.extensions.installExtension", bad).is_err(),
+            "{bad:?}"
+        );
+    }
+    let error = run_with_argument(
+        &mut app,
+        "workbench.extensions.uninstallExtension",
+        "no.such",
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("no.such"), "{error}");
+}
+
+#[test]
+fn a_valid_extension_id_starts_a_download_preview() {
+    let (mut app, _temp) = app_without_network();
+    // The download job is held back by the dummy worker; the command itself succeeds.
+    run_with_argument(
+        &mut app,
+        "workbench.extensions.installExtension",
+        "redhat.vscode-yaml",
+    )
+    .unwrap();
+    assert!(app.plugins.visible);
+}
+
+#[test]
+fn disabling_and_enabling_all_extensions_changes_the_store() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.plugins.store = Some(Store::new(temp.path().join("plugins")));
+    let project = temp.path().join("fixture");
+    graphite_plugins::sdk::create(&project).unwrap();
+    let manifest = json!({"id":"local.fixture","version":"0.1.0","apiVersion":1,
+        "main":"dist/index.js","description":"Fixture","commands":[]});
+    std::fs::write(
+        project.join("graphite-plugin.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir(project.join("dist")).unwrap();
+    std::fs::write(
+        project.join("dist/index.js"),
+        "export function activate() {}",
+    )
+    .unwrap();
+    let package = graphite_plugins::package::pack(&project).unwrap();
+    let store = app.plugins.store.clone().unwrap();
+    store.install(&package).unwrap();
+    store.enable("local.fixture", true).unwrap();
+    app.plugins.installed = store.list().unwrap();
+    assert!(app.plugins.installed[0].enabled);
+
+    app.run_ui_command("workbench.extensions.action.disableAll");
+    pump(&mut app, |a| a.plugins.installed.iter().all(|r| !r.enabled));
+    assert!(!store.list().unwrap()[0].enabled);
+
+    app.run_ui_command("workbench.extensions.action.enableAll");
+    pump(&mut app, |a| a.plugins.installed.iter().all(|r| r.enabled));
+    assert!(store.list().unwrap()[0].enabled);
+
+    // Nothing is left to enable, and disabling again is a no-op with a message.
+    app.run_ui_command("workbench.extensions.action.enableAll");
+    assert_eq!(app.plugins.message, app.t("plugins.none_to_enable"));
+}
+
+#[test]
+fn disabling_all_with_nothing_enabled_says_so() {
+    let (mut app, _temp) = app_without_network();
+    app.run_ui_command("workbench.extensions.action.disableAll");
+    assert_eq!(app.plugins.message, app.t("plugins.none_enabled"));
+}

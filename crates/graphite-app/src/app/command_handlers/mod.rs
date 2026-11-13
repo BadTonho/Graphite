@@ -9,6 +9,7 @@ mod changes;
 mod debug_extra;
 mod editor;
 mod explorer;
+mod extensions;
 mod files;
 mod focus;
 mod groups;
@@ -167,6 +168,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     preferences::register(registry);
     task_commands::register(registry);
     debug_extra::register(registry);
+    extensions::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

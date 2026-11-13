@@ -535,5 +535,17 @@
   "command.variables.collapse": "Recolher variáveis",
   "command.watch.collapse": "Recolher expressões monitoradas",
   "command.callStack.collapse": "Recolher a pilha de chamadas",
-  "command.loadedScripts.collapse": "Recolher scripts carregados"
+  "command.loadedScripts.collapse": "Recolher scripts carregados",
+  "command.workbench.extensions.action.enableAll": "Ativar todas as extensões",
+  "command.workbench.extensions.action.disableAll": "Desativar todas as extensões instaladas",
+  "command.workbench.extensions.action.showPopularExtensions": "Mostrar extensões populares",
+  "command.workbench.extensions.action.showRecommendedExtensions": "Mostrar extensões recomendadas",
+  "command.workbench.extensions.action.recentlyPublishedExtensions": "Mostrar extensões publicadas recentemente",
+  "command.workbench.action.showLanguageExtensions": "Procurar extensões de linguagem",
+  "command.workbench.extensions.action.showExtensionsForLanguage": "Procurar extensões para a linguagem ativa",
+  "command.workbench.extensions.action.showLanguageExtensions": "Procurar extensões de linguagem para este arquivo",
+  "command.workbench.extensions.search": "Procurar extensões",
+  "command.workbench.extensions.installExtension": "Instalar extensão",
+  "command.workbench.extensions.uninstallExtension": "Desinstalar extensão",
+  "command.category.extensions": "Extensões"
 }

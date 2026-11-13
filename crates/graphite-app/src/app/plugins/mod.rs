@@ -219,7 +219,7 @@ impl App {
             }
         });
     }
-    pub(super) fn search_plugins(&mut self) {
+    pub(crate) fn search_plugins(&mut self) {
         let query = self.plugins.query.clone();
         let tab = self.plugins.tab;
         self.plugins.graphite_assets = None;

@@ -34,29 +34,7 @@ impl App {
                 '\n' => {
                     if let Some(extension) = self.plugins.open_vsx.get(self.plugins.index).cloned()
                     {
-                        let root = self.plugins.store.as_ref().unwrap().root.clone();
-                        let destination = root.join(format!(
-                            ".open-vsx-{}-{}.vsix",
-                            std::process::id(),
-                            self.plugins.next_session
-                        ));
-                        self.plugins.temporary = Some(destination.clone());
-                        self.plugin_job(move |_| {
-                            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-                            let registry = graphite_plugins::open_vsx::Registry::new()?;
-                            registry.download_latest(
-                                &extension.namespace,
-                                &extension.name,
-                                &destination,
-                            )?;
-                            match graphite_plugins::package::inspect(&destination) {
-                                Ok(metadata) => Ok(Outcome::Preview(destination, metadata)),
-                                Err(error) => {
-                                    let _ = std::fs::remove_file(destination);
-                                    Err(error)
-                                }
-                            }
-                        });
+                        self.download_open_vsx_preview(extension.namespace, extension.name);
                     }
                 }
                 _ => {}
@@ -152,6 +130,153 @@ impl App {
             _ => {}
         }
     }
+    /// Downloads the latest version of an Open VSX extension and shows it for approval.
+    fn download_open_vsx_preview(&mut self, namespace: String, name: String) {
+        let Some(root) = self.plugins.store.as_ref().map(|store| store.root.clone()) else {
+            return;
+        };
+        let destination = root.join(format!(
+            ".open-vsx-{}-{}.vsix",
+            std::process::id(),
+            self.plugins.next_session
+        ));
+        self.plugins.temporary = Some(destination.clone());
+        self.plugin_job(move |_| {
+            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+            let registry = graphite_plugins::open_vsx::Registry::new()?;
+            registry.download_latest(&namespace, &name, &destination)?;
+            match graphite_plugins::package::inspect(&destination) {
+                Ok(metadata) => Ok(Outcome::Preview(destination, metadata)),
+                Err(error) => {
+                    let _ = std::fs::remove_file(destination);
+                    Err(error)
+                }
+            }
+        });
+    }
+
+    /// Searches Open VSX for extensions of the active file's language.
+    pub(crate) fn plugins_search_language_extensions(&mut self) {
+        let language = self.documents[self.command_document()]
+            .language
+            .map(|language| format!("{language:?}").to_lowercase())
+            .unwrap_or_default();
+        self.plugins_search_open_vsx(&language);
+    }
+
+    /// Shows the extensions side bar on the Open VSX tab and searches for `query`.
+    pub(crate) fn plugins_search_open_vsx(&mut self, query: &str) {
+        self.open_plugins();
+        self.leave_plugin_details();
+        self.plugins.tab = PluginsTab::OpenVsx;
+        self.plugins.path_input = false;
+        self.plugins.query = query.to_owned();
+        self.search_plugins();
+    }
+
+    /// Downloads an extension by its `publisher.name` id and shows it for approval before it is
+    /// installed.
+    pub(crate) fn plugins_install_from_open_vsx(
+        &mut self,
+        id: &str,
+    ) -> std::result::Result<(), String> {
+        let (namespace, name) = id
+            .split_once('.')
+            .filter(|(namespace, name)| {
+                !namespace.is_empty() && !name.is_empty() && !name.contains('.')
+            })
+            .ok_or_else(|| self.t("plugins.invalid_id").to_owned())?;
+        self.open_plugins();
+        self.leave_plugin_details();
+        self.plugins.tab = PluginsTab::Installed;
+        self.download_open_vsx_preview(namespace.to_owned(), name.to_owned());
+        Ok(())
+    }
+
+    /// Removes an installed extension by id.
+    pub(crate) fn plugins_uninstall(&mut self, id: &str) -> std::result::Result<(), String> {
+        if !self
+            .plugins
+            .installed
+            .iter()
+            .any(|record| record.metadata.id() == id)
+        {
+            return Err(self.tf("plugins.not_installed", &[("id", &id)]));
+        }
+        let id = id.to_owned();
+        self.stop_plugin(&id);
+        self.plugin_job(move |store| {
+            store.remove(&id)?;
+            Ok(Outcome::Refreshed(store.list()?))
+        });
+        Ok(())
+    }
+
+    /// Disables every enabled extension.
+    pub(crate) fn plugins_disable_all(&mut self) {
+        let enabled: Vec<String> = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| record.enabled)
+            .map(|record| record.metadata.id().to_owned())
+            .collect();
+        if enabled.is_empty() {
+            self.plugins.message = self.t("plugins.none_enabled").into();
+            return;
+        }
+        for id in &enabled {
+            self.stop_plugin(id);
+        }
+        self.plugin_job(move |store| {
+            for id in &enabled {
+                store.disable(id)?;
+            }
+            Ok(Outcome::Refreshed(store.list()?))
+        });
+    }
+
+    /// Enables every disabled extension that was already trusted at its installed version.
+    /// The others need the trust prompt, so they are left disabled.
+    pub(crate) fn plugins_enable_all(&mut self) {
+        let candidates: Vec<(String, String, bool)> = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| !record.enabled)
+            .filter(|record| record.trusted_version.as_deref() == Some(record.metadata.version()))
+            .filter(
+                |record| !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()),
+            )
+            .map(|record| {
+                (
+                    record.metadata.id().to_owned(),
+                    record.directory.clone(),
+                    matches!(record.metadata, Metadata::Native(_)),
+                )
+            })
+            .collect();
+        if candidates.is_empty() {
+            self.plugins.message = self.t("plugins.none_to_enable").into();
+            return;
+        }
+        let mut stopped_vsix = false;
+        for (id, _, native) in &candidates {
+            if *native {
+                self.plugins.startup.push(id.clone());
+            } else if !stopped_vsix {
+                self.stop_vsix();
+                stopped_vsix = true;
+            }
+        }
+        self.plugin_job(move |store| {
+            for (id, directory, _) in &candidates {
+                store.enable_installation(id, directory, true)?;
+            }
+            Ok(Outcome::Refreshed(store.list()?))
+        });
+    }
+
     pub(super) fn enable_plugin(&mut self, id: String) {
         let Some(record) = self
             .plugins

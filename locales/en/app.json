@@ -648,5 +648,9 @@
   "tasks.no_last_task": "No task has run yet",
   "debug.no_breakpoints": "There are no breakpoints in this file",
   "debug.no_breakpoint_here": "There is no breakpoint on this line",
-  "debug.console_copied": "Debug console copied"
+  "debug.console_copied": "Debug console copied",
+  "plugins.invalid_id": "An extension id looks like publisher.name",
+  "plugins.not_installed": "The extension {id} is not installed",
+  "plugins.none_enabled": "No extension is enabled",
+  "plugins.none_to_enable": "No disabled extension can be enabled without asking for trust first"
 }

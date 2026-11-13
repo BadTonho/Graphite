@@ -648,5 +648,9 @@
   "tasks.no_last_task": "Nenhuma tarefa foi executada ainda",
   "debug.no_breakpoints": "Não há pontos de interrupção neste arquivo",
   "debug.no_breakpoint_here": "Não há ponto de interrupção nesta linha",
-  "debug.console_copied": "Console de depuração copiado"
+  "debug.console_copied": "Console de depuração copiado",
+  "plugins.invalid_id": "O id de uma extensão tem a forma publicador.nome",
+  "plugins.not_installed": "A extensão {id} não está instalada",
+  "plugins.none_enabled": "Nenhuma extensão está ativada",
+  "plugins.none_to_enable": "Nenhuma extensão desativada pode ser ativada sem pedir confiança antes"
 }
