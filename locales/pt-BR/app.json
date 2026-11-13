@@ -630,5 +630,8 @@
   "explorer.new.hint": "Enter para criar, Esc para cancelar",
   "explorer.new.exists": "Já existe uma entrada com esse nome",
   "explorer.new.done": "Criado",
-  "explorer.refreshed": "Explorador atualizado"
+  "explorer.refreshed": "Explorador atualizado",
+  "scm.change.none": "Não há alterações neste arquivo",
+  "scm.change.wrapped": "Deu a volta para a outra ponta do arquivo",
+  "scm.error.empty_message": "Digite uma mensagem de commit antes"
 }

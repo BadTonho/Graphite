@@ -478,5 +478,13 @@
   "command.openEditors.newUntitledFile": "Novo arquivo de texto sem título",
   "command.workbench.action.files.newUntitledFileFromNewTabButton": "Novo arquivo de texto sem título pela barra de abas",
   "command.openEditors.closeAll": "Fechar todos os editores",
-  "command.workbench.action.toggleEditorGroupLayout": "Alternar layout vertical/horizontal dos editores"
+  "command.workbench.action.toggleEditorGroupLayout": "Alternar layout vertical/horizontal dos editores",
+  "command.workbench.action.editor.nextChange": "Ir para a próxima alteração",
+  "command.workbench.action.editor.previousChange": "Ir para a alteração anterior",
+  "command.editor.action.dirtydiff.next": "Ir para a próxima alteração",
+  "command.editor.action.dirtydiff.previous": "Ir para a alteração anterior",
+  "command.scm.acceptInput": "Fazer commit das alterações preparadas",
+  "command.scm.clearInput": "Limpar a mensagem de commit",
+  "command.scm.openInTerminal": "Abrir o repositório no terminal",
+  "command.scm.openInIntegratedTerminal": "Abrir o repositório no terminal integrado"
 }

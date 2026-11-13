@@ -29,6 +29,7 @@ mod extension_themes;
 mod external_changes;
 pub(crate) mod file_menu;
 mod focus_regions;
+mod change_navigation;
 mod editor_history_picker;
 mod explorer_nav;
 mod fold_actions;

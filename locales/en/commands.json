@@ -478,5 +478,13 @@
   "command.openEditors.newUntitledFile": "New untitled text file",
   "command.workbench.action.files.newUntitledFileFromNewTabButton": "New untitled text file from the tab bar",
   "command.openEditors.closeAll": "Close all editors",
-  "command.workbench.action.toggleEditorGroupLayout": "Toggle vertical/horizontal editor layout"
+  "command.workbench.action.toggleEditorGroupLayout": "Toggle vertical/horizontal editor layout",
+  "command.workbench.action.editor.nextChange": "Go to next change",
+  "command.workbench.action.editor.previousChange": "Go to previous change",
+  "command.editor.action.dirtydiff.next": "Go to next change",
+  "command.editor.action.dirtydiff.previous": "Go to previous change",
+  "command.scm.acceptInput": "Commit staged changes",
+  "command.scm.clearInput": "Clear commit message",
+  "command.scm.openInTerminal": "Open repository in terminal",
+  "command.scm.openInIntegratedTerminal": "Open repository in integrated terminal"
 }
