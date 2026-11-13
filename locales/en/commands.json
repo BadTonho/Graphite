@@ -586,5 +586,18 @@
   "command.merge.showNonConflictingChanges": "Merge editor: show or hide text without conflicts",
   "command.merge.goToNextUnhandledConflict": "Merge editor: go to next unhandled conflict",
   "command.merge.goToPreviousUnhandledConflict": "Merge editor: go to previous unhandled conflict",
-  "command.category.merge": "Merge"
+  "command.category.merge": "Merge",
+  "command.graphite.merge.acceptCurrent": "Merge editor: accept current",
+  "command.graphite.merge.acceptIncoming": "Merge editor: accept incoming",
+  "command.graphite.merge.acceptBoth": "Merge editor: accept both, current first",
+  "command.graphite.merge.acceptBothIncomingFirst": "Merge editor: accept both, incoming first",
+  "command.graphite.merge.ignore": "Merge editor: ignore conflict",
+  "command.graphite.merge.revert": "Merge editor: revert conflict to unresolved",
+  "command.merge.toggleActiveConflictInput1": "Merge editor: toggle current for the active conflict",
+  "command.merge.toggleActiveConflictInput2": "Merge editor: toggle incoming for the active conflict",
+  "command.mergeEditor.toggleBetweenInputs": "Merge editor: toggle between inputs",
+  "command.mergeEditor.compareInput1WithBase": "Merge editor: compare current with base",
+  "command.mergeEditor.compareInput2WithBase": "Merge editor: compare incoming with base",
+  "command.merge.openBaseEditor": "Merge editor: compare base with result",
+  "command.merge.openResult": "Merge editor: open result in the editor"
 }

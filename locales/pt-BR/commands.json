@@ -586,5 +586,18 @@
   "command.merge.showNonConflictingChanges": "Editor de mesclagem: mostrar ou ocultar o texto sem conflito",
   "command.merge.goToNextUnhandledConflict": "Editor de mesclagem: ir ao próximo conflito pendente",
   "command.merge.goToPreviousUnhandledConflict": "Editor de mesclagem: ir ao conflito pendente anterior",
-  "command.category.merge": "Mesclagem"
+  "command.category.merge": "Mesclagem",
+  "command.graphite.merge.acceptCurrent": "Editor de mesclagem: aceitar atual",
+  "command.graphite.merge.acceptIncoming": "Editor de mesclagem: aceitar recebido",
+  "command.graphite.merge.acceptBoth": "Editor de mesclagem: aceitar ambos, atual primeiro",
+  "command.graphite.merge.acceptBothIncomingFirst": "Editor de mesclagem: aceitar ambos, recebido primeiro",
+  "command.graphite.merge.ignore": "Editor de mesclagem: ignorar conflito",
+  "command.graphite.merge.revert": "Editor de mesclagem: reverter conflito para pendente",
+  "command.merge.toggleActiveConflictInput1": "Editor de mesclagem: alternar o atual no conflito ativo",
+  "command.merge.toggleActiveConflictInput2": "Editor de mesclagem: alternar o recebido no conflito ativo",
+  "command.mergeEditor.toggleBetweenInputs": "Editor de mesclagem: alternar entre as entradas",
+  "command.mergeEditor.compareInput1WithBase": "Editor de mesclagem: comparar o atual com a base",
+  "command.mergeEditor.compareInput2WithBase": "Editor de mesclagem: comparar o recebido com a base",
+  "command.merge.openBaseEditor": "Editor de mesclagem: comparar a base com o resultado",
+  "command.merge.openResult": "Editor de mesclagem: abrir o resultado no editor"
 }

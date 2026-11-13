@@ -49,6 +49,7 @@ mod import_settings;
 mod input;
 mod layout;
 mod local_history;
+pub(crate) mod merge_actions;
 pub(crate) mod merge_drawing;
 pub(crate) mod merge_editor;
 pub(crate) mod merge_flow;
@@ -103,6 +104,8 @@ mod document_view_tests;
 mod command_tests;
 #[cfg(test)]
 mod merge_flow_tests;
+#[cfg(test)]
+mod merge_actions_tests;
 
 pub(crate) mod extension_host;
 pub(crate) mod services;

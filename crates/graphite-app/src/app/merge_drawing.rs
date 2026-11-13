@@ -79,6 +79,10 @@ impl App {
         height: f32,
         line_height: f32,
     ) {
+        // A comparison opened from the merge editor is drawn on top of it.
+        if self.diff_view.is_some() {
+            return;
+        }
         let Some(editor) = self.merge_editor.as_ref() else {
             return;
         };

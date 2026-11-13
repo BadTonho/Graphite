@@ -67,7 +67,7 @@ impl App {
             return;
         }
 
-        if self.merge_editor.is_some() {
+        if self.merge_editor.is_some() && self.diff_view.is_none() {
             self.merge_handle_click(mx, my);
             return;
         }

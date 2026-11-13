@@ -676,11 +676,15 @@
   "merge.state.ignored": "Ignored",
   "merge.all_resolved": "all conflicts resolved",
   "merge.unresolved_count": "{count} unresolved conflict(s)",
-  "merge.hint": "Up/Down conflicts   PgUp/PgDn scroll   L layout   S base   H hide plain text   Esc close",
+  "merge.hint": "C current   I incoming   B both   N ignore   R revert   Up/Down conflicts   L layout   S base   O open result   Esc close",
   "merge.opened": "Merge editor opened with {count} conflict(s)",
   "merge.closed": "Merge editor closed",
   "merge.none_left": "There are no unresolved conflicts",
   "merge.no_base": "The conflict markers of this file carry no base version",
   "merge.error.no_conflicts": "The file has no conflict markers",
-  "merge.error.no_file": "Open a file to merge first"
+  "merge.error.no_file": "Open a file to merge first",
+  "merge.none_active": "There is no active conflict to change",
+  "merge.focused_input": "Compare commands now start from: {input}",
+  "merge.compare_title": "Base ↔ {input}",
+  "merge.result_opened": "Result opened in the editor; undecided conflicts keep their markers"
 }

@@ -363,7 +363,7 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
-                if self.merge_editor.is_some() {
+                if self.merge_editor.is_some() && self.diff_view.is_none() {
                     self.merge_scroll_rows(lines.round() as isize);
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();

@@ -27,3 +27,22 @@ Quatro painéis mostram as mesmas linhas e rolam juntos, mesmo que os dois lados
 Teclas: Cima e Baixo andam entre os conflitos pendentes, Page Up e Page Down rolam, `L` troca o layout, `S` o painel da base, `H` o texto comum e Escape fecha o editor. A roda do mouse rola e um clique em um conflito o torna o ativo.
 
 Quando o arquivo é salvo com o editor de mesclagem aberto, os painéis são carregados de novo. As decisões já tomadas são mantidas para todo conflito cujo texto não mudou.
+
+## Decidindo um conflito
+
+A decisão vale para o conflito ativo. Aceitar passa para o próximo conflito pendente, então um arquivo pode ser resolvido com uma tecla por conflito; alternar e reverter ficam onde estão.
+
+| Comando | Tecla | O que faz |
+| --- | --- | --- |
+| Aceitar atual | `C` | O resultado fica com o lado atual. |
+| Aceitar recebido | `I` | O resultado fica com o lado recebido. |
+| Aceitar ambos, atual primeiro / recebido primeiro | `B` / `Shift+B` | O resultado fica com os dois lados, nessa ordem. |
+| Ignorar conflito | `N` | Conta o conflito como tratado e mantém a base, ou nada quando os marcadores não trazem base. |
+| Reverter conflito para pendente | `R` | Desfaz a decisão. |
+| Alternar atual / recebido no conflito ativo | `1` / `2` | Adiciona ou remove um lado; o lado adicionado depois vai depois. Remover os dois torna o conflito pendente de novo. |
+| Alternar entre as entradas | | Escolhe de qual entrada partem os comandos de comparação. |
+| Comparar atual / recebido com a base | | Abre um diff do arquivo inteiro como aquela entrada o vê contra a base. Precisa de uma base nos marcadores. Escape volta ao editor de mesclagem. |
+| Comparar a base com o resultado | | O mesmo, contra o resultado até agora. |
+| Abrir o resultado no editor | `O` | Fecha o editor de mesclagem e abre o arquivo com o resultado até agora; conflitos ainda sem decisão mantêm seus marcadores, para o resto ser terminado à mão. O arquivo em disco só muda ao salvar. |
+
+O painel de resultado não aceita digitação. Para editar à mão use **Abrir o resultado no editor**; salvar o arquivo ali o adiciona ao índice quando não resta conflito.

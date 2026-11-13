@@ -25,6 +25,7 @@ mod preferences;
 mod quick;
 mod scm;
 mod task_commands;
+mod merge_action_commands;
 mod merge_commands;
 mod timeline_commands;
 mod ui;
@@ -177,6 +178,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     outline_commands::register(registry);
     timeline_commands::register(registry);
     merge_commands::register(registry);
+    merge_action_commands::register(registry);
     layout::register(registry);
     configuration::register(registry);
     for (id, title, arguments, handler) in [

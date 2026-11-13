@@ -198,7 +198,7 @@ impl App {
             }
             return;
         }
-        if self.merge_editor.is_some() {
+        if self.merge_editor.is_some() && self.diff_view.is_none() {
             self.handle_merge_key(event);
             return;
         }

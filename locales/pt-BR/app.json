@@ -676,11 +676,15 @@
   "merge.state.ignored": "Ignorado",
   "merge.all_resolved": "todos os conflitos resolvidos",
   "merge.unresolved_count": "{count} conflito(s) pendente(s)",
-  "merge.hint": "Cima/Baixo conflitos   PgUp/PgDn rolar   L layout   S base   H ocultar texto comum   Esc fechar",
+  "merge.hint": "C atual   I recebido   B ambos   N ignorar   R reverter   Cima/Baixo conflitos   L layout   S base   O abrir resultado   Esc fechar",
   "merge.opened": "Editor de mesclagem aberto com {count} conflito(s)",
   "merge.closed": "Editor de mesclagem fechado",
   "merge.none_left": "Não há conflitos pendentes",
   "merge.no_base": "Os marcadores de conflito deste arquivo não trazem a versão base",
   "merge.error.no_conflicts": "O arquivo não tem marcadores de conflito",
-  "merge.error.no_file": "Abra primeiro um arquivo para mesclar"
+  "merge.error.no_file": "Abra primeiro um arquivo para mesclar",
+  "merge.none_active": "Não há conflito ativo para alterar",
+  "merge.focused_input": "Os comandos de comparação agora partem de: {input}",
+  "merge.compare_title": "Base ↔ {input}",
+  "merge.result_opened": "Resultado aberto no editor; conflitos sem decisão mantêm seus marcadores"
 }

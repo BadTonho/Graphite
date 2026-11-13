@@ -149,6 +149,17 @@ impl App {
                             "merge.columnLayout"
                         });
                     }
+                    "c" => self.run_ui_command("graphite.merge.acceptCurrent"),
+                    "i" => self.run_ui_command("graphite.merge.acceptIncoming"),
+                    "b" if self.modifiers.shift_key() => {
+                        self.run_ui_command("graphite.merge.acceptBothIncomingFirst")
+                    }
+                    "b" => self.run_ui_command("graphite.merge.acceptBoth"),
+                    "n" => self.run_ui_command("graphite.merge.ignore"),
+                    "r" => self.run_ui_command("graphite.merge.revert"),
+                    "o" => self.run_ui_command("merge.openResult"),
+                    "1" => self.run_ui_command("merge.toggleActiveConflictInput1"),
+                    "2" => self.run_ui_command("merge.toggleActiveConflictInput2"),
                     "s" => self.run_ui_command("merge.showBase"),
                     "h" => self.run_ui_command("merge.showNonConflictingChanges"),
                     _ => {}
