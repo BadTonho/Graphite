@@ -96,6 +96,9 @@ impl App {
 
     pub(crate) fn lsp_call_hierarchy(&mut self) {
         self.lsp_hierarchy.clear();
+        if self.start_vsix_hierarchy(super::plugins::VsixHierarchyKind::Call) {
+            return;
+        }
         self.lsp_send_at_caret(
             "prepareCallHierarchy",
             "textDocument/prepareCallHierarchy",
@@ -105,6 +108,9 @@ impl App {
 
     pub(crate) fn lsp_type_hierarchy(&mut self) {
         self.lsp_hierarchy.clear();
+        if self.start_vsix_hierarchy(super::plugins::VsixHierarchyKind::Type) {
+            return;
+        }
         self.lsp_send_at_caret(
             "prepareTypeHierarchy",
             "textDocument/prepareTypeHierarchy",
@@ -457,7 +463,7 @@ fn word_at(line: &str, column: usize) -> String {
     chars[start..end].iter().collect()
 }
 
-fn location_item(uri: &str, line: usize) -> Option<GoSymbolItem> {
+pub(crate) fn location_item(uri: &str, line: usize) -> Option<GoSymbolItem> {
     let path = crate::lsp::uri_to_path(uri)?;
     let file = path
         .file_name()

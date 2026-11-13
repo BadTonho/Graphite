@@ -11,7 +11,7 @@ Extensões VSIX rodam no extension host oficial do Code OSS 1.145.2, em um proce
 | Storage | Storage global e do workspace da extensão. |
 | Prompts | `showInputBox`, `showQuickPick` e `showInformationMessage` com botões de ação. |
 | Edições | `TextEditor.edit`, `workspace.applyEdit` e documentos abertos ou exibidos no editor. |
-| Provedores de linguagem | Hover, completion, formatação de documento, diagnósticos, definição, declaração, definição de tipo, implementação, referências, símbolos de documento, code actions, renomear e ajuda de assinatura. Também formatação de intervalo (**Formatar seleção**; a linha do cursor quando nada está selecionado), inlay hints, destaques de documento e regiões de folding; os três últimos são pedidos automaticamente (veja abaixo). Selection ranges comandam **Expandir seleção** no lugar da expansão pela árvore sintática quando uma extensão os fornece. A formatação ao digitar roda durante a digitação quando `editor.formatOnType` está ligado. |
+| Provedores de linguagem | Hover, completion, formatação de documento, diagnósticos, definição, declaração, definição de tipo, implementação, referências, símbolos de documento, code actions, renomear e ajuda de assinatura. Também formatação de intervalo (**Formatar seleção**; a linha do cursor quando nada está selecionado), inlay hints, destaques de documento e regiões de folding; os três últimos são pedidos automaticamente (veja abaixo). Selection ranges comandam **Expandir seleção** no lugar da expansão pela árvore sintática quando uma extensão os fornece. A formatação ao digitar roda durante a digitação quando `editor.formatOnType` está ligado. Hierarquias de chamadas e de tipos (**Show Call Hierarchy** / **Show Type Hierarchy**) listam chamadores e chamados, ou supertipos e subtipos, no seletor de locais. |
 | Links | `window.openUri` abre links `https://` no navegador padrão; outros esquemas são recusados. `env.asExternalUri` devolve o link sem alterações. |
 | Output | `window.createOutputChannel` grava em um arquivo de log. Mostrar o canal abre o log em uma view somente leitura, que se atualiza enquanto a extensão escreve. |
 | Barra de status | Itens de `window.createStatusBarItem` aparecem no fim da barra de status com o texto. Clicar em um item executa o comando dele: um comando da extensão, se registrado, ou um comando do Graphite. |
@@ -42,7 +42,7 @@ Atalhos de teclado, gramáticas e temas de ícones constam no pacote, mas ainda 
 
 ## Ainda não
 
-- Provedores de linguagem além da lista acima (semantic tokens, code lenses, hierarquias de chamadas e tipos, links e cores). Code actions que apenas executam um comando da extensão, e operações de arquivo dentro de uma renomeação, não são aplicadas.
+- Provedores de linguagem além da lista acima (semantic tokens, code lenses, links e cores). Code actions que apenas executam um comando da extensão, e operações de arquivo dentro de uma renomeação, não são aplicadas.
 - Pseudoterminais de propriedade da extensão, eventos de dados do terminal, tasks, depuração, controle de versão e sistemas de arquivos virtuais (`registerFileSystemProvider`).
 - Vários painéis webview, `asWebviewUri` e `localResourceRoots`.
 - Editores customizados e kernels de notebook.

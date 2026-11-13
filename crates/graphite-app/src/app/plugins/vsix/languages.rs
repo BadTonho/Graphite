@@ -27,6 +27,10 @@ pub(crate) enum Feature {
     SelectionRanges,
     /// Formatting after a trigger character was typed (`editor.formatOnType`).
     FormatOnType,
+    /// Call hierarchy (callers and callees). Started by a command, with several steps.
+    CallHierarchy,
+    /// Type hierarchy (supertypes and subtypes).
+    TypeHierarchy,
 }
 
 struct Provider {
@@ -236,9 +240,11 @@ impl App {
                 ]),
             ),
             // Requested by the passive drivers in `passive.rs`, never by a command.
-            Feature::InlayHints | Feature::DocumentHighlights | Feature::FoldingRanges => {
-                return Ok(false)
-            }
+            Feature::InlayHints
+            | Feature::DocumentHighlights
+            | Feature::FoldingRanges
+            | Feature::CallHierarchy
+            | Feature::TypeHierarchy => return Ok(false),
             Feature::SelectionRanges => {
                 ("$provideSelectionRanges", json!([handle, uri, [position]]))
             }
@@ -390,6 +396,8 @@ impl App {
             }
             Feature::Format
             | Feature::FormatRange
+            | Feature::CallHierarchy
+            | Feature::TypeHierarchy
             | Feature::FormatOnType
             | Feature::InlayHints
             | Feature::DocumentHighlights
@@ -474,6 +482,12 @@ pub(super) fn language_rpc(
                 Feature::FormatRange
             }
             ("MainThreadLanguageFeatures", "$registerInlayHintsProvider") => Feature::InlayHints,
+            ("MainThreadLanguageFeatures", "$registerCallHierarchyProvider") => {
+                Feature::CallHierarchy
+            }
+            ("MainThreadLanguageFeatures", "$registerTypeHierarchyProvider") => {
+                Feature::TypeHierarchy
+            }
             ("MainThreadLanguageFeatures", "$registerOnTypeFormattingSupport") => {
                 Feature::FormatOnType
             }

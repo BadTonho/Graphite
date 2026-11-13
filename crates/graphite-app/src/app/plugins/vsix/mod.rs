@@ -9,6 +9,8 @@ mod debug;
 mod decorations;
 mod documents;
 mod file_events;
+mod hierarchy;
+pub(crate) use hierarchy::Kind as HierarchyKind;
 mod language_results;
 mod passive;
 mod languages;
@@ -45,6 +47,8 @@ pub(crate) struct Runtime {
     debug_adapter: Option<debug::PendingAdapter>,
     /// Inlay hints and highlights that are requested automatically.
     passive: passive::Passive,
+    /// A call or type hierarchy being collected.
+    hierarchy: hierarchy::Hierarchies,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
 }
@@ -57,6 +61,7 @@ impl Runtime {
             || !self.test_calls.is_empty()
             || self.debug_adapter.is_some()
             || self.passive.busy()
+            || self.hierarchy.busy()
     }
 }
 
@@ -81,6 +86,7 @@ impl Runtime {
             decorations: Default::default(),
             debug_adapter: None,
             passive: Default::default(),
+            hierarchy: Default::default(),
             unsupported: BTreeSet::new(),
         }
     }
@@ -238,6 +244,7 @@ impl App {
             decorations: Default::default(),
             debug_adapter: None,
             passive: Default::default(),
+            hierarchy: Default::default(),
             unsupported: BTreeSet::new(),
         });
         Ok(())
@@ -304,6 +311,8 @@ impl App {
                 Some("result") => {
                     if event["id"].as_u64() == Some(debug::ADAPTER_CALL_ID) {
                         self.finish_vsix_debug_adapter(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(hierarchy::is_hierarchy_reply) {
+                        self.finish_vsix_hierarchy(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(passive::is_passive_reply) {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64() == Some(1) {
@@ -351,6 +360,7 @@ impl App {
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
             self.drive_vsix_passive(runtime)?;
+            self.expire_vsix_hierarchy(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
             if let (Some(handle), Some(webview)) =
