@@ -690,5 +690,19 @@
   "merge.close_warning": "{count} decision(s) are not written to the file. Close again to discard them, or complete the merge",
   "merge.error.unresolved": "{count} conflict(s) are still unresolved",
   "merge.error.unsaved": "The file has unsaved edits; save or discard them before completing the merge",
-  "merge.written": "Merge result written to the file"
+  "merge.written": "Merge result written to the file",
+  "multi_diff.title.all": "All changes ({count} files)",
+  "multi_diff.title.staged": "Staged changes ({count} files)",
+  "multi_diff.title.unstaged": "Unstaged changes ({count} files)",
+  "multi_diff.header": "{title}   +{added} -{removed}",
+  "multi_diff.hint": "Up/Down changes   Enter open file   Tab file list   C collapse all   E expand all   Space collapse file   PgUp/PgDn scroll   Esc close",
+  "multi_diff.loading": "Reading the changes...",
+  "multi_diff.opened": "Multi-file diff opened",
+  "multi_diff.closed": "Multi-file diff closed",
+  "multi_diff.empty": "There are no changes to show",
+  "multi_diff.failed": "Could not read the changes: {error}",
+  "multi_diff.no_changes": "There are no changes in this view",
+  "multi_diff.binary": "binary file",
+  "multi_diff.gap": "{count} unchanged line(s)",
+  "multi_diff.file_missing": "{path} is not in the working tree"
 }

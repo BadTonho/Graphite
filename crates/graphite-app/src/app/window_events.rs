@@ -363,6 +363,13 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
+                if self.multi_diff.is_some() {
+                    self.multi_diff_scroll_rows(lines.round() as isize);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.merge_editor.is_some() && self.diff_view.is_none() {
                     self.merge_scroll_rows(lines.round() as isize);
                     if let Some(gpu) = &self.gpu {
@@ -623,6 +630,12 @@ impl App {
             }
             UserEvent::FileEvents(changes) => self.forward_vsix_file_events(&changes),
             UserEvent::ExternalChangeCheck => self.sync_external_changes(),
+            UserEvent::MultiDiffReady { set, result } => {
+                self.show_multi_diff(set, result);
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
             UserEvent::ScmHistory(result) => self.show_scm_history(result),
             UserEvent::GitHubAuth(event) => self.handle_github_auth_event(event),
             UserEvent::ScmSnapshot(snapshot) => {

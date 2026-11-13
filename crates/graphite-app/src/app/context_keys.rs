@@ -283,6 +283,7 @@ impl super::App {
             global.insert(key.into(), value.to_string());
         }
         global.insert("diffLoading".into(), self.diff_loading.to_string());
+        global.insert("multiDiffVisible".into(), self.multi_diff.is_some().to_string());
         global.insert(
             "mergeEditorVisible".into(),
             self.merge_editor.is_some().to_string(),

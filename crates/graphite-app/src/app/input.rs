@@ -198,6 +198,10 @@ impl App {
             }
             return;
         }
+        if self.multi_diff.is_some() {
+            self.handle_multi_diff_key(event);
+            return;
+        }
         if self.merge_editor.is_some() && self.diff_view.is_none() {
             self.handle_merge_key(event);
             return;
@@ -332,6 +336,10 @@ impl App {
                 }
                 "h" => {
                     self.run_ui_command("graphite.scm.stageHunk");
+                    return;
+                }
+                "d" => {
+                    self.run_ui_command("graphite.scm.openAllChanges");
                     return;
                 }
                 "r" => {

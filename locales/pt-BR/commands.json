@@ -606,5 +606,17 @@
   "command.mergeEditor.resetResultToBaseAndAutoMerge": "Editor de mesclagem: redefinir o resultado",
   "command.mergeEditor.resetCloseWithConflictsChoice": "Editor de mesclagem: redefinir o aviso ao fechar",
   "command.mergeEditor.acceptMerge": "Editor de mesclagem: concluir a mesclagem",
-  "command.graphite.conflict.openMergeEditor": "Abrir o conflito no editor de mesclagem"
+  "command.graphite.conflict.openMergeEditor": "Abrir o conflito no editor de mesclagem",
+  "command.graphite.scm.openAllChanges": "Git: abrir todas as alterações",
+  "command.graphite.scm.openAllStagedChanges": "Git: abrir todas as alterações preparadas",
+  "command.graphite.scm.openAllUnstagedChanges": "Git: abrir todas as alterações não preparadas",
+  "command.graphite.multiDiff.close": "Fechar o diff de vários arquivos",
+  "command.graphite.multiDiff.toggleFile": "Diff de vários arquivos: recolher ou expandir o arquivo selecionado",
+  "command.multiDiffEditor.collapseAll": "Diff de vários arquivos: recolher todos os arquivos",
+  "command.multiDiffEditor.expandAll": "Diff de vários arquivos: expandir todos os arquivos",
+  "command.multiDiffEditor.focusFileList": "Diff de vários arquivos: focar a lista de arquivos",
+  "command.multiDiffEditor.goToFile": "Diff de vários arquivos: abrir o arquivo",
+  "command.multiDiffEditor.goToNextChange": "Diff de vários arquivos: ir à próxima alteração",
+  "command.multiDiffEditor.goToPreviousChange": "Diff de vários arquivos: ir à alteração anterior",
+  "command.category.multi-diff": "Diff de vários arquivos"
 }

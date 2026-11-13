@@ -690,5 +690,19 @@
   "merge.close_warning": "{count} decisão(ões) não foram gravadas no arquivo. Feche de novo para descartá-las, ou conclua a mesclagem",
   "merge.error.unresolved": "{count} conflito(s) ainda estão pendentes",
   "merge.error.unsaved": "O arquivo tem edições não salvas; salve ou descarte antes de concluir a mesclagem",
-  "merge.written": "Resultado da mesclagem gravado no arquivo"
+  "merge.written": "Resultado da mesclagem gravado no arquivo",
+  "multi_diff.title.all": "Todas as alterações ({count} arquivos)",
+  "multi_diff.title.staged": "Alterações preparadas ({count} arquivos)",
+  "multi_diff.title.unstaged": "Alterações não preparadas ({count} arquivos)",
+  "multi_diff.header": "{title}   +{added} -{removed}",
+  "multi_diff.hint": "Cima/Baixo alterações   Enter abrir arquivo   Tab lista de arquivos   C recolher tudo   E expandir tudo   Espaço recolher arquivo   PgUp/PgDn rolar   Esc fechar",
+  "multi_diff.loading": "Lendo as alterações...",
+  "multi_diff.opened": "Diff de vários arquivos aberto",
+  "multi_diff.closed": "Diff de vários arquivos fechado",
+  "multi_diff.empty": "Não há alterações para mostrar",
+  "multi_diff.failed": "Não foi possível ler as alterações: {error}",
+  "multi_diff.no_changes": "Não há alterações nesta visão",
+  "multi_diff.binary": "arquivo binário",
+  "multi_diff.gap": "{count} linha(s) sem alteração",
+  "multi_diff.file_missing": "{path} não está na árvore de trabalho"
 }

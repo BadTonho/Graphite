@@ -606,5 +606,17 @@
   "command.mergeEditor.resetResultToBaseAndAutoMerge": "Merge editor: reset the result",
   "command.mergeEditor.resetCloseWithConflictsChoice": "Merge editor: reset the close warning",
   "command.mergeEditor.acceptMerge": "Merge editor: complete merge",
-  "command.graphite.conflict.openMergeEditor": "Open the conflict in the merge editor"
+  "command.graphite.conflict.openMergeEditor": "Open the conflict in the merge editor",
+  "command.graphite.scm.openAllChanges": "Git: open all changes",
+  "command.graphite.scm.openAllStagedChanges": "Git: open all staged changes",
+  "command.graphite.scm.openAllUnstagedChanges": "Git: open all unstaged changes",
+  "command.graphite.multiDiff.close": "Close the multi-file diff",
+  "command.graphite.multiDiff.toggleFile": "Multi-file diff: collapse or expand the selected file",
+  "command.multiDiffEditor.collapseAll": "Multi-file diff: collapse all files",
+  "command.multiDiffEditor.expandAll": "Multi-file diff: expand all files",
+  "command.multiDiffEditor.focusFileList": "Multi-file diff: focus the file list",
+  "command.multiDiffEditor.goToFile": "Multi-file diff: open the file",
+  "command.multiDiffEditor.goToNextChange": "Multi-file diff: go to next change",
+  "command.multiDiffEditor.goToPreviousChange": "Multi-file diff: go to previous change",
+  "command.category.multi-diff": "Multi-file diff"
 }

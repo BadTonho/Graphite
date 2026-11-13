@@ -340,6 +340,11 @@ pub(crate) enum UserEvent {
     GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
+    /// The files of a multi-file diff were read on a background thread.
+    MultiDiffReady {
+        set: crate::scm_changes::ChangeSet,
+        result: Result<Vec<crate::multi_diff::FileInput>, String>,
+    },
     ScmSnapshot(crate::scm::Snapshot),
     ScmOperationCompleted {
         message: String,

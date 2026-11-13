@@ -54,6 +54,7 @@ pub(crate) mod merge_drawing;
 pub(crate) mod merge_editor;
 pub(crate) mod merge_flow;
 pub(crate) mod merge_resolution;
+pub(crate) mod multi_diff_ui;
 pub(super) mod local_search;
 pub(crate) mod lsp_features;
 mod lsp_ui;
@@ -107,6 +108,8 @@ mod command_tests;
 mod merge_flow_tests;
 #[cfg(test)]
 mod merge_actions_tests;
+#[cfg(test)]
+mod multi_diff_tests;
 #[cfg(test)]
 mod merge_entry_tests;
 #[cfg(test)]
