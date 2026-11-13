@@ -1516,7 +1516,7 @@ impl App {
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
-                self.t("scm.branch.prompt"),
+                self.t(self.branch_picker_action.prompt_key()),
                 x + PAD,
                 y + PAD,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),

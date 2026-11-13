@@ -11,8 +11,27 @@ The Source Control view has the same main actions as VS Code's:
 | Changes header | ▤ | **Stash**: stashes all changes, including new files. |
 | Changes header | + | Stage all (existing). |
 
-The `Git:` commands are also in the command palette: Pull, Push, Fetch, Sync, Stash, View History, Create Pull Request.
+The `Git:` commands are in the command palette (and listed by the ⋯ button): Pull, Push, Fetch, Sync, Stash, View History, Create Pull Request, More Actions, and the branch commands below.
 
 Git runs in the background, so the window stays responsive during a pull or push. Errors from git (for example, an unreachable remote) appear in the status bar.
 
 Limits: the buttons use text symbols, so they may look slightly different from VS Code's icons. The ⋯ button opens the palette, not a dropdown. Hovering a button does not show a tooltip yet.
+
+## Branches, amend, merge and rebase
+
+| Command | What it does |
+|---|---|
+| **Git: Amend Last Commit** | Replaces the last commit with the staged changes. Text typed in the commit message field becomes the new message (and the field is cleared); an empty field keeps the existing message. |
+| **Git: Create Branch...** | Asks for a name, then creates the branch at the current commit and switches to it. Uncommitted changes come along. The name is checked with `git check-ref-format`; existing and invalid names are refused. |
+| **Git: Merge Branch...** | Opens the branch picker; the chosen branch is merged into the current one with a merge commit (`--no-edit`). |
+| **Git: Rebase onto Branch...** | Opens the branch picker; the current branch is rebased onto the chosen one. |
+| **Git: Abort Merge or Rebase** | Abandons a merge or rebase that stopped on conflicts and restores the previous state. |
+| **Git: Continue Merge or Rebase** | After resolving and staging the conflicting files: continues the rebase, or commits the merge. |
+
+Notes:
+
+- Merge, rebase and continue are refused while an open document has unsaved edits, because they rewrite files under it. Create Branch, Amend and Abort are not.
+- A conflict is not an error that loses anything: the merge or rebase stays in progress, the conflicting files appear in the Source Control view (open them in the 3-way conflict editor), and the status line says to resolve, continue or abort.
+- Branch arguments that start with `-` or contain whitespace are rejected before git runs, so a branch name can never be read as a git option.
+- Git runs with `GIT_EDITOR=true`, so no editor opens for merge or rebase messages; the default message is used.
+- Still missing: deleting branches, interactive rebase, choosing a remote branch from the picker (only local branches are listed), and `merge --squash`/`--no-ff` options.

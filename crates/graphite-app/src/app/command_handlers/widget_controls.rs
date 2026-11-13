@@ -139,7 +139,7 @@ fn open_diagnostic(app: &mut App, invocation: &CommandInvocation) -> Result<(), 
     Ok(())
 }
 fn branch_close(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.branch_picker = false;
+    app.close_branch_picker();
     Ok(())
 }
 fn branch_next(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

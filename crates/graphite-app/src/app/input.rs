@@ -12,6 +12,14 @@ impl App {
         if self.handle_github_dialog_key(&event.logical_key) {
             return;
         }
+        if self.handle_branch_name_prompt_key(
+            &event.logical_key,
+            (!self.modifiers.control_key() && !self.modifiers.alt_key())
+                .then_some(event.text.as_deref())
+                .flatten(),
+        ) {
+            return;
+        }
         if self.handle_rename_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())

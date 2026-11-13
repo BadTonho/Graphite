@@ -57,6 +57,7 @@ mod project_search;
 pub(super) mod project_search_filters;
 pub(super) mod quick_open;
 pub(crate) mod run_menu;
+pub(crate) mod scm_branch_ui;
 pub(crate) mod scm_remote_ui;
 pub(crate) mod scm_ui;
 pub(crate) mod selection_menu;

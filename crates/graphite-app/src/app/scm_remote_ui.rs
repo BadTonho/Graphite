@@ -4,24 +4,49 @@
 use super::*;
 use crate::scm_remote;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RemoteOp {
     Pull,
     Push,
     Fetch,
     Sync,
     Stash,
+    /// Amend the last commit, with a new message when one is given.
+    Amend(Option<String>),
+    CreateBranch(String),
+    Merge(String),
+    Rebase(String),
+    /// Abandon the merge or rebase that stopped on conflicts.
+    AbortOperation,
+    /// Continue a rebase (or finish a merge) after the conflicts were resolved.
+    ContinueOperation,
 }
 
 impl RemoteOp {
-    fn run(self, root: &std::path::Path) -> Result<String, String> {
+    fn run(&self, root: &std::path::Path) -> Result<String, String> {
+        use crate::scm_branches as branches;
         match self {
             RemoteOp::Pull => scm_remote::pull(root),
             RemoteOp::Push => scm_remote::push(root),
             RemoteOp::Fetch => scm_remote::fetch(root),
             RemoteOp::Sync => scm_remote::sync(root),
             RemoteOp::Stash => scm_remote::stash(root),
+            RemoteOp::Amend(message) => branches::amend(root, message.as_deref()),
+            RemoteOp::CreateBranch(name) => branches::create_branch(root, name),
+            RemoteOp::Merge(branch) => branches::merge(root, branch),
+            RemoteOp::Rebase(onto) => branches::rebase(root, onto),
+            RemoteOp::AbortOperation => branches::abort(root),
+            RemoteOp::ContinueOperation => branches::continue_operation(root),
         }
+    }
+
+    /// Operations that rewrite files under the open documents, which would clash with unsaved
+    /// edits.
+    pub(crate) fn needs_saved_documents(&self) -> bool {
+        matches!(
+            self,
+            RemoteOp::Merge(_) | RemoteOp::Rebase(_) | RemoteOp::ContinueOperation
+        )
     }
 }
 
@@ -29,6 +54,10 @@ impl App {
     /// Runs a pull, push, fetch, sync or stash on a worker thread and refreshes the SCM view
     /// with the result.
     pub(crate) fn run_scm_remote(&mut self, op: RemoteOp) {
+        if op.needs_saved_documents() && self.documents.iter().any(|tab| tab.is_dirty()) {
+            self.status = self.t("scm.error.unsaved_for_git_operation").into();
+            return;
+        }
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = self.t("scm.error.actions_need_loop").into();
             return;

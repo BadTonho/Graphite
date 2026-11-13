@@ -26,6 +26,7 @@ mod ports;
 mod previews;
 mod process_explorer;
 mod scm;
+mod scm_branches;
 mod scm_remote;
 mod terminal;
 mod terminal_links;
@@ -260,6 +261,8 @@ struct App {
     scm_scroll: usize,
     branch_picker: bool,
     branch_selected: usize,
+    branch_picker_action: app::scm_branch_ui::BranchPickerAction,
+    branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
     scm_commit_message: String,
     scm_commit_prompt: bool,
     diff_view: Option<app::scm_ui::DiffView>,
@@ -717,6 +720,8 @@ impl App {
             scm_scroll: 0,
             branch_picker: false,
             branch_selected: 0,
+            branch_picker_action: Default::default(),
+            branch_name_prompt: None,
             scm_commit_message: String::new(),
             scm_commit_prompt: false,
             diff_view: None,

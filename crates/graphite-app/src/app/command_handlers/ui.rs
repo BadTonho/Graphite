@@ -454,7 +454,7 @@ fn branch_picker(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
     Ok(())
 }
 fn checkout(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.checkout_selected_branch();
+    app.confirm_branch_picker();
     Ok(())
 }
 fn diff_layout(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

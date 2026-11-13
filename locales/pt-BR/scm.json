@@ -73,5 +73,11 @@
   "scm.status.hunk_staged": "Trecho preparado",
   "scm.status.line_reverted": "Linha selecionada revertida",
   "scm.status.line_staged": "Linha selecionada preparada",
-  "scm.status.running": "Operação Git em andamento…"
+  "scm.status.running": "Operação Git em andamento…",
+  "scm.branch.prompt_merge": "Mesclar qual branch na atual? (Enter / Esc)",
+  "scm.branch.prompt_rebase": "Fazer rebase da branch atual sobre (Enter / Esc)",
+  "scm.error.unsaved_for_git_operation": "Salve ou descarte as edições não salvas antes de mesclar ou fazer rebase",
+  "scm.prompt.new_branch": "Nome da nova branch:",
+  "scm.prompt.new_branch_hint": "Enter cria a branch e muda para ela · Esc cancela",
+  "scm.prompt.branch_empty": "Digite um nome de branch primeiro"
 }
