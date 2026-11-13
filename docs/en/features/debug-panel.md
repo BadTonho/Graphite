@@ -28,6 +28,25 @@ The adapter's `exceptionBreakpointFilters` capability populates the list, using 
 
 `F10`, `F11` and `Shift+F11` send `next`, `stepIn` and `stepOut` with the paused thread's `threadId`, as the protocol requires. Resuming clears the stale stack and variables so the panel never shows values from a previous stop.
 
+## Where the debug adapter comes from
+
+A standard VS Code `launch.json` names only the debug `type` (`"node"`, `"python"`, …). Graphite finds the adapter in the **enabled** installed extension whose `contributes.debuggers` declares that `type`:
+
+- `program` is a path inside the extension. With a `runtime` (for example `node`), the runtime runs it: `runtime runtimeArgs… program args…`. `node` uses the runtime bundled with Graphite when there is one, otherwise `node` from `PATH`. Other runtimes must be on `PATH`. Without a `runtime`, the program is executed directly.
+- `windows`, `linux` and `osx` entries override the shared fields one by one.
+- `program` paths that leave the extension directory are ignored.
+- An `"adapter": { "command": …, "args": […] }` in the configuration still takes precedence, for adapters not installed as extensions.
+- Errors name the cause: no extension provides the type, the providing extension is disabled, or the adapter program is missing.
+- Not supported yet: extensions that build their adapter in code (`registerDebugAdapterDescriptorFactory`) and declare no `program`.
+
+Extensions installed before this feature are re-read from their `package.json` when the registry loads.
+
+### Variables
+
+Every string in the launch configuration (including `program`, `args`, `cwd` and `env`) expands `${workspaceFolder}`, `${workspaceFolderBasename}`, `${cwd}`, `${userHome}`, `${pathSeparator}` (and `${/}`), `${env:NAME}` (empty when unset), and, from the file open when the session starts, `${file}`, `${fileBasename}`, `${fileBasenameNoExtension}`, `${fileExtname}`, `${fileDirname}`, `${relativeFile}` and `${relativeFileDirname}`. Unknown variables, `${input:…}`, `${command:…}`, and file variables with no file open are left as written so the problem is visible. A relative `program` or `cwd` is resolved against the workspace after expansion; `cwd` defaults to the workspace.
+
+The first configuration in `launch.json` is always the one that starts; choosing among several is not implemented yet.
+
 ## Tasks around a session
 
 A launch configuration may name tasks from `.vscode/tasks.json`:

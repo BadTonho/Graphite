@@ -48,7 +48,15 @@ impl App {
         self.begin_debug_session(config)
     }
 
-    fn begin_debug_session(&mut self, config: crate::debugger::LaunchConfig) -> Result<(), String> {
+    fn begin_debug_session(
+        &mut self,
+        mut config: crate::debugger::LaunchConfig,
+    ) -> Result<(), String> {
+        self.resolve_debug_adapter(&mut config)?;
+        self.debug.active_file = self.documents[self.active_document()]
+            .buffer
+            .path()
+            .map(std::path::Path::to_path_buf);
         self.debug
             .start(config, self.tree.root())
             .map_err(|error| error.to_string())?;
@@ -478,9 +486,10 @@ mod tests {
         app.debug_pending_launch = Some(config(Some("build")));
         app.finish_debug_pre_launch(&Ok(0));
         assert!(app.debug_pending_launch.is_none());
-        // The fixture declares no adapter, so reaching this error proves the launch was attempted.
+        // No extension provides the fixture type, so reaching this error proves the launch was attempted.
         assert!(
-            app.status.contains("adapter executable is not configured"),
+            app.status
+                .contains("No installed extension provides a debugger"),
             "status was: {}",
             app.status
         );

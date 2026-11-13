@@ -1768,6 +1768,7 @@ mod tests {
                     }],
                     language_comments: vec![],
                     snippets: vec![],
+                    debuggers: vec![],
                 },
             ),
             enabled: true,

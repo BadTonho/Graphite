@@ -28,6 +28,25 @@ A capacidade `exceptionBreakpointFilters` do adaptador preenche a lista, usando 
 
 `F10`, `F11` e `Shift+F11` enviam `next`, `stepIn` e `stepOut` com o `threadId` da thread pausada, como o protocolo exige. Retomar a execução limpa a pilha e as variáveis antigas, para o painel nunca mostrar valores de uma parada anterior.
 
+## De onde vem o adaptador de depuração
+
+Um `launch.json` padrão do VS Code cita só o `type` de depuração (`"node"`, `"python"`, …). O Graphite procura o adaptador na extensão instalada e **habilitada** cujo `contributes.debuggers` declara esse `type`:
+
+- `program` é um caminho dentro da extensão. Com um `runtime` (por exemplo `node`), o runtime o executa: `runtime runtimeArgs… program args…`. `node` usa o runtime que acompanha o Graphite quando existe, senão o `node` do `PATH`. Outros runtimes precisam estar no `PATH`. Sem `runtime`, o programa é executado diretamente.
+- As entradas `windows`, `linux` e `osx` substituem os campos compartilhados um a um.
+- Caminhos de `program` que saem da pasta da extensão são ignorados.
+- Um `"adapter": { "command": …, "args": […] }` na configuração continua tendo prioridade, para adaptadores que não são instalados como extensões.
+- Os erros indicam a causa: nenhuma extensão fornece o tipo, a extensão que o fornece está desabilitada, ou o programa do adaptador não existe.
+- Ainda não suportado: extensões que criam o adaptador em código (`registerDebugAdapterDescriptorFactory`) e não declaram `program`.
+
+Extensões instaladas antes desta funcionalidade são relidas do `package.json` quando o registro é carregado.
+
+### Variáveis
+
+Toda string da configuração (incluindo `program`, `args`, `cwd` e `env`) expande `${workspaceFolder}`, `${workspaceFolderBasename}`, `${cwd}`, `${userHome}`, `${pathSeparator}` (e `${/}`), `${env:NOME}` (vazio se não definida) e, a partir do arquivo aberto quando a sessão começa, `${file}`, `${fileBasename}`, `${fileBasenameNoExtension}`, `${fileExtname}`, `${fileDirname}`, `${relativeFile}` e `${relativeFileDirname}`. Variáveis desconhecidas, `${input:…}`, `${command:…}` e variáveis de arquivo sem arquivo aberto ficam como estão escritas, para o problema ficar visível. Um `program` ou `cwd` relativo é resolvido contra o workspace depois da expansão; `cwd` assume o workspace por padrão.
+
+Quem inicia é sempre a primeira configuração do `launch.json`; escolher entre várias ainda não está implementado.
+
 ## Tarefas ao redor da sessão
 
 Uma configuração de lançamento pode citar tarefas de `.vscode/tasks.json`:

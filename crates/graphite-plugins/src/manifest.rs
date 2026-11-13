@@ -128,6 +128,117 @@ pub struct Vsix {
     /// Snippet files the extension contributes (`contributes.snippets`).
     #[serde(default)]
     pub snippets: Vec<SnippetContribution>,
+    /// Debug adapters the extension contributes (`contributes.debuggers`).
+    #[serde(default)]
+    pub debuggers: Vec<DebuggerContribution>,
+}
+
+/// How to start a debug adapter: `runtime` (if any) runs `program`, a path inside the extension.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DebuggerExecutable {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_args: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+}
+
+/// One entry of `contributes.debuggers`: the debug `type` it serves and how to launch its adapter,
+/// with optional per-platform overrides.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DebuggerContribution {
+    #[serde(rename = "type")]
+    pub debug_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(flatten)]
+    pub executable: DebuggerExecutable,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows: Option<DebuggerExecutable>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linux: Option<DebuggerExecutable>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub osx: Option<DebuggerExecutable>,
+}
+
+impl DebuggerContribution {
+    /// The executable for `platform` (`"windows"`, `"linux"` or `"osx"`): the platform's fields
+    /// replace the shared ones, field by field.
+    pub fn executable_for(&self, platform: &str) -> DebuggerExecutable {
+        let specific = match platform {
+            "windows" => &self.windows,
+            "linux" => &self.linux,
+            "osx" => &self.osx,
+            _ => &None,
+        };
+        let base = &self.executable;
+        let Some(over) = specific else {
+            return base.clone();
+        };
+        DebuggerExecutable {
+            program: over.program.clone().or_else(|| base.program.clone()),
+            runtime: over.runtime.clone().or_else(|| base.runtime.clone()),
+            runtime_args: over
+                .runtime_args
+                .clone()
+                .or_else(|| base.runtime_args.clone()),
+            args: over.args.clone().or_else(|| base.args.clone()),
+        }
+    }
+}
+
+/// The platform key VS Code uses in `contributes.debuggers` overrides.
+pub fn debugger_platform() -> &'static str {
+    if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "osx"
+    } else {
+        "linux"
+    }
+}
+
+/// Reads `contributes.debuggers`. Entries without a `type`, and `program` paths that leave the
+/// extension directory, are dropped.
+pub(crate) fn vsix_debuggers(manifest: &Value) -> Vec<DebuggerContribution> {
+    fn safe(executable: &mut DebuggerExecutable) -> bool {
+        if let Some(program) = executable.program.as_deref() {
+            let relative = program.strip_prefix("./").unwrap_or(program);
+            if !crate::package::safe_path(relative) {
+                return false;
+            }
+            executable.program = Some(relative.to_owned());
+        }
+        true
+    }
+    manifest
+        .pointer("/contributes/debuggers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let mut debugger: DebuggerContribution = serde_json::from_value(entry.clone()).ok()?;
+            if debugger.debug_type.trim().is_empty() || !safe(&mut debugger.executable) {
+                return None;
+            }
+            for platform in [
+                &mut debugger.windows,
+                &mut debugger.linux,
+                &mut debugger.osx,
+            ] {
+                if let Some(over) = platform {
+                    if !safe(over) {
+                        *platform = None;
+                    }
+                }
+            }
+            Some(debugger)
+        })
+        .collect()
 }
 
 /// A snippet file inside the extension for one language.
@@ -404,5 +515,86 @@ mod activity_bar_tests {
             ]
         );
         assert!(vsix_snippets(&serde_json::json!({})).is_empty());
+    }
+
+    fn debugger_manifest() -> Value {
+        serde_json::json!({"contributes": {"debuggers": [
+            {
+                "type": "node", "label": "Node Debug", "runtime": "node",
+                "program": "./out/adapter.js", "args": ["--serve"],
+                "runtimeArgs": ["--no-warnings"],
+                "windows": {"program": "./out/adapter-win.js"},
+                "osx": {"runtime": "mono", "args": []}
+            },
+            {"type": "native", "program": "bin/adapter"},
+            {"type": "", "program": "bin/blank"},
+            {"program": "bin/no-type"},
+            {"type": "escape", "program": "../outside"},
+            {"type": "absolute", "program": "/usr/bin/adapter"},
+            {"type": "partial", "program": "bin/ok", "linux": {"program": "../bad"}}
+        ]}})
+    }
+
+    #[test]
+    fn vsix_debuggers_keep_safe_entries_with_a_type() {
+        let debuggers = vsix_debuggers(&debugger_manifest());
+        let types: Vec<_> = debuggers.iter().map(|d| d.debug_type.as_str()).collect();
+        assert_eq!(types, ["node", "native", "partial"]);
+        let node = &debuggers[0];
+        assert_eq!(node.label.as_deref(), Some("Node Debug"));
+        assert_eq!(node.executable.program.as_deref(), Some("out/adapter.js"));
+        assert_eq!(node.executable.runtime.as_deref(), Some("node"));
+        assert_eq!(node.executable.args, Some(vec!["--serve".into()]));
+        assert_eq!(
+            node.executable.runtime_args,
+            Some(vec!["--no-warnings".into()])
+        );
+        assert_eq!(
+            debuggers[2].linux, None,
+            "an unsafe platform override is dropped, the shared program stays"
+        );
+        assert_eq!(debuggers[2].executable.program.as_deref(), Some("bin/ok"));
+        assert!(vsix_debuggers(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn platform_overrides_replace_shared_fields_one_by_one() {
+        let debuggers = vsix_debuggers(&debugger_manifest());
+        let node = &debuggers[0];
+        let windows = node.executable_for("windows");
+        assert_eq!(windows.program.as_deref(), Some("out/adapter-win.js"));
+        assert_eq!(windows.runtime.as_deref(), Some("node"), "not overridden");
+        assert_eq!(windows.args, Some(vec!["--serve".into()]));
+        let osx = node.executable_for("osx");
+        assert_eq!(osx.runtime.as_deref(), Some("mono"));
+        assert_eq!(
+            osx.args,
+            Some(Vec::new()),
+            "an empty override still replaces"
+        );
+        assert_eq!(osx.program.as_deref(), Some("out/adapter.js"));
+        assert_eq!(node.executable_for("linux"), node.executable);
+        assert_eq!(node.executable_for("plan9"), node.executable);
+    }
+
+    #[test]
+    fn records_saved_before_debuggers_existed_load_with_none() {
+        let old = serde_json::json!({
+            "id": "a.b", "version": "1.0.0", "description": "", "engines": {},
+            "main": null, "contributions": ["debuggers"]
+        });
+        let vsix: Vsix = serde_json::from_value(old).unwrap();
+        assert!(vsix.debuggers.is_empty());
+        let round_trip: Vsix =
+            serde_json::from_value(serde_json::to_value(&vsix).unwrap()).unwrap();
+        assert!(round_trip.debuggers.is_empty());
+    }
+
+    #[test]
+    fn debugger_contributions_survive_serialization() {
+        let debuggers = vsix_debuggers(&debugger_manifest());
+        let text = serde_json::to_string(&debuggers).unwrap();
+        let back: Vec<DebuggerContribution> = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, debuggers);
     }
 }

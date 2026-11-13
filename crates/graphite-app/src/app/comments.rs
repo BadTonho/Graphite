@@ -292,6 +292,7 @@ mod tests {
                 block_comment: None,
             }],
             snippets: vec![],
+            debuggers: vec![],
         });
         app.plugins
             .installed_plugins_mut()

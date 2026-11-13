@@ -290,6 +290,7 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
             activity_bar: vec![],
             language_comments: vec![],
             snippets: vec![],
+            debuggers: vec![],
         }),
         enabled: false,
         trusted_version: None,
@@ -319,6 +320,7 @@ fn tab_switches_leave_details_and_clear_path_input() {
         activity_bar: vec![],
         language_comments: vec![],
         snippets: vec![],
+        debuggers: vec![],
     });
     app.plugins.inspecting = Some(metadata.clone());
     app.plugin_action('i');
@@ -463,6 +465,7 @@ fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
                 activity_bar: vec![],
                 language_comments: vec![],
                 snippets: vec![],
+                debuggers: vec![],
             }),
             enabled: false,
             trusted_version: None,

@@ -189,6 +189,8 @@ pub struct DebugRuntime {
     pub output: Vec<DebugOutput>,
     pub frames: Vec<StackFrame>,
     pub selected_frame: usize,
+    /// The file open in the editor when the session started, for `${file}`.
+    pub active_file: Option<PathBuf>,
     pub scopes: Vec<Scope>,
     pub watches: Vec<WatchExpression>,
     pub exception_filters: Vec<ExceptionFilter>,
@@ -695,21 +697,19 @@ impl DebugRuntime {
                     object.remove(key);
                 }
             }
-            if let Some(program) = config.program.as_ref() {
-                arguments["program"] = serde_json::json!(absolute(workspace, program));
+            let context = VariableContext {
+                workspace: workspace.to_path_buf(),
+                active_file: self.active_file.clone(),
+            };
+            expand_value(&mut arguments, &context);
+            // `program` and `cwd` are resolved after expansion so `${workspaceFolder}/x` is absolute.
+            if let Some(program) = arguments["program"].as_str() {
+                arguments["program"] = serde_json::json!(absolute(workspace, Path::new(program)));
             }
-            arguments["cwd"] = serde_json::json!(config
-                .cwd
-                .as_ref()
-                .map(|cwd| absolute(workspace, cwd))
+            let cwd = arguments["cwd"].as_str().map(PathBuf::from);
+            arguments["cwd"] = serde_json::json!(cwd
+                .map(|cwd| absolute(workspace, &cwd))
                 .unwrap_or_else(|| workspace.to_path_buf()));
-            if let Some(env) = arguments["env"].as_object_mut() {
-                for value in env.values_mut() {
-                    if let Some(path) = value.as_str() {
-                        *value = serde_json::json!(expand_variables(path, workspace));
-                    }
-                }
-            }
             self.launch_seq = Some(
                 self.session
                     .as_mut()
@@ -894,8 +894,85 @@ fn absolute(workspace: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn expand_variables(value: &str, workspace: &Path) -> String {
-    value.replace("${workspaceFolder}", &workspace.display().to_string())
+/// What the `${...}` variables of a launch configuration resolve against.
+#[derive(Clone, Debug, Default)]
+pub struct VariableContext {
+    pub workspace: PathBuf,
+    /// The file open in the editor, for `${file}` and its relatives.
+    pub active_file: Option<PathBuf>,
+}
+
+impl VariableContext {
+    fn resolve(&self, name: &str) -> Option<String> {
+        let text = |path: &Path| path.display().to_string();
+        let file = self.active_file.as_deref();
+        let file_part = |part: fn(&Path) -> Option<String>| file.and_then(part);
+        match name {
+            "workspaceFolder" | "cwd" => Some(text(&self.workspace)),
+            "workspaceFolderBasename" => self
+                .workspace
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned()),
+            "userHome" => std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                .map(|home| PathBuf::from(home).display().to_string()),
+            "pathSeparator" | "/" => Some(std::path::MAIN_SEPARATOR.to_string()),
+            "file" => file.map(text),
+            "fileBasename" => {
+                file_part(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()))
+            }
+            "fileBasenameNoExtension" => {
+                file_part(|f| f.file_stem().map(|n| n.to_string_lossy().into_owned()))
+            }
+            "fileExtname" => file_part(|f| {
+                f.extension()
+                    .map(|extension| format!(".{}", extension.to_string_lossy()))
+            }),
+            "fileDirname" => file_part(|f| f.parent().map(|dir| dir.display().to_string())),
+            "relativeFile" => file.map(|f| text(f.strip_prefix(&self.workspace).unwrap_or(f))),
+            "relativeFileDirname" => file.and_then(|f| {
+                f.parent()
+                    .map(|dir| text(dir.strip_prefix(&self.workspace).unwrap_or(dir)))
+            }),
+            _ => name
+                .strip_prefix("env:")
+                .map(|variable| std::env::var(variable).unwrap_or_default()),
+        }
+    }
+}
+
+/// Replaces `${variable}` references. Unknown variables, and `${file}`-style variables when no
+/// file is open, are left in the text so the failure is visible instead of silently empty.
+pub fn expand_variables(value: &str, context: &VariableContext) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("${") {
+        result.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find('}') else {
+            result.push_str(&rest[start..]);
+            return result;
+        };
+        match context.resolve(&after[..end]) {
+            Some(replacement) => result.push_str(&replacement),
+            None => result.push_str(&rest[start..start + 2 + end + 1]),
+        }
+        rest = &after[end + 1..];
+    }
+    result.push_str(rest);
+    result
+}
+
+fn expand_value(value: &mut Value, context: &VariableContext) {
+    match value {
+        Value::String(text) => *text = expand_variables(text, context),
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| expand_value(item, context)),
+        Value::Object(map) => map
+            .values_mut()
+            .for_each(|item| expand_value(item, context)),
+        _ => {}
+    }
 }
 
 impl DapSession {
@@ -1317,6 +1394,148 @@ mod tests {
         let (mut runtime, _writer) = paused_runtime();
         runtime.stop().unwrap();
         assert_eq!(runtime.take_post_debug_task(), None);
+    }
+
+    fn context() -> VariableContext {
+        let workspace = std::env::temp_dir().join("proj");
+        VariableContext {
+            active_file: Some(workspace.join("src").join("main.py")),
+            workspace,
+        }
+    }
+
+    #[test]
+    fn launch_variables_expand_workspace_and_file_parts() {
+        let context = context();
+        let workspace = context.workspace.display().to_string();
+        let sep = std::path::MAIN_SEPARATOR;
+        let expand = |text: &str| expand_variables(text, &context);
+        assert_eq!(expand("${workspaceFolder}"), workspace);
+        assert_eq!(expand("${workspaceFolderBasename}"), "proj");
+        assert_eq!(expand("${cwd}"), workspace);
+        assert_eq!(expand("${fileBasename}"), "main.py");
+        assert_eq!(expand("${fileBasenameNoExtension}"), "main");
+        assert_eq!(expand("${fileExtname}"), ".py");
+        assert_eq!(expand("${relativeFile}"), format!("src{sep}main.py"));
+        assert_eq!(expand("${relativeFileDirname}"), "src");
+        assert_eq!(expand("${fileDirname}"), format!("{workspace}{sep}src"));
+        assert_eq!(
+            expand("${file}"),
+            format!("{workspace}{sep}src{sep}main.py")
+        );
+        assert_eq!(expand("a${pathSeparator}b${/}c"), format!("a{sep}b{sep}c"));
+        assert_eq!(
+            expand("${workspaceFolder}/${fileBasename}"),
+            format!("{workspace}/main.py"),
+            "several variables in one string"
+        );
+    }
+
+    #[test]
+    fn environment_variables_expand_and_missing_ones_become_empty() {
+        let context = context();
+        std::env::set_var("GRAPHITE_DEBUG_TEST_VALUE", "from-env");
+        assert_eq!(
+            expand_variables("${env:GRAPHITE_DEBUG_TEST_VALUE}!", &context),
+            "from-env!"
+        );
+        assert_eq!(
+            expand_variables("[${env:GRAPHITE_DEBUG_TEST_UNSET_VALUE}]", &context),
+            "[]"
+        );
+    }
+
+    #[test]
+    fn unknown_or_unavailable_variables_stay_visible() {
+        let mut context = context();
+        context.active_file = None;
+        for text in [
+            "${unknown}",
+            "${file}",
+            "${relativeFile}",
+            "${input:name}",
+            "${command:pick}",
+            "${unterminated",
+            "$notavariable",
+            "${}",
+        ] {
+            assert_eq!(expand_variables(text, &context), text);
+        }
+        assert_eq!(expand_variables("", &context), "");
+        assert_eq!(
+            expand_variables("é${file}ü${workspaceFolderBasename}", &context),
+            "é${file}üproj",
+            "multi-byte text around variables is kept"
+        );
+    }
+
+    #[test]
+    fn expansion_reaches_nested_launch_values() {
+        let context = context();
+        let mut value = serde_json::json!({
+            "args": ["--root", "${workspaceFolder}", 3],
+            "env": {"A": "${fileBasename}"},
+            "n": 1, "flag": true, "nothing": null
+        });
+        expand_value(&mut value, &context);
+        assert_eq!(value["args"][1], context.workspace.display().to_string());
+        assert_eq!(value["args"][2], 3);
+        assert_eq!(value["env"]["A"], "main.py");
+        assert_eq!(value["flag"], true);
+    }
+
+    #[test]
+    fn launch_arguments_get_expanded_absolute_program_and_cwd() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.initialize_seq = Some(1);
+        runtime.active_file = Some(PathBuf::from("/w/app.py"));
+        let mut config = config_with_tasks(None, None);
+        config.program = Some(PathBuf::from("${workspaceFolder}/main.py"));
+        config.args = vec!["--file".into(), "${fileBasename}".into()];
+        config
+            .env
+            .insert("ROOT".into(), "${workspaceFolder}".into());
+        runtime.active_config = Some(config);
+        let workspace = std::env::temp_dir().join("proj");
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"response","request_seq":1,"success":true,"body":{}}),
+                &workspace,
+            )
+            .unwrap();
+        let launch = writer.last();
+        let arguments = &launch["arguments"];
+        let root = workspace.display().to_string();
+        assert_eq!(arguments["program"], format!("{root}/main.py"));
+        assert_eq!(arguments["args"][1], "app.py");
+        assert_eq!(arguments["env"]["ROOT"], root);
+        assert_eq!(arguments["cwd"], root, "defaults to the workspace");
+    }
+
+    #[test]
+    fn a_relative_program_and_cwd_resolve_against_the_workspace() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime.initialize_seq = Some(1);
+        let mut config = config_with_tasks(None, None);
+        config.program = Some(PathBuf::from("bin/run"));
+        config.cwd = Some(PathBuf::from("sub"));
+        runtime.active_config = Some(config);
+        let workspace = std::env::temp_dir().join("proj");
+        runtime
+            .handle_message(
+                serde_json::json!({"type":"response","request_seq":1,"success":true,"body":{}}),
+                &workspace,
+            )
+            .unwrap();
+        let arguments = &writer.last()["arguments"];
+        assert_eq!(
+            arguments["program"],
+            workspace.join("bin/run").display().to_string()
+        );
+        assert_eq!(
+            arguments["cwd"],
+            workspace.join("sub").display().to_string()
+        );
     }
 
     #[test]

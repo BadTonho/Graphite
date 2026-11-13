@@ -69,6 +69,22 @@ impl Store {
                             }
                         }
                     }
+                    if vsix.debuggers.is_empty()
+                        && vsix.contributions.iter().any(|name| name == "debuggers")
+                    {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.debuggers = crate::manifest::vsix_debuggers(&manifest);
+                            }
+                        }
+                    }
                     if vsix.language_comments.is_empty() {
                         let path = self
                             .root

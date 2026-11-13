@@ -76,6 +76,7 @@ mod window_events;
 mod workspace_edit;
 mod wrap_drawing;
 
+mod debug_adapters;
 mod debug_panel;
 pub(crate) mod debugging;
 mod document_edit;
