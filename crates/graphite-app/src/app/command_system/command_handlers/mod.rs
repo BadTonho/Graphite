@@ -4,8 +4,9 @@ use super::command_registry::{
 };
 use super::context_keys::WidgetKind;
 use super::*;
-pub(crate) mod configuration;
 mod changes;
+mod chat_commands;
+pub(crate) mod configuration;
 mod debug_extra;
 mod editor;
 mod explorer;
@@ -18,7 +19,14 @@ mod input;
 mod interactive_commands;
 mod layout;
 mod lists;
+mod merge_action_commands;
+mod merge_commands;
+mod merge_resolution_commands;
 mod misc;
+mod multi_diff_commands;
+mod notebook_commands;
+mod notebook_run_commands;
+mod notebook_view_commands;
 mod outline_commands;
 mod output_snippets;
 mod parts;
@@ -26,13 +34,6 @@ mod preferences;
 mod quick;
 mod scm;
 mod task_commands;
-mod merge_action_commands;
-mod merge_commands;
-mod notebook_commands;
-mod notebook_run_commands;
-mod notebook_view_commands;
-mod multi_diff_commands;
-mod merge_resolution_commands;
 mod timeline_commands;
 mod ui;
 mod widget_controls;
@@ -194,6 +195,7 @@ pub(crate) fn register(registry: &mut CommandRegistry) {
     merge_resolution_commands::register(registry);
     layout::register(registry);
     configuration::register(registry);
+    chat_commands::register(registry);
     for (id, title, arguments, handler) in [
         (
             "type",

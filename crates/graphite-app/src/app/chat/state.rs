@@ -15,6 +15,8 @@ pub(crate) enum SessionsFilter {
     Pinned,
     Archived,
     Unread,
+    AutomationRuns,
+    Scheduled,
 }
 
 /// Interactive provider configuration modal state.
@@ -111,6 +113,8 @@ pub(crate) struct ChatState {
     pub inline_chat: Option<InlineChatState>,
     pub inline_cancel: Option<Arc<AtomicBool>>,
     pub last_prompt: Option<String>,
+    pub last_copied_text: Option<String>,
+    pub default_visible: bool,
     pub next_session_seq: u64,
 }
 
@@ -144,6 +148,8 @@ impl Default for ChatState {
             inline_chat: None,
             inline_cancel: None,
             last_prompt: None,
+            last_copied_text: None,
+            default_visible: false,
             next_session_seq: 2,
         }
     }
@@ -228,6 +234,16 @@ impl ChatState {
                 SessionsFilter::Pinned => s.pinned && !s.archived,
                 SessionsFilter::Archived => s.archived,
                 SessionsFilter::Unread => s.unread && !s.archived,
+                SessionsFilter::AutomationRuns => {
+                    !s.archived
+                        && (s.id.starts_with("automation-")
+                            || s.title.to_lowercase().contains("automation"))
+                }
+                SessionsFilter::Scheduled => {
+                    !s.archived
+                        && (s.id.starts_with("scheduled-")
+                            || s.title.to_lowercase().contains("scheduled"))
+                }
             })
             .filter(|s| query.is_empty() || s.title.to_lowercase().contains(&query))
             .collect()

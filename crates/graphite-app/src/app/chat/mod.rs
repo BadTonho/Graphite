@@ -8,7 +8,7 @@ pub(crate) mod state;
 pub(crate) mod ui;
 pub(crate) mod worker;
 
-pub(crate) use state::{ChatState, ChatSurface, InlineChatState};
+pub(crate) use state::{ChatState, ChatSurface, InlineChatState, SessionsFilter};
 pub(crate) use worker::ChatUiEvent;
 
 #[cfg(test)]

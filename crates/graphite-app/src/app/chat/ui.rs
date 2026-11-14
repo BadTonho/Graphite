@@ -593,7 +593,9 @@ pub(crate) fn cycle_sessions_filter(current: SessionsFilter) -> SessionsFilter {
         SessionsFilter::All => SessionsFilter::Pinned,
         SessionsFilter::Pinned => SessionsFilter::Archived,
         SessionsFilter::Archived => SessionsFilter::Unread,
-        SessionsFilter::Unread => SessionsFilter::All,
+        SessionsFilter::Unread => SessionsFilter::AutomationRuns,
+        SessionsFilter::AutomationRuns => SessionsFilter::Scheduled,
+        SessionsFilter::Scheduled => SessionsFilter::All,
     }
 }
 
