@@ -614,3 +614,108 @@ fn disabling_all_with_nothing_enabled_says_so() {
     app.run_ui_command("workbench.extensions.action.disableAll");
     assert_eq!(app.plugins.message, app.t("plugins.none_enabled"));
 }
+
+#[test]
+fn native_plugins_can_execute_commands_open_documents_and_participate_in_save() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let sample = temp.path().join("sample.txt");
+    std::fs::write(&sample, "initial\n").unwrap();
+    let sample_uri = DocumentUri::from_path(&sample).unwrap().as_str().to_owned();
+
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(temp.path()).unwrap();
+    app.workspace_trust = Some(trust);
+    app.plugins.store = Some(Store::new(temp.path().join("plugins")));
+
+    let project = temp.path().join("ext");
+    graphite_plugins::sdk::create(&project).unwrap();
+    let id = "local.ext";
+    let manifest = json!({
+        "id": id,
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "main": "dist/index.js",
+        "description": "Extended API test",
+        "commands": [
+            {"id": "local.ext.echo", "title": "Echo"},
+            {"id": "local.ext.workflow", "title": "Workflow"}
+        ]
+    });
+    std::fs::write(
+        project.join("graphite-plugin.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir(project.join("dist")).unwrap();
+    let script = r#"
+export async function activate(context, g) {
+  await g.commands.registerCommand('local.ext.echo', args => ({ echoed: args }));
+  await g.documents.onWillSave({ id: 'local.ext.trim', languages: [] }, async req => {
+    return [{
+      start: { line: 1, character: 0 },
+      end: { line: 1, character: 0 },
+      text: '// will-save\n'
+    }];
+  });
+  await g.commands.registerCommand('local.ext.workflow', async uri => {
+    const cmds = await g.commands.list();
+    const opened = await g.documents.open(uri);
+    const echoed = await g.commands.execute('local.ext.echo', { count: cmds.length });
+    const outcome = await g.documents.save(uri);
+    return { openedText: opened.text, echoed, outcome };
+  });
+}
+export function deactivate() {}
+"#;
+    std::fs::write(project.join("dist/index.js"), script).unwrap();
+    let package = graphite_plugins::package::pack(&project).unwrap();
+    let store = app.plugins.store.as_ref().unwrap();
+    store.install(&package).unwrap();
+    store.enable(id, true).unwrap();
+    app.plugins.installed = store.list().unwrap();
+    app.start_plugin(id.into());
+    pump(&mut app, |a| {
+        a.plugins
+            .hosts
+            .get(id)
+            .is_some_and(|h| h.native_active && h.commands.len() == 2)
+    });
+    for _ in 0..4 {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let ticket = app.execute_command(CommandRequest {
+        id: "local.ext.workflow".into(),
+        arguments: json!(sample_uri),
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let result = loop {
+        app.poll_plugins();
+        app.poll_saves(Instant::now());
+        if let Some(result) = ticket.try_result() {
+            break result;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "workflow deadline: {} / {}",
+            app.plugins.message,
+            app.status
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    .unwrap();
+
+    assert_eq!(result["openedText"], "initial\n");
+    assert!(result["echoed"]["echoed"]["count"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(result["outcome"]["dirty"], false);
+    assert_eq!(
+        std::fs::read_to_string(&sample).unwrap(),
+        "initial\n// will-save\n"
+    );
+}

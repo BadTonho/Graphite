@@ -13,7 +13,7 @@ process.stdout.write = process.stderr.write.bind(process.stderr);
 const context = new AsyncLocalStorage();
 const root = path.resolve(process.argv[2]);
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'graphite-plugin.json'), 'utf8'));
-const handlers = new Map(), listeners = new Map(), pending = new Map(), incoming = new Map();
+const handlers = new Map(), listeners = new Map(), saveParticipants = new Map(), pending = new Map(), incoming = new Map();
 const subscriptions = [];
 let session, next = 0, buffer = Buffer.alloc(0), activated = false, plugin, shuttingDown = false;
 const MAX_FRAME = 16 * 1024 * 1024, MAX_PENDING = 128;
@@ -45,6 +45,8 @@ function disposable(resource, cleanup) {
 }
 const graphite = {
   commands: {
+    list: () => service('commands'),
+    execute: (id, arguments_ = null, target = { kind: 'global' }) => service('execute', { id, arguments: arguments_, target }),
     async registerCommand(id, handler) {
       const declared = manifest.commands?.find(c => c.id === id);
       if (!declared || typeof handler !== 'function' || handlers.has(id)) throw new Error('Command must be declared and unique');
@@ -55,6 +57,8 @@ const graphite = {
   },
   documents: {
     list: () => service('documents'),
+    open: uri => service('open', { uri }),
+    save: (uri, reason = 'manual') => service('save', { uri, reason }),
     snapshot: uri => service('snapshot', { uri }),
     applyEdits: edits => service('applyEdits', { edits }),
     async onDidChange(listener) {
@@ -62,9 +66,15 @@ const graphite = {
       listeners.set(resource, listener);
       return disposable(resource, () => listeners.delete(resource));
     },
+    async onWillSave(metadata, participant) {
+      if (!metadata?.id || typeof participant !== 'function') throw new Error('Invalid save participant');
+      const { resource } = await request({ RegisterSaveParticipant: { id: metadata.id, languages: metadata.languages ?? [] } });
+      saveParticipants.set(resource, participant);
+      return disposable(resource, () => saveParticipants.delete(resource));
+    },
   },
   workspace: { get: () => service('workspace'), configuration: () => service('configuration') },
-  window: { showMessage: text => service('message', { text }) },
+  window: { showMessage: text => service('message', { text }), focusView: view => service('focus', { view }) },
 };
 async function shutdown() {
   if (shuttingDown) return;
@@ -112,9 +122,20 @@ async function receive(message) {
     const abort = new AbortController(); incoming.set(data.id, abort);
     let result;
     try {
-      const invoke = data.request.Invoke;
-      if (!activated || !invoke || !handlers.has(invoke.command)) throw new Error('Plugin command is unavailable');
-      const value = await context.run({ id: data.id }, () => handlers.get(invoke.command)(invoke.arguments, abort.signal));
+      if (!activated) throw new Error('Plugin is not active');
+      let value;
+      if (data.request.Invoke) {
+        const invoke = data.request.Invoke;
+        if (!handlers.has(invoke.command)) throw new Error('Plugin command is unavailable');
+        value = await context.run({ id: data.id }, () => handlers.get(invoke.command)(invoke.arguments, abort.signal));
+      } else if (data.request.ParticipateInSave) {
+        const { resource, request: saveRequest } = data.request.ParticipateInSave;
+        if (!saveParticipants.has(resource)) throw new Error('Save participant is unavailable');
+        const edits = await context.run({ id: data.id }, () => saveParticipants.get(resource)(saveRequest, abort.signal));
+        value = { invocation: saveRequest.invocation, version: saveRequest.document.version, edits: Array.isArray(edits) ? edits : [] };
+      } else {
+        throw new Error('Unsupported host request');
+      }
       result = abort.signal.aborted ? { Err: { kind: 'cancelled' } } : { Ok: value ?? null };
     } catch (e) { result = { Err: error('failed', String(e)) }; }
     incoming.delete(data.id);

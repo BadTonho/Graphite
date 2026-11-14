@@ -8,14 +8,11 @@ use std::time::{Duration, Instant};
 
 pub(super) enum Provider {
     /// `textDocument/willSaveWaitUntil` from the language server.
-    Lsp {
-        instance: u64,
-    },
+    Lsp { instance: u64 },
     /// `textDocument/formatting` from the language server (`editor.formatOnSave`).
-    LspFormat {
-        instance: u64,
-    },
+    LspFormat { instance: u64 },
     Host {
+        plugin_id: Option<String>,
         session: u64,
         resource: u64,
     },
@@ -36,6 +33,64 @@ pub(super) struct Participants {
     waiting: Option<Waiting>,
 }
 impl App {
+    fn participant_runtime(
+        &self,
+        plugin_id: Option<&str>,
+    ) -> Option<&super::super::extension_host::ExtensionRuntime> {
+        match plugin_id {
+            None => Some(&self.extension_host),
+            Some(id) => self.plugins.hosts.get(id).or_else(|| {
+                self.extension_host
+                    .native_manifest
+                    .as_ref()
+                    .filter(|manifest| manifest.id == id)
+                    .map(|_| &self.extension_host)
+            }),
+        }
+    }
+
+    fn participant_runtime_mut(
+        &mut self,
+        plugin_id: Option<&str>,
+    ) -> Option<&mut super::super::extension_host::ExtensionRuntime> {
+        match plugin_id {
+            None => Some(&mut self.extension_host),
+            Some(id) => {
+                if self.plugins.hosts.contains_key(id) {
+                    self.plugins.hosts.get_mut(id)
+                } else if self
+                    .extension_host
+                    .native_manifest
+                    .as_ref()
+                    .is_some_and(|manifest| manifest.id == id)
+                {
+                    Some(&mut self.extension_host)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn push_host_participants(
+        remaining: &mut VecDeque<Provider>,
+        plugin_id: Option<String>,
+        runtime: &super::super::extension_host::ExtensionRuntime,
+        language: Option<&String>,
+    ) {
+        for (resource, (session, metadata)) in &runtime.participants {
+            if metadata.languages.is_empty()
+                || language.is_some_and(|lang| metadata.languages.contains(lang))
+            {
+                remaining.push_back(Provider::Host {
+                    plugin_id: plugin_id.clone(),
+                    session: *session,
+                    resource: *resource,
+                });
+            }
+        }
+    }
+
     pub(super) fn save_participants(&self, document: DocumentId) -> Participants {
         let doc = &self.documents[document];
         let mut remaining = VecDeque::new();
@@ -52,17 +107,24 @@ impl App {
         let language = super::super::services::snapshot_document(document, doc)
             .ok()
             .and_then(|d| d.language);
-        for (resource, (session, metadata)) in &self.extension_host.participants {
-            if metadata.languages.is_empty()
-                || language
-                    .as_ref()
-                    .is_some_and(|lang| metadata.languages.contains(lang))
-            {
-                remaining.push_back(Provider::Host {
-                    session: *session,
-                    resource: *resource,
-                });
-            }
+        let current_plugin_id = self
+            .extension_host
+            .native_manifest
+            .as_ref()
+            .map(|manifest| manifest.id.clone());
+        Self::push_host_participants(
+            &mut remaining,
+            current_plugin_id,
+            &self.extension_host,
+            language.as_ref(),
+        );
+        for (id, runtime) in &self.plugins.hosts {
+            Self::push_host_participants(
+                &mut remaining,
+                Some(id.clone()),
+                runtime,
+                language.as_ref(),
+            );
         }
         Participants {
             remaining,
@@ -70,21 +132,24 @@ impl App {
         }
     }
     fn stop_participant(&mut self, waiting: &Waiting, path: &Path) {
-        match waiting.provider {
+        match &waiting.provider {
             Provider::Lsp { instance } | Provider::LspFormat { instance } => {
-                if self.lsp_manager.server_instance_for(path) == Some(instance) {
+                if self.lsp_manager.server_instance_for(path) == Some(*instance) {
                     self.lsp_manager.cancel_request(path, waiting.id);
                 }
             }
-            Provider::Host { session, .. } => {
-                self.extension_host.save_replies.remove(&waiting.id);
-                if let Some(host) = self
-                    .extension_host
-                    .supervisor
-                    .as_mut()
-                    .filter(|h| h.session == session)
-                {
-                    host.cancel(waiting.id);
+            Provider::Host {
+                plugin_id, session, ..
+            } => {
+                if let Some(runtime) = self.participant_runtime_mut(plugin_id.as_deref()) {
+                    runtime.save_replies.remove(&waiting.id);
+                    if let Some(host) = runtime
+                        .supervisor
+                        .as_mut()
+                        .filter(|h| h.session == *session)
+                    {
+                        host.cancel(waiting.id);
+                    }
                 }
             }
         }
@@ -125,16 +190,23 @@ impl App {
                 continue;
             }
             if let Some(waiting) = active.participants.waiting.take() {
-                let current = match waiting.provider {
+                let current = match &waiting.provider {
                     Provider::Lsp { instance } | Provider::LspFormat { instance } => {
                         self.lsp_manager.server_instance_for(&active.snapshot.path)
-                            == Some(instance)
+                            == Some(*instance)
                     }
-                    Provider::Host { session, resource } => self
-                        .extension_host
-                        .participants
-                        .get(&resource)
-                        .is_some_and(|(s, _)| *s == session),
+                    Provider::Host {
+                        plugin_id,
+                        session,
+                        resource,
+                    } => self
+                        .participant_runtime(plugin_id.as_deref())
+                        .is_some_and(|runtime| {
+                            runtime
+                                .participants
+                                .get(resource)
+                                .is_some_and(|(s, _)| *s == *session)
+                        }),
                 };
                 let result = if now >= waiting.deadline {
                     Some(Err(ServiceError::Timeout))
@@ -235,7 +307,11 @@ impl App {
                             Err(ServiceError::HostStopped)
                         }
                     }
-                    Provider::Host { session, resource } => {
+                    Provider::Host {
+                        plugin_id,
+                        session,
+                        resource,
+                    } => {
                         let mut snapshot = super::super::services::snapshot_document(
                             document,
                             &self.documents[document],
@@ -247,37 +323,46 @@ impl App {
                             reason: active.reason,
                             document: snapshot,
                         };
-                        let live = self
-                            .extension_host
-                            .participants
-                            .get(resource)
-                            .is_some_and(|(owner, _)| owner == session);
+                        let live =
+                            self.participant_runtime(plugin_id.as_deref())
+                                .is_some_and(|runtime| {
+                                    runtime
+                                        .participants
+                                        .get(resource)
+                                        .is_some_and(|(owner, _)| owner == session)
+                                });
+                        let session = *session;
+                        let resource = *resource;
+                        let plugin_id = plugin_id.clone();
                         let rpc = self
-                            .extension_host
-                            .supervisor
-                            .as_mut()
-                            .filter(|h| live && h.session == *session)
+                            .participant_runtime_mut(plugin_id.as_deref())
+                            .and_then(|runtime| {
+                                runtime
+                                    .supervisor
+                                    .as_mut()
+                                    .filter(|h| live && h.session == session)
+                            })
                             .ok_or(ServiceError::HostStopped)
                             .and_then(|h| {
                                 h.request(
-                                    RpcRequest::ParticipateInSave {
-                                        resource: *resource,
-                                        request,
-                                    },
+                                    RpcRequest::ParticipateInSave { resource, request },
                                     CancellationToken::default(),
                                     now,
                                 )
                             });
-                        rpc.map(|id| {
+                        rpc.and_then(|id| {
                             let (sender, receiver) = mpsc::channel();
-                            self.extension_host.save_replies.insert(id, sender);
-                            Waiting {
+                            let runtime = self
+                                .participant_runtime_mut(plugin_id.as_deref())
+                                .ok_or(ServiceError::HostStopped)?;
+                            runtime.save_replies.insert(id, sender);
+                            Ok(Waiting {
                                 provider,
                                 id,
                                 invocation,
                                 deadline,
                                 reply: Reply::Host(receiver),
-                            }
+                            })
                         })
                     }
                 };

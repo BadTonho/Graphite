@@ -24,27 +24,6 @@ impl App {
             return;
         }
         self.extension_host.last_request = id;
-        if self.extension_host.native_manifest.is_some()
-            && matches!(
-                &request,
-                RpcRequest::RegisterSaveParticipant(_)
-                    | RpcRequest::Service {
-                        request: ServiceRequest::Execute(_)
-                            | ServiceRequest::Save(_)
-                            | ServiceRequest::Open { .. }
-                            | ServiceRequest::Focus { .. },
-                        ..
-                    }
-            )
-        {
-            self.reply_host(
-                id,
-                Err(ServiceError::InvalidArguments(
-                    "Not part of Graphite plugin API v1".into(),
-                )),
-            );
-            return;
-        }
         if self.extension_host.incoming.len() >= MAX_PENDING {
             self.reply_host(id, Err(ServiceError::Busy));
             return;
