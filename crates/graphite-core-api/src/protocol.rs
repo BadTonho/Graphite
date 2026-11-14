@@ -62,6 +62,11 @@ pub enum RpcRequest {
         #[serde(rename = "insertSpaces", alias = "insert_spaces")]
         insert_spaces: bool,
     },
+    InvokeChatTool {
+        #[serde(rename = "toolId", alias = "tool_id")]
+        tool_id: String,
+        input: Value,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Message {

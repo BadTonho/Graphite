@@ -231,6 +231,8 @@ fn native_registration_cannot_escape_manifest_or_shadow_builtins() {
         api_version: 1,
         main: "main.js".into(),
         description: String::new(),
+        runtime: Default::default(),
+        permissions: vec![],
         commands: vec![],
         activity_bar: vec![],
         activation_events: vec![],
@@ -964,6 +966,8 @@ fn native_dev_plugin_captures_console_logs_and_hot_reloads_on_entry_change() {
             api_version: 1,
             main: "dist/index.js".into(),
             description: "Dev live reload plugin".into(),
+            runtime: Default::default(),
+            permissions: Vec::new(),
             commands: vec![graphite_plugins::manifest::Command {
                 id: "local.devlive.ping".into(),
                 title: "Ping".into(),
@@ -1648,4 +1652,318 @@ export async function activate(context, g) {
     }
     assert!(app.vsix_line_decorations(&uri, 0, true).is_empty());
     assert!(app.diagnostic_entries().is_empty());
+}
+
+#[test]
+fn native_plugins_enforce_granular_permissions_and_support_system_apis() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let ws_root = temp.path().join("workspace");
+    let store_root = temp.path().join("store");
+    let pkg_src = temp.path().join("sys-plugin");
+    std::fs::create_dir_all(ws_root.join("sub")).unwrap();
+    std::fs::create_dir_all(pkg_src.join("dist")).unwrap();
+    std::fs::write(ws_root.join("sub/hello.txt"), "initial body\n").unwrap();
+
+    std::fs::write(
+        pkg_src.join("graphite-plugin.json"),
+        serde_json::json!({
+            "id": "local.sys",
+            "version": "0.1.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "System API & permission test plugin",
+            "permissions": ["commands", "workspace.read", "workspace.write", "terminal", "chat"],
+            "commands": [
+                { "id": "local.sys.run", "title": "Run System Checks" }
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pkg_src.join("dist/index.js"),
+        r#"
+export async function activate(_ctx, g) {
+  await g.chat.registerTool(
+    {
+      name: "echo_workspace_tool",
+      description: "Read a workspace file for chat.",
+      schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }
+    },
+    async (input) => {
+      const content = await g.workspace.readFile(String(input?.path ?? ""));
+      return { content: `read:${content.trim()}`, isError: false };
+    }
+  );
+  await g.commands.registerCommand("local.sys.run", async () => {
+    const files = await g.workspace.findFiles({ maxResults: 20 });
+    const content = await g.workspace.readFile("sub/hello.txt");
+    await g.workspace.writeFile("sub/hello.txt", "updated by plugin\n");
+    await g.workspace.writeFile("nested/created.txt", "new file");
+
+    let traversalBlocked = false;
+    try { await g.workspace.readFile("../outside.txt"); } catch (_) { traversalBlocked = true; }
+
+    let gitBlocked = false;
+    try { await g.workspace.writeFile(".git/HEAD", "bad"); } catch (_) { gitBlocked = true; }
+
+    let uiDenied = false;
+    try { await g.window.showMessage("blocked"); } catch (e) { uiDenied = String(e).includes("ui"); }
+
+    const scm = await g.scm.status();
+    const term = await g.terminal.create({ name: "PluginTerm" });
+    await term.sendText("echo hi", true);
+    await term.show(false);
+
+    return {
+      files,
+      oldContent: content,
+      traversalBlocked,
+      gitBlocked,
+      uiDenied,
+      scmErrorOrBranch: scm.branch ?? scm.error ?? "ok",
+      termId: term.id,
+    };
+  });
+}
+"#,
+    )
+    .unwrap();
+
+    let pkg = graphite_plugins::package::pack(&pkg_src).unwrap();
+    let store = Store::new(store_root.clone());
+    let installed = store.install(&pkg).unwrap();
+    store.enable(&installed.metadata.id(), true).unwrap();
+
+    let mut app = App::new_with_options(ws_root.clone(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(&ws_root).unwrap();
+    app.workspace_trust = Some(trust);
+    app.open_file(ws_root.join("sub/hello.txt"));
+
+    app.plugins.installed = store.list().unwrap();
+    app.plugins.store = Some(store);
+    app.start_plugin("local.sys".into());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !app
+        .plugins
+        .hosts
+        .get("local.sys")
+        .is_some_and(|h| h.native_active)
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "system plugin failed to activate"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    assert!(app
+        .plugin_chat_tool_specs()
+        .iter()
+        .any(|t| t.name == "echo_workspace_tool"));
+
+    let ticket = app.execute_command(CommandRequest {
+        id: "local.sys.run".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let result = loop {
+        app.poll_plugins();
+        if let Some(res) = ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline, "local.sys.run timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+
+    assert_eq!(result["oldContent"], json!("initial body\n"));
+    assert_eq!(result["traversalBlocked"], json!(true));
+    assert_eq!(result["gitBlocked"], json!(true));
+    assert_eq!(result["uiDenied"], json!(true));
+    assert!(result["termId"].as_u64().unwrap_or(0) >= 1);
+    assert!(!app.terminals.is_empty());
+    assert!(app.terminal_visible);
+    assert_eq!(
+        std::fs::read_to_string(ws_root.join("nested/created.txt")).unwrap(),
+        "new file"
+    );
+    assert_eq!(app.editor().text(), "updated by plugin\n");
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.invoke_plugin_chat_tool(
+        "echo_workspace_tool",
+        json!({ "path": "nested/created.txt" }),
+        Some(tx),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let tool_out = loop {
+        app.poll_plugins();
+        if let Ok(val) = rx.try_recv() {
+            break val.unwrap();
+        }
+        assert!(Instant::now() < deadline, "chat tool RPC timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(tool_out, "read:new file");
+}
+
+#[test]
+fn native_rust_binary_plugin_runs_without_node() {
+    let temp = crate::test_support::TempDir::new();
+    let ws_root = temp.path().join("workspace");
+    let store_root = temp.path().join("store");
+    let plugin_src = temp.path().join("native-plugin");
+    std::fs::create_dir_all(&ws_root).unwrap();
+    std::fs::create_dir_all(plugin_src.join("bin")).unwrap();
+
+    // Compile a tiny standalone native executable implementing v2 framed protocol without Node.js.
+    let rs_src = temp.path().join("native_plugin_bin.rs");
+    std::fs::write(
+        &rs_src,
+        r#"
+use std::io::{self, Read, Write};
+
+fn read_frame() -> io::Result<String> {
+    let mut len_buf = [0u8; 4];
+    io::stdin().read_exact(&mut len_buf)?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    let mut body = vec![0u8; len];
+    io::stdin().read_exact(&mut body)?;
+    Ok(String::from_utf8(body).unwrap())
+}
+
+fn write_frame(json: &str) {
+    let bytes = json.as_bytes();
+    let mut out = io::stdout().lock();
+    out.write_all(&(bytes.len() as u32).to_be_bytes()).unwrap();
+    out.write_all(bytes).unwrap();
+    out.flush().unwrap();
+}
+
+fn extract_u64(s: &str, key: &str) -> Option<u64> {
+    let idx = s.find(key)? + key.len();
+    let digits: String = s[idx..].chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+fn main() {
+    let hello = read_frame().unwrap();
+    let session = extract_u64(&hello, "\"session\":").unwrap();
+    write_frame(&format!("{{\"Ready\":{{\"version\":2,\"session\":{session}}}}}"));
+    write_frame(&format!(
+        "{{\"Request\":{{\"session\":{session},\"id\":1,\"request\":{{\"RegisterCommand\":{{\"id\":\"local.rustbin.ping\",\"title\":\"Rust Bin Ping\",\"category\":\"Plugin\",\"targets\":[\"Global\"],\"enablement\":\"true\"}}}}}}}}"
+    ));
+    let reg_reply = read_frame().unwrap();
+    assert!(!reg_reply.contains("\"Err\""), "register failed: {reg_reply}");
+    write_frame(&format!("{{\"Request\":{{\"session\":{session},\"id\":2,\"request\":\"Activated\"}}}}"));
+    let _ = read_frame().unwrap();
+
+    while let Ok(msg) = read_frame() {
+        if msg.contains("\"Shutdown\"") {
+            break;
+        }
+        if msg.contains("\"Invoke\"") {
+            let id = extract_u64(&msg, "\"id\":").unwrap();
+            write_frame(&format!(
+                "{{\"Response\":{{\"session\":{session},\"id\":{id},\"result\":{{\"Ok\":{{\"native\":true}}}}}}}}"
+            ));
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let exe_name = if cfg!(windows) {
+        "native-echo.exe"
+    } else {
+        "native-echo"
+    };
+    let bin_out = plugin_src.join("bin").join(exe_name);
+    let status = std::process::Command::new("rustc")
+        .arg("--edition")
+        .arg("2021")
+        .arg(&rs_src)
+        .arg("-o")
+        .arg(&bin_out)
+        .status()
+        .expect("rustc must be available to run test");
+    assert!(status.success(), "compiling test native plugin failed");
+
+    std::fs::write(
+        plugin_src.join("graphite-plugin.json"),
+        serde_json::json!({
+            "id": "local.rustbin",
+            "version": "0.1.0",
+            "apiVersion": 1,
+            "runtime": "native",
+            "main": "bin/native-echo",
+            "description": "Compiled binary native plugin",
+            "permissions": ["commands"],
+            "commands": [{ "id": "local.rustbin.ping", "title": "Rust Bin Ping" }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let pkg = graphite_plugins::package::pack(&plugin_src).unwrap();
+    let store = Store::new(store_root);
+    let installed = store.install(&pkg).unwrap();
+    store.enable(&installed.metadata.id(), true).unwrap();
+
+    let mut app = App::new_with_options(ws_root.clone(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(&ws_root).unwrap();
+    app.workspace_trust = Some(trust);
+    // Deliberately point nodePath at a non-existent binary to prove native runtime never uses Node.js.
+    std::fs::write(
+        app.profile_root.join("settings.json"),
+        serde_json::json!({
+            "graphite.plugins.nodePath": "missing-node-executable-should-not-run"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    app.plugins.installed = store.list().unwrap();
+    app.plugins.store = Some(store);
+    app.start_plugin("local.rustbin".into());
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !app
+        .plugins
+        .hosts
+        .get("local.rustbin")
+        .is_some_and(|h| h.native_active)
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "native binary plugin failed to activate"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let ticket = app.execute_command(CommandRequest {
+        id: "local.rustbin.ping".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_plugins();
+        if let Some(res) = ticket.try_result() {
+            assert_eq!(res.unwrap(), json!({ "native": true }));
+            break;
+        }
+        assert!(Instant::now() < deadline, "native binary command timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }

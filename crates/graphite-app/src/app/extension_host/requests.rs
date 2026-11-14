@@ -39,6 +39,7 @@ impl App {
             self.extension_host.tree_replies.contains_key(&id)
                 || self.extension_host.webview_deliveries.contains(&id)
                 || self.extension_host.language_replies.contains_key(&id)
+                || self.extension_host.chat_replies.contains_key(&id)
         });
         if save_parent
             && !matches!(
@@ -86,6 +87,10 @@ impl App {
         } else {
             None
         };
+        if let Err(error) = self.check_native_permission(&request) {
+            self.reply_host(id, Err(error));
+            return;
+        }
         let previous_view = std::mem::replace(&mut self.command_runtime.view, parent_view);
         let result = match request {
             RpcRequest::Activated if self.extension_host.native_manifest.is_some() => {
@@ -355,6 +360,17 @@ impl App {
                         "Unhandled editor/language request".into(),
                     ))
                 }),
+            request @ (ServiceRequest::CreateTerminal { .. }
+            | ServiceRequest::SendTerminalText { .. }
+            | ServiceRequest::ShowTerminal { .. }
+            | ServiceRequest::WorkspaceFindFiles { .. }
+            | ServiceRequest::WorkspaceReadFile { .. }
+            | ServiceRequest::WorkspaceWriteFile { .. }
+            | ServiceRequest::ScmStatus
+            | ServiceRequest::RegisterChatTool { .. }
+            | ServiceRequest::DisposeChatTool { .. }) => self
+                .handle_native_system_service(request)
+                .unwrap_or_else(|| Err(ServiceError::Failed("Unhandled system request".into()))),
             ServiceRequest::Execute(_)
             | ServiceRequest::Save(_)
             | ServiceRequest::PromptInput { .. }

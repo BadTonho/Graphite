@@ -1,6 +1,35 @@
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+/// Runtime execution engine for a native Graphite plugin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginRuntime {
+    #[default]
+    Node,
+    Native,
+}
+
+fn is_default_runtime(runtime: &PluginRuntime) -> bool {
+    *runtime == PluginRuntime::Node
+}
+
+/// Canonical capability tokens supported in `permissions` of `graphite-plugin.json`.
+pub const VALID_PERMISSIONS: &[&str] = &[
+    "commands",
+    "documents.read",
+    "documents.write",
+    "ui",
+    "languages",
+    "storage",
+    "workspace.read",
+    "workspace.write",
+    "terminal",
+    "chat",
+    "*",
+];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -10,6 +39,10 @@ pub struct Manifest {
     pub api_version: u32,
     pub main: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "is_default_runtime")]
+    pub runtime: PluginRuntime,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<String>,
     #[serde(default)]
     pub commands: Vec<Command>,
     #[serde(default)]
@@ -130,12 +163,26 @@ impl Manifest {
         if self.api_version != 1 {
             return Err("Unsupported Graphite API version".into());
         }
-        if !crate::package::safe_path(&self.main)
-            || ![".js", ".cjs", ".mjs"]
-                .iter()
-                .any(|s| self.main.ends_with(s))
-        {
-            return Err("Plugin main must be a relative JavaScript file".into());
+        match self.runtime {
+            PluginRuntime::Node => {
+                if !crate::package::safe_path(&self.main)
+                    || ![".js", ".cjs", ".mjs"]
+                        .iter()
+                        .any(|s| self.main.ends_with(s))
+                {
+                    return Err("Plugin main must be a relative JavaScript file".into());
+                }
+            }
+            PluginRuntime::Native => {
+                if !crate::package::safe_path(&self.main) || self.main.ends_with('/') {
+                    return Err("Native plugin main must be a relative executable path".into());
+                }
+            }
+        }
+        for permission in &self.permissions {
+            if !VALID_PERMISSIONS.contains(&permission.as_str()) {
+                return Err(format!("Unsupported permission in manifest: {permission}"));
+            }
         }
         let mut ids = std::collections::HashSet::new();
         for command in &self.commands {
@@ -220,6 +267,43 @@ impl Manifest {
         }
         Ok(())
     }
+
+    /// Checks whether this manifest permits `permission`.
+    ///
+    /// Privileged system capabilities (`workspace.read`, `workspace.write`, `terminal`, `chat`)
+    /// always require an explicit declaration (or `"*"`), whereas standard editor capabilities
+    /// remain permitted when `permissions` is omitted for backward compatibility.
+    pub fn allows_permission(&self, permission: &str) -> bool {
+        if self.permissions.iter().any(|p| p == "*" || p == permission) {
+            return true;
+        }
+        let privileged = matches!(
+            permission,
+            "workspace.read" | "workspace.write" | "terminal" | "chat"
+        );
+        if privileged {
+            return false;
+        }
+        self.permissions.is_empty()
+    }
+}
+
+/// Resolves the entrypoint file on disk for `manifest` inside `root`, supporting `.exe` on Windows.
+pub fn resolve_entrypoint(root: &Path, manifest: &Manifest) -> Option<PathBuf> {
+    let direct = root.join(&manifest.main);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    if manifest.runtime == PluginRuntime::Native
+        && cfg!(windows)
+        && !manifest.main.ends_with(".exe")
+    {
+        let with_exe = root.join(format!("{}.exe", manifest.main));
+        if with_exe.is_file() {
+            return Some(with_exe);
+        }
+    }
+    None
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "format", content = "manifest", rename_all = "camelCase")]
@@ -772,5 +856,49 @@ mod activity_bar_tests {
         let mut bad_lang = valid;
         bad_lang.languages[0].id = "   ".into();
         assert!(bad_lang.validate().is_err());
+    }
+
+    #[test]
+    fn native_manifest_validates_runtime_and_granular_permissions() {
+        let valid: Manifest = serde_json::from_value(serde_json::json!({
+            "id": "local.native",
+            "version": "1.0.0",
+            "apiVersion": 1,
+            "runtime": "native",
+            "main": "bin/my-plugin",
+            "description": "Compiled native Rust plugin",
+            "permissions": ["commands", "workspace.read", "terminal"]
+        }))
+        .unwrap();
+        valid.validate().unwrap();
+        assert_eq!(valid.runtime, PluginRuntime::Native);
+        assert!(valid.allows_permission("commands"));
+        assert!(valid.allows_permission("workspace.read"));
+        assert!(valid.allows_permission("terminal"));
+        assert!(!valid.allows_permission("workspace.write"));
+        assert!(!valid.allows_permission("chat"));
+        assert!(!valid.allows_permission("ui"));
+
+        // Empty permissions list remains backward compatible for standard capabilities only.
+        let legacy: Manifest = serde_json::from_value(serde_json::json!({
+            "id": "local.legacy",
+            "version": "1.0.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "Legacy node plugin"
+        }))
+        .unwrap();
+        assert!(legacy.allows_permission("commands"));
+        assert!(legacy.allows_permission("ui"));
+        assert!(!legacy.allows_permission("terminal"));
+        assert!(!legacy.allows_permission("workspace.read"));
+
+        let mut bad_perm = valid.clone();
+        bad_perm.permissions.push("root.everything".into());
+        assert!(bad_perm.validate().is_err());
+
+        let mut bad_native_main = valid;
+        bad_native_main.main = "../outside-bin".into();
+        assert!(bad_native_main.validate().is_err());
     }
 }

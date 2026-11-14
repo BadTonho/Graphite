@@ -1,8 +1,8 @@
 # Criando e instalando plugins
 
-Compile o Graphite com `cargo build --workspace` para desenvolver plugins nativos. Plugins nativos usam Node.js 24+ e aceitam um executável personalizado por `graphite.plugins.nodePath` nas configurações do usuário. Use o [pacote portátil](building.md) para executar VSIX no Code OSS.
+Compile o Graphite com `cargo build --workspace` para desenvolver plugins nativos. Plugins JavaScript/TypeScript (`"runtime": "node"`, padrão) usam Node.js 24+ e aceitam um executável personalizado por `graphite.plugins.nodePath` nas configurações do usuário. Plugins nativos compilados em Rust (`"runtime": "native"`) usam a crate `graphite-plugin-sdk` diretamente, sem exigir Node.js. Use o [pacote portátil](building.md) para executar VSIX no Code OSS.
 
-## Criar um plugin nativo
+## Criar um plugin JavaScript/TypeScript
 
 ```sh
 graphite plugin create my-plugin
@@ -12,18 +12,33 @@ npm run build
 graphite plugin pack .
 ```
 
-O gerador cria código TypeScript, declarações locais da API, configuração de build e comando de exemplo. O pacote é gravado ao lado do projeto como `local.my-plugin-0.1.0.graphite-plugin`. Arquivos de saída existentes não são sobrescritos. Compile antes de empacotar. Pacotes incluem código compilado e dependências presentes no projeto; o Graphite não instala dependências nem compila. Agrupe dependências de runtime quando possível e evite distribuir dependências de desenvolvimento ou dados privados. Arquivos ocultos são omitidos; extensões de chaves/bancos e links simbólicos são rejeitados.
+Para iteração rápida local sem reempacotar a cada mudança, vincule o plugin diretamente em modo dev (a saída do console é gravada em `logs/<id>/console.log` e alterações em `graphite-plugin.json` ou no entrypoint acionam recarregamento automático):
 
-O manifesto na raiz é:
+```sh
+graphite plugin dev .
+# Ao terminar:
+graphite plugin unlink local.my-plugin
+```
+
+O gerador cria código TypeScript, declarações locais em `graphite.d.ts`, configuração de build e um comando de exemplo. `graphite plugin pack .` grava `local.my-plugin-0.1.0.graphite-plugin` ao lado do projeto. Compile antes de empacotar. Arquivos ocultos e `target` são omitidos; extensões de chaves/bancos e links simbólicos são rejeitados.
+
+O manifesto na raiz (`graphite-plugin.json`) suporta contribuições declarativas e permissões granulares:
 
 ```json
 {
   "id": "local.my-plugin",
   "version": "0.1.0",
   "apiVersion": 1,
+  "runtime": "node",
   "main": "dist/index.js",
   "description": "My Graphite plugin",
+  "permissions": ["commands", "documents.read", "ui"],
+  "activationEvents": ["onStartupFinished"],
   "commands": [{"id": "local.my-plugin.hello", "title": "Hello from my plugin"}],
+  "keybindings": [{"command": "local.my-plugin.hello", "key": "ctrl+alt+h"}],
+  "menus": {
+    "commandPalette": [{"command": "local.my-plugin.hello"}]
+  },
   "activityBar": [{
     "id": "local.my-plugin.tools",
     "title": "My Tools",
@@ -32,25 +47,52 @@ O manifesto na raiz é:
 }
 ```
 
-IDs seguem `publisher.name`, com letras ASCII minúsculas, dígitos e hífens. Versões seguem semver. IDs de comandos começam com o ID completo do plugin e `.`; os registros usam seus títulos declarados. Entradas são caminhos relativos `.js`, `.cjs` ou `.mjs`. Módulos ES usam `"type": "module"` no `package.json`; CommonJS pode exportar `activate` diretamente.
+IDs seguem `publisher.name`, com letras ASCII minúsculas, dígitos e hífens. Versões seguem semver. IDs de comandos, contêineres e views começam com o ID completo do plugin e `.`; os registros usam os títulos declarados. Campos declarativos opcionais também incluem `themes`, `snippets` e `languages` (ID de linguagem, extensões e marcadores de comentário).
 
-`activityBar` declara um contêiner na barra de atividades e suas views `tree`
-ou `webview`. Pacotes VSIX usam as chaves do VS Code
-`contributes.viewsContainers.activitybar` e `contributes.views`. Atualmente,
-essas declarações preenchem o menu de atividades e o painel informativo; o SDK
-nativo ainda não fornece registro de provedores de dados para árvores ou de
-Webviews interativas.
+Os tokens válidos de `permissions` são: `commands`, `documents.read`, `documents.write`, `ui`, `languages`, `storage`, `workspace.read`, `workspace.write`, `terminal`, `chat` e `*`. Capacidades de sistema (`workspace.read`, `workspace.write`, `terminal`, `chat`) sempre exigem declaração explícita no manifesto.
 
-## API v1
+## API v1 (JavaScript / TypeScript)
 
-Exporte `async activate(context, graphite)` e opcionalmente `deactivate()`. O arquivo gerado `graphite.d.ts` define o SDK:
+Exporte `async activate(context, graphite)` e opcionalmente `deactivate()`. O arquivo gerado `graphite.d.ts` define todo o SDK:
 
-- `commands.registerCommand(id, handler)` retorna um recurso descartável. Handlers recebem argumentos JSON e `AbortSignal` e podem retornar resultados JSON de forma assíncrona.
-- `documents.list()` e `snapshot(uri)` leem o texto atual em memória, inclusive alterações não salvas. `documents.onDidChange(listener)` recebe snapshots de abertura, mudança e fechamento e retorna um recurso descartável.
-- `documents.applyEdits(edits)` aceita `{uri, version, edits:[{start, end, text}]}`. Posições são `{line, character}` baseadas em zero e UTF-16; use a versão do snapshot. Mudanças preservam validação e undo; salvamento é separado e não é exposto na v1.
-- `workspace.get()` e `workspace.configuration()` consultam o editor; `window.showMessage(text)` exibe mensagem.
+- `commands`: `list()`, `execute(id, args?, target?)`, `registerCommand(id, handler)`.
+- `documents`: `list()`, `open(uri)`, `save(uri, reason?)`, `snapshot(uri)`, `applyEdits(edits)` (posições UTF-16 baseadas em zero e versionadas), `onDidChange(listener)` e `onWillSave(metadata, participant)`.
+- `window`: `showMessage(text)`, `focusView(view)`, `showInputBox(options)`, `showQuickPick(items, options)`, `createStatusBarItem(id?)`, `createOutputChannel(name)`, `registerTreeDataProvider(viewId, provider)` e `createWebviewPanel(viewType, title, options)`.
+- `storage`: `global` e `workspace` (`get`, `update`, `delete`).
+- `editor`: `active()`, `setSelections(selections)`, `createDecorationType(options)`, `setDecorations(decorationType, uri, ranges)`.
+- `languages`: `setDiagnostics(owner, uri, diagnostics)`, `clearDiagnostics(owner, uri)`, `registerCompletionProvider`, `registerHoverProvider`, `registerFormattingProvider`.
+- `workspace`: `get()`, `configuration()`, `findFiles(options?)`, `readFile(path)`, `writeFile(path, content)` (todos confinados à raiz do workspace, bloqueando `.git/` e travessias de diretório).
+- `terminal`: `create(options?)` retornando `{ id, sendText, show }`.
+- `scm`: `status()` retornando o branch Git atual e arquivos alterados.
+- `chat`: `registerTool(definition, handler)` registrando ferramentas invocáveis nos turnos do Graphite Chat.
 
-Registre recursos em `context.subscriptions`; o descarte é idempotente. O encerramento do host também libera recursos no editor. Use o sinal de cancelamento em operações longas. Logs vão para stderr. Plugins executam com acesso da conta local do usuário: habilite somente código confiável.
+Registre recursos em `context.subscriptions`; o descarte e o encerramento do host liberam automaticamente os recursos no editor.
+
+## Criar um plugin nativo compilado em Rust (`runtime: "native"`)
+
+Use a crate `graphite-plugin-sdk` para escrever plugins sem dependência do Node.js:
+
+```rust
+use graphite_plugin_sdk::{Plugin, PluginContext, ServiceResult};
+use serde_json::json;
+
+struct MyPlugin;
+
+impl Plugin for MyPlugin {
+    fn activate(&self, ctx: &PluginContext) -> ServiceResult<()> {
+        ctx.register_command("local.myrust.ping", "Ping", |_ctx, _args| {
+            Ok(json!({ "pong": true }))
+        })?;
+        Ok(())
+    }
+}
+
+fn main() {
+    graphite_plugin_sdk::run_plugin(MyPlugin).expect("plugin failed");
+}
+```
+
+Defina `"runtime": "native"` e `"main": "bin/my-plugin"` em `graphite-plugin.json` (no Windows `.exe` é resolvido automaticamente; no Unix o `graphite` aplica permissão `0o755` na extração e execução). Consulte `crates/graphite-plugin-sdk/examples/echo_plugin.rs` para um exemplo completo expondo comandos, listagem de arquivos e ferramenta de Chat.
 
 ## Instalar e gerenciar
 
@@ -68,14 +110,14 @@ Abra a barra lateral de **Plugins** com `Ctrl+Shift+X`. Ela compartilha a barra 
 | R / X | Reiniciar plugin nativo / remover o plugin selecionado |
 | C | Executar o primeiro comando registrado do plugin |
 
-A barra lateral mostra os IDs declarados; associe outros comandos no `keybindings.json`, por exemplo `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Instalar e atualizar redefine habilitação e confiança. A confirmação permite executar código local daquela versão instalada. Node ausente e falhas de ativação aparecem na barra lateral; use R para tentar novamente depois de corrigir a causa.
+Instalar e atualizar redefinem habilitação e confiança. A confirmação permite executar código local daquela versão instalada. Falhas de ativação ou erros de permissão aparecem na barra lateral e em `logs/<id>/console.log`; use **R** para tentar novamente depois de corrigir a causa.
 
 Selecione um VSIX instalado com ponto de entrada Node.js e pressione **E** para aprovar essa instalação. Confie no workspace, abra a paleta (`Ctrl+Shift+P` ou `F1`) e escolha o comando da extensão. Aprove a nova instalação após uma atualização. Veja as [APIs VSIX suportadas](../architecture/extension-compat.md).
 
 ## Publicar e testar
 
-Publique extensões VSIX no Open VSX para descoberta. Para listar um plugin no catálogo Graphite, publique um repositório GitHub público, adicione o tópico `graphite-plugin` e anexe um arquivo `.graphite-plugin` ou `.vsix` à release estável mais recente. Quando houver ambos os formatos ou mais de um pacote, a pessoa escolhe qual inspecionar. Repositórios sem release estável continuam aparecendo na busca, mas não podem ser instalados até que uma release compatível seja publicada. O Graphite também aceita pacotes locais `.vsix` e `.graphite-plugin` pelo painel Plugins.
+Publique extensões VSIX no Open VSX para descoberta. Para listar um plugin no catálogo Graphite, publique um repositório GitHub público, adicione o tópico `graphite-plugin` e anexe um arquivo `.graphite-plugin` ou `.vsix` à release estável mais recente. Repositórios sem release estável continuam aparecendo na busca, mas não podem ser instalados até que uma release compatível seja publicada. O Graphite também aceita pacotes locais `.vsix` e `.graphite-plugin` pelo painel Plugins.
 
-Execute `cargo test -p graphite-plugins` para testes de pacotes, persistência e catálogo. Os testes da aplicação para plugins e Emmet upstream exigem Node.js 24+ e usam fixtures locais: `cargo test -p graphite-app app::plugins`. Finalize mudanças com `cargo test --workspace` e `cargo build --workspace`; os testes de marketplace usam uma fixture HTTP local e nunca acessam o Open VSX. A execução Linux e verificações interativas devem ser registradas separadamente quando indisponíveis.
+Execute `cargo test -p graphite-plugins` para testes de pacotes, persistência e catálogo, `cargo test -p graphite-plugin-sdk --all-targets` para testes do SDK Rust e `cargo test -p graphite-app app::plugins` para testes de plugins da aplicação (Node.js 24+ é necessário para fixtures JS e `rustc` para fixtures de binários nativos). Finalize mudanças com `cargo test --workspace` e `cargo build --workspace`; os testes de marketplace usam uma fixture HTTP local e nunca acessam o Open VSX. A execução Linux e verificações interativas devem ser registradas separadamente quando indisponíveis.
 
 Veja os [testes do pacote portátil](building.md) e a [validação da v0.5](../features/v0.5-extensions-automation.md) para as verificações do Code OSS.

@@ -1786,6 +1786,8 @@ mod tests {
                         api_version: 1,
                         main: "main.js".into(),
                         description: "Test plugin".into(),
+                        runtime: Default::default(),
+                        permissions: vec![],
                         commands: vec![],
                         activity_bar: vec![graphite_plugins::manifest::ActivityBarContainer {
                             id: "sample.plugin.tools".into(),

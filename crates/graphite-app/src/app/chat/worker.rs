@@ -2,9 +2,9 @@
 
 use super::*;
 use graphite_chat::{
-    run_turn, write_proposed_edit, AgentMode, AgentTurnEvent, ApprovalDecision, ChatContext,
-    HttpModelStreamer, Message, PendingToolApproval, ProviderConfig, SystemCommandRunner,
-    TurnStatus,
+    run_turn, run_turn_with_tools, write_proposed_edit, AgentMode, AgentTurnEvent,
+    ApprovalDecision, ChatContext, HttpModelStreamer, Message, PendingToolApproval, ProviderConfig,
+    SystemCommandRunner, TurnStatus,
 };
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
@@ -20,6 +20,11 @@ pub(crate) enum ChatUiEvent {
     InlineEvent {
         document: DocumentId,
         event: AgentTurnEvent,
+    },
+    PluginToolCall {
+        name: String,
+        input: serde_json::Value,
+        reply: mpsc::Sender<Result<String, String>>,
     },
 }
 
@@ -60,6 +65,9 @@ impl App {
             format!("mode={}, turn={turn_id}", mode.label()),
         );
         let history = self.chat.active_session().to_request_messages();
+        let plugin_tools = self.plugin_chat_tool_specs();
+        let plugin_tool_names: std::collections::HashSet<String> =
+            plugin_tools.iter().map(|t| t.name.clone()).collect();
         let policy = self.chat.policy.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         self.chat.running_turn = Some((session_id.clone(), turn_id, cancel.clone()));
@@ -72,7 +80,7 @@ impl App {
                 let mut policy = policy;
                 let mut streamer = HttpModelStreamer;
                 let runner = SystemCommandRunner;
-                run_turn(
+                run_turn_with_tools(
                     &config,
                     mode,
                     &ctx,
@@ -81,6 +89,27 @@ impl App {
                     &cancel,
                     &mut streamer,
                     &runner,
+                    &plugin_tools,
+                    |name, input| {
+                        if !plugin_tool_names.contains(name) {
+                            return None;
+                        }
+                        let (tx, rx) = mpsc::channel();
+                        if proxy
+                            .send_event(UserEvent::Chat(ChatUiEvent::PluginToolCall {
+                                name: name.to_owned(),
+                                input: input.clone(),
+                                reply: tx,
+                            }))
+                            .is_err()
+                        {
+                            return Some(Err("Editor event loop unavailable".into()));
+                        }
+                        Some(
+                            rx.recv()
+                                .unwrap_or_else(|_| Err("Plugin tool channel closed".into())),
+                        )
+                    },
                     |pending: &PendingToolApproval| {
                         let (tx, rx) = mpsc::channel();
                         let _ = proxy.send_event(UserEvent::Chat(ChatUiEvent::TurnEvent {
@@ -159,6 +188,11 @@ impl App {
             }
             ChatUiEvent::InlineEvent { document, event } => {
                 self.apply_inline_chat_event(document, event);
+            }
+            ChatUiEvent::PluginToolCall { name, input, reply } => {
+                if let Err(err) = self.invoke_plugin_chat_tool(&name, input, Some(reply.clone())) {
+                    let _ = reply.send(Err(err));
+                }
             }
         }
         if let Some(gpu) = &self.gpu {

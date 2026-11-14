@@ -108,7 +108,13 @@ export interface Graphite {
       participant: (request: SaveParticipantRequest, signal: AbortSignal) => TextEdit[] | void | Promise<TextEdit[] | void>,
     ): Promise<Disposable>;
   };
-  workspace: { get(): Promise<{ root: string }>; configuration(): Promise<unknown> };
+  workspace: {
+    get(): Promise<{ root: string }>;
+    configuration(): Promise<unknown>;
+    findFiles(options?: { include?: string; exclude?: string; maxResults?: number }): Promise<string[]>;
+    readFile(path: string): Promise<string>;
+    writeFile(path: string, content: string): Promise<void>;
+  };
   window: {
     showMessage(text: string): Promise<void>;
     focusView(view: number): Promise<void>;
@@ -135,6 +141,18 @@ export interface Graphite {
     registerCompletionProvider(languages: string | string[], provider: CompletionItemProvider): Promise<Disposable>;
     registerHoverProvider(languages: string | string[], provider: HoverProvider): Promise<Disposable>;
     registerFormattingProvider(languages: string | string[], provider: FormattingProvider): Promise<Disposable>;
+  };
+  terminal: {
+    create(options?: TerminalOptions): Promise<TerminalHandle>;
+  };
+  scm: {
+    status(): Promise<ScmStatusSnapshot>;
+  };
+  chat: {
+    registerTool(
+      definition: ChatToolDefinition,
+      handler: (input: unknown, signal: AbortSignal) => string | ChatToolOutcome | Promise<string | ChatToolOutcome>,
+    ): Promise<Disposable>;
   };
 }
 export interface EditorSelection {
@@ -194,4 +212,33 @@ export interface FormattingOptions {
 }
 export interface FormattingProvider {
   provideDocumentFormatting(uri: string, options: FormattingOptions, signal?: AbortSignal): Promise<TextEdit[] | null | undefined> | TextEdit[] | null | undefined;
+}
+export interface TerminalOptions {
+  name?: string;
+  shellPath?: string;
+  shellArgs?: string[];
+  cwd?: string;
+}
+export interface TerminalHandle {
+  readonly id: number;
+  sendText(text: string, addNewline?: boolean): Promise<void>;
+  show(preserveFocus?: boolean): Promise<void>;
+}
+export interface ScmFileStatus {
+  path: string;
+  status: string;
+}
+export interface ScmStatusSnapshot {
+  branch?: string;
+  files: ScmFileStatus[];
+  error?: string;
+}
+export interface ChatToolDefinition {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+}
+export interface ChatToolOutcome {
+  content: string;
+  isError?: boolean;
 }

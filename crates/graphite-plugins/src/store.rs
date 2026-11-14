@@ -209,8 +209,7 @@ impl Store {
     pub fn link_dev(&self, project_dir: &Path) -> Result<Installed> {
         let canonical = fs::canonicalize(project_dir).map_err(|e| e.to_string())?;
         let manifest = read_dev_manifest(&canonical)?;
-        let entry = canonical.join(&manifest.main);
-        if !entry.is_file() {
+        if crate::manifest::resolve_entrypoint(&canonical, &manifest).is_none() {
             return Err(format!("Plugin entry script not found: {}", manifest.main));
         }
         fs::create_dir_all(&self.root).map_err(|e| e.to_string())?;

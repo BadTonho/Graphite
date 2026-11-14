@@ -56,6 +56,13 @@ impl App {
         self.extension_host.diagnostics.clear();
         self.extension_host.language_providers.clear();
         self.extension_host.language_replies.clear();
+        self.extension_host.terminals.clear();
+        self.extension_host.chat_tools.clear();
+        for (_, sender) in self.extension_host.chat_replies.drain() {
+            if let Some(tx) = sender {
+                let _ = tx.send(Err("Plugin host stopped".into()));
+            }
+        }
         self.extension_host.subscriptions.clear();
         self.extension_host.prompt = None;
         self.extension_host.status_items.clear();
@@ -147,6 +154,10 @@ impl App {
                     }
                     if let Some(pending) = self.extension_host.language_replies.remove(&id) {
                         self.apply_native_language_reply(pending, result);
+                        continue;
+                    }
+                    if let Some(reply) = self.extension_host.chat_replies.remove(&id) {
+                        self.apply_native_chat_tool_reply(reply, result);
                         continue;
                     }
                     if let Some(execution) = self.extension_host.outbound.remove(&id) {

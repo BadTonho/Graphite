@@ -15,8 +15,8 @@ mod store;
 pub mod tools;
 
 pub use agent::{
-    build_system_prompt, run_turn, write_proposed_edit, ActiveFileContext, AgentTurnEvent,
-    ChatContext, FileAttachment, HttpModelStreamer, ModelStreamer,
+    build_system_prompt, run_turn, run_turn_with_tools, write_proposed_edit, ActiveFileContext,
+    AgentTurnEvent, ChatContext, FileAttachment, HttpModelStreamer, ModelStreamer,
 };
 pub use message::{
     Block, ChatError, Message, Request, Role, StopReason, StreamEvent, ToolSpec, Usage,

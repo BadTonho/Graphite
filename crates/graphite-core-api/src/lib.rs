@@ -8,6 +8,8 @@ pub use ui::*;
 pub mod editor_lang;
 pub use editor_lang::*;
 pub mod protocol;
+pub mod system;
+pub use system::*;
 mod uri;
 pub use commands::*;
 pub use documents::*;
@@ -222,5 +224,53 @@ pub enum ServiceRequest {
     DisposeLanguageProvider {
         #[serde(rename = "providerId", alias = "provider_id")]
         provider_id: String,
+    },
+    CreateTerminal {
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(rename = "shellPath", alias = "shell_path", default)]
+        shell_path: Option<String>,
+        #[serde(rename = "shellArgs", alias = "shell_args", default)]
+        shell_args: Vec<String>,
+        #[serde(default)]
+        cwd: Option<String>,
+    },
+    SendTerminalText {
+        id: u64,
+        text: String,
+        #[serde(rename = "addNewline", alias = "add_newline", default)]
+        add_newline: bool,
+    },
+    ShowTerminal {
+        id: u64,
+        #[serde(rename = "preserveFocus", alias = "preserve_focus", default)]
+        preserve_focus: bool,
+    },
+    WorkspaceFindFiles {
+        #[serde(default)]
+        include: Option<String>,
+        #[serde(default)]
+        exclude: Option<String>,
+        #[serde(rename = "maxResults", alias = "max_results", default)]
+        max_results: Option<usize>,
+    },
+    WorkspaceReadFile {
+        path: String,
+    },
+    WorkspaceWriteFile {
+        path: String,
+        content: String,
+    },
+    ScmStatus,
+    RegisterChatTool {
+        #[serde(rename = "toolId", alias = "tool_id")]
+        tool_id: String,
+        name: String,
+        description: String,
+        schema: Value,
+    },
+    DisposeChatTool {
+        #[serde(rename = "toolId", alias = "tool_id")]
+        tool_id: String,
     },
 }

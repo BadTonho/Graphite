@@ -1,10 +1,15 @@
 use super::*;
 
-fn dev_watch_mtime(root: &std::path::Path, main: &str) -> Option<std::time::SystemTime> {
+fn dev_watch_mtime(
+    root: &std::path::Path,
+    manifest: &graphite_plugins::manifest::Manifest,
+) -> Option<std::time::SystemTime> {
     let manifest_time = std::fs::metadata(root.join("graphite-plugin.json"))
         .and_then(|meta| meta.modified())
         .ok();
-    let main_time = std::fs::metadata(root.join(main))
+    let main_path = graphite_plugins::manifest::resolve_entrypoint(root, manifest)
+        .unwrap_or_else(|| root.join(&manifest.main));
+    let main_time = std::fs::metadata(main_path)
         .and_then(|meta| meta.modified())
         .ok();
     match (manifest_time, main_time) {
@@ -99,16 +104,12 @@ impl App {
             .to_owned();
         let proxy = self.event_proxy.clone();
         self.plugin_job(move |store| {
-            let node = PathBuf::from(node);
-            graphite_plugins::sdk::check_node(&node)?;
-            let host_script = store.root.join("host-v1.cjs");
-            std::fs::write(&host_script, graphite_plugins::HOST).map_err(|e| e.to_string())?;
             let root = record
                 .install_dir(&store.root)
                 .canonicalize()
                 .map_err(|e| e.to_string())?;
             let dev_watch = record.dev_path.as_ref().map(|_| {
-                let mtime = dev_watch_mtime(&root, &manifest.main);
+                let mtime = dev_watch_mtime(&root, &manifest);
                 (root.clone(), mtime, Instant::now())
             });
             let log_path = Some(store.root.join("logs").join(&id).join("console.log"));
@@ -117,15 +118,45 @@ impl App {
                     let _ = proxy.send_event(UserEvent::ExtensionHostWake);
                 }
             });
-            let supervisor = graphite_extension_host::Supervisor::spawn_with_args_and_log(
-                &node,
-                &[host_script.into_os_string(), root.into_os_string()],
-                session,
-                Instant::now(),
-                wake,
-                log_path,
-            )
-            .map_err(|e| e.to_string())?;
+            let supervisor = match manifest.runtime {
+                graphite_plugins::manifest::PluginRuntime::Node => {
+                    let node = PathBuf::from(node);
+                    graphite_plugins::sdk::check_node(&node)?;
+                    let host_script = store.root.join("host-v1.cjs");
+                    std::fs::write(&host_script, graphite_plugins::HOST)
+                        .map_err(|e| e.to_string())?;
+                    graphite_extension_host::Supervisor::spawn_with_args_and_log(
+                        &node,
+                        &[host_script.into_os_string(), root.into_os_string()],
+                        session,
+                        Instant::now(),
+                        wake,
+                        log_path,
+                    )
+                    .map_err(|e| e.to_string())?
+                }
+                graphite_plugins::manifest::PluginRuntime::Native => {
+                    let exe = graphite_plugins::manifest::resolve_entrypoint(&root, &manifest)
+                        .ok_or_else(|| {
+                            format!("Native plugin executable not found: {}", manifest.main)
+                        })?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ =
+                            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
+                    }
+                    graphite_extension_host::Supervisor::spawn_with_args_and_log(
+                        &exe,
+                        &[root.into_os_string()],
+                        session,
+                        Instant::now(),
+                        wake,
+                        log_path,
+                    )
+                    .map_err(|e| e.to_string())?
+                }
+            };
             let runtime = super::extension_host::ExtensionRuntime {
                 enabled: true,
                 native_manifest: Some(manifest),
@@ -340,7 +371,7 @@ impl App {
                 let now = Instant::now();
                 if now.duration_since(*last_check) >= std::time::Duration::from_millis(500) {
                     *last_check = now;
-                    let current = dev_watch_mtime(dev_root, &manifest.main);
+                    let current = dev_watch_mtime(dev_root, manifest);
                     if current != *recorded_mtime {
                         *recorded_mtime = current;
                         should_reload = true;

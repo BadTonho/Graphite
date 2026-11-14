@@ -14,7 +14,7 @@ const context = new AsyncLocalStorage();
 const root = path.resolve(process.argv[2]);
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'graphite-plugin.json'), 'utf8'));
 const handlers = new Map(), listeners = new Map(), saveParticipants = new Map(), pending = new Map(), incoming = new Map();
-const treeProviders = new Map(), webviewPanels = new Map(), languageProviders = new Map();
+const treeProviders = new Map(), webviewPanels = new Map(), languageProviders = new Map(), chatTools = new Map();
 const subscriptions = [];
 let session, next = 0, buffer = Buffer.alloc(0), activated = false, plugin, shuttingDown = false;
 const MAX_FRAME = 16 * 1024 * 1024, MAX_PENDING = 128;
@@ -44,7 +44,7 @@ function disposable(resource, cleanup) {
   subscriptions.push(value);
   return value;
 }
-let statusCounter = 0, webviewCounter = 0, decorationCounter = 0, languageProviderCounter = 0;
+let statusCounter = 0, webviewCounter = 0, decorationCounter = 0, languageProviderCounter = 0, chatToolCounter = 0;
 async function registerLanguageProvider(kind, languages, provider) {
   const normalized = typeof languages === 'string' ? [languages] : (Array.isArray(languages) ? languages.map(String) : []);
   const providerId = `lang-${++languageProviderCounter}`;
@@ -97,7 +97,17 @@ const graphite = {
       return disposable(resource, () => saveParticipants.delete(resource));
     },
   },
-  workspace: { get: () => service('workspace'), configuration: () => service('configuration') },
+  workspace: {
+    get: () => service('workspace'),
+    configuration: () => service('configuration'),
+    findFiles: (options = {}) => service('workspaceFindFiles', {
+      ...(options?.include != null ? { include: String(options.include) } : {}),
+      ...(options?.exclude != null ? { exclude: String(options.exclude) } : {}),
+      ...(options?.maxResults != null ? { maxResults: Number(options.maxResults) } : {}),
+    }),
+    readFile: path => service('workspaceReadFile', { path: String(path) }),
+    writeFile: (path, content) => service('workspaceWriteFile', { path: String(path), content: String(content) }),
+  },
   window: {
     showMessage: text => service('message', { text }),
     focusView: view => service('focus', { view }),
@@ -271,6 +281,48 @@ const graphite = {
     registerHoverProvider: (languages, provider) => registerLanguageProvider('hover', languages, provider),
     registerFormattingProvider: (languages, provider) => registerLanguageProvider('formatter', languages, provider),
   },
+  terminal: {
+    async create(options = {}) {
+      const id = await service('createTerminal', {
+        ...(options?.name != null ? { name: String(options.name) } : {}),
+        ...(options?.shellPath != null ? { shellPath: String(options.shellPath) } : {}),
+        ...(Array.isArray(options?.shellArgs) ? { shellArgs: options.shellArgs.map(String) } : {}),
+        ...(options?.cwd != null ? { cwd: String(options.cwd) } : {}),
+      });
+      return {
+        id,
+        sendText: (text, addNewline = true) => service('sendTerminalText', { id, text: String(text), addNewline: Boolean(addNewline) }),
+        show: (preserveFocus = false) => service('showTerminal', { id, preserveFocus: Boolean(preserveFocus) }),
+      };
+    },
+  },
+  scm: {
+    status: () => service('scmStatus'),
+  },
+  chat: {
+    async registerTool(definition, handler) {
+      if (!definition?.name || typeof handler !== 'function') throw new Error('Invalid chat tool definition');
+      const toolId = `tool-${++chatToolCounter}`;
+      chatTools.set(toolId, handler);
+      await service('registerChatTool', {
+        toolId,
+        name: String(definition.name),
+        description: String(definition.description ?? ''),
+        schema: definition.schema ?? { type: 'object', properties: {} },
+      });
+      let disposed = false;
+      const d = {
+        async dispose() {
+          if (disposed) return;
+          disposed = true;
+          chatTools.delete(toolId);
+          await service('disposeChatTool', { toolId }).catch(() => {});
+        },
+      };
+      subscriptions.push(d);
+      return d;
+    },
+  },
 };
 async function shutdown() {
   if (shuttingDown) return;
@@ -403,6 +455,18 @@ async function receive(message) {
           entry.provider.provideDocumentFormatting(uri, { tabSize, insertSpaces }, abort.signal)
         );
         value = Array.isArray(edits) ? edits : [];
+      } else if (data.request.InvokeChatTool) {
+        const { toolId, input } = data.request.InvokeChatTool;
+        const handler = chatTools.get(toolId);
+        if (!handler) throw new Error(`Chat tool is unavailable for ${toolId}`);
+        const raw = await context.run({ id: data.id }, () => handler(input, abort.signal));
+        if (typeof raw === 'string') {
+          value = { content: raw, isError: false };
+        } else if (raw && typeof raw === 'object' && typeof raw.content === 'string') {
+          value = { content: raw.content, isError: Boolean(raw.isError) };
+        } else {
+          value = { content: raw == null ? '' : JSON.stringify(raw), isError: false };
+        }
       } else {
         throw new Error('Unsupported host request');
       }

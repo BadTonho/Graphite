@@ -102,8 +102,15 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
             let m: Manifest = serde_json::from_value(json(zip, "graphite-plugin.json")?)
                 .map_err(|e| e.to_string())?;
             m.validate()?;
-            if zip.by_name(&m.main).map_err(|e| e.to_string())?.is_dir() {
-                return Err("Entry point is a directory".into());
+            let has_entry = zip.by_name(&m.main).map(|e| !e.is_dir()).unwrap_or(false)
+                || (m.runtime == crate::manifest::PluginRuntime::Native
+                    && !m.main.ends_with(".exe")
+                    && zip
+                        .by_name(&format!("{}.exe", m.main))
+                        .map(|e| !e.is_dir())
+                        .unwrap_or(false));
+            if !has_entry {
+                return Err("Missing plugin entrypoint".into());
             }
             Ok(Metadata::Native(m))
         }
@@ -172,6 +179,16 @@ pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
             total += n;
             if total > MAX_EXPANDED || n != entry.size() {
                 return Err("Invalid expanded package size".into());
+            }
+            drop(file);
+            #[cfg(unix)]
+            if let Metadata::Native(ref manifest) = m {
+                if manifest.runtime == crate::manifest::PluginRuntime::Native
+                    && entry.name() == manifest.main
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&out, fs::Permissions::from_mode(0o755));
+                }
             }
         }
         Ok(m)

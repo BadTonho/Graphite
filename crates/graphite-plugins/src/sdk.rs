@@ -20,6 +20,8 @@ pub fn create(destination: &Path) -> Result<()> {
         api_version: 1,
         main: "dist/index.js".into(),
         description: "My Graphite plugin".into(),
+        runtime: Default::default(),
+        permissions: Vec::new(),
         commands: vec![Command {
             id: format!("{id}.hello"),
             title: "Hello from my plugin".into(),

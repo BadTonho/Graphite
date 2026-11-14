@@ -3040,6 +3040,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "graphite-core-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "graphite-plugins"
 version = "0.1.0"
 dependencies = [

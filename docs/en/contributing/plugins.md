@@ -1,8 +1,8 @@
 # Creating and installing plugins
 
-Build Graphite with `cargo build --workspace` for native plugin development. Native plugin execution uses Node.js 24+ and accepts a custom executable through `graphite.plugins.nodePath` in user settings. Use the [portable package](building.md) for Code OSS VSIX execution.
+Build Graphite with `cargo build --workspace` for native plugin development. JavaScript/TypeScript plugins (`"runtime": "node"`, default) use Node.js 24+ and accept a custom executable through `graphite.plugins.nodePath` in user settings. Compiled native Rust plugins (`"runtime": "native"`) use the `graphite-plugin-sdk` crate directly without requiring Node.js. Use the [portable package](building.md) for Code OSS VSIX execution.
 
-## Create a native plugin
+## Create a JavaScript/TypeScript plugin
 
 ```sh
 graphite plugin create my-plugin
@@ -12,18 +12,33 @@ npm run build
 graphite plugin pack .
 ```
 
-The generator creates TypeScript source, local API declarations, build configuration and an example command. The package is written beside the project directory as `local.my-plugin-0.1.0.graphite-plugin`. Existing output files are not overwritten. Compile before packing. Packages include compiled code and any dependencies in the project; no dependency installation or build occurs inside Graphite. Bundle runtime dependencies when practical, and avoid shipping development dependencies or private data. Hidden files are omitted; key/database file extensions and symlinks are rejected.
+For fast local iteration without packing on every edit, link your plugin directly in development mode (console output is saved to `logs/<id>/console.log`, and changes to `graphite-plugin.json` or the entrypoint trigger hot reload):
 
-The root manifest is:
+```sh
+graphite plugin dev .
+# When done testing:
+graphite plugin unlink local.my-plugin
+```
+
+The generator creates TypeScript source, local `graphite.d.ts` API declarations, build configuration and an example command. `graphite plugin pack .` writes `local.my-plugin-0.1.0.graphite-plugin` beside the project directory. Compile before packing. Hidden files and `target` are omitted; key/database file extensions and symlinks are rejected.
+
+The root manifest (`graphite-plugin.json`) supports declarative contributions and granular permissions:
 
 ```json
 {
   "id": "local.my-plugin",
   "version": "0.1.0",
   "apiVersion": 1,
+  "runtime": "node",
   "main": "dist/index.js",
   "description": "My Graphite plugin",
+  "permissions": ["commands", "documents.read", "ui"],
+  "activationEvents": ["onStartupFinished"],
   "commands": [{"id": "local.my-plugin.hello", "title": "Hello from my plugin"}],
+  "keybindings": [{"command": "local.my-plugin.hello", "key": "ctrl+alt+h"}],
+  "menus": {
+    "commandPalette": [{"command": "local.my-plugin.hello"}]
+  },
   "activityBar": [{
     "id": "local.my-plugin.tools",
     "title": "My Tools",
@@ -32,24 +47,52 @@ The root manifest is:
 }
 ```
 
-IDs use `publisher.name` with lowercase ASCII letters, digits and hyphens. Versions use semver. Command IDs must start with the full plugin ID plus `.`; registrations must use their declared titles. Entry points are relative `.js`, `.cjs` or `.mjs` files. ES modules use `"type": "module"` in `package.json`; CommonJS can export `activate` directly.
+IDs use `publisher.name` with lowercase ASCII letters, digits and hyphens. Versions use semver. Command, container and view IDs must start with the full plugin ID plus `.`; registrations must use their declared titles. Optional declarative fields also include `themes`, `snippets` and `languages` (language ID, extensions, line/block comment markers).
 
-`activityBar` declares an activity-bar container and its `tree` or `webview`
-views. VSIX packages use the VS Code keys `contributes.viewsContainers.activitybar`
-and `contributes.views`. These declarations currently populate the activity
-menu and information panel; the native SDK does not yet provide tree data or
-interactive Webview provider registration.
+Valid `permissions` tokens are: `commands`, `documents.read`, `documents.write`, `ui`, `languages`, `storage`, `workspace.read`, `workspace.write`, `terminal`, `chat`, and `*`. System capabilities (`workspace.read`, `workspace.write`, `terminal`, `chat`) always require explicit permission in the manifest.
 
-## API v1
+## API v1 (JavaScript / TypeScript)
 
-Export `async activate(context, graphite)` and optionally `deactivate()`. The generated `graphite.d.ts` defines the SDK:
+Export `async activate(context, graphite)` and optionally `deactivate()`. The generated `graphite.d.ts` defines the full SDK:
 
-- `commands.registerCommand(id, handler)` returns a disposable. Handlers receive JSON arguments and an `AbortSignal`, and may return JSON results asynchronously.
-- `documents.list()` and `snapshot(uri)` read current in-memory text, including unsaved changes. `documents.onDidChange(listener)` receives opened, changed and closed snapshots and returns a disposable.
-- `documents.applyEdits(edits)` accepts `{uri, version, edits:[{start, end, text}]}`. Positions are zero-based UTF-16 `{line, character}`; use the snapshot's version. Changes preserve editor validation and undo; saving is separate and not exposed in v1.
-- `workspace.get()` and `workspace.configuration()` query the editor; `window.showMessage(text)` shows a message.
+- `commands`: `list()`, `execute(id, args?, target?)`, `registerCommand(id, handler)`.
+- `documents`: `list()`, `open(uri)`, `save(uri, reason?)`, `snapshot(uri)`, `applyEdits(edits)` (zero-based UTF-16 positions, versioned), `onDidChange(listener)` and `onWillSave(metadata, participant)`.
+- `window`: `showMessage(text)`, `focusView(view)`, `showInputBox(options)`, `showQuickPick(items, options)`, `createStatusBarItem(id?)`, `createOutputChannel(name)`, `registerTreeDataProvider(viewId, provider)` and `createWebviewPanel(viewType, title, options)`.
+- `storage`: `global` and `workspace` (`get`, `update`, `delete`).
+- `editor`: `active()`, `setSelections(selections)`, `createDecorationType(options)`, `setDecorations(decorationType, uri, ranges)`.
+- `languages`: `setDiagnostics(owner, uri, diagnostics)`, `clearDiagnostics(owner, uri)`, `registerCompletionProvider`, `registerHoverProvider`, `registerFormattingProvider`.
+- `workspace`: `get()`, `configuration()`, `findFiles(options?)`, `readFile(path)`, `writeFile(path, content)` (all confined to the workspace root, blocking `.git/` and path escapes).
+- `terminal`: `create(options?)` returning `{ id, sendText, show }`.
+- `scm`: `status()` returning current Git branch and changed files.
+- `chat`: `registerTool(definition, handler)` registering tools callable during Graphite Chat turns.
 
-Track disposables in `context.subscriptions`; disposal is idempotent. Host termination also releases editor-side resources. Use the cancellation signal for long operations. Logs go to stderr. Plugins execute with the user's local account access: only enable trusted code.
+Track disposables in `context.subscriptions`; disposal and host shutdown release editor-side resources automatically.
+
+## Create a compiled Rust plugin (`runtime: "native"`)
+
+Use the `graphite-plugin-sdk` crate to write plugins with zero Node.js dependency:
+
+```rust
+use graphite_plugin_sdk::{Plugin, PluginContext, ServiceResult};
+use serde_json::json;
+
+struct MyPlugin;
+
+impl Plugin for MyPlugin {
+    fn activate(&self, ctx: &PluginContext) -> ServiceResult<()> {
+        ctx.register_command("local.myrust.ping", "Ping", |_ctx, _args| {
+            Ok(json!({ "pong": true }))
+        })?;
+        Ok(())
+    }
+}
+
+fn main() {
+    graphite_plugin_sdk::run_plugin(MyPlugin).expect("plugin failed");
+}
+```
+
+Set `"runtime": "native"` and `"main": "bin/my-plugin"` in `graphite-plugin.json` (on Windows `.exe` is resolved automatically; on Unix `graphite` sets `0o755` on extraction and launch). See `crates/graphite-plugin-sdk/examples/echo_plugin.rs` for a complete example exposing commands, workspace file listing and a Chat tool.
 
 ## Install and manage
 
@@ -67,14 +110,14 @@ Open the **Plugins** sidebar with `Ctrl+Shift+X`. It shares the left sidebar wit
 | R / X | Restart a native plugin / remove the selected plugin |
 | C | Run the selected plugin's first registered command |
 
-The sidebar shows declared command IDs; assign additional commands in `keybindings.json`, for example `{"key":"ctrl+alt+h","command":"local.my-plugin.hello"}`. Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Missing Node or activation failures appear in the sidebar; use R to retry after correcting the cause.
+Installation and updates reset enablement and trust. Trust confirmation permits local code execution for that installed version. Activation failures or permission errors appear in the sidebar and `logs/<id>/console.log`; use **R** to retry after correcting the cause.
 
 Select an installed VSIX with a Node.js entry point and press **E** to approve that installation. Trust the workspace, then open the command palette (`Ctrl+Shift+P` or `F1`) and choose the extension command. Approve the replacement installation after an update. See [supported VSIX APIs](../architecture/extension-compat.md).
 
 ## Publish and test
 
-Publish VSIX extensions on Open VSX for discovery. To list a plugin in the Graphite catalog, publish a public GitHub repository, add the `graphite-plugin` repository topic, and attach a `.graphite-plugin` or `.vsix` file to its latest stable release. When both formats are attached, users can choose which package to inspect. Repositories without a stable release remain searchable, but cannot be installed until a supported release asset is published. Graphite accepts local `.vsix` and `.graphite-plugin` packages through the Plugins sidebar as well.
+Publish VSIX extensions on Open VSX for discovery. To list a plugin in the Graphite catalog, publish a public GitHub repository, add the `graphite-plugin` repository topic, and attach a `.graphite-plugin` or `.vsix` file to its latest stable release. Repositories without a stable release remain searchable, but cannot be installed until a supported release asset is published. Graphite accepts local `.vsix` and `.graphite-plugin` packages through the Plugins sidebar as well.
 
-Run `cargo test -p graphite-plugins` for package/store/catalog tests. Application plugin and upstream Emmet integration tests require Node.js 24+ and use local fixtures: `cargo test -p graphite-app app::plugins`. Complete changes with `cargo test --workspace` and `cargo build --workspace`; marketplace tests use a local HTTP fixture and never call Open VSX. Linux execution and interactive UI checks must be recorded separately when unavailable.
+Run `cargo test -p graphite-plugins` for package/store/catalog tests, `cargo test -p graphite-plugin-sdk --all-targets` for Rust SDK tests, and `cargo test -p graphite-app app::plugins` for application plugin tests (Node.js 24+ required for JS fixtures; `rustc` required for native binary test fixtures). Complete changes with `cargo test --workspace` and `cargo build --workspace`; marketplace tests use a local HTTP fixture and never call Open VSX. Linux execution and interactive UI checks must be recorded separately when unavailable.
 
 See [portable package tests](building.md) and [v0.5 validation](../features/v0.5-extensions-automation.md) for the Code OSS checks.

@@ -1,6 +1,8 @@
 //! Context assembly and multi-round tool-calling loop for chat and agent turns.
 
-use crate::message::{Block, ChatError, Message, Request, StopReason, StreamEvent, Usage};
+use crate::message::{
+    Block, ChatError, Message, Request, StopReason, StreamEvent, ToolSpec, Usage,
+};
 use crate::provider::ProviderConfig;
 use crate::session::AgentMode;
 use crate::tools::{
@@ -166,12 +168,45 @@ pub fn run_turn(
     cancel: &AtomicBool,
     streamer: &mut dyn ModelStreamer,
     runner: &dyn CommandRunner,
+    request_approval: impl FnMut(&PendingToolApproval) -> ApprovalDecision,
+    emit: impl FnMut(AgentTurnEvent),
+) {
+    run_turn_with_tools(
+        config,
+        mode,
+        ctx,
+        history,
+        policy,
+        cancel,
+        streamer,
+        runner,
+        &[],
+        |_name, _input| None,
+        request_approval,
+        emit,
+    );
+}
+
+/// Runs a complete turn with additional plugin-provided tools evaluated before falling back to built-ins.
+#[allow(clippy::too_many_arguments)]
+pub fn run_turn_with_tools(
+    config: &ProviderConfig,
+    mode: AgentMode,
+    ctx: &ChatContext,
+    history: &[Message],
+    policy: &mut ToolApprovalPolicy,
+    cancel: &AtomicBool,
+    streamer: &mut dyn ModelStreamer,
+    runner: &dyn CommandRunner,
+    extra_tools: &[ToolSpec],
+    mut run_extra_tool: impl FnMut(&str, &Value) -> Option<Result<String, String>>,
     mut request_approval: impl FnMut(&PendingToolApproval) -> ApprovalDecision,
     mut emit: impl FnMut(AgentTurnEvent),
 ) {
     let mut messages = history.to_vec();
     let system = build_system_prompt(mode, ctx);
-    let tools = tool_specs_for_mode(mode);
+    let mut tools = tool_specs_for_mode(mode);
+    tools.extend(extra_tools.iter().cloned());
     let mut total_usage = Usage::default();
 
     for _round in 0..MAX_TOOL_ROUNDS {
@@ -272,7 +307,22 @@ pub fn run_turn(
             };
 
             let outcome = if approved {
-                execute_tool(&ctx.workspace_root, mode, &name, &input, runner)
+                if let Some(custom_result) = run_extra_tool(&name, &input) {
+                    match custom_result {
+                        Ok(content) => crate::tools::ToolExecutionResult {
+                            content,
+                            is_error: false,
+                            proposed_edit: None,
+                        },
+                        Err(content) => crate::tools::ToolExecutionResult {
+                            content,
+                            is_error: true,
+                            proposed_edit: None,
+                        },
+                    }
+                } else {
+                    execute_tool(&ctx.workspace_root, mode, &name, &input, runner)
+                }
             } else {
                 crate::tools::ToolExecutionResult {
                     content: "Tool call denied by user.".into(),
@@ -439,6 +489,109 @@ mod tests {
                     output_tokens: 19
                 }
             }
+        )));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_turn_with_tools_executes_plugin_tool_and_requires_approval() {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-chat-plugin-tool-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        struct CapturingStreamer {
+            seen_requests: Vec<Request>,
+            rounds: VecDeque<Vec<StreamEvent>>,
+        }
+        impl ModelStreamer for CapturingStreamer {
+            fn stream(
+                &mut self,
+                _config: &ProviderConfig,
+                request: &Request,
+                _cancel: &AtomicBool,
+                on_event: &mut dyn FnMut(StreamEvent),
+            ) -> Result<(), ChatError> {
+                self.seen_requests.push(request.clone());
+                for event in self.rounds.pop_front().unwrap_or_default() {
+                    on_event(event);
+                }
+                Ok(())
+            }
+        }
+
+        let mut streamer = CapturingStreamer {
+            seen_requests: Vec::new(),
+            rounds: VecDeque::from([
+                vec![
+                    StreamEvent::ToolUse {
+                        id: "p1".into(),
+                        name: "plugin_lookup".into(),
+                        input: json!({ "key": "status" }),
+                    },
+                    StreamEvent::Finished {
+                        stop: StopReason::ToolUse,
+                        usage: Usage {
+                            input_tokens: 5,
+                            output_tokens: 4,
+                        },
+                    },
+                ],
+                vec![
+                    StreamEvent::Text("Plugin said ok.".into()),
+                    StreamEvent::Finished {
+                        stop: StopReason::EndTurn,
+                        usage: Usage {
+                            input_tokens: 8,
+                            output_tokens: 3,
+                        },
+                    },
+                ],
+            ]),
+        };
+
+        let ctx = ChatContext {
+            workspace_root: dir.clone(),
+            ..Default::default()
+        };
+        let config = ProviderConfig::default_for(ProviderKind::OpenAiCompatible);
+        let mut policy = ToolApprovalPolicy::default();
+        let cancel = AtomicBool::new(false);
+        let extra_tools = vec![ToolSpec {
+            name: "plugin_lookup".into(),
+            description: "Lookup plugin value".into(),
+            schema: json!({ "type": "object", "properties": { "key": { "type": "string" } } }),
+        }];
+        let mut events = Vec::new();
+        run_turn_with_tools(
+            &config,
+            AgentMode::Ask,
+            &ctx,
+            &[Message::user("Check status")],
+            &mut policy,
+            &cancel,
+            &mut streamer,
+            &NoopRunner,
+            &extra_tools,
+            |name, input| {
+                (name == "plugin_lookup")
+                    .then(|| Ok(format!("key={}", input["key"].as_str().unwrap_or(""))))
+            },
+            |_pending| ApprovalDecision::AllowOnce,
+            |ev| events.push(ev),
+        );
+
+        assert!(streamer.seen_requests[0]
+            .tools
+            .iter()
+            .any(|t| t.name == "plugin_lookup"));
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            AgentTurnEvent::ToolResult { name, content, is_error: false, .. }
+            if name == "plugin_lookup" && content == "key=status"
         )));
 
         let _ = std::fs::remove_dir_all(&dir);

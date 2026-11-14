@@ -9,10 +9,12 @@ use std::{
 mod lifecycle;
 mod native_editor_lang;
 mod native_services;
+mod native_system;
 mod native_ui;
 mod requests;
 use native_editor_lang::{NativeLanguageProvider, PendingLanguageRequest};
 pub(crate) use native_services::{NativePrompt, NativeStatusItem};
+use native_system::NativeChatTool;
 #[cfg_attr(not(test), allow(unused_imports))]
 pub(crate) use native_ui::{
     NativeTreeView, NativeWebviewPanel, PendingActivationCommand, PluginMenuLocation,
@@ -47,6 +49,10 @@ pub(crate) struct ExtensionRuntime {
     >,
     pub language_providers: std::collections::BTreeMap<String, NativeLanguageProvider>,
     pub language_replies: HashMap<u64, PendingLanguageRequest>,
+    pub terminals: HashMap<u64, u64>,
+    pub next_terminal_id: u64,
+    pub chat_tools: std::collections::BTreeMap<String, NativeChatTool>,
+    pub chat_replies: HashMap<u64, Option<std::sync::mpsc::Sender<Result<String, String>>>>,
     pub subscriptions: HashMap<u64, DocumentSubscription>,
     pub outbound: HashMap<u64, u64>,
     pub incoming: HashMap<u64, Incoming>,
