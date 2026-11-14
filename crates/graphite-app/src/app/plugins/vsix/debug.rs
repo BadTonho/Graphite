@@ -258,6 +258,7 @@ mod tests {
             enabled: true,
             trusted_version: approved.then(|| "1.0.0".to_owned()),
             directory: "coder-1".into(),
+            dev_path: None,
         }
     }
 

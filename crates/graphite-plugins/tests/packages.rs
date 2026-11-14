@@ -223,3 +223,41 @@ fn missing_node_has_an_actionable_error() {
         .unwrap_err()
         .contains("Node.js"));
 }
+
+#[test]
+fn link_dev_tracks_source_directory_refreshes_manifest_and_unlink_preserves_source() {
+    let temp = Temp::new();
+    let source = project(&temp.0, "dev-example");
+    let store = Store::new(temp.0.join("store"));
+    let linked = store.link_dev(&source).unwrap();
+    assert!(linked.enabled);
+    assert_eq!(linked.trusted_version.as_deref(), Some("0.1.0"));
+    assert_eq!(
+        linked.install_dir(&store.root),
+        fs::canonicalize(&source).unwrap()
+    );
+
+    let mut manifest: Manifest =
+        serde_json::from_slice(&fs::read(source.join("graphite-plugin.json")).unwrap()).unwrap();
+    manifest.version = "0.3.0".into();
+    manifest.description = "Live updated".into();
+    fs::write(
+        source.join("graphite-plugin.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let refreshed = store.get("local.dev-example").unwrap();
+    assert_eq!(refreshed.metadata.version(), "0.3.0");
+    assert_eq!(refreshed.trusted_version.as_deref(), Some("0.3.0"));
+    if let Metadata::Native(native) = refreshed.metadata {
+        assert_eq!(native.description, "Live updated");
+    } else {
+        panic!("expected native manifest");
+    }
+
+    store.unlink_dev("local.dev-example").unwrap();
+    assert!(store.get("local.dev-example").is_err());
+    assert!(source.join("graphite-plugin.json").exists());
+    assert!(source.join("dist/index.js").exists());
+}

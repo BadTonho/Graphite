@@ -36,4 +36,32 @@ fn plugin_cli_creates_project_rejects_unbuilt_entry_and_packages_without_opening
     let path = String::from_utf8(output.stdout).unwrap();
     assert!(Path::new(path.trim()).exists());
     assert!(!cli(&["plugin", "unknown", "example"]).status.success());
+
+    let store_dir = root.join("store");
+    let dev_output = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .current_dir(&root)
+        .env("GRAPHITE_PLUGIN_STORE", &store_dir)
+        .args(["plugin", "dev", "example"])
+        .output()
+        .unwrap();
+    assert!(
+        dev_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&dev_output.stderr)
+    );
+    assert!(store_dir.join("local.example.json").exists());
+
+    let unlink_output = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .current_dir(&root)
+        .env("GRAPHITE_PLUGIN_STORE", &store_dir)
+        .args(["plugin", "unlink", "local.example"])
+        .output()
+        .unwrap();
+    assert!(
+        unlink_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&unlink_output.stderr)
+    );
+    assert!(!store_dir.join("local.example.json").exists());
+    assert!(root.join("example/dist/index.js").exists());
 }

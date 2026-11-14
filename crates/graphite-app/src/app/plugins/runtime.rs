@@ -1,5 +1,42 @@
 use super::*;
+
+fn dev_watch_mtime(root: &std::path::Path, main: &str) -> Option<std::time::SystemTime> {
+    let manifest_time = std::fs::metadata(root.join("graphite-plugin.json"))
+        .and_then(|meta| meta.modified())
+        .ok();
+    let main_time = std::fs::metadata(root.join(main))
+        .and_then(|meta| meta.modified())
+        .ok();
+    match (manifest_time, main_time) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (Some(a), None) | (None, Some(a)) => Some(a),
+        (None, None) => None,
+    }
+}
+
 impl App {
+    pub(crate) fn plugin_console_log_path(&self, id: &str) -> Option<PathBuf> {
+        self.plugins
+            .store
+            .as_ref()
+            .map(|store| store.root.join("logs").join(id).join("console.log"))
+    }
+    pub(crate) fn reload_plugin(&mut self, id: &str) {
+        if let Some(store) = self.plugins.store.as_ref() {
+            if let Ok(records) = store.list() {
+                self.plugins.installed = records;
+                self.reload_extension_snippets();
+                self.sync_extension_themes();
+            }
+        }
+        if self.plugins.worker.is_some() {
+            if !self.plugins.startup.iter().any(|pending| pending == id) {
+                self.plugins.startup.push(id.to_owned());
+            }
+            return;
+        }
+        self.start_plugin(id.to_owned());
+    }
     pub(crate) fn start_plugin(&mut self, id: String) {
         if self
             .workspace_trust
@@ -18,9 +55,10 @@ impl App {
         else {
             return;
         };
-        let Metadata::Native(manifest) = record.metadata else {
+        let Metadata::Native(ref manifest) = record.metadata else {
             return;
         };
+        let manifest = manifest.clone();
         if !record.enabled || record.trusted_version.as_deref() != Some(&manifest.version) {
             return;
         }
@@ -42,22 +80,27 @@ impl App {
             graphite_plugins::sdk::check_node(&node)?;
             let host_script = store.root.join("host-v1.cjs");
             std::fs::write(&host_script, graphite_plugins::HOST).map_err(|e| e.to_string())?;
-            let root = store
-                .root
-                .join(&record.directory)
+            let root = record
+                .install_dir(&store.root)
                 .canonicalize()
                 .map_err(|e| e.to_string())?;
+            let dev_watch = record.dev_path.as_ref().map(|_| {
+                let mtime = dev_watch_mtime(&root, &manifest.main);
+                (root.clone(), mtime, Instant::now())
+            });
+            let log_path = Some(store.root.join("logs").join(&id).join("console.log"));
             let wake = Arc::new(move || {
                 if let Some(proxy) = &proxy {
                     let _ = proxy.send_event(UserEvent::ExtensionHostWake);
                 }
             });
-            let supervisor = graphite_extension_host::Supervisor::spawn_with_args(
+            let supervisor = graphite_extension_host::Supervisor::spawn_with_args_and_log(
                 &node,
                 &[host_script.into_os_string(), root.into_os_string()],
                 session,
                 Instant::now(),
                 wake,
+                log_path,
             )
             .map_err(|e| e.to_string())?;
             let runtime = super::extension_host::ExtensionRuntime {
@@ -65,6 +108,7 @@ impl App {
                 native_manifest: Some(manifest),
                 activation_deadline: Some(Instant::now() + std::time::Duration::from_secs(30)),
                 supervisor: Some(supervisor),
+                dev_watch,
                 ..Default::default()
             };
             Ok(Outcome::Started(id, trust_generation, runtime))
@@ -215,6 +259,7 @@ impl App {
             }
         }
         let ids: Vec<_> = self.plugins.hosts.keys().cloned().collect();
+        let mut dev_reload = Vec::new();
         for id in ids {
             let mut host = self.plugins.hosts.remove(&id).unwrap();
             let before = host.supervisor.as_ref().map(|s| s.state);
@@ -258,7 +303,27 @@ impl App {
                     gpu.window.request_redraw();
                 }
             }
-            self.plugins.hosts.insert(id, host);
+            let mut should_reload = false;
+            if let (Some(manifest), Some((dev_root, recorded_mtime, last_check))) =
+                (&host.native_manifest, &mut host.dev_watch)
+            {
+                let now = Instant::now();
+                if now.duration_since(*last_check) >= std::time::Duration::from_millis(500) {
+                    *last_check = now;
+                    let current = dev_watch_mtime(dev_root, &manifest.main);
+                    if current != *recorded_mtime {
+                        *recorded_mtime = current;
+                        should_reload = true;
+                    }
+                }
+            }
+            self.plugins.hosts.insert(id.clone(), host);
+            if should_reload {
+                dev_reload.push(id);
+            }
+        }
+        for id in dev_reload {
+            self.reload_plugin(&id);
         }
         self.poll_vsix();
     }

@@ -39,6 +39,7 @@ pub(crate) struct ExtensionRuntime {
     pub status_items: std::collections::BTreeMap<String, NativeStatusItem>,
     pub output_channels: HashMap<String, PathBuf>,
     pub next_output: u64,
+    pub dev_watch: Option<(PathBuf, Option<std::time::SystemTime>, Instant)>,
     pub executable: Option<PathBuf>,
     pub wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }

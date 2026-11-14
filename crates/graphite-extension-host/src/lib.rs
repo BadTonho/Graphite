@@ -70,7 +70,19 @@ impl Supervisor {
         now: Instant,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> ServiceResult<Self> {
-        let (child, outgoing, incoming, fault) = transport::spawn(executable, args, wake)?;
+        Self::spawn_with_args_and_log(executable, args, session, now, wake, None)
+    }
+
+    pub fn spawn_with_args_and_log(
+        executable: &Path,
+        args: &[std::ffi::OsString],
+        session: u64,
+        now: Instant,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        log_path: Option<std::path::PathBuf>,
+    ) -> ServiceResult<Self> {
+        let (child, outgoing, incoming, fault) =
+            transport::spawn(executable, args, wake, log_path)?;
         let mut host = Self {
             session,
             state: HostState::Starting,

@@ -301,6 +301,7 @@ mod tests {
                 enabled: true,
                 trusted_version: Some("1.0.0".into()),
                 directory: "sample.comments@1.0.0".into(),
+                dev_path: None,
             });
         assert_eq!(
             app.active_comment_tokens().unwrap().line.as_deref(),

@@ -872,6 +872,18 @@ fn main() {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     if args.first().is_some_and(|a| a == "plugin") {
+        let store_root = || {
+            if let Some(path) = std::env::var_os("GRAPHITE_PLUGIN_STORE") {
+                return PathBuf::from(path);
+            }
+            let config_root = config::app_config_dir();
+            let profiles = app::phase5::Profiles::open(&config_root).ok();
+            let profile_root = profiles
+                .as_ref()
+                .and_then(|profiles| profiles.path(profiles.active()).ok())
+                .unwrap_or_else(|| config_root.clone());
+            profile_root.join("plugins")
+        };
         let result = match args.as_slice() {
             [_, action, directory] if action == "create" => {
                 graphite_plugins::sdk::create(&cwd.join(directory))
@@ -880,6 +892,27 @@ fn main() {
             [_, action, directory] if action == "pack" => {
                 graphite_plugins::package::pack(&cwd.join(directory))
                     .map(|path| path.display().to_string())
+            }
+            [_, action, directory] if action == "dev" => {
+                let target = cwd.join(directory);
+                graphite_plugins::store::Store::new(store_root())
+                    .link_dev(&target)
+                    .map(|record| {
+                        let path = record
+                            .dev_path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| target.display().to_string());
+                        cli_translator.format(
+                            "cli.plugin_linked",
+                            &[("id", &record.metadata.id()), ("path", &path)],
+                        )
+                    })
+            }
+            [_, action, id] if action == "unlink" => {
+                graphite_plugins::store::Store::new(store_root())
+                    .unlink_dev(id)
+                    .map(|_| cli_translator.format("cli.plugin_unlinked", &[("id", id)]))
             }
             _ => Err(cli_translator.text("cli.plugin_usage").into()),
         };

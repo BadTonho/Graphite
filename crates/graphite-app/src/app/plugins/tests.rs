@@ -295,6 +295,7 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
         enabled: false,
         trusted_version: None,
         directory: "sample.vsix@1.0.0".into(),
+        dev_path: None,
     });
     app.plugin_action('\n');
     assert!(matches!(app.plugins.inspecting, Some(Metadata::Vsix(_))));
@@ -470,6 +471,7 @@ fn sidebar_scrolls_its_viewport_and_yields_the_keyboard_to_overlays() {
             enabled: false,
             trusted_version: None,
             directory: format!("sample.plugin{index}@1.0.0"),
+            dev_path: None,
         });
     }
     app.plugins.visible = true;
@@ -933,4 +935,151 @@ export function deactivate() {}
     assert_eq!(stored["global"], "dark");
     assert_eq!(stored["workspace"], 42);
     assert_eq!(stored["allWorkspace"], json!({"count": 42}));
+}
+
+#[test]
+fn native_dev_plugin_captures_console_logs_and_hot_reloads_on_entry_change() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(temp.path()).unwrap();
+    app.workspace_trust = Some(trust);
+
+    let dev_dir = temp.path().join("dev-live-plugin");
+    std::fs::create_dir_all(dev_dir.join("dist")).unwrap();
+    std::fs::write(
+        dev_dir.join("graphite-plugin.json"),
+        serde_json::to_vec(&graphite_plugins::manifest::Manifest {
+            id: "local.devlive".into(),
+            version: "0.1.0".into(),
+            api_version: 1,
+            main: "dist/index.js".into(),
+            description: "Dev live reload plugin".into(),
+            commands: vec![graphite_plugins::manifest::Command {
+                id: "local.devlive.ping".into(),
+                title: "Ping".into(),
+            }],
+            activity_bar: Vec::new(),
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        dev_dir.join("dist/index.js"),
+        r#"
+export async function activate(_context, g) {
+    console.error("dev plugin log line v1");
+    await g.commands.registerCommand("local.devlive.ping", () => "v1");
+}
+"#,
+    )
+    .unwrap();
+
+    let store = Store::new(temp.path().join("plugins"));
+    let linked = store.link_dev(&dev_dir).unwrap();
+    let id = linked.metadata.id().to_owned();
+    app.plugins.installed = store.list().unwrap();
+    app.plugins.store = Some(store);
+    app.start_plugin(id.clone());
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app
+        .plugins
+        .hosts
+        .get("local.devlive")
+        .is_some_and(|h| h.native_active && !h.commands.is_empty())
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for dev plugin"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let ticket1 = app.execute_command(CommandRequest {
+        id: "local.devlive.ping".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let v1 = loop {
+        app.poll_plugins();
+        if let Some(res) = ticket1.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(v1, json!("v1"));
+
+    let log_path = app.plugin_console_log_path(&id).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if std::fs::read_to_string(&log_path)
+            .map(|body| body.contains("dev plugin log line v1"))
+            .unwrap_or(false)
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "console log was not captured");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // Update entry script & advance dev watcher past throttle window
+    std::thread::sleep(Duration::from_millis(25));
+    std::fs::write(
+        dev_dir.join("dist/index.js"),
+        r#"
+export async function activate(_context, g) {
+    console.error("dev plugin log line v2");
+    await g.commands.registerCommand("local.devlive.ping", () => "v2");
+}
+"#,
+    )
+    .unwrap();
+    if let Some((_, _, last_check)) = app
+        .plugins
+        .hosts
+        .get_mut("local.devlive")
+        .and_then(|h| h.dev_watch.as_mut())
+    {
+        *last_check = Instant::now() - Duration::from_secs(2);
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !(std::fs::read_to_string(&log_path)
+        .map(|body| body.contains("dev plugin log line v2"))
+        .unwrap_or(false)
+        && app
+            .plugins
+            .hosts
+            .get("local.devlive")
+            .is_some_and(|h| h.native_active && !h.commands.is_empty()))
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for dev live reload"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let ticket2 = app.execute_command(CommandRequest {
+        id: "local.devlive.ping".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let v2 = loop {
+        app.poll_plugins();
+        if let Some(res) = ticket2.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(v2, json!("v2"));
 }

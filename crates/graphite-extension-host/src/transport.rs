@@ -1,7 +1,7 @@
 use graphite_core_api::{protocol::*, ServiceError, ServiceResult};
 use std::{
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
         mpsc::{sync_channel, Receiver, SyncSender},
@@ -19,6 +19,7 @@ pub(super) fn spawn(
     path: &Path,
     args: &[std::ffi::OsString],
     wake: Arc<dyn Fn() + Send + Sync>,
+    log_path: Option<PathBuf>,
 ) -> ServiceResult<Transport> {
     let mut command = Command::new(path);
     command.args(args);
@@ -77,12 +78,27 @@ pub(super) fn spawn(
         }
     });
     thread::spawn(move || {
+        let mut log_file = log_path.and_then(|path| {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .ok()
+        });
         let mut bytes = [0; 4096];
         while let Ok(n) = stderr.read(&mut bytes) {
             if n == 0 {
                 break;
             }
-            let _ = std::io::stderr().write_all(&bytes[..n]);
+            if let Some(file) = log_file.as_mut() {
+                let _ = file.write_all(&bytes[..n]);
+                let _ = file.flush();
+            } else {
+                let _ = std::io::stderr().write_all(&bytes[..n]);
+            }
         }
     });
     Ok((child, tx, incoming, fault))

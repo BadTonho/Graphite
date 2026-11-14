@@ -1748,6 +1748,7 @@ mod tests {
                 enabled: true,
                 trusted_version: Some("1.0.0".into()),
                 directory: "sample.plugin@1.0.0".into(),
+                dev_path: None,
             });
         let entries = app.plugin_activity_entries();
         assert_eq!(entries.len(), 1);
@@ -1802,6 +1803,7 @@ mod tests {
             enabled: true,
             trusted_version: None,
             directory: "sample.publisher.extension@2.0.0".into(),
+            dev_path: None,
         };
         app.plugins.installed_plugins_mut().push(record.clone());
         assert!(app.plugin_activity_entries().is_empty());

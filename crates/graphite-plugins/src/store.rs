@@ -12,6 +12,17 @@ pub struct Installed {
     pub trusted_version: Option<String>,
     /// Immutable installation directory, relative to the store.
     pub directory: String,
+    /// Optional local project directory linked for rapid development.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dev_path: Option<PathBuf>,
+}
+
+impl Installed {
+    pub fn install_dir(&self, store_root: &Path) -> PathBuf {
+        self.dev_path
+            .clone()
+            .unwrap_or_else(|| store_root.join(&self.directory))
+    }
 }
 #[derive(Clone)]
 pub struct Store {
@@ -37,6 +48,16 @@ impl Store {
                     || record.directory.contains('/')
                 {
                     return Err("Invalid plugin registry".into());
+                }
+                if let Some(dev_path) = &record.dev_path {
+                    if let Ok(manifest) = read_dev_manifest(dev_path) {
+                        if manifest.id == record.metadata.id() {
+                            if record.enabled && record.trusted_version.is_some() {
+                                record.trusted_version = Some(manifest.version.clone());
+                            }
+                            record.metadata = Metadata::Native(manifest);
+                        }
+                    }
                 }
                 // Older records predate the command index. Their original
                 // package manifest is already in the extracted directory.
@@ -173,6 +194,7 @@ impl Store {
                 enabled: false,
                 trusted_version: None,
                 directory: unique,
+                dev_path: None,
             };
             self.publish(&record, None)?;
             // Old immutable directories are deliberately retained until removal; a live host may own one.
@@ -184,6 +206,25 @@ impl Store {
         }
         result
     }
+    pub fn link_dev(&self, project_dir: &Path) -> Result<Installed> {
+        let canonical = fs::canonicalize(project_dir).map_err(|e| e.to_string())?;
+        let manifest = read_dev_manifest(&canonical)?;
+        let entry = canonical.join(&manifest.main);
+        if !entry.is_file() {
+            return Err(format!("Plugin entry script not found: {}", manifest.main));
+        }
+        fs::create_dir_all(&self.root).map_err(|e| e.to_string())?;
+        let record = Installed {
+            trusted_version: Some(manifest.version.clone()),
+            directory: format!("{}@dev", manifest.id),
+            metadata: Metadata::Native(manifest),
+            enabled: true,
+            dev_path: Some(canonical),
+        };
+        self.publish(&record, None)?;
+        Ok(record)
+    }
+
     pub fn enable(&self, id: &str, trusted: bool) -> Result<()> {
         let record = self.get(id)?;
         self.enable_installation(id, &record.directory, trusted)
@@ -213,6 +254,14 @@ impl Store {
             .find(|p| p.metadata.id() == id)
             .ok_or_else(|| "Plugin is not installed".into())
     }
+    pub fn unlink_dev(&self, id: &str) -> Result<()> {
+        let record = self.get(id)?;
+        if record.dev_path.is_none() {
+            return Err("Plugin is not linked in development mode".into());
+        }
+        self.remove(id)
+    }
+
     pub fn remove(&self, id: &str) -> Result<()> {
         self.get(id)?;
         fs::remove_file(self.root.join(format!("{id}.json"))).map_err(|e| e.to_string())?;
@@ -230,6 +279,17 @@ impl Store {
         }
         Ok(())
     }
+}
+
+fn read_dev_manifest(project_dir: &Path) -> Result<crate::manifest::Manifest> {
+    let bytes = fs::read(project_dir.join("graphite-plugin.json")).map_err(|e| e.to_string())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Manifest exceeds 1 MiB".into());
+    }
+    let manifest: crate::manifest::Manifest =
+        serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    manifest.validate()?;
+    Ok(manifest)
 }
 fn next_id() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);

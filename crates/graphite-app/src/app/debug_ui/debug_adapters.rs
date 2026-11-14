@@ -441,6 +441,7 @@ mod tests {
             directory,
             enabled,
             trusted_version: None,
+            dev_path: None,
         };
         app.plugins.store = Some(graphite_plugins::store::Store::new(store_root));
         app.plugins.installed = vec![record];
