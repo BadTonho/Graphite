@@ -1339,7 +1339,10 @@ impl App {
         line_height: f32,
     ) {
         let sidebar_width = self.sidebar_width_px();
-        if self.outline_visible && self.view_preferences.secondary_sidebar_visible && !self.zen_mode
+        if self.outline_visible
+            && self.view_preferences.secondary_sidebar_visible
+            && !self.zen_mode
+            && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
         {
             let outline_width = 240.0;
             let x = width - outline_width;

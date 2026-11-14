@@ -294,6 +294,7 @@
   "focus.region.editor": "editor",
   "focus.region.terminal": "terminal",
   "focus.region.explorer": "explorador",
+  "focus.region.chat": "chat",
   "focus.region.changed": "Foco movido para o {region}",
   "theme.high_contrast.changed": "Alto contraste: {state}",
   "github.dialog.title": "Entrar com GitHub",

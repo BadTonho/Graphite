@@ -3,11 +3,12 @@
 use super::*;
 
 pub(crate) mod context;
+pub(crate) mod drawing;
 pub(crate) mod state;
+pub(crate) mod ui;
 pub(crate) mod worker;
 
-#[allow(unused_imports)]
-pub(crate) use state::{ChatState, InlineChatState};
+pub(crate) use state::{ChatState, ChatSurface, InlineChatState};
 pub(crate) use worker::ChatUiEvent;
 
 #[cfg(test)]
@@ -178,5 +179,59 @@ mod tests {
             app.chat.active_session().turns[0].assistant_text(),
             "It declares a constant."
         );
+    }
+
+    #[test]
+    fn secondary_sidebar_keyboard_provider_dialog_and_code_block_navigation_work() {
+        use winit::keyboard::{Key, NamedKey};
+
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        assert_eq!(app.secondary_sidebar_width(), 0.0);
+
+        app.outline_visible = true;
+        assert_eq!(app.secondary_sidebar_width(), 240.0);
+
+        app.open_chat_sidebar();
+        assert_eq!(app.secondary_sidebar_width(), 320.0);
+        assert!(app.chat.visible && app.chat.focused);
+
+        // Input typing & history navigation
+        assert!(app.handle_chat_key(&Key::Character("h".into()), Some("h"), false, false));
+        assert!(app.handle_chat_key(&Key::Character("i".into()), Some("i"), false, false));
+        assert_eq!(app.chat.input, "hi");
+        assert!(app.handle_chat_key(&Key::Named(NamedKey::Backspace), None, false, false));
+        assert_eq!(app.chat.input, "h");
+
+        // Mode cycling via Tab
+        let initial_mode = app.chat.active_session().mode;
+        assert!(app.handle_chat_key(&Key::Named(NamedKey::Tab), None, false, false));
+        assert_ne!(app.chat.active_session().mode, initial_mode);
+
+        // Provider setup dialog editing & saving
+        app.open_chat_provider_dialog();
+        assert!(app.chat.provider_dialog.is_some());
+        assert!(app.handle_chat_key(&Key::Character("s".into()), Some("s"), false, false));
+        assert!(app.handle_chat_key(&Key::Character("k".into()), Some("k"), false, false));
+        assert!(app.handle_chat_key(&Key::Named(NamedKey::Enter), None, false, false));
+        assert!(app.chat.provider_dialog.is_none());
+        assert_eq!(
+            app.chat
+                .provider
+                .as_ref()
+                .and_then(|p| p.api_key.as_deref()),
+            Some("sk")
+        );
+
+        // Code block navigation and insertion
+        let tid = app.chat.active_session_mut().start_turn("Give code");
+        app.chat.active_session_mut().append_text(
+            tid,
+            "```rust\nlet a = 1;\n```\n\n```rust\nlet b = 2;\n```\n",
+        );
+        assert!(app.step_chat_code_block(true));
+        assert_eq!(app.active_chat_code_block().unwrap().code, "let b = 2;");
+        assert!(app.insert_active_code_block(false));
+        assert_eq!(app.editor().text(), "let b = 2;");
     }
 }

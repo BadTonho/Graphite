@@ -21,19 +21,11 @@ impl App {
                 self.activity_bar_width_px()
             }
         };
+        let sec_width = self.secondary_sidebar_width();
         let editor_right = if self.activity_bar_preferences.primary_sidebar_right {
-            self.sidebar_width_px()
-                - if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
-                    240.0
-                } else {
-                    0.0
-                }
+            self.sidebar_width_px() - sec_width
         } else {
-            w - if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
-                240.0
-            } else {
-                0.0
-            }
+            w - sec_width
         };
         let editor_width = (editor_right - editor_left).max(0.0);
 
@@ -735,6 +727,7 @@ impl App {
             self.draw_phase6_overlays(r, w, h, lh);
             self.draw_merge_editor(r, w, h, lh);
             self.draw_multi_diff(r, w, h, lh);
+            self.draw_chat_overlays(r, w, h, lh);
         }
         if !self.zen_mode && self.view_preferences.primary_sidebar_visible {
             let split = self.sidebar_width_px();

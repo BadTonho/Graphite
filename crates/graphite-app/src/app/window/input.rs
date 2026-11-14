@@ -73,6 +73,14 @@ impl App {
         if self.plugin_key(event) {
             return;
         }
+        if self.handle_chat_key(
+            &event.logical_key,
+            event.text.as_deref(),
+            self.modifiers.control_key(),
+            self.modifiers.alt_key(),
+        ) {
+            return;
+        }
         let ctrl = self.modifiers.control_key();
         if self
             .file_shortcut_chord

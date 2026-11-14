@@ -28,6 +28,7 @@ enum ViewAction {
     SourceControl,
     Run,
     Extensions,
+    Chat,
     PluginActivity,
     Problems,
     Output,
@@ -178,7 +179,7 @@ impl ViewMenuState {
                 ViewRow::item("view.run", A::Run, "Ctrl+Shift+D"),
                 ViewRow::item("activity.plugins", A::Extensions, "Ctrl+Shift+X"),
                 ViewRow::separator(),
-                ViewRow::disabled("view.chat"),
+                ViewRow::item("view.chat", A::Chat, "Ctrl+Alt+I"),
                 ViewRow::disabled("view.browser"),
                 ViewRow::separator(),
                 ViewRow::item("view.problems", A::Problems, "Ctrl+Shift+M"),
@@ -739,6 +740,7 @@ impl App {
                 self.debug_panel_visible = !self.debug_panel_visible;
             }
             A::Extensions => self.activate_activity(activity_bar::Activity::Plugins),
+            A::Chat => self.toggle_chat_sidebar(),
             A::PluginActivity => {
                 if let Some(entry) = extension_index
                     .and_then(|index| self.visible_extension_activities().get(index).cloned())
@@ -973,7 +975,9 @@ mod tests {
         app.open_view_menu(10.0, 10.0, 900.0, 430.0);
         let root = app.view_menu_accessible_rows();
         assert_eq!(root[12].0, app.t("view.chat"));
-        assert!(!root[12].1);
+        assert!(root[12].1);
+        assert_eq!(root[13].0, app.t("view.browser"));
+        assert!(!root[13].1);
         app.view_menu.as_mut().unwrap().page = ViewPage::Appearance;
         app.view_menu.as_mut().unwrap().parent = vec![ViewPage::Root];
         app.view_menu.as_mut().unwrap().selected = 25;

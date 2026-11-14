@@ -126,9 +126,14 @@ impl App {
             return;
         }
 
+        if self.handle_chat_click(mx, my, window_width, window_height, lh) {
+            return;
+        }
+
         if self.outline_visible
             && self.view_preferences.secondary_sidebar_visible
             && !self.zen_mode
+            && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
             && mx >= window_width - 240.0
         {
             let first_row = if self.outline.filter_on_type { 2.5 } else { 1.5 };

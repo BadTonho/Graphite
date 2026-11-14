@@ -106,7 +106,7 @@ impl App {
             self.sidebar_width,
             self.sidebar_scale_factor,
             self.sidebar_window_width_px,
-            if self.outline_visible { 240.0 } else { 0.0 },
+            self.secondary_sidebar_width(),
             bar,
         );
         if self.activity_bar_preferences.primary_sidebar_right {
@@ -175,6 +175,7 @@ impl App {
             } else {
                 0.0
             };
+        let sec_width = self.secondary_sidebar_width();
         let (left_sidebar, right_sidebar) = if self.zen_mode {
             (0.0, 0.0)
         } else {
@@ -190,18 +191,9 @@ impl App {
                     }
                 },
                 if primary_right && self.view_preferences.primary_sidebar_visible {
-                    primary_width
-                        + if self.outline_visible && self.view_preferences.secondary_sidebar_visible
-                        {
-                            240.0
-                        } else {
-                            0.0
-                        }
-                        + right_panel_width
-                } else if self.outline_visible && self.view_preferences.secondary_sidebar_visible {
-                    240.0 + right_panel_width
+                    primary_width + sec_width + right_panel_width
                 } else {
-                    right_panel_width
+                    sec_width + right_panel_width
                 },
             )
         };

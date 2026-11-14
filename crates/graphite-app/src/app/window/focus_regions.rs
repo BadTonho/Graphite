@@ -8,6 +8,7 @@ pub(crate) enum FocusRegion {
     Editor,
     Terminal,
     Explorer,
+    Chat,
 }
 
 impl FocusRegion {
@@ -16,6 +17,7 @@ impl FocusRegion {
             FocusRegion::Editor => "focus.region.editor",
             FocusRegion::Terminal => "focus.region.terminal",
             FocusRegion::Explorer => "focus.region.explorer",
+            FocusRegion::Chat => "focus.region.chat",
         }
     }
 }
@@ -49,11 +51,16 @@ impl App {
         if self.view_preferences.primary_sidebar_visible {
             regions.push(FocusRegion::Explorer);
         }
+        if self.chat.visible {
+            regions.push(FocusRegion::Chat);
+        }
         regions
     }
 
     pub(crate) fn current_focus_region(&self) -> FocusRegion {
-        if self.terminal_focused {
+        if self.chat.focused && self.chat.visible {
+            FocusRegion::Chat
+        } else if self.terminal_focused {
             FocusRegion::Terminal
         } else if self.explorer_focused {
             FocusRegion::Explorer
@@ -78,14 +85,22 @@ impl App {
             FocusRegion::Editor => {
                 self.terminal_focused = false;
                 self.explorer_focused = false;
+                self.chat.focused = false;
             }
             FocusRegion::Terminal => {
                 self.terminal_focused = true;
                 self.explorer_focused = false;
+                self.chat.focused = false;
             }
             FocusRegion::Explorer => {
                 self.terminal_focused = false;
                 self.explorer_focused = true;
+                self.chat.focused = false;
+            }
+            FocusRegion::Chat => {
+                self.terminal_focused = false;
+                self.explorer_focused = false;
+                self.chat.focused = true;
             }
         }
     }
