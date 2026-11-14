@@ -101,11 +101,20 @@ pub fn parse_user(token: &str, value: &Value) -> Result<Session, String> {
     })
 }
 
-/// Asks GitHub for a new device code.
+/// Asks GitHub for a new device code using the default `read:user` scope.
 pub fn start(transport: &dyn Transport, client_id: &str) -> Result<DeviceCode, String> {
+    start_with_scope(transport, client_id, SCOPE)
+}
+
+/// Asks GitHub for a new device code using an explicit OAuth `scope`.
+pub fn start_with_scope(
+    transport: &dyn Transport,
+    client_id: &str,
+    scope: &str,
+) -> Result<DeviceCode, String> {
     let value = transport.post_form(
         DEVICE_CODE_URL,
-        &[("client_id", client_id), ("scope", SCOPE)],
+        &[("client_id", client_id), ("scope", scope)],
     )?;
     parse_device_code(&value)
 }
@@ -136,10 +145,21 @@ pub fn fetch_session(transport: &dyn Transport, token: &str) -> Result<Session, 
 pub fn sign_in(
     transport: &dyn Transport,
     client_id: &str,
+    on_code: impl FnMut(&DeviceCode),
+    wait: impl FnMut(Duration),
+) -> Result<Session, String> {
+    sign_in_with_scope(transport, client_id, SCOPE, on_code, wait)
+}
+
+/// Runs the whole device flow with an explicit OAuth `scope`.
+pub fn sign_in_with_scope(
+    transport: &dyn Transport,
+    client_id: &str,
+    scope: &str,
     mut on_code: impl FnMut(&DeviceCode),
     mut wait: impl FnMut(Duration),
 ) -> Result<Session, String> {
-    let code = start(transport, client_id)?;
+    let code = start_with_scope(transport, client_id, scope)?;
     on_code(&code);
     let mut interval = code.interval.max(1);
     let mut remaining = code.expires_in;

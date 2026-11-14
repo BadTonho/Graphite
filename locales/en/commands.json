@@ -806,5 +806,19 @@
   "command.sessionsViewPane.filterArchived": "Agent Sessions: Filter Archived Sessions",
   "command.sessionsViewPane.filterAutomationRuns": "Agent Sessions: Filter Automation Run Sessions",
   "command.sessionsViewPane.filterScheduled": "Agent Sessions: Filter Scheduled Sessions",
-  "command.sessionsViewPane.resetFilters": "Agent Sessions: Reset Agent Session Filters"
+  "command.sessionsViewPane.resetFilters": "Agent Sessions: Reset Agent Session Filters",
+  "command.category.user data sync": "User Data Sync",
+  "command.workbench.actions.syncData.reset": "User Data Sync: Reset Synced Data",
+  "command.workbench.userData.actions.cancelTurnOn": "User Data Sync: Cancel Turning on Settings Sync",
+  "command.workbench.userData.actions.openSyncBackupsFolder": "User Data Sync: Open Local Backups Folder",
+  "command.workbench.userData.actions.signin": "User Data Sync: Sign in to Sync Data",
+  "command.workbench.userData.actions.turningOn": "User Data Sync: Turning On Settings Sync",
+  "command.workbench.userDataSync.actions.acceptMerges": "User Data Sync: Accept Pending Sync Merges",
+  "command.workbench.userDataSync.actions.help": "User Data Sync: Show User Data Sync Help",
+  "command.workbench.userDataSync.actions.manage": "User Data Sync: Manage User Data Sync",
+  "command.workbench.userDataSync.actions.settings": "User Data Sync: Configure Synced Settings",
+  "command.workbench.userDataSync.actions.showSyncedData": "User Data Sync: Show Synced Data",
+  "command.workbench.userDataSync.actions.syncNow": "User Data Sync: Sync User Data Now",
+  "command.workbench.userDataSync.actions.turnOff": "User Data Sync: Turn Off Settings Sync",
+  "command.workbench.userDataSync.actions.turnOn": "User Data Sync: Turn On Settings Sync"
 }

@@ -8,12 +8,14 @@ mod device;
 mod store;
 mod transport;
 
-pub use device::{sign_in, DeviceCode, Poll};
+pub use device::{sign_in, sign_in_with_scope, start, start_with_scope, DeviceCode, Poll};
 pub use store::{delete_session, load_session, save_session, Session, SESSION_FILE};
 pub use transport::{ReqwestTransport, Transport};
 
 /// Scope requested from GitHub: read the signed-in user's public profile only.
 pub const SCOPE: &str = "read:user";
+/// Scope requested when User Data Sync pushes/pulls private GitHub Gists.
+pub const SCOPE_GIST: &str = "read:user gist";
 pub const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 pub const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 pub const USER_URL: &str = "https://api.github.com/user";

@@ -33,6 +33,7 @@ mod parts;
 mod preferences;
 mod quick;
 mod scm;
+mod sync_commands;
 mod task_commands;
 mod timeline_commands;
 mod ui;
@@ -196,6 +197,7 @@ pub(crate) fn register(registry: &mut CommandRegistry) {
     layout::register(registry);
     configuration::register(registry);
     chat_commands::register(registry);
+    sync_commands::register(registry);
     for (id, title, arguments, handler) in [
         (
             "type",

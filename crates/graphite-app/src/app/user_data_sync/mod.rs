@@ -1,0 +1,374 @@
+//! User Data Sync engine, background worker, local backups, and conflict resolution.
+
+pub(crate) mod merge;
+pub(crate) mod state;
+pub(crate) mod transport;
+
+use super::*;
+use merge::{apply_conflict_resolutions, merge_snapshots};
+pub(crate) use state::SyncState;
+use state::{
+    apply_snapshot_to_profile, capture_snapshot, now_epoch_s, save_persisted_sync,
+    write_local_backup, ConflictChoice, PersistedSyncData, SyncConflict, SyncSnapshot,
+};
+use transport::{GitHubGistTransport, SyncTransport};
+
+#[derive(Debug)]
+pub(crate) struct SyncOutcome {
+    pub gist_id: String,
+    pub merged_snapshot: SyncSnapshot,
+    pub conflicts: Vec<SyncConflict>,
+    pub pulled_remote: bool,
+    pub pushed_remote: bool,
+}
+
+#[derive(Debug)]
+pub(crate) enum SyncUiEvent {
+    SyncFinished(Result<SyncOutcome, String>),
+    ResetFinished(Result<(), String>),
+}
+
+/// Executes a complete fetch -> 3-way merge -> backup -> write -> push sync round.
+pub(crate) fn execute_sync_round(
+    profile_root: &Path,
+    token: &str,
+    persisted: &PersistedSyncData,
+    transport: &dyn SyncTransport,
+) -> Result<SyncOutcome, String> {
+    let local = capture_snapshot(profile_root, &persisted.resources);
+    let remote_bundle = transport.fetch_snapshot(token, persisted.gist_id.as_deref())?;
+
+    let (gist_id, merged_snapshot, conflicts, pulled_remote, pushed_remote) = match remote_bundle {
+        Some(remote) => {
+            let (merged, conflicts) =
+                merge_snapshots(persisted.last_base.as_ref(), &local, &remote.snapshot);
+            let _ = write_local_backup(profile_root, &local, "pre-sync");
+            if conflicts.is_empty() {
+                apply_snapshot_to_profile(profile_root, &merged, &persisted.resources)?;
+            }
+            let final_gist_id = if merged != remote.snapshot && conflicts.is_empty() {
+                transport.push_snapshot(token, Some(&remote.gist_id), &merged)?
+            } else {
+                remote.gist_id
+            };
+            (
+                final_gist_id,
+                merged.clone(),
+                conflicts,
+                true,
+                merged != remote.snapshot,
+            )
+        }
+        None => {
+            let id = transport.push_snapshot(token, persisted.gist_id.as_deref(), &local)?;
+            (id, local, Vec::new(), false, true)
+        }
+    };
+
+    Ok(SyncOutcome {
+        gist_id,
+        merged_snapshot,
+        conflicts,
+        pulled_remote,
+        pushed_remote,
+    })
+}
+
+impl App {
+    pub(crate) fn start_sync_sign_in(&mut self) {
+        self.sync.turning_on = true;
+        if self.github_session.is_some() {
+            self.finish_turning_on_sync();
+            return;
+        }
+        self.start_github_sign_in_with_scope(graphite_auth::SCOPE_GIST);
+    }
+
+    pub(crate) fn turn_on_sync(&mut self) {
+        if self.github_session.is_none() {
+            self.start_sync_sign_in();
+            return;
+        }
+        self.sync.persisted.enabled = true;
+        self.sync.turning_on = false;
+        let _ = self.sync.save(&self.profile_root);
+        self.status = "User Data Sync enabled".into();
+        self.sync_now();
+    }
+
+    pub(crate) fn finish_turning_on_sync(&mut self) {
+        if !self.sync.turning_on {
+            return;
+        }
+        self.sync.turning_on = false;
+        self.sync.persisted.enabled = true;
+        let _ = self.sync.save(&self.profile_root);
+        self.sync_now();
+    }
+
+    pub(crate) fn turn_off_sync(&mut self) {
+        self.sync.persisted.enabled = false;
+        self.sync.turning_on = false;
+        let _ = self.sync.save(&self.profile_root);
+        self.status = "User Data Sync turned off".into();
+    }
+
+    pub(crate) fn cancel_turn_on_sync(&mut self) {
+        self.sync.turning_on = false;
+        self.status = "Cancelled turning on User Data Sync".into();
+    }
+
+    pub(crate) fn sync_now(&mut self) {
+        if self.sync.syncing {
+            self.status = "User Data Sync is already running".into();
+            return;
+        }
+        let Some(session) = self.github_session.clone() else {
+            self.status = "Sign in with GitHub before syncing user data".into();
+            return;
+        };
+        let Some(proxy) = self.event_proxy.clone() else {
+            self.status = "Event loop unavailable for background sync".into();
+            return;
+        };
+        self.sync.syncing = true;
+        self.sync.last_error = None;
+        self.status = "Syncing user data...".into();
+        let profile = self.profile_root.clone();
+        let persisted = self.sync.persisted.clone();
+
+        std::thread::Builder::new()
+            .name("graphite-user-sync".into())
+            .spawn(move || {
+                let result = GitHubGistTransport::new().and_then(|transport| {
+                    execute_sync_round(&profile, &session.token, &persisted, &transport)
+                });
+                let _ = proxy.send_event(UserEvent::Sync(SyncUiEvent::SyncFinished(result)));
+            })
+            .ok();
+    }
+
+    pub(crate) fn handle_sync_event(&mut self, event: SyncUiEvent) {
+        match event {
+            SyncUiEvent::SyncFinished(Ok(outcome)) => {
+                self.sync.syncing = false;
+                self.sync.last_error = None;
+                self.apply_sync_outcome(outcome);
+            }
+            SyncUiEvent::SyncFinished(Err(err)) => {
+                self.sync.syncing = false;
+                self.sync.last_error = Some(err.clone());
+                self.status = format!("User Data Sync failed: {err}");
+            }
+            SyncUiEvent::ResetFinished(Ok(())) => {
+                self.sync.syncing = false;
+                self.status = "Reset synced user data".into();
+            }
+            SyncUiEvent::ResetFinished(Err(err)) => {
+                self.sync.syncing = false;
+                self.sync.last_error = Some(err.clone());
+                self.status = format!("Reset remote sync failed: {err}");
+            }
+        }
+    }
+
+    pub(crate) fn apply_sync_outcome(&mut self, outcome: SyncOutcome) {
+        self.sync.persisted.gist_id = Some(outcome.gist_id);
+        self.sync.persisted.last_sync_epoch_s = Some(now_epoch_s());
+        self.sync.persisted.conflicts = outcome.conflicts;
+        if self.sync.persisted.conflicts.is_empty() {
+            self.sync.persisted.last_base = Some(outcome.merged_snapshot);
+            self.sync.last_summary = Some(format!(
+                "Synced (pulled={}, pushed={})",
+                outcome.pulled_remote, outcome.pushed_remote
+            ));
+            self.status = "User Data Sync completed".into();
+        } else {
+            let count = self.sync.persisted.conflicts.len();
+            self.sync.persisted.last_base = Some(outcome.merged_snapshot);
+            self.sync.last_summary = Some(format!("{count} merge conflict(s) pending"));
+            self.status =
+                format!("User Data Sync paused with {count} conflict(s); run Accept Merges");
+        }
+        let _ = self.sync.save(&self.profile_root);
+    }
+
+    /// Synchronously resolves all pending sync conflicts using `choice` and writes merged files.
+    pub(crate) fn accept_sync_merges(&mut self, choice: ConflictChoice) -> usize {
+        if self.sync.persisted.conflicts.is_empty() {
+            self.status = "No pending sync conflicts to accept".into();
+            return 0;
+        }
+        let mut base = self.sync.persisted.last_base.clone().unwrap_or_else(|| {
+            capture_snapshot(&self.profile_root, &self.sync.persisted.resources)
+        });
+        let resolved_count = self.sync.persisted.conflicts.len();
+        apply_conflict_resolutions(&mut base, &mut self.sync.persisted.conflicts, choice);
+        let _ = write_local_backup(&self.profile_root, &base, "merge-resolved");
+        if let Err(err) =
+            apply_snapshot_to_profile(&self.profile_root, &base, &self.sync.persisted.resources)
+        {
+            self.status = format!("Failed to apply merged data: {err}");
+            return 0;
+        }
+        self.sync.persisted.conflicts.clear();
+        self.sync.persisted.last_base = Some(base);
+        self.sync.persisted.last_sync_epoch_s = Some(now_epoch_s());
+        let _ = self.sync.save(&self.profile_root);
+        self.status = format!("Accepted {resolved_count} sync merge resolution(s)");
+        resolved_count
+    }
+
+    pub(crate) fn reset_sync_data(&mut self) {
+        let gist_id = self.sync.persisted.gist_id.clone();
+        let token = self.github_session.as_ref().map(|s| s.token.clone());
+        self.sync.persisted = PersistedSyncData::default();
+        self.sync.last_error = None;
+        self.sync.last_summary = Some("Reset local sync metadata".into());
+        let _ = self.sync.save(&self.profile_root);
+
+        if let (Some(gist_id), Some(token), Some(proxy)) =
+            (gist_id, token, self.event_proxy.clone())
+        {
+            self.sync.syncing = true;
+            std::thread::spawn(move || {
+                let result =
+                    GitHubGistTransport::new().and_then(|t| t.delete_snapshot(&token, &gist_id));
+                let _ = proxy.send_event(UserEvent::Sync(SyncUiEvent::ResetFinished(result)));
+            });
+            self.status = "Resetting remote User Data Sync gist...".into();
+        } else {
+            self.status = "Reset local User Data Sync state".into();
+        }
+    }
+
+    pub(crate) fn open_sync_backups_folder(&mut self) {
+        let dir = self.profile_root.join(state::SYNC_BACKUPS_DIR);
+        let _ = std::fs::create_dir_all(&dir);
+        #[cfg(target_os = "windows")]
+        if self.event_proxy.is_some() {
+            let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        if self.event_proxy.is_some() {
+            let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+        }
+        self.status = format!("Sync backups folder: {}", dir.display());
+    }
+
+    pub(crate) fn show_synced_data(&mut self) {
+        let path = self.profile_root.join(state::SYNC_STATE_FILE);
+        if !path.exists() {
+            let _ = save_persisted_sync(&self.profile_root, &self.sync.persisted);
+        }
+        self.open_file(path.clone());
+        self.status = format!("Opened synced data view: {}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct FakeTransport {
+        remote: Mutex<Option<transport::RemoteSyncBundle>>,
+    }
+
+    impl FakeTransport {
+        fn with_remote(remote: Option<transport::RemoteSyncBundle>) -> Self {
+            Self {
+                remote: Mutex::new(remote),
+            }
+        }
+    }
+
+    impl SyncTransport for FakeTransport {
+        fn fetch_snapshot(
+            &self,
+            _token: &str,
+            _gist_id: Option<&str>,
+        ) -> Result<Option<transport::RemoteSyncBundle>, String> {
+            Ok(self.remote.lock().unwrap().clone())
+        }
+
+        fn push_snapshot(
+            &self,
+            _token: &str,
+            gist_id: Option<&str>,
+            snapshot: &SyncSnapshot,
+        ) -> Result<String, String> {
+            let id = gist_id.unwrap_or("gist-created").to_owned();
+            *self.remote.lock().unwrap() = Some(transport::RemoteSyncBundle {
+                gist_id: id.clone(),
+                snapshot: snapshot.clone(),
+            });
+            Ok(id)
+        }
+
+        fn delete_snapshot(&self, _token: &str, _gist_id: &str) -> Result<(), String> {
+            *self.remote.lock().unwrap() = None;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn sync_round_pushes_merges_backs_up_and_resolves_conflicts() {
+        let dir = crate::test_support::TempDir::new();
+        let profile = dir.path().join("profile");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(
+            profile.join("settings.json"),
+            r#"{"editor.fontSize":16,"files.autoSave":"afterDelay"}"#,
+        )
+        .unwrap();
+
+        let fake = FakeTransport::with_remote(None);
+        let persisted = PersistedSyncData {
+            enabled: true,
+            ..Default::default()
+        };
+
+        // First push when no remote gist exists.
+        let outcome1 = execute_sync_round(&profile, "tok", &persisted, &fake).unwrap();
+        assert_eq!(outcome1.gist_id, "gist-created");
+        assert!(outcome1.conflicts.is_empty());
+        assert!(outcome1.pushed_remote);
+
+        // Simulate concurrent remote edit to fontSize -> produces conflict while keeping disjoint key.
+        {
+            let mut guard = fake.remote.lock().unwrap();
+            guard.as_mut().unwrap().snapshot.settings_json =
+                Some(r#"{"editor.fontSize":12,"window.zoomLevel":1}"#.into());
+        }
+        let persisted2 = PersistedSyncData {
+            enabled: true,
+            gist_id: Some(outcome1.gist_id.clone()),
+            last_base: Some(SyncSnapshot {
+                settings_json: Some(r#"{"editor.fontSize":14}"#.into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let outcome2 = execute_sync_round(&profile, "tok", &persisted2, &fake).unwrap();
+        assert_eq!(outcome2.conflicts.len(), 1);
+        assert!(profile.join(state::SYNC_BACKUPS_DIR).exists());
+
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.profile_root = profile.clone();
+        app.apply_sync_outcome(outcome2);
+        assert_eq!(app.sync.persisted.conflicts.len(), 1);
+
+        let accepted = app.accept_sync_merges(ConflictChoice::AcceptRemote);
+        assert_eq!(accepted, 1);
+        assert!(app.sync.persisted.conflicts.is_empty());
+        let saved_settings = std::fs::read_to_string(profile.join("settings.json")).unwrap();
+        assert!(saved_settings.contains("12"));
+        assert!(saved_settings.contains("afterDelay"));
+
+        app.reset_sync_data();
+        assert!(!app.sync.persisted.enabled);
+        assert!(app.sync.persisted.gist_id.is_none());
+    }
+}

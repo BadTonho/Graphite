@@ -340,6 +340,8 @@ pub(crate) enum UserEvent {
     GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
     /// Streaming and tool-approval events from background chat/agent turns.
     Chat(crate::app::chat::ChatUiEvent),
+    /// User Data Sync completion / reset notifications.
+    Sync(crate::app::user_data_sync::SyncUiEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
     /// A notebook kernel has events to collect.

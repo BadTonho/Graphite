@@ -325,6 +325,7 @@ struct App {
     cli_waiters: Vec<app::cli_ui::CliWaiter>,
     initial_cli_request: Option<cli::CliRequest>,
     chat: app::chat::ChatState,
+    sync: app::user_data_sync::SyncState,
 }
 
 impl App {
@@ -544,6 +545,11 @@ impl App {
             app::chat::ChatState::default()
         } else {
             app::chat::ChatState::load_from_profile(&profile_root)
+        };
+        let sync = if isolated {
+            app::user_data_sync::SyncState::isolated()
+        } else {
+            app::user_data_sync::SyncState::load(&profile_root)
         };
         let initial_document_id = next_document_id();
         Self {
@@ -814,6 +820,7 @@ impl App {
             cli_waiters: Vec::new(),
             initial_cli_request: None,
             chat,
+            sync,
         }
     }
 }

@@ -806,5 +806,19 @@
   "command.sessionsViewPane.filterArchived": "Sessões do Agente: Filtrar Arquivadas",
   "command.sessionsViewPane.filterAutomationRuns": "Sessões do Agente: Filtrar Execuções de Automação",
   "command.sessionsViewPane.filterScheduled": "Sessões do Agente: Filtrar Agendadas",
-  "command.sessionsViewPane.resetFilters": "Sessões do Agente: Redefinir Filtros"
+  "command.sessionsViewPane.resetFilters": "Sessões do Agente: Redefinir Filtros",
+  "command.category.user data sync": "Sincronização de Dados do Usuário",
+  "command.workbench.actions.syncData.reset": "Sincronização: Redefinir Dados Sincronizados",
+  "command.workbench.userData.actions.cancelTurnOn": "Sincronização: Cancelar Ativação da Sincronização",
+  "command.workbench.userData.actions.openSyncBackupsFolder": "Sincronização: Abrir Pasta de Backups Locais",
+  "command.workbench.userData.actions.signin": "Sincronização: Entrar para Sincronizar Dados",
+  "command.workbench.userData.actions.turningOn": "Sincronização: Ativando Sincronização de Dados",
+  "command.workbench.userDataSync.actions.acceptMerges": "Sincronização: Aceitar Mesclagens Pendentes",
+  "command.workbench.userDataSync.actions.help": "Sincronização: Ajuda da Sincronização de Dados",
+  "command.workbench.userDataSync.actions.manage": "Sincronização: Gerenciar Sincronização de Dados",
+  "command.workbench.userDataSync.actions.settings": "Sincronização: Configurar Dados Sincronizados",
+  "command.workbench.userDataSync.actions.showSyncedData": "Sincronização: Mostrar Dados Sincronizados",
+  "command.workbench.userDataSync.actions.syncNow": "Sincronização: Sincronizar Agora",
+  "command.workbench.userDataSync.actions.turnOff": "Sincronização: Desativar Sincronização",
+  "command.workbench.userDataSync.actions.turnOn": "Sincronização: Ativar Sincronização"
 }
