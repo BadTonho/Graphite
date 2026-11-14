@@ -195,6 +195,18 @@ impl App {
                     return;
                 }
             }
+            RpcRequest::Service {
+                request:
+                    prompt_req @ (ServiceRequest::PromptInput { .. } | ServiceRequest::QuickPick { .. }),
+                ..
+            } => {
+                if let Err(error) = self.handle_native_prompt_request(id, parent, prompt_req) {
+                    Err(error)
+                } else {
+                    self.command_runtime.view = previous_view;
+                    return;
+                }
+            }
             RpcRequest::Service { request, .. } => self.handle_service_request(request),
             _ => Err(ServiceError::Protocol(
                 "Host cannot invoke itself through the editor".into(),
@@ -282,7 +294,41 @@ impl App {
                 WindowService::show_message(self, text)?;
                 Ok(Value::Null)
             }
-            ServiceRequest::Execute(_) | ServiceRequest::Save(_) => Err(ServiceError::Protocol(
+            ServiceRequest::SetStatusBarItem { id, text, command } => {
+                self.extension_host
+                    .status_items
+                    .insert(id, NativeStatusItem { text, command });
+                Ok(Value::Null)
+            }
+            ServiceRequest::DisposeStatusBarItem { id } => {
+                self.extension_host.status_items.remove(&id);
+                Ok(Value::Null)
+            }
+            ServiceRequest::CreateOutputChannel { name } => {
+                let channel = self.create_native_output_channel(name)?;
+                Ok(json!({ "channel": channel }))
+            }
+            ServiceRequest::AppendOutput {
+                channel,
+                text,
+                replace,
+            } => {
+                self.append_native_output(&channel, &text, replace)?;
+                Ok(Value::Null)
+            }
+            ServiceRequest::ShowOutput { channel } => {
+                self.show_native_output(&channel)?;
+                Ok(Value::Null)
+            }
+            ServiceRequest::StorageGet { scope, key } => self.native_storage_get(scope, key),
+            ServiceRequest::StorageSet { scope, key, value } => {
+                self.native_storage_set(scope, key, value)?;
+                Ok(Value::Null)
+            }
+            ServiceRequest::Execute(_)
+            | ServiceRequest::Save(_)
+            | ServiceRequest::PromptInput { .. }
+            | ServiceRequest::QuickPick { .. } => Err(ServiceError::Protocol(
                 "Commands require an execution ticket".into(),
             )),
         }

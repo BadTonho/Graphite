@@ -43,6 +43,12 @@ function disposable(resource, cleanup) {
   subscriptions.push(value);
   return value;
 }
+let statusCounter = 0;
+const storageArea = scope => ({
+  get: key => service('storageGet', key === undefined ? { scope } : { scope, key }),
+  set: (key, value) => service('storageSet', { scope, key, value }),
+  delete: key => service('storageSet', { scope, key }),
+});
 const graphite = {
   commands: {
     list: () => service('commands'),
@@ -74,7 +80,54 @@ const graphite = {
     },
   },
   workspace: { get: () => service('workspace'), configuration: () => service('configuration') },
-  window: { showMessage: text => service('message', { text }), focusView: view => service('focus', { view }) },
+  window: {
+    showMessage: text => service('message', { text }),
+    focusView: view => service('focus', { view }),
+    showInputBox: (options = {}) => service('promptInput', options),
+    showQuickPick: (items = [], options = {}) => {
+      const normalized = items.map(item => typeof item === 'string' ? { label: item } : item);
+      return service('quickPick', { items: normalized, ...options });
+    },
+    createStatusBarItem: (id = `status-${++statusCounter}`) => {
+      let disposed = false;
+      const item = {
+        text: '',
+        command: undefined,
+        async show() {
+          if (disposed) return;
+          await service('setStatusBarItem', { id, text: item.text, ...(item.command ? { command: item.command } : {}) });
+        },
+        async hide() {
+          if (disposed) return;
+          await service('disposeStatusBarItem', { id });
+        },
+        async dispose() {
+          if (disposed) return;
+          disposed = true;
+          if (!shuttingDown) await service('disposeStatusBarItem', { id });
+        },
+      };
+      subscriptions.push(item);
+      return item;
+    },
+    async createOutputChannel(name) {
+      const { channel } = await service('createOutputChannel', { name });
+      let disposed = false;
+      const out = {
+        append: text => disposed ? Promise.resolve() : service('appendOutput', { channel, text: String(text), replace: false }),
+        appendLine: text => disposed ? Promise.resolve() : service('appendOutput', { channel, text: String(text) + '\n', replace: false }),
+        clear: () => disposed ? Promise.resolve() : service('appendOutput', { channel, text: '', replace: true }),
+        show: () => disposed ? Promise.resolve() : service('showOutput', { channel }),
+        async dispose() { disposed = true; },
+      };
+      subscriptions.push(out);
+      return out;
+    },
+  },
+  storage: {
+    global: storageArea('global'),
+    workspace: storageArea('workspace'),
+  },
 };
 async function shutdown() {
   if (shuttingDown) return;

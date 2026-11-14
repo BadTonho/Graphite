@@ -719,3 +719,218 @@ export function deactivate() {}
         "initial\n// will-save\n"
     );
 }
+
+#[test]
+fn native_plugins_support_prompts_status_bar_output_channels_and_persistent_storage() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(temp.path()).unwrap();
+    app.workspace_trust = Some(trust);
+    app.plugins.store = Some(Store::new(temp.path().join("plugins")));
+
+    let project = temp.path().join("uiext");
+    graphite_plugins::sdk::create(&project).unwrap();
+    let id = "local.uiext";
+    let manifest = json!({
+        "id": id,
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "main": "dist/index.js",
+        "description": "UI & Storage test",
+        "commands": [
+            {"id": "local.uiext.ask", "title": "Ask"},
+            {"id": "local.uiext.pick", "title": "Pick"},
+            {"id": "local.uiext.statusTap", "title": "StatusTap"},
+            {"id": "local.uiext.storageRoundTrip", "title": "Storage"}
+        ]
+    });
+    std::fs::write(
+        project.join("graphite-plugin.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir(project.join("dist")).unwrap();
+    let script = r#"
+export async function activate(context, g) {
+  const status = g.window.createStatusBarItem('counter');
+  status.text = 'Graphite: Ready';
+  status.command = 'local.uiext.statusTap';
+  await status.show();
+
+  const out = await g.window.createOutputChannel('Plugin Log');
+  await out.appendLine('boot ok');
+
+  await g.commands.registerCommand('local.uiext.ask', async () => {
+    const answer = await g.window.showInputBox({ prompt: 'Enter token', value: 'abc' });
+    return answer;
+  });
+  await g.commands.registerCommand('local.uiext.pick', async () => {
+    const picked = await g.window.showQuickPick([{ label: 'Alpha', id: 'a' }, { label: 'Beta', id: 'b' }], { placeHolder: 'Pick one' });
+    return picked;
+  });
+  await g.commands.registerCommand('local.uiext.statusTap', async () => {
+    status.text = 'Graphite: Clicked';
+    await status.show();
+    await out.appendLine('status clicked');
+    await out.show();
+    return 'tapped';
+  });
+  await g.commands.registerCommand('local.uiext.storageRoundTrip', async op => {
+    if (op === 'write') {
+      await g.storage.global.set('theme', 'dark');
+      await g.storage.workspace.set('count', 42);
+      return true;
+    }
+    if (op === 'delete') {
+      await g.storage.workspace.delete('count');
+      return await g.storage.workspace.get('count');
+    }
+    return {
+      global: await g.storage.global.get('theme'),
+      workspace: await g.storage.workspace.get('count'),
+      allWorkspace: await g.storage.workspace.get(),
+    };
+  });
+}
+export function deactivate() {}
+"#;
+    std::fs::write(project.join("dist/index.js"), script).unwrap();
+    let package = graphite_plugins::package::pack(&project).unwrap();
+    let store = app.plugins.store.as_ref().unwrap();
+    store.install(&package).unwrap();
+    store.enable(id, true).unwrap();
+    app.plugins.installed = store.list().unwrap();
+    app.start_plugin(id.into());
+    pump(&mut app, |a| {
+        a.plugins
+            .hosts
+            .get(id)
+            .is_some_and(|h| h.native_active && h.commands.len() == 4)
+    });
+    for _ in 0..4 {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // 1. Status bar item registered on activation and clickable
+    assert!(app.status_bar_segments().iter().any(|(seg, text)| matches!(
+        seg,
+        crate::app::phase4_tools::StatusSegment::Extension(_)
+    ) && text == "Graphite: Ready"));
+    let idx = app
+        .extension_status_items()
+        .iter()
+        .position(|(text, _)| text == "Graphite: Ready")
+        .unwrap();
+    app.run_extension_status_item(idx);
+    pump(&mut app, |a| {
+        a.extension_status_items()
+            .iter()
+            .any(|(text, _)| text == "Graphite: Clicked")
+            && a.editor().text().contains("status clicked")
+    });
+    assert!(app.editor().text().contains("boot ok"));
+
+    // 2. showInputBox answered through CommandPalette
+    let ask_ticket = app.execute_command(CommandRequest {
+        id: "local.uiext.ask".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    pump(&mut app, |a| {
+        a.command_palette.as_ref().is_some_and(|p| {
+            p.extension_prompt
+                .as_ref()
+                .is_some_and(|(t, _)| t == "Enter token")
+                && p.query == "abc"
+        })
+    });
+    app.command_palette.as_mut().unwrap().query = "custom-reply".into();
+    app.execute_command_palette_selection();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let ask_result = loop {
+        app.poll_plugins();
+        if let Some(res) = ask_ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(ask_result, json!("custom-reply"));
+
+    // 3. showQuickPick selecting Beta
+    let pick_ticket = app.execute_command(CommandRequest {
+        id: "local.uiext.pick".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    pump(&mut app, |a| {
+        a.command_palette
+            .as_ref()
+            .is_some_and(|p| p.items.len() == 2)
+    });
+    app.command_palette.as_mut().unwrap().selected = 1;
+    app.execute_command_palette_selection();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let pick_result = loop {
+        app.poll_plugins();
+        if let Some(res) = pick_ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(pick_result["id"], "b");
+    assert_eq!(pick_result["label"], "Beta");
+
+    // 4. Persistent storage survives plugin restart
+    let write_ticket = app.execute_command(CommandRequest {
+        id: "local.uiext.storageRoundTrip".into(),
+        arguments: json!("write"),
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_plugins();
+        if let Some(res) = write_ticket.try_result() {
+            res.unwrap();
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    app.stop_plugin(id);
+    app.start_plugin(id.into());
+    pump(&mut app, |a| {
+        a.plugins
+            .hosts
+            .get(id)
+            .is_some_and(|h| h.native_active && h.commands.len() == 4)
+    });
+    for _ in 0..4 {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let read_ticket = app.execute_command(CommandRequest {
+        id: "local.uiext.storageRoundTrip".into(),
+        arguments: json!("read"),
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stored = loop {
+        app.poll_plugins();
+        if let Some(res) = read_ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(stored["global"], "dark");
+    assert_eq!(stored["workspace"], 42);
+    assert_eq!(stored["allWorkspace"], json!({"count": 42}));
+}

@@ -51,6 +51,9 @@ impl App {
         self.extension_host.participants.clear();
         self.extension_host.save_replies.clear();
         self.extension_host.subscriptions.clear();
+        self.extension_host.prompt = None;
+        self.extension_host.status_items.clear();
+        self.extension_host.output_channels.clear();
         self.document_events.reap();
         self.extension_host.last_request = 0;
         let outbound = std::mem::take(&mut self.extension_host.outbound);

@@ -7,7 +7,9 @@ use std::{
     time::{Duration, Instant},
 };
 mod lifecycle;
+mod native_services;
 mod requests;
+pub(crate) use native_services::{NativePrompt, NativeStatusItem};
 pub(crate) struct OwnedCommand {
     pub resource: u64,
     pub session: u64,
@@ -33,6 +35,10 @@ pub(crate) struct ExtensionRuntime {
     pub outbound: HashMap<u64, u64>,
     pub incoming: HashMap<u64, Incoming>,
     pub last_request: u64,
+    pub prompt: Option<NativePrompt>,
+    pub status_items: std::collections::BTreeMap<String, NativeStatusItem>,
+    pub output_channels: HashMap<String, PathBuf>,
+    pub next_output: u64,
     pub executable: Option<PathBuf>,
     pub wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }

@@ -80,14 +80,10 @@ impl App {
         ]
         .into_iter()
         .chain(
-            self.plugins
-                .vsix
-                .as_ref()
-                .map(|runtime| runtime.workbench_status_texts())
-                .unwrap_or_default()
+            self.extension_status_items()
                 .into_iter()
                 .enumerate()
-                .map(|(index, text)| (StatusSegment::Extension(index), text)),
+                .map(|(index, (text, _))| (StatusSegment::Extension(index), text)),
         )
         .collect()
     }

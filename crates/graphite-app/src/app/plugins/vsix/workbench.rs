@@ -254,7 +254,7 @@ impl App {
     }
 
     /// Shows the output text in a read-only view, refreshing it if already open.
-    pub(super) fn show_output_text(&mut self, path: &Path, content: &str) {
+    pub(in crate::app) fn show_output_text(&mut self, path: &Path, content: &str) {
         match self.documents.id_for_path(path) {
             Some(id) => {
                 let _ = self.documents[id].buffer.reload_text(content);
@@ -308,6 +308,10 @@ impl Runtime {
     /// Status bar item texts that the running extensions created.
     pub(crate) fn workbench_status_texts(&self) -> Vec<String> {
         self.workbench.status_texts()
+    }
+
+    pub(crate) fn workbench_status_command(&self, index: usize) -> Option<String> {
+        self.workbench.status_command(index)
     }
 }
 

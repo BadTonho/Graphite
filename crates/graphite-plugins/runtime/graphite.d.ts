@@ -24,6 +24,32 @@ export interface SaveParticipantMetadata { id: string; languages?: string[] }
 export interface SaveParticipantRequest {
   invocation: number; reason: SaveReason; document: DocumentSnapshot;
 }
+export interface InputBoxOptions {
+  prompt?: string; placeHolder?: string; value?: string; password?: boolean;
+}
+export interface QuickPickItem {
+  label: string; id?: string; description?: string;
+}
+export interface QuickPickOptions {
+  placeHolder?: string; canPickMany?: boolean;
+}
+export interface StatusBarItem extends Disposable {
+  text: string;
+  command?: string;
+  show(): Promise<void>;
+  hide(): Promise<void>;
+}
+export interface OutputChannel extends Disposable {
+  append(text: string): Promise<void>;
+  appendLine(text: string): Promise<void>;
+  clear(): Promise<void>;
+  show(): Promise<void>;
+}
+export interface StorageArea {
+  get<T = unknown>(key?: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
 export interface Context { subscriptions: Disposable[] }
 export interface Graphite {
   commands: {
@@ -47,5 +73,13 @@ export interface Graphite {
   window: {
     showMessage(text: string): Promise<void>;
     focusView(view: number): Promise<void>;
+    showInputBox(options?: InputBoxOptions): Promise<string | null>;
+    showQuickPick(items: QuickPickItem[] | string[], options?: QuickPickOptions): Promise<QuickPickItem | QuickPickItem[] | null>;
+    createStatusBarItem(id?: string): StatusBarItem;
+    createOutputChannel(name: string): Promise<OutputChannel>;
+  };
+  storage: {
+    global: StorageArea;
+    workspace: StorageArea;
   };
 }

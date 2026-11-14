@@ -16,7 +16,7 @@ pub(crate) struct CommandPalette {
 }
 impl App {
     pub(crate) fn open_command_palette(&mut self) {
-        self.cancel_vsix_prompt();
+        self.cancel_extension_prompt();
         self.quick_open = None;
         self.local_search = None;
         self.refresh_command_context();
@@ -109,7 +109,7 @@ impl App {
         match event.logical_key {
             Key::Named(NamedKey::Escape) => {
                 self.command_palette = None;
-                self.cancel_vsix_prompt();
+                self.cancel_extension_prompt();
             }
             Key::Named(NamedKey::ArrowDown) => {
                 let count = palette
@@ -182,7 +182,7 @@ impl App {
             .map(|_| (palette.query.clone(), selected.clone()));
         self.command_palette = None;
         if let Some(answer) = answer {
-            self.answer_vsix_prompt(Some(answer));
+            self.answer_extension_prompt(Some(answer));
             return;
         }
         if let Some(id) = selected {

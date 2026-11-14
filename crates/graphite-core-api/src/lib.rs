@@ -62,18 +62,94 @@ pub struct WorkspaceSnapshot {
     pub root: DocumentUri,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StorageScope {
+    Global,
+    Workspace,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickPickItem {
+    pub label: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "camelCase")]
 pub enum ServiceRequest {
     Documents,
-    Snapshot { uri: DocumentUri },
-    ApplyEdits { edits: Vec<DocumentEdit> },
+    Snapshot {
+        uri: DocumentUri,
+    },
+    ApplyEdits {
+        edits: Vec<DocumentEdit>,
+    },
     Commands,
     Execute(CommandRequest),
     Save(SaveRequest),
     Workspace,
     Configuration,
-    Open { uri: DocumentUri },
-    Focus { view: u64 },
-    Message { text: String },
+    Open {
+        uri: DocumentUri,
+    },
+    Focus {
+        view: u64,
+    },
+    Message {
+        text: String,
+    },
+    PromptInput {
+        #[serde(default)]
+        prompt: Option<String>,
+        #[serde(default)]
+        place_holder: Option<String>,
+        #[serde(default)]
+        value: Option<String>,
+        #[serde(default)]
+        password: bool,
+    },
+    QuickPick {
+        items: Vec<QuickPickItem>,
+        #[serde(default)]
+        place_holder: Option<String>,
+        #[serde(default)]
+        can_pick_many: bool,
+    },
+    SetStatusBarItem {
+        id: String,
+        text: String,
+        #[serde(default)]
+        command: Option<String>,
+    },
+    DisposeStatusBarItem {
+        id: String,
+    },
+    CreateOutputChannel {
+        name: String,
+    },
+    AppendOutput {
+        channel: String,
+        text: String,
+        #[serde(default)]
+        replace: bool,
+    },
+    ShowOutput {
+        channel: String,
+    },
+    StorageGet {
+        scope: StorageScope,
+        #[serde(default)]
+        key: Option<String>,
+    },
+    StorageSet {
+        scope: StorageScope,
+        key: String,
+        #[serde(default)]
+        value: Option<Value>,
+    },
 }
