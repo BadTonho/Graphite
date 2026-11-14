@@ -6,12 +6,16 @@ pub(super) struct Prompt {
     kind: Kind,
 }
 
-enum Kind {
+pub(super) enum Kind {
     Input,
     Pick { instance: u64, many: bool },
     Message,
     /// The user decides whether an extension may use an account (see `auth.rs`).
     Consent,
+    /// The user picks a format for a color, or asks to enter another one (see `colors.rs`).
+    ColorChoice,
+    /// The user types a color (see `colors.rs`).
+    ColorInput,
 }
 
 impl App {
@@ -91,23 +95,39 @@ impl App {
 
     /// Asks the user to allow or deny; the answer goes to [`App::resolve_auth_consent`].
     pub(super) fn open_vsix_consent_prompt(&mut self, runtime: &mut Runtime, title: String) {
-        runtime.prompt = Some(Prompt {
-            id: 0,
-            kind: Kind::Consent,
-        });
-        self.open_command_palette();
         let choice = |id: &str, key: &str| PaletteItem {
             id: id.into(),
             title: self.t(key).into(),
             source: "VSIX".into(),
             enabled: true,
         };
+        let items = vec![choice("1", "auth.consent.allow"), choice("2", "auth.consent.deny")];
+        self.open_vsix_internal_prompt(runtime, Kind::Consent, title, items, String::new());
+    }
+
+    /// Opens a prompt Graphite asks itself (not an extension): `items` to pick from, or a typed
+    /// value when `items` is empty. The answer goes to the code that handles `kind`.
+    pub(super) fn open_vsix_internal_prompt(
+        &mut self,
+        runtime: &mut Runtime,
+        kind: Kind,
+        title: String,
+        items: Vec<PaletteItem>,
+        query: String,
+    ) {
+        runtime.prompt = Some(Prompt { id: 0, kind });
+        self.open_command_palette();
         self.command_palette = Some(CommandPalette {
-            query: String::new(),
+            query,
             selected: 0,
-            items: vec![choice("1", "auth.consent.allow"), choice("2", "auth.consent.deny")],
+            items,
             extension_prompt: Some((title, false)),
         });
+    }
+
+    /// Whether the extension prompt slot is free.
+    pub(super) fn vsix_prompt_is_free(runtime: &Runtime) -> bool {
+        runtime.prompt.is_none()
     }
 
     pub(super) fn set_vsix_prompt_items(
@@ -131,18 +151,30 @@ impl App {
     }
 
     pub(crate) fn answer_vsix_prompt(&mut self, value: Option<(String, Option<String>)>) {
-        let consent = self
+        // 1: consent, 2: color format, 3: typed color. Those are answered by Graphite itself.
+        let internal = self
             .plugins
             .vsix
             .as_ref()
             .and_then(|runtime| runtime.prompt.as_ref())
-            .is_some_and(|prompt| matches!(prompt.kind, Kind::Consent));
-        if consent {
+            .map_or(0, |prompt| match prompt.kind {
+                Kind::Consent => 1,
+                Kind::ColorChoice => 2,
+                Kind::ColorInput => 3,
+                _ => 0,
+            });
+        if internal != 0 {
             if let Some(runtime) = &mut self.plugins.vsix {
                 runtime.prompt = None;
             }
-            let allowed = value.and_then(|(_, selected)| selected).as_deref() == Some("1");
-            self.resolve_auth_consent(allowed);
+            match internal {
+                1 => {
+                    let allowed = value.and_then(|(_, selected)| selected).as_deref() == Some("1");
+                    self.resolve_auth_consent(allowed);
+                }
+                2 => self.resolve_color_choice(value.and_then(|(_, selected)| selected)),
+                _ => self.resolve_color_input(value.map(|(query, _)| query)),
+            }
             return;
         }
         let Some(runtime) = &mut self.plugins.vsix else {
@@ -158,7 +190,7 @@ impl App {
                 Kind::Input => Some(json!(query)),
                 Kind::Pick { many: true, .. } => handle.map(|id| json!([id])),
                 Kind::Pick { .. } | Kind::Message => handle.map(|id| json!(id)),
-                Kind::Consent => None,
+                Kind::Consent | Kind::ColorChoice | Kind::ColorInput => None,
             };
             if let Some(result) = result {
                 reply["result"] = result;

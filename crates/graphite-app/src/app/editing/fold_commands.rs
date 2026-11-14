@@ -113,9 +113,12 @@ impl App {
             tab.indentation.tab_size,
             region_source(view, tab),
         );
-        folding::visible_lines(&tab.buffer, &hidden, view.scroll_line, row + 1)
-            .last()
-            .copied()
+        let lines = folding::visible_lines(&tab.buffer, &hidden, view.scroll_line, row + 1);
+        // A row above a line (a code lens) belongs to that line.
+        self.body_rows_for_active(&lines, 2 * (row + 1))
+            .get(row)
+            .map(|body_row| body_row.line())
+            .or_else(|| lines.last().copied())
             .unwrap_or(last)
             .min(last)
     }

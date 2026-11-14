@@ -66,6 +66,12 @@ pub(crate) struct Runtime {
     decorations: decorations::Decorations,
     /// A debug adapter the extension host is being asked to create.
     debug_adapter: Option<debug::PendingAdapter>,
+    /// Debug configuration providers and the configurations they offer.
+    debug_configs: debug::DebugConfigs,
+    /// The adapter of the running debug session when it lives in the extension host.
+    debug_inline: Option<debug::InlineDebug>,
+    /// Counts the sessions with an inline adapter.
+    debug_handles: u64,
     /// Inlay hints and highlights that are requested automatically.
     passive: passive::Passive,
     /// A call or type hierarchy being collected.
@@ -118,6 +124,7 @@ impl Runtime {
             || self.tree_views.busy()
             || self.webview_views.busy()
             || self.vfs.busy()
+            || self.debug_configs.busy()
             || self.auth.busy()
             || self.editors.busy()
             || self.notebooks.busy()
@@ -147,6 +154,9 @@ impl Runtime {
             watches: Default::default(),
             decorations: Default::default(),
             debug_adapter: None,
+            debug_configs: Default::default(),
+            debug_inline: None,
+            debug_handles: 0,
             passive: Default::default(),
             hierarchy: Default::default(),
             lenses: Default::default(),
@@ -331,6 +341,9 @@ impl App {
             watches: Default::default(),
             decorations: Default::default(),
             debug_adapter: None,
+            debug_configs: Default::default(),
+            debug_inline: None,
+            debug_handles: 0,
             passive: Default::default(),
             hierarchy: Default::default(),
             lenses: Default::default(),
@@ -433,6 +446,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(debug::is_config_reply) {
+                        self.finish_vsix_debug_configurations(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(notebooks::is_notebook_reply) {
                         self.finish_vsix_notebook(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(editors::is_editor_reply) {
@@ -493,6 +508,7 @@ impl App {
             self.trigger_vsix_startup_activations(runtime);
             self.reply_vsix_editor_commands(runtime)?;
             self.drive_vsix_debug_adapter(runtime)?;
+            self.drive_vsix_inline_debug(runtime);
             runtime.languages.update(&runtime.session)?;
             self.sync_vsix_documents(runtime)?;
             self.drive_vsix_passive(runtime)?;

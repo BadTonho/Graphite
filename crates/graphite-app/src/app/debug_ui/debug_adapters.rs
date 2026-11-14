@@ -26,12 +26,16 @@ pub(crate) enum AdapterSource {
 pub(crate) enum AdapterEndpoint {
     Command(AdapterCommand),
     Server(AdapterServer),
+    /// A named pipe (Windows) or local socket (Unix).
+    Pipe(PathBuf),
+    /// The adapter runs inside the extension host; its messages go through the bridge.
+    Inline,
 }
 
 /// Reads the descriptor an extension's `DebugAdapterDescriptorFactory` returned.
 ///
-/// Executables and local TCP servers are supported. Named pipes and adapters implemented inside
-/// the extension host (`DebugAdapterInlineImplementation`) are reported as unsupported.
+/// Executables, local TCP servers, named pipes and adapters implemented inside the extension
+/// host (`DebugAdapterInlineImplementation`) are supported.
 pub(crate) fn adapter_from_descriptor(descriptor: &Value) -> Result<AdapterEndpoint, String> {
     let Some(kind) = descriptor["type"].as_str() else {
         return Err("The extension did not return a debug adapter".into());
@@ -74,11 +78,13 @@ pub(crate) fn adapter_from_descriptor(descriptor: &Value) -> Result<AdapterEndpo
             }))
         }
         "pipeServer" | "namedPipeServer" => {
-            Err("Debug adapters reached through a named pipe are not supported yet".into())
+            let path = descriptor["path"]
+                .as_str()
+                .filter(|path| !path.trim().is_empty())
+                .ok_or("The debug adapter pipe has no path")?;
+            Ok(AdapterEndpoint::Pipe(path.into()))
         }
-        "implementation" => {
-            Err("Debug adapters implemented inside the extension host are not supported yet".into())
-        }
+        "implementation" => Ok(AdapterEndpoint::Inline),
         other => Err(format!("Unknown debug adapter kind '{other}'")),
     }
 }
@@ -382,6 +388,19 @@ mod tests {
     }
 
     #[test]
+    fn pipes_and_inline_implementations_are_endpoints() {
+        assert_eq!(
+            adapter_from_descriptor(&serde_json::json!({"type": "pipeServer", "path": "/tmp/dap.sock"}))
+                .unwrap(),
+            AdapterEndpoint::Pipe("/tmp/dap.sock".into())
+        );
+        assert_eq!(
+            adapter_from_descriptor(&serde_json::json!({"type": "implementation"})).unwrap(),
+            AdapterEndpoint::Inline
+        );
+    }
+
+    #[test]
     fn malformed_and_unsupported_descriptors_explain_themselves() {
         let error = |value: serde_json::Value| adapter_from_descriptor(&value).unwrap_err();
         assert!(error(serde_json::Value::Null).contains("did not return a debug adapter"));
@@ -400,11 +419,8 @@ mod tests {
                 error(serde_json::json!({"type": "server", "port": port})).contains("valid port")
             );
         }
-        assert!(
-            error(serde_json::json!({"type": "pipeServer", "path": "p"})).contains("named pipe")
-        );
-        assert!(error(serde_json::json!({"type": "implementation"}))
-            .contains("inside the extension host"));
+        assert!(error(serde_json::json!({"type": "pipeServer"})).contains("no path"));
+        assert!(error(serde_json::json!({"type": "pipeServer", "path": " "})).contains("no path"));
         assert!(error(serde_json::json!({"type": "weird"}))
             .contains("Unknown debug adapter kind 'weird'"));
     }

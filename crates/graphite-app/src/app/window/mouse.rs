@@ -475,7 +475,14 @@ impl App {
                 }
                 return;
             }
-            let line = self.editor_line_at_row(((my - rect.y - tab_strip).max(0.0) / lh) as usize);
+            let body_row = ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
+            // A click on the lens row above a line runs its lens.
+            if let Some(lens_line) = self.editor_row_lens_line(body_row) {
+                if self.run_code_lens_on_line(lens_line) {
+                    return;
+                }
+            }
+            let line = self.editor_line_at_row(body_row);
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
             if self.multi_cursor_modifier_pressed() {
                 let b = self.editor();

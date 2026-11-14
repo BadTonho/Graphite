@@ -31,7 +31,9 @@ impl App {
 
         let visible = self.visible_lines(r);
         if self.reveal_cursor {
-            self.keep_cursor_visible(visible, w, h, lh, cw);
+            // Rows that hold code lenses are not available to lines.
+            let for_lines = visible.saturating_sub(self.lens_rows_in_view(visible)).max(1);
+            self.keep_cursor_visible(for_lines, w, h, lh, cw);
             self.reveal_cursor = false;
         }
         self.refresh_highlights();
@@ -615,8 +617,8 @@ impl App {
                 .collect::<Vec<_>>();
             let box_height = lh * visible_items.len() as f32;
             let y = (focused_rect.y
-                + lh * (cur_line.saturating_sub(self.editor_groups.active_view_mut().scroll_line)
-                    as f32
+                + lh * ((cur_line.saturating_sub(self.editor_groups.active_view_mut().scroll_line)
+                    + self.lens_rows_before(cur_line)) as f32
                     + 1.5)
                 + 2.0)
                 .min(focused_rect.y + focused_rect.height - box_height);
@@ -647,7 +649,13 @@ impl App {
                 );
             }
         }
-        if let Some(hover) = self.hover_text.as_deref().filter(|text| !text.is_empty()) {
+        let hover_with_decorations = self.hover_text.as_deref().filter(|text| !text.is_empty()).map(|hover| {
+            match self.decoration_hover_at_cursor() {
+                Some(extra) if !hover.contains(&extra) => format!("{hover}\n{extra}"),
+                _ => hover.to_owned(),
+            }
+        });
+        if let Some(hover) = hover_with_decorations.as_deref() {
             let lines = hover.lines().take(6).collect::<Vec<_>>();
             let box_h = lh * lines.len() as f32 + PAD;
             let y = (focused_rect.y + lh * 1.6).min(focused_rect.y + focused_rect.height - box_h);

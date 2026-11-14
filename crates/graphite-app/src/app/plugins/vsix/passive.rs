@@ -1114,6 +1114,29 @@ mod flow_tests {
     }
 
     #[test]
+    fn pressing_enter_asks_a_formatter_that_triggers_on_the_line_feed() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_on_type_formatter(&dir, "let x=1;", &["\n", ";"]);
+        app.format_on_type = true;
+        let end = app.editor().len_chars();
+        app.editor_mut().set_selection(end, end);
+        app.run_ui_command("typeNewline");
+        assert_eq!(app.editor().text(), "let x=1;\n");
+        let sent = calls(&host, "$provideOnTypeFormattingEdits");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["args"][3], "\n");
+        assert_eq!(sent[0]["args"][2], json!({"lineNumber": 2, "column": 1}), "on the new line");
+
+        // A formatter without the line feed among its triggers is left alone.
+        let (mut app, host) = app_with_on_type_formatter(&dir, "x", &[";"]);
+        app.format_on_type = true;
+        let end = app.editor().len_chars();
+        app.editor_mut().set_selection(end, end);
+        app.run_ui_command("typeNewline");
+        assert!(calls(&host, "$provideOnTypeFormattingEdits").is_empty());
+    }
+
+    #[test]
     fn only_trigger_characters_with_the_setting_on_are_sent() {
         let dir = TempDir::new();
         let (mut app, host) = app_with_on_type_formatter(&dir, "x\n", &[";"]);

@@ -89,6 +89,7 @@
   "command.editor.action.revealDefinition": "Reveal definition",
   "command.editor.action.selectAll": "Select all",
   "command.editor.action.selectHighlights": "Select highlights",
+  "command.editor.action.showOrFocusStandaloneColorPicker": "Show color picker",
   "command.editor.action.showHover": "Show hover",
   "command.editor.action.formatDocument": "Format document",
   "command.editor.action.formatSelection": "Format selection",

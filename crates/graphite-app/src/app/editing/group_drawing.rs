@@ -278,10 +278,7 @@ impl App {
                 );
                 continue;
             }
-            let decoration_uri = buffer
-                .path()
-                .and_then(|path| graphite_core_api::DocumentUri::from_path(path).ok())
-                .map(|uri| uri.as_str().to_owned());
+            let decoration_uri = buffer.path().and_then(|path| self.decoration_uri(path));
             let folds = super::fold_commands::effective_folds(view, buffer.revision());
             let fold_hidden = super::folding::hidden_ranges(
                 buffer,
@@ -289,10 +286,35 @@ impl App {
                 tab.indentation.tab_size,
                 super::fold_commands::region_source(view, tab),
             );
-            let rows =
+            let lines =
                 super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
-            for (row, &line) in rows.iter().enumerate() {
+            let rows = super::lens_rows::body_rows(&lines, visible, |line| {
+                decoration_uri
+                    .as_deref()
+                    .is_some_and(|uri| self.lens_text_above(uri, line).is_some())
+            });
+            for (row, body_row) in rows.iter().enumerate() {
                 let y = body_y + row as f32 * lh;
+                let line = match *body_row {
+                    super::lens_rows::BodyRow::Lens(line) => {
+                        // The lenses of the next row's line, in the line's indentation.
+                        let text = buffer.line(line);
+                        let indent = text.chars().take_while(|c| c.is_whitespace() && *c != '\n').count();
+                        if let Some(lens) = decoration_uri
+                            .as_deref()
+                            .and_then(|uri| self.lens_text_above(uri, line))
+                        {
+                            r.draw_text(
+                                &lens,
+                                text_x + indent as f32 * cw,
+                                y,
+                                rgb(Theme::color(Theme::DIM, 0x858585)),
+                            );
+                        }
+                        continue;
+                    }
+                    super::lens_rows::BodyRow::Line(line) => line,
+                };
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
@@ -310,6 +332,7 @@ impl App {
                     })
                     .collect();
                 if let Some(uri) = &decoration_uri {
+                    self.draw_gutter_icons(r, uri, line, rect.x, y, lh);
                     self.draw_line_decorations(
                         r,
                         super::decoration_drawing::DecorationLayer::Under,
@@ -540,7 +563,10 @@ impl App {
             for selection in &view.selection_state.selections() {
                 let head = selection.head.min(buffer.len_chars());
                 let line = buffer.rope().char_to_line(head);
-                let Some(row) = rows.iter().position(|&shown| shown == line) else {
+                let Some(row) = rows
+                    .iter()
+                    .position(|shown| *shown == super::lens_rows::BodyRow::Line(line))
+                else {
                     continue;
                 };
                 let prefix: String = buffer
@@ -593,6 +619,16 @@ impl App {
                 lh,
                 cw,
             );
+            if let Some(uri) = &decoration_uri {
+                self.draw_overview_ruler(
+                    r,
+                    uri,
+                    buffer.len_lines(),
+                    rect.x + rect.width,
+                    rect.y + tab_height,
+                    rect.height - tab_height,
+                );
+            }
             if minimap_width > 0.0 {
                 let x = rect.x + rect.width - minimap_width;
                 r.draw_rect(

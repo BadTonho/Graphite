@@ -1,4 +1,11 @@
 {
+  "color.none_at_cursor": "There is no color at the cursor",
+  "color.no_provider": "No extension provides colors for this document",
+  "color.edit": "Enter another color...",
+  "color.pick.title": "Write {color} as...",
+  "color.input.title": "Enter a color: #rrggbb, #rrggbbaa, rgb() or rgba()",
+  "color.not_a_color": "Not a color: {text}",
+  "color.changed": "The document changed; pick the color again",
   "auth.consent.access": "The extension '{extension}' wants to use the {provider} account '{account}'.",
   "auth.consent.signin": "The extension '{extension}' wants to sign in using {provider}.",
   "auth.consent.allow": "Allow",

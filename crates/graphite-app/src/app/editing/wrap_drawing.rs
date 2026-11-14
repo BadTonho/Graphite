@@ -36,6 +36,7 @@ impl App {
         let buffer = &tab.buffer;
         let tab_size = tab.indentation.tab_size;
         let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
+        let decoration_uri = buffer.path().and_then(|path| self.decoration_uri(path));
         let rows = visual_lines::viewport(
             buffer,
             view.scroll_line,
@@ -59,6 +60,22 @@ impl App {
                 .map_or(text.len(), |(i, _)| i);
             let slice = &text[byte_start..byte_end];
             let row_x = text_x + segment.indent as f32 * cw;
+            let row_right = rect.x + rect.width;
+            if let Some(uri) = &decoration_uri {
+                if row.subrow == 0 {
+                    self.draw_gutter_icons(r, uri, row.line, rect.x, y, lh);
+                }
+                self.draw_segment_decorations(
+                    r,
+                    super::decoration_drawing::DecorationLayer::Under,
+                    uri,
+                    row.line,
+                    &text,
+                    tab_size,
+                    (row_x, y, cw, lh, row_right),
+                    segment.start..segment.end,
+                );
+            }
             for selection in &view.selection_state.selections() {
                 let start = selection
                     .anchor
@@ -112,6 +129,18 @@ impl App {
             }
             let spans = clipped_spans(spans_for(&tab.highlights, row.line), byte_start, byte_end);
             draw_code_line(r, slice, &spans, row_x, y, cw, tab_size);
+            if let Some(uri) = &decoration_uri {
+                self.draw_segment_decorations(
+                    r,
+                    super::decoration_drawing::DecorationLayer::Over,
+                    uri,
+                    row.line,
+                    &text,
+                    tab_size,
+                    (row_x, y, cw, lh, row_right),
+                    segment.start..segment.end,
+                );
+            }
             super::drawing_helpers::draw_line_diagnostic_squiggles(
                 r,
                 &tab.diagnostics,
@@ -125,6 +154,16 @@ impl App {
                 cw,
                 lh,
                 tab_size,
+            );
+        }
+        if let Some(uri) = &decoration_uri {
+            self.draw_overview_ruler(
+                r,
+                uri,
+                buffer.len_lines(),
+                rect.x + rect.width,
+                rect.y,
+                rect.height,
             );
         }
         for selection in &view.selection_state.selections() {

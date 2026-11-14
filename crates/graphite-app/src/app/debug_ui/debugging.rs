@@ -53,7 +53,12 @@ impl App {
     /// Names of the `launch.json` configurations, without duplicates, in file order.
     pub(crate) fn launch_config_names(&self) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
-        for config in crate::debugger::load_launch_configs(self.tree.root()).unwrap_or_default() {
+        let from_extensions = self.debug.extension_configs.iter().cloned();
+        for config in crate::debugger::load_launch_configs(self.tree.root())
+            .unwrap_or_default()
+            .into_iter()
+            .chain(from_extensions)
+        {
             if !names.contains(&config.name) {
                 names.push(config.name);
             }

@@ -1,8 +1,9 @@
 //! Text editor decorations from extensions (`window.createTextEditorDecorationType` and
 //! `TextEditor.setDecorations`). The extension host sends each decoration type's style once and
 //! then the ranges it applies to a document. Graphite keeps both and the editor draws them:
-//! background and border colors, whole-line marks and the text after a line (`after`).
-//! Fonts, gutter icons, overview ruler marks and `before` text are not drawn.
+//! background and border colors, whole-line marks, the text before a range (`before`) and after
+//! a line (`after`), gutter icons, overview ruler marks and hover messages.
+//! Fonts are not drawn.
 
 use super::*;
 
@@ -34,6 +35,12 @@ pub(crate) struct Look {
     /// Color of a line drawn under the text (document links).
     pub underline: Option<Color>,
     pub after: Option<After>,
+    /// Text drawn at the start of the range.
+    pub before: Option<After>,
+    /// An image drawn in the gutter of the first line of the range.
+    pub gutter_icon: Option<std::path::PathBuf>,
+    /// Color of the mark on the overview ruler.
+    pub overview: Option<Color>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -44,16 +51,20 @@ struct Style {
 }
 
 /// A decorated range: 0-based lines and UTF-16 columns.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct Mark {
     start: (u32, u32),
     end: (u32, u32),
     /// `after` text of this instance, which replaces the type's.
     after: Option<After>,
+    /// `before` text of this instance, which replaces the type's.
+    before: Option<After>,
+    /// What the extension asked to show when hovering the range.
+    hover: Option<String>,
 }
 
 /// What to draw on one line for one decoration.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct LineMark {
     pub look: Look,
     pub whole_line: bool,
@@ -62,6 +73,12 @@ pub(crate) struct LineMark {
     pub end: Option<u32>,
     /// Only on the last line of the range.
     pub after: Option<After>,
+    /// Only on the first line of the range.
+    pub before: Option<After>,
+    /// Only on the first line of the range.
+    pub gutter_icon: Option<std::path::PathBuf>,
+    /// The `after` text is a code lens, which the editor may draw above the line instead.
+    pub lens: bool,
 }
 
 #[derive(Default)]
@@ -175,7 +192,48 @@ fn border_color(options: &Value) -> Option<Color> {
 }
 
 fn after(options: &Value) -> Option<After> {
-    let content = ["after", "afterInjectedText"]
+    injected_text(options, &["after", "afterInjectedText"])
+}
+
+fn before(options: &Value) -> Option<After> {
+    injected_text(options, &["before", "beforeInjectedText"])
+}
+
+/// The path of an image given as a file URI or a path.
+fn image_path(value: &Value) -> Option<std::path::PathBuf> {
+    let text = value
+        .as_str()
+        .or_else(|| value["fsPath"].as_str())
+        .or_else(|| value["path"].as_str())?;
+    if text.starts_with("file:") {
+        return graphite_core_api::DocumentUri::parse(text)
+            .ok()?
+            .to_path()
+            .ok();
+    }
+    Some(std::path::PathBuf::from(text))
+}
+
+/// What a decoration says to show on hover: its markdown strings, one paragraph each.
+fn hover_text(value: &Value) -> Option<String> {
+    let parts: Vec<String> = match value {
+        Value::Array(items) => items.iter().filter_map(markdown_value).collect(),
+        other => markdown_value(other).into_iter().collect(),
+    };
+    let text = parts.join("\n\n");
+    (!text.trim().is_empty()).then_some(text)
+}
+
+fn markdown_value(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .or_else(|| value["value"].as_str())
+        .map(str::to_owned)
+        .filter(|text| !text.is_empty())
+}
+
+fn injected_text(options: &Value, keys: &[&str]) -> Option<After> {
+    let content = keys
         .iter()
         .map(|key| &options[key])
         .find(|content| content["contentText"].is_string())?;
@@ -197,6 +255,9 @@ fn look(options: &Value) -> Look {
         border: border_color(options),
         underline: None,
         after: after(options),
+        before: before(options),
+        gutter_icon: image_path(&options["gutterIconPath"]),
+        overview: parse_color(&options["overviewRulerColor"]),
     }
 }
 
@@ -207,6 +268,12 @@ fn overlay(base: &Look, variant: &Look) -> Look {
         border: variant.border.or(base.border),
         underline: variant.underline.or(base.underline),
         after: variant.after.clone().or_else(|| base.after.clone()),
+        before: variant.before.clone().or_else(|| base.before.clone()),
+        gutter_icon: variant
+            .gutter_icon
+            .clone()
+            .or_else(|| base.gutter_icon.clone()),
+        overview: variant.overview.or(base.overview),
     }
 }
 
@@ -259,7 +326,8 @@ impl Decorations {
                 start,
                 end,
                 after: None,
-            })
+ ..Default::default()
+})
             .collect();
         self.set(editor, HIGHLIGHT_KEY, marks);
     }
@@ -288,7 +356,8 @@ impl Decorations {
                 start,
                 end,
                 after: None,
-            })
+ ..Default::default()
+})
             .collect();
         self.set(editor, LINK_KEY, marks);
     }
@@ -310,7 +379,8 @@ impl Decorations {
                 start: (line, 0),
                 end: (line, 0),
                 after: Some(After { text, color: None }),
-            })
+ ..Default::default()
+})
             .collect();
         self.set(editor, LENS_KEY, marks);
     }
@@ -360,13 +430,59 @@ impl Decorations {
                 start,
                 end,
                 after: None,
-            })
+ ..Default::default()
+})
             .collect();
         self.set(editor, key, marks);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
         self.marks.values().all(BTreeMap::is_empty) && self.colors.values().all(Vec::is_empty)
+    }
+
+    /// The color swatch of `editor` that contains a 0-based line and UTF-16 column.
+    pub(super) fn color_at(&self, editor: &str, line: u32, column: u32) -> Option<super::colors::ColorRange> {
+        self.colors
+            .get(editor)?
+            .iter()
+            .find(|range| (line, column) >= range.start && (line, column) <= range.end)
+            .cloned()
+    }
+
+    /// The lines of `editor` that have an overview ruler mark, with its color, in line order.
+    pub(crate) fn overview_marks(&self, editor: &str, dark: bool) -> Vec<(usize, Color)> {
+        let mut found = Vec::new();
+        for (key, marks) in self.marks.get(editor).into_iter().flatten() {
+            let Some(style) = self.styles.get(key) else {
+                continue;
+            };
+            let look = if dark { &style.dark } else { &style.light };
+            let Some(color) = look.overview else {
+                continue;
+            };
+            found.extend(marks.iter().map(|mark| (mark.start.0 as usize, color)));
+        }
+        found.sort_by_key(|(line, _)| *line);
+        found
+    }
+
+    /// What the extensions want to show on hover at a 0-based line and UTF-16 column.
+    pub(crate) fn hover_at(&self, editor: &str, line: u32, column: u32) -> Vec<String> {
+        let mut found = Vec::new();
+        for marks in self.marks.get(editor).into_iter().flat_map(BTreeMap::values) {
+            for mark in marks {
+                let Some(hover) = &mark.hover else {
+                    continue;
+                };
+                let after_start = (line, column) >= mark.start;
+                // A range ends before its end position; an empty range still hovers at its start.
+                let before_end = (line, column) < mark.end || mark.start == mark.end && (line, column) == mark.start;
+                if after_start && before_end {
+                    found.push(hover.clone());
+                }
+            }
+        }
+        found
     }
 
     /// Everything to draw on `line` of `editor` in the given theme.
@@ -386,16 +502,28 @@ impl Decorations {
                 .filter(|mark| mark.start.0 <= line && line <= mark.end.0)
             {
                 let last = line == mark.end.0;
+                let first = line == mark.start.0;
                 let instance = mark.after.clone().filter(|_| last);
                 let after = instance.or_else(|| look.after.clone().filter(|_| last));
+                let before = mark
+                    .before
+                    .clone()
+                    .or_else(|| look.before.clone())
+                    .filter(|_| first);
+                let gutter_icon = look.gutter_icon.clone().filter(|_| first);
                 let mut look = look.clone();
                 look.after = None;
+                look.before = None;
+                look.gutter_icon = None;
                 found.push(LineMark {
                     look,
                     whole_line: style.whole_line,
-                    start: (line == mark.start.0).then_some(mark.start.1),
+                    start: first.then_some(mark.start.1),
                     end: last.then_some(mark.end.1),
                     after,
+                    before,
+                    gutter_icon,
+                    lens: key == LENS_KEY,
                 });
             }
         }
@@ -411,6 +539,7 @@ impl Decorations {
                     start: (line == range.start.0).then_some(range.start.1),
                     end: (line == range.end.0).then_some(range.end.1),
                     after: None,
+                    ..Default::default()
                 });
             }
         }
@@ -457,11 +586,17 @@ pub(super) fn dispatch(
                         let instance = after(options)
                             .or_else(|| after(&options["dark"]))
                             .or_else(|| after(&options["light"]));
+                        let instance_before = before(options)
+                            .or_else(|| before(&options["dark"]))
+                            .or_else(|| before(&options["light"]));
                         Some(Mark {
                             start,
                             end,
                             after: instance,
-                        })
+                            before: instance_before,
+                            hover: hover_text(&item["hoverMessage"]),
+ ..Default::default()
+})
                     })
                     .take(MARK_LIMIT)
                     .collect();
@@ -485,7 +620,8 @@ pub(super) fn dispatch(
                             start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),
                             end: (range[2].checked_sub(1)?, range[3].checked_sub(1)?),
                             after: None,
-                        })
+ ..Default::default()
+})
                     })
                     .take(MARK_LIMIT)
                     .collect();
@@ -500,6 +636,24 @@ pub(super) fn dispatch(
 }
 
 impl App {
+    /// What extensions show on hover at a 0-based line and UTF-16 column of this document.
+    pub(crate) fn vsix_decoration_hover(&self, uri: &str, line: u32, column: u32) -> Vec<String> {
+        self.plugins
+            .vsix
+            .as_ref()
+            .map(|runtime| runtime.decorations.hover_at(uri, line, column))
+            .unwrap_or_default()
+    }
+
+    /// The overview ruler marks of the document with this URI.
+    pub(crate) fn vsix_overview_marks(&self, uri: &str, dark: bool) -> Vec<(usize, Color)> {
+        self.plugins
+            .vsix
+            .as_ref()
+            .map(|runtime| runtime.decorations.overview_marks(uri, dark))
+            .unwrap_or_default()
+    }
+
     /// Decorations to draw on `line` of the document with this URI.
     pub(crate) fn vsix_line_decorations(
         &self,
@@ -595,7 +749,8 @@ mod tests {
                 start: (1, 3),
                 end: (3, 5),
                 after: None,
-            }],
+ ..Default::default()
+}],
         );
         let first = &decorations.on_line("file:///a.txt", 1, true)[0];
         assert_eq!((first.start, first.end), (Some(3), None));
@@ -606,6 +761,93 @@ mod tests {
         assert!(decorations.on_line("file:///a.txt", 0, true).is_empty());
         assert!(decorations.on_line("file:///a.txt", 4, true).is_empty());
         assert!(decorations.on_line("file:///other.txt", 2, true).is_empty());
+    }
+
+    #[test]
+    fn before_text_and_gutter_icons_belong_to_the_first_line_of_a_range() {
+        let mut decorations = registered(json!({
+            "before": {"contentText": "▶ ", "color": "#888888"},
+            "gutterIconPath": "/icons/dot.svg",
+            "dark": {"gutterIconPath": "/icons/dark.png"},
+        }));
+        decorations.set(
+            "e",
+            "type",
+            vec![
+                Mark { start: (2, 4), end: (3, 1), ..Default::default() },
+                Mark {
+                    start: (7, 0),
+                    end: (7, 2),
+                    before: Some(After { text: "own ".into(), color: None }),
+                    ..Default::default()
+                },
+            ],
+        );
+        let first = &decorations.on_line("e", 2, true)[0];
+        assert_eq!(first.before.as_ref().unwrap().text, "▶ ");
+        assert_eq!(first.gutter_icon.as_deref(), Some(std::path::Path::new("/icons/dark.png")));
+        let light = &decorations.on_line("e", 2, false)[0];
+        assert!(light.gutter_icon.as_ref().unwrap().to_string_lossy().ends_with("dot.svg"));
+        let second = &decorations.on_line("e", 3, true)[0];
+        assert!(second.before.is_none() && second.gutter_icon.is_none());
+        assert_eq!(decorations.on_line("e", 7, true)[0].before.as_ref().unwrap().text, "own ");
+        assert!(first.look.before.is_none(), "the look itself carries neither");
+    }
+
+    #[test]
+    fn overview_marks_list_the_lines_with_their_colors_in_order() {
+        let mut decorations = registered(json!({"overviewRulerColor": "#ff0000", "dark": {"overviewRulerColor": "#00ff00"}}));
+        decorations.set(
+            "e",
+            "type",
+            vec![
+                Mark { start: (9, 0), end: (9, 1), ..Default::default() },
+                Mark { start: (3, 0), end: (5, 1), ..Default::default() },
+            ],
+        );
+        assert_eq!(
+            decorations.overview_marks("e", true),
+            [(3, [0.0, 1.0, 0.0, 1.0]), (9, [0.0, 1.0, 0.0, 1.0])]
+        );
+        assert_eq!(decorations.overview_marks("e", false)[0].1, [1.0, 0.0, 0.0, 1.0]);
+        assert!(decorations.overview_marks("other", true).is_empty());
+        let plain = registered(json!({"backgroundColor": "#ff0000"}));
+        assert!(plain.overview_marks("e", true).is_empty());
+    }
+
+    #[test]
+    fn hover_messages_come_from_the_ranges_that_contain_the_position() {
+        let mut runtime_decorations = Decorations::default();
+        let mut runtime = None::<()>;
+        let _ = &mut runtime;
+        runtime_decorations.styles.insert("type".into(), style(&json!({})));
+        let items = json!([
+            {"range": {"startLineNumber": 1, "startColumn": 2, "endLineNumber": 1, "endColumn": 6},
+             "hoverMessage": [{"value": "first"}, {"value": "second"}]},
+            {"range": {"startLineNumber": 3, "startColumn": 1, "endLineNumber": 3, "endColumn": 1},
+             "hoverMessage": "empty range"},
+            {"range": {"startLineNumber": 5, "startColumn": 1, "endLineNumber": 5, "endColumn": 4}},
+        ]);
+        let marks: Vec<Mark> = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| {
+                let (start, end) = zero_based(&item["range"])?;
+                Some(Mark { start, end, hover: hover_text(&item["hoverMessage"]), ..Default::default() })
+            })
+            .collect();
+        runtime_decorations.set("e", "type", marks);
+        assert_eq!(runtime_decorations.hover_at("e", 0, 3), ["first\n\nsecond"]);
+        assert!(runtime_decorations.hover_at("e", 0, 0).is_empty(), "before the range");
+        assert_eq!(runtime_decorations.hover_at("e", 0, 1), ["first
+
+second"], "the start is inclusive");
+        assert!(runtime_decorations.hover_at("e", 0, 5).is_empty(), "the end is exclusive");
+        assert_eq!(runtime_decorations.hover_at("e", 2, 0), ["empty range"]);
+        assert!(runtime_decorations.hover_at("e", 4, 1).is_empty(), "no message, nothing to show");
+        assert_eq!(hover_text(&json!("")), None);
+        assert_eq!(hover_text(&json!([{"value": "a"}, "b"])).as_deref(), Some("a\n\nb"));
     }
 
     #[test]
@@ -620,7 +862,8 @@ mod tests {
                     start: (0, 0),
                     end: (1, 2),
                     after: None,
-                },
+ ..Default::default()
+},
                 Mark {
                     start: (4, 0),
                     end: (4, 3),
@@ -628,7 +871,8 @@ mod tests {
                         text: " instance".into(),
                         color: None,
                     }),
-                },
+ ..Default::default()
+},
             ],
         );
         assert_eq!(decorations.on_line("e", 0, true)[0].after, None);
@@ -665,7 +909,8 @@ mod tests {
                     start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),
                     end: (range[2].checked_sub(1)?, range[3].checked_sub(1)?),
                     after: None,
-                })
+ ..Default::default()
+})
             })
             .collect();
         // The second range has a 0 coordinate (invalid, 1-based) and is dropped.

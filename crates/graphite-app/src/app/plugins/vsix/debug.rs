@@ -2,7 +2,9 @@
 //!
 //! Graphite asks the extension host to activate the extension that provides the debug `type`
 //! and to run its factory. The bridge answers with the adapter descriptor, which Graphite then
-//! starts like any other adapter: as a process, or as a connection to a local TCP port.
+//! starts like any other adapter: as a process, a connection to a local TCP port, a connection
+//! to a named pipe, or an adapter that runs inside the extension host (its messages go through
+//! the bridge as `$sendDAMessage` and `$acceptDAMessage`).
 
 use super::*;
 use crate::app::debug_adapters::{adapter_from_descriptor, AdapterEndpoint};
@@ -11,6 +13,70 @@ use crate::debugger::{expand_value, LaunchConfig, VariableContext};
 /// Id of the bridge reply that carries the adapter descriptor.
 pub(super) const ADAPTER_CALL_ID: u64 = 5_000_000;
 const ADAPTER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The messages of an adapter that runs inside the extension host.
+pub(super) struct InlineDebug {
+    handle: u64,
+    /// What Graphite sent to the adapter, to be handed to the extension host.
+    outgoing: std::sync::mpsc::Receiver<Value>,
+    /// What the adapter said, for the debug session.
+    incoming: std::sync::mpsc::SyncSender<crate::debugger::AdapterEvent>,
+}
+
+/// Replies to `provideDebugConfigurations` calls carry ids in `CONFIG_BASE..CONFIG_END`.
+pub(super) const CONFIG_BASE: u64 = 19_000_000;
+const CONFIG_END: u64 = 20_000_000;
+
+pub(super) fn is_config_reply(id: u64) -> bool {
+    (CONFIG_BASE..CONFIG_END).contains(&id)
+}
+
+/// A debug configuration provider an extension registered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ConfigProvider {
+    debug_type: String,
+    /// `DebugConfigurationProviderTriggerKind.Dynamic`: its configurations appear in the lists
+    /// of configurations without being written to `launch.json`.
+    dynamic: bool,
+    provides: bool,
+}
+
+/// The configuration providers and the dynamic configurations they offered.
+#[derive(Default)]
+pub(super) struct DebugConfigs {
+    next_id: u64,
+    providers: std::collections::BTreeMap<u64, ConfigProvider>,
+    /// Provider handle to the request in flight.
+    pending: std::collections::BTreeMap<u64, u64>,
+    offered: std::collections::BTreeMap<u64, Vec<LaunchConfig>>,
+}
+
+impl DebugConfigs {
+    pub(super) fn busy(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    fn all(&self) -> Vec<LaunchConfig> {
+        self.offered.values().flatten().cloned().collect()
+    }
+}
+
+/// The configurations of an `IConfig[]` answer: each needs a name; the type defaults to the
+/// provider's and the request to `launch`.
+fn offered_configs(result: &Value, debug_type: &str) -> Vec<LaunchConfig> {
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let mut item = item.as_object()?.clone();
+            item.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
+            item.entry("type").or_insert_with(|| json!(debug_type));
+            item.entry("request").or_insert_with(|| json!("launch"));
+            serde_json::from_value(Value::Object(item)).ok()
+        })
+        .collect()
+}
 
 /// An adapter request that is waiting for the extension host.
 pub(super) struct PendingAdapter {
@@ -71,6 +137,7 @@ pub(super) fn apply_resolved_configuration(
         .map_err(|error| format!("The resolved debug configuration is invalid: {error}"))?;
     config.adapter = base.adapter.clone();
     config.server = base.server.clone();
+    config.pipe = base.pipe.clone();
     config.pre_launch_task = base.pre_launch_task.clone();
     config.post_debug_task = base.post_debug_task.clone();
     Ok(config)
@@ -208,6 +275,13 @@ impl App {
             match adapter_from_descriptor(&result["descriptor"]) {
                 Ok(AdapterEndpoint::Command(command)) => config.adapter = Some(command),
                 Ok(AdapterEndpoint::Server(server)) => config.server = Some(server),
+                Ok(AdapterEndpoint::Pipe(path)) => config.pipe = Some(path),
+                Ok(AdapterEndpoint::Inline) => {
+                    if let Err(error) = self.start_inline_debug_session(runtime, config, &result) {
+                        self.status = format!("{}: {error}", pending.owner);
+                    }
+                    return;
+                }
                 Err(error) => {
                     self.status = format!("{}: {error}", pending.owner);
                     return;
@@ -217,6 +291,211 @@ impl App {
         if let Err(error) = self.start_resolved_debug_session(config) {
             self.status = error;
         }
+    }
+
+    /// Starts a session with an adapter implemented in the extension host: asks it to start the
+    /// adapter, and connects the session to the messages that pass through the bridge.
+    fn start_inline_debug_session(
+        &mut self,
+        runtime: &mut Runtime,
+        config: LaunchConfig,
+        result: &Value,
+    ) -> Result<()> {
+        self.stop_inline_debug(runtime);
+        runtime.debug_handles += 1;
+        let handle = runtime.debug_handles;
+        let (outgoing, from_client) = std::sync::mpsc::channel();
+        let (session, incoming) = crate::debugger::DapSession::inline(outgoing);
+        let root = graphite_core_api::DocumentUri::from_path(self.tree.root())
+            .map_err(|error| error.to_string())?;
+        let configuration = if result["configuration"].is_object() {
+            result["configuration"].clone()
+        } else {
+            serde_json::to_value(&config).map_err(|error| error.to_string())?
+        };
+        runtime.session.send(json!({
+            "type": "call",
+            "actor": "ExtHostDebugService",
+            "method": "$startDASession",
+            "args": [handle, {
+                "id": format!("graphite-debug-{handle}"),
+                "type": config.adapter_type,
+                "name": config.name,
+                "folderUri": {"$graphiteUri": root.as_str()},
+                "configuration": configuration,
+            }],
+        }))?;
+        runtime.debug_inline = Some(InlineDebug {
+            handle,
+            outgoing: from_client,
+            incoming,
+        });
+        self.debug
+            .start_with_session(config, session)
+            .map_err(|error| error.to_string())?;
+        self.debug_panel_visible = true;
+        Ok(())
+    }
+
+    /// Answers the registration of a debug configuration provider and asks a dynamic one for its
+    /// configurations. Returns `None` for other methods.
+    pub(super) fn handle_vsix_debug_config_provider(
+        &mut self,
+        runtime: &mut Runtime,
+        method: &str,
+        args: &[Value],
+    ) -> Option<Result<Value>> {
+        match method {
+            "$registerDebugConfigurationProvider" => {
+                // (type, triggerKind, hasProvide, hasResolve, hasResolve2, handle)
+                let (Some(debug_type), Some(handle)) = (
+                    args.first().and_then(Value::as_str),
+                    args.get(5).and_then(Value::as_u64),
+                ) else {
+                    return Some(Err("Invalid debug configuration provider".into()));
+                };
+                let provider = ConfigProvider {
+                    debug_type: debug_type.to_owned(),
+                    dynamic: args.get(1).and_then(Value::as_u64) == Some(2),
+                    provides: args.get(2).and_then(Value::as_bool).unwrap_or(false),
+                };
+                let wanted = provider.dynamic && provider.provides;
+                runtime.debug_configs.providers.insert(handle, provider);
+                if wanted {
+                    self.request_debug_configurations(runtime, handle);
+                }
+                Some(Ok(Value::Null))
+            }
+            "$unregisterDebugConfigurationProvider" => {
+                if let Some(handle) = args.first().and_then(Value::as_u64) {
+                    runtime.debug_configs.providers.remove(&handle);
+                    runtime.debug_configs.pending.remove(&handle);
+                    if runtime.debug_configs.offered.remove(&handle).is_some() {
+                        self.debug.extension_configs = runtime.debug_configs.all();
+                    }
+                }
+                Some(Ok(Value::Null))
+            }
+            _ => None,
+        }
+    }
+
+    /// Asks a provider for its configurations.
+    fn request_debug_configurations(&mut self, runtime: &mut Runtime, handle: u64) {
+        let configs = &mut runtime.debug_configs;
+        configs.next_id = (configs.next_id + 1) % (CONFIG_END - CONFIG_BASE);
+        let id = CONFIG_BASE + configs.next_id;
+        let folder = graphite_core_api::DocumentUri::from_path(self.tree.root()).ok();
+        let sent = runtime.session.send(json!({
+            "type": "call",
+            "id": id,
+            "actor": "ExtHostDebugService",
+            "method": "$provideDebugConfigurations",
+            "cancellable": true,
+            "args": [handle, folder.map(|uri| json!({"$graphiteUri": uri.as_str()}))],
+        }));
+        if sent.is_ok() {
+            runtime.debug_configs.pending.insert(handle, id);
+        }
+    }
+
+    /// The provider answered: its configurations join the lists of debug configurations.
+    pub(super) fn finish_vsix_debug_configurations(&mut self, runtime: &mut Runtime, event: &Value) {
+        let Some(id) = event["id"].as_u64() else {
+            return;
+        };
+        let Some(handle) = runtime
+            .debug_configs
+            .pending
+            .iter()
+            .find(|(_, pending)| **pending == id)
+            .map(|(handle, _)| *handle)
+        else {
+            return;
+        };
+        runtime.debug_configs.pending.remove(&handle);
+        if event["error"].is_string() {
+            return;
+        }
+        let debug_type = runtime
+            .debug_configs
+            .providers
+            .get(&handle)
+            .map(|provider| provider.debug_type.clone())
+            .unwrap_or_default();
+        runtime
+            .debug_configs
+            .offered
+            .insert(handle, offered_configs(&event["result"], &debug_type));
+        self.debug.extension_configs = runtime.debug_configs.all();
+    }
+
+    /// Ends the inline adapter, if there is one.
+    fn stop_inline_debug(&mut self, runtime: &mut Runtime) {
+        if let Some(inline) = runtime.debug_inline.take() {
+            let _ = runtime.session.send(json!({
+                "type": "call",
+                "actor": "ExtHostDebugService",
+                "method": "$stopDASession",
+                "args": [inline.handle],
+            }));
+        }
+    }
+
+    /// Hands the messages Graphite wrote for an inline adapter to the extension host, and ends the
+    /// adapter when the debug session no longer exists.
+    pub(super) fn drive_vsix_inline_debug(&mut self, runtime: &mut Runtime) {
+        let Some(inline) = runtime.debug_inline.as_ref() else {
+            return;
+        };
+        let handle = inline.handle;
+        let mut disconnected = false;
+        loop {
+            match inline.outgoing.try_recv() {
+                Ok(message) => {
+                    let _ = runtime.session.send(json!({
+                        "type": "call",
+                        "actor": "ExtHostDebugService",
+                        "method": "$sendDAMessage",
+                        "args": [handle, message],
+                    }));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    disconnected = true;
+                    break;
+                }
+            }
+        }
+        if disconnected {
+            self.stop_inline_debug(runtime);
+        }
+    }
+
+    /// Answers `MainThreadDebugService` messages of an inline adapter (`$acceptDAMessage`,
+    /// `$acceptDAError` and `$acceptDAExit`). Returns `None` for other methods.
+    pub(super) fn handle_vsix_debug_adapter_message(
+        &mut self,
+        runtime: &mut Runtime,
+        method: &str,
+        args: &[Value],
+    ) -> Option<Result<Value>> {
+        use crate::debugger::AdapterEvent;
+        let event = match method {
+            "$acceptDAMessage" => AdapterEvent::Message(args.get(1).cloned().unwrap_or(Value::Null)),
+            "$acceptDAError" => AdapterEvent::Failed(format!(
+                "{}: {}",
+                args.get(1).and_then(Value::as_str).unwrap_or("Error"),
+                args.get(2).and_then(Value::as_str).unwrap_or_default()
+            )),
+            "$acceptDAExit" => AdapterEvent::Closed,
+            _ => return None,
+        };
+        let handle = args.first().and_then(Value::as_u64);
+        if let Some(inline) = runtime.debug_inline.as_ref().filter(|inline| Some(inline.handle) == handle) {
+            let _ = inline.incoming.try_send(event);
+        }
+        Some(Ok(Value::Null))
     }
 }
 
@@ -442,8 +721,8 @@ mod tests {
             ),
             (json!({"result": null}), "did not return a debug adapter"),
             (
-                json!({"result": {"descriptor": {"type": "implementation"}}}),
-                "inside the extension host are not supported yet",
+                json!({"result": {"descriptor": {"type": "pipeServer"}}}),
+                "no path",
             ),
             (
                 json!({"result": {"descriptor": {"type": "server", "port": 0}}}),
@@ -465,6 +744,166 @@ mod tests {
                 app.status
             );
         }
+    }
+
+    fn calls(host: &LoopbackHost) -> Vec<Value> {
+        std::iter::from_fn(|| host.next_sent()).collect()
+    }
+
+    #[test]
+    fn an_adapter_implemented_in_the_extension_host_talks_through_the_bridge() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.poll_vsix();
+        sent_of(&host, "provideDebugAdapter").expect("request sent");
+        answer(&host, json!({"result": {
+            "configuration": {"name": "Run it", "type": "python", "request": "launch"},
+            "descriptor": {"type": "implementation"}}}));
+        app.poll_vsix();
+
+        // The extension host is asked to start the adapter, and the session's first message
+        // (initialize) is handed over as a debug adapter message.
+        let sent = calls(&host);
+        let start = sent.iter().find(|m| m["method"] == "$startDASession").expect("the adapter is started");
+        assert_eq!(start["actor"], "ExtHostDebugService");
+        let handle = start["args"][0].clone();
+        assert_eq!(start["args"][1]["type"], "python");
+        assert_eq!(start["args"][1]["name"], "Run it");
+        assert!(app.debug.session.is_some(), "{}", app.status);
+        let initialize = sent.iter().find(|m| m["method"] == "$sendDAMessage");
+        let initialize = match initialize {
+            Some(message) => message.clone(),
+            None => {
+                app.poll_vsix();
+                calls(&host).into_iter().find(|m| m["method"] == "$sendDAMessage").expect("initialize sent")
+            }
+        };
+        assert_eq!(initialize["args"][0], handle);
+        assert_eq!(initialize["args"][1]["command"], "initialize");
+
+        // What the adapter says reaches the session.
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(&mut runtime, &json!({"id": 5, "actor": "MainThreadDebugService",
+            "method": "$acceptDAMessage",
+            "args": [handle, {"seq": 1, "type": "event", "event": "output",
+                "body": {"category": "stdout", "output": "hello from the adapter\n"}}]}))
+            .unwrap();
+        // A message for a session that is not running is ignored.
+        app.handle_vsix_request(&mut runtime, &json!({"id": 6, "actor": "MainThreadDebugService",
+            "method": "$acceptDAMessage", "args": [999, {"type": "event", "event": "output"}]}))
+            .unwrap();
+        app.plugins.vsix = Some(runtime);
+        app.debug.poll(app.tree.root()).unwrap();
+        assert!(
+            app.debug.output.iter().any(|line| line.text.contains("hello from the adapter")),
+            "{:?}", app.debug.output
+        );
+
+        // Stopping the session stops the adapter in the extension host.
+        app.debug.stop().unwrap();
+        app.poll_vsix();
+        let stop = calls(&host).into_iter().find(|m| m["method"] == "$stopDASession").expect("the adapter is stopped");
+        assert_eq!(stop["args"][0], handle);
+    }
+
+    #[test]
+    fn an_inline_adapter_that_exits_or_fails_ends_the_session() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.poll_vsix();
+        sent_of(&host, "provideDebugAdapter").unwrap();
+        answer(&host, json!({"result": {"descriptor": {"type": "implementation"}}}));
+        app.poll_vsix();
+        let handle = calls(&host).into_iter().find(|m| m["method"] == "$startDASession").unwrap()["args"][0].clone();
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(&mut runtime, &json!({"id": 7, "actor": "MainThreadDebugService",
+            "method": "$acceptDAError", "args": [handle, "Error", "adapter crashed", null]}))
+            .unwrap();
+        app.plugins.vsix = Some(runtime);
+        // A failing adapter surfaces as the error of the poll, like one that is a process.
+        let error = app.debug.poll(app.tree.root()).unwrap_err();
+        assert!(error.to_string().contains("adapter crashed"), "{error}");
+        // A normal exit of the adapter ends the session.
+        let (mut app, host) = app_with_host(&dir, true);
+        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.poll_vsix();
+        sent_of(&host, "provideDebugAdapter").unwrap();
+        answer(&host, json!({"result": {"descriptor": {"type": "implementation"}}}));
+        app.poll_vsix();
+        let handle = calls(&host).into_iter().find(|m| m["method"] == "$startDASession").unwrap()["args"][0].clone();
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(&mut runtime, &json!({"id": 8, "actor": "MainThreadDebugService",
+            "method": "$acceptDAExit", "args": [handle, 0, null]}))
+            .unwrap();
+        app.plugins.vsix = Some(runtime);
+        app.debug.poll(app.tree.root()).unwrap();
+        assert!(app.debug.session.is_none());
+    }
+
+    #[test]
+    fn dynamic_configuration_providers_add_their_configurations_to_the_lists() {
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_host(&dir, true);
+        std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
+        std::fs::write(
+            dir.path().join(".vscode/launch.json"),
+            r#"{"configurations":[{"name":"From file","type":"python","request":"launch"}]}"#,
+        )
+        .unwrap();
+        let mut register = |app: &mut App, args: Value| {
+            let mut runtime = app.plugins.vsix.take().unwrap();
+            app.handle_vsix_request(&mut runtime, &json!({"id": 3, "actor": "MainThreadDebugService",
+                "method": "$registerDebugConfigurationProvider", "args": args}))
+                .unwrap();
+            app.plugins.vsix = Some(runtime);
+        };
+        // (type, triggerKind, hasProvide, hasResolve, hasResolve2, handle)
+        register(&mut app, json!(["python", 1, true, true, false, 11]));
+        register(&mut app, json!(["python", 2, false, true, false, 12]));
+        assert!(
+            std::iter::from_fn(|| host.next_sent()).all(|m| m["method"] != "$provideDebugConfigurations"),
+            "only dynamic providers that provide are asked"
+        );
+        register(&mut app, json!(["python", 2, true, false, false, 13]));
+        let ask = std::iter::from_fn(|| host.next_sent())
+            .find(|m| m["method"] == "$provideDebugConfigurations")
+            .expect("the dynamic provider is asked");
+        assert_eq!(ask["actor"], "ExtHostDebugService");
+        assert_eq!(ask["args"][0], 13);
+        assert_eq!(ask["cancellable"], true);
+
+        host.emit(json!({"type": "result", "id": ask["id"], "result": [
+            {"name": "Dynamic run", "request": "launch", "program": "x.py"},
+            {"name": "From file", "type": "python", "request": "launch"},
+            {"type": "python"},
+            "oops",
+        ]}));
+        app.poll_vsix();
+        let names: Vec<&str> = app.debug.extension_configs.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Dynamic run", "From file"], "unnamed entries are dropped");
+        assert_eq!(app.debug.extension_configs[0].adapter_type, "python", "the provider's type is the default");
+        assert_eq!(app.launch_config_names(), ["From file", "Dynamic run"], "launch.json first, no duplicates");
+
+        app.debug.refresh_configs(app.tree.root()).unwrap();
+        let listed: Vec<&str> = app.debug.launch_configs.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(listed, ["From file", "Dynamic run"]);
+        assert!(app.select_debug_configuration("Dynamic run").is_ok());
+
+        // Without a launch.json the offered configurations are all there is.
+        std::fs::remove_file(dir.path().join(".vscode/launch.json")).unwrap();
+        app.debug.refresh_configs(app.tree.root()).unwrap();
+        assert_eq!(app.debug.launch_configs.len(), 2);
+
+        // Unregistering the provider takes its configurations away; a failure offers nothing.
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(&mut runtime, &json!({"id": 4, "actor": "MainThreadDebugService",
+            "method": "$unregisterDebugConfigurationProvider", "args": [13]}))
+            .unwrap();
+        app.plugins.vsix = Some(runtime);
+        assert!(app.debug.extension_configs.is_empty());
+        assert!(app.debug.refresh_configs(app.tree.root()).is_err(), "nothing left to list");
     }
 
     #[test]

@@ -50,6 +50,9 @@ pub struct LaunchConfig {
     /// A listening adapter chosen at launch time (not part of `launch.json`).
     #[serde(skip)]
     pub server: Option<AdapterServer>,
+    /// A named pipe (Windows) or local socket (Unix) an adapter listens on, chosen at launch time.
+    #[serde(skip)]
+    pub pipe: Option<PathBuf>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -127,6 +130,8 @@ pub struct DapSession {
     stdin: Option<Box<dyn Write + Send>>,
     /// The connection of a TCP session, kept to shut it down on stop.
     socket: Option<TcpStream>,
+    /// Ends the connection of a pipe session, which wakes its reader thread.
+    closer: Option<Box<dyn Fn() + Send>>,
     events: Receiver<AdapterEvent>,
     sequence: i64,
 }
@@ -228,6 +233,9 @@ pub struct DebugRuntime {
     pub breakpoints: BTreeMap<PathBuf, Vec<Value>>,
     pub breakpoints_disabled: bool,
     pub launch_configs: Vec<LaunchConfig>,
+    /// Configurations extensions offer (dynamic configuration providers), listed after those of
+    /// `launch.json`.
+    pub extension_configs: Vec<LaunchConfig>,
     pub active_config: Option<LaunchConfig>,
     /// Name of the configuration chosen for the next start; the first one is used when unset.
     pub selected_config: Option<String>,
@@ -260,7 +268,23 @@ impl Default for DebugState {
 
 impl DebugRuntime {
     pub fn refresh_configs(&mut self, workspace: &Path) -> Result<(), DebugError> {
-        self.launch_configs = load_launch_configs(workspace)?;
+        let loaded = match load_launch_configs(workspace) {
+            Ok(configs) => configs,
+            // Without a usable `launch.json` the extensions' configurations are all there is.
+            Err(DebugError::NoConfigurations | DebugError::Read(_))
+                if !self.extension_configs.is_empty() =>
+            {
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
+        let mut configs = loaded;
+        for config in &self.extension_configs {
+            if !configs.iter().any(|existing| existing.name == config.name) {
+                configs.push(config.clone());
+            }
+        }
+        self.launch_configs = configs;
         Ok(())
     }
 
@@ -287,7 +311,18 @@ impl DebugRuntime {
 
     pub fn start(&mut self, config: LaunchConfig, workspace: &Path) -> Result<(), DebugError> {
         self.stop()?;
-        let mut session = DapSession::spawn(&config, workspace)?;
+        let session = DapSession::spawn(&config, workspace)?;
+        self.start_with_session(config, session)
+    }
+
+    /// Starts debugging over a session that is already connected (an adapter that runs inside
+    /// the extension host).
+    pub fn start_with_session(
+        &mut self,
+        config: LaunchConfig,
+        mut session: DapSession,
+    ) -> Result<(), DebugError> {
+        self.stop()?;
         let seq = session.send_request(
             "initialize",
             serde_json::json!({
@@ -1185,6 +1220,9 @@ impl DapSession {
         if let Some(server) = &config.server {
             return Self::connect(server);
         }
+        if let Some(pipe) = &config.pipe {
+            return Self::connect_pipe(pipe);
+        }
         let adapter = config
             .adapter
             .as_ref()
@@ -1215,9 +1253,65 @@ impl DapSession {
             child: Some(child),
             stdin,
             socket: None,
+            closer: None,
             events,
             sequence: 1,
         })
+    }
+
+    /// Connects to an adapter listening on a named pipe (Windows) or a local socket (Unix).
+    /// Only local pipes are accepted: the path may come from an extension.
+    pub fn connect_pipe(path: &Path) -> Result<Self, DebugError> {
+        if !is_local_pipe(path) {
+            return Err(DebugError::Transport(format!(
+                "Debug adapter pipe {} is not a local pipe",
+                path.display()
+            )));
+        }
+        #[cfg(windows)]
+        let stream = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+        #[cfg(unix)]
+        let stream = std::os::unix::net::UnixStream::connect(path)?;
+        let reader = stream.try_clone()?;
+        #[cfg(unix)]
+        let closer: Option<Box<dyn Fn() + Send>> = {
+            let handle = stream.try_clone()?;
+            Some(Box::new(move || {
+                let _ = handle.shutdown(Shutdown::Both);
+            }))
+        };
+        #[cfg(windows)]
+        let closer: Option<Box<dyn Fn() + Send>> = None;
+        let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
+        thread::Builder::new()
+            .name("graphite-dap-reader".into())
+            .spawn(move || read_messages(reader, sender))?;
+        Ok(Self {
+            child: None,
+            stdin: Some(Box::new(stream)),
+            socket: None,
+            closer,
+            events,
+            sequence: 1,
+        })
+    }
+
+    /// A session whose adapter runs inside the extension host: the messages Graphite sends come
+    /// out of `outgoing`, and what the adapter says is fed to the returned sender.
+    pub fn inline(outgoing: mpsc::Sender<Value>) -> (Self, SyncSender<AdapterEvent>) {
+        let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
+        let session = Self {
+            child: None,
+            stdin: Some(Box::new(InlineWriter {
+                buffer: Vec::new(),
+                sink: outgoing,
+            })),
+            socket: None,
+            closer: None,
+            events,
+            sequence: 1,
+        };
+        (session, sender)
     }
 
     /// Connects to an adapter that is already listening. Only loopback addresses are accepted:
@@ -1243,6 +1337,7 @@ impl DapSession {
             child: None,
             stdin: Some(Box::new(stream)),
             socket: Some(socket),
+            closer: None,
             events,
             sequence: 1,
         })
@@ -1256,6 +1351,7 @@ impl DapSession {
             child: None,
             stdin: Some(writer),
             socket: None,
+            closer: None,
             events,
             sequence: 1,
         }
@@ -1320,6 +1416,9 @@ impl DapSession {
             // Wakes the reader thread, which would otherwise wait for the adapter forever.
             let _ = socket.shutdown(Shutdown::Both);
         }
+        if let Some(close) = self.closer.take() {
+            close();
+        }
         if let Some(child) = self.child.as_mut() {
             if child.try_wait()?.is_none() {
                 child.kill()?;
@@ -1342,6 +1441,157 @@ impl DapSession {
 impl Drop for DapSession {
     fn drop(&mut self) {
         let _ = self.stop();
+    }
+}
+
+/// Whether `path` names a pipe on this machine: `\\.\pipe\name` on Windows, an absolute path
+/// elsewhere.
+fn is_local_pipe(path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+        text.starts_with("\\\\.\\pipe\\") && text.len() > "\\\\.\\pipe\\".len()
+    }
+    #[cfg(not(windows))]
+    {
+        path.is_absolute()
+    }
+}
+
+/// Receives the framed messages Graphite writes (`Content-Length` header and JSON body) and
+/// hands each to the extension host as a value.
+struct InlineWriter {
+    buffer: Vec<u8>,
+    sink: mpsc::Sender<Value>,
+}
+
+impl Write for InlineWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.buffer.extend_from_slice(bytes);
+        while let Some(header_end) = self.buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+            let header = String::from_utf8_lossy(&self.buffer[..header_end]).into_owned();
+            let length = header
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.trim().eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok())?
+                })
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "a message has no length"))?;
+            let end = header_end + 4 + length;
+            if self.buffer.len() < end {
+                break;
+            }
+            let message: Value = serde_json::from_slice(&self.buffer[header_end + 4..end])
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+            self.buffer.drain(..end);
+            self.sink
+                .send(message)
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the adapter is gone"))?;
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+
+    fn frame(value: &Value) -> Vec<u8> {
+        let payload = serde_json::to_vec(value).unwrap();
+        let mut bytes = format!("Content-Length: {}\r\n\r\n", payload.len()).into_bytes();
+        bytes.extend(payload);
+        bytes
+    }
+
+    #[test]
+    fn an_inline_adapter_receives_whole_messages_however_the_bytes_arrive() {
+        let (sender, messages) = mpsc::channel();
+        let (mut session, _events) = DapSession::inline(sender);
+        let first = serde_json::json!({"seq": 1, "type": "request", "command": "initialize"});
+        let second = serde_json::json!({"seq": 2, "type": "request", "command": "launch", "arguments": {"text": "é\n"}});
+        // The writer gets the header and the body apart, and two messages in one piece.
+        let mut stream = frame(&first);
+        stream.extend(frame(&second));
+        let stdin = session.stdin.as_mut().unwrap();
+        for chunk in stream.chunks(7) {
+            stdin.write_all(chunk).unwrap();
+        }
+        assert_eq!(messages.try_iter().collect::<Vec<_>>(), [first, second]);
+        // A send through the session is framed and unframed again.
+        let seq = session.send_request("threads", serde_json::json!({})).unwrap();
+        let sent = messages.try_recv().unwrap();
+        assert_eq!(sent["seq"], seq);
+        assert_eq!(sent["command"], "threads");
+    }
+
+    #[test]
+    fn an_inline_adapter_reports_a_closed_session_and_garbage() {
+        let (sender, messages) = mpsc::channel();
+        let (mut session, events) = DapSession::inline(sender);
+        events.send(AdapterEvent::Message(serde_json::json!({"type": "event"}))).unwrap();
+        assert!(matches!(session.events.try_recv(), Ok(AdapterEvent::Message(_))));
+        // A message the extension host side dropped is a broken pipe for the writer.
+        drop(messages);
+        let error = session.send_request("next", serde_json::json!({})).unwrap_err();
+        assert!(matches!(error, DebugError::Read(ref io) if io.kind() == std::io::ErrorKind::BrokenPipe), "{error}");
+        // A header without a length is invalid.
+        let (sender, _messages) = mpsc::channel();
+        let (mut session, _events) = DapSession::inline(sender);
+        let error = session.stdin.as_mut().unwrap().write_all(b"X: 1\r\n\r\n").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn only_local_pipes_are_connected() {
+        #[cfg(windows)]
+        {
+            assert!(is_local_pipe(Path::new(r"\\.\pipe\dap")));
+            assert!(is_local_pipe(Path::new("//./pipe/dap")));
+            assert!(!is_local_pipe(Path::new(r"\\server\pipe\dap")));
+            assert!(!is_local_pipe(Path::new(r"C:\Users\me\file.txt")));
+            assert!(!is_local_pipe(Path::new(r"\\.\pipe\")));
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(is_local_pipe(Path::new("/tmp/dap.sock")));
+            assert!(!is_local_pipe(Path::new("relative.sock")));
+        }
+        assert!(DapSession::connect_pipe(Path::new("relative-or-remote")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_session_talks_to_an_adapter_over_a_local_socket() {
+        use std::io::Read;
+        use std::os::unix::net::UnixListener;
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("dap.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let adapter = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = BufReader::new(stream.try_clone().unwrap());
+            let message = read_message(&mut request).unwrap().unwrap();
+            stream
+                .write_all(&frame(&serde_json::json!({"seq": 1, "type": "response", "command": message["command"]})))
+                .unwrap();
+            let mut rest = Vec::new();
+            let _ = stream.read_to_end(&mut rest);
+        });
+        let mut session = DapSession::connect_pipe(&path).unwrap();
+        session.send_request("initialize", serde_json::json!({})).unwrap();
+        let reply = loop {
+            match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+                AdapterEvent::Message(message) => break message,
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(reply["command"], "initialize");
+        session.stop().unwrap();
+        adapter.join().unwrap();
     }
 }
 
@@ -1553,6 +1803,7 @@ mod tests {
             env: BTreeMap::new(),
             adapter: None,
             server: None,
+            pipe: None,
             extra: BTreeMap::new(),
         }
     }

@@ -21,6 +21,8 @@ pub(super) fn type_newline(
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
     app.editor_mut().insert_newline();
+    // Formatters that list the line feed among their trigger characters run after Enter too.
+    app.format_on_type("\n");
     Ok(())
 }
 
@@ -994,6 +996,13 @@ pub(super) fn editor_action_go_to_type_definition(
     )
 }
 
+pub(super) fn editor_action_show_color_picker(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.start_color_picker().map_err(CommandError::Failed)
+}
+
 pub(super) fn editor_action_show_hover(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -1002,6 +1011,12 @@ pub(super) fn editor_action_show_hover(
         && !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Hover)
     {
         app.request_lsp("hover");
+    }
+    // What decorations show for the range under the cursor appears even when no provider answers.
+    if let Some(extra) = app.decoration_hover_at_cursor() {
+        if app.hover_text.as_deref().is_none_or(str::is_empty) {
+            app.hover_text = Some(extra);
+        }
     }
     Ok(())
 }
@@ -2292,6 +2307,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "documentHasPath",
         None,
         editor_action_reveal_definition,
+    );
+    add(
+        registry,
+        "editor.action.showOrFocusStandaloneColorPicker",
+        "Show color picker",
+        "Editor",
+        VIEW,
+        "documentHasPath",
+        None,
+        editor_action_show_color_picker,
     );
     add(
         registry,

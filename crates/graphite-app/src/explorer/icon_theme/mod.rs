@@ -261,6 +261,13 @@ pub(crate) fn for_entry(name: &str, is_dir: bool, expanded: bool, is_root: bool)
     }
 }
 
+/// An SVG, PNG or JPEG file as an image to draw, for pictures an extension brings (such as
+/// the gutter icons of decorations). A file that cannot be read or decoded gives `None`.
+pub(crate) fn load_file_image(path: &Path) -> Option<std::sync::Arc<Image>> {
+    let root = path.parent()?;
+    assets::load_image(path, root).map(std::sync::Arc::new)
+}
+
 /// The icon for a file path (tabs, quick open, source control).
 pub(crate) fn for_path(path: &Path) -> Icon {
     let name = path

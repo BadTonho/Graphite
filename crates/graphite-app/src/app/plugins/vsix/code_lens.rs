@@ -306,6 +306,24 @@ impl App {
             .and_then(|lens| lens.command.clone())
     }
 
+    /// The code lens text of `line` of the document with this URI.
+    pub(crate) fn code_lens_text(&self, uri: &str, line: usize) -> Option<String> {
+        self.vsix_line_decorations(uri, line, true)
+            .into_iter()
+            .find(|mark| mark.lens)
+            .and_then(|mark| mark.after)
+            .map(|after| after.text)
+    }
+
+    /// Runs the first code lens of `line`. Returns whether there was one.
+    pub(crate) fn run_code_lens_on_line(&mut self, line: usize) -> bool {
+        let Some(command) = self.code_lens_on_line(line) else {
+            return false;
+        };
+        self.run_lens_command(command);
+        true
+    }
+
     /// Runs the first code lens of the cursor line. Returns whether there was one.
     pub(crate) fn run_code_lens_on_cursor_line(&mut self) -> bool {
         let line = self.editor().cursor_line_col().0;
@@ -514,6 +532,61 @@ mod tests {
         let released = only(&drain(&host), "$releaseCodeLenses");
         assert_eq!(released[0]["args"], json!([4, 8]));
         assert!(!app.plugins.vsix.as_ref().unwrap().lenses.busy());
+    }
+
+    #[test]
+    fn unwrapped_lines_get_a_lens_row_above_them_and_clicking_it_runs_the_lens() {
+        use crate::app::lens_rows::BodyRow;
+        let dir = TempDir::new();
+        let (mut app, host) = app_with_lens_provider(&dir, "one\n  two\nthree\nfour\n");
+        app.poll_vsix();
+        let sent = only(&drain(&host), "$provideCodeLenses");
+        answer(
+            &host,
+            &sent[0]["id"],
+            json!({"lenses": [lens(2, Some("run"), false), lens(4, Some("3 refs"), false)]}),
+        );
+        app.poll_vsix();
+        let uri = uri(&dir);
+        assert_eq!(app.code_lens_text(&uri, 1).as_deref(), Some("run"));
+        assert_eq!(app.code_lens_text(&uri, 2), None);
+        assert!(app.vsix_line_decorations(&uri, 1, true)[0].lens, "marked as a lens");
+
+        // Their rows: the lens row goes above its line and the rest move down.
+        let lines: Vec<usize> = (0..4).collect();
+        let rows = app.body_rows_for_active(&lines, 10);
+        assert_eq!(
+            rows,
+            [
+                BodyRow::Line(0),
+                BodyRow::Lens(1),
+                BodyRow::Line(1),
+                BodyRow::Line(2),
+                BodyRow::Lens(3),
+                BodyRow::Line(3),
+            ]
+        );
+        assert_eq!(app.lens_rows_in_view(4), 2);
+        assert_eq!(app.lens_rows_before(2), 1);
+
+        // Screen rows map back to lines; a lens row belongs to its line and says so.
+        assert_eq!(app.editor_line_at_row(0), 0);
+        assert_eq!(app.editor_line_at_row(1), 1);
+        assert_eq!(app.editor_line_at_row(2), 1);
+        assert_eq!(app.editor_line_at_row(3), 2);
+        assert_eq!(app.editor_line_at_row(5), 3);
+        assert_eq!(app.editor_row_lens_line(1), Some(1));
+        assert_eq!(app.editor_row_lens_line(2), None);
+        assert_eq!(app.editor_row_lens_line(0), None);
+        assert!(app.run_code_lens_on_line(1), "the lens of the line is run");
+        assert!(!app.run_code_lens_on_line(2));
+
+        // With word wrap the lenses stay at the end of the line, so there are no lens rows.
+        app.word_wrap = true;
+        assert_eq!(app.body_rows_for_active(&lines, 10).len(), 4);
+        assert_eq!(app.lens_rows_in_view(4), 0);
+        assert_eq!(app.code_lens_text(&uri, 1).as_deref(), Some("run"), "still known");
+        assert_eq!(app.editor_line_at_row(2), 2);
     }
 
     #[test]

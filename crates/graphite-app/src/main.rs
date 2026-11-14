@@ -321,6 +321,8 @@ struct App {
     webview_handle: Option<String>,
     /// Pages of extension webview views hosted over the side bar, by webview handle.
     sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
+    /// Gutter icon images of decorations by file; `None` for a file that could not be read.
+    decoration_icons: std::cell::RefCell<std::collections::HashMap<PathBuf, Option<std::sync::Arc<graphite_render::Image>>>>,
     /// Grammars contributed by extensions, for the files tree-sitter does not cover.
     textmate: Option<app::textmate::TextMate>,
     /// Pages of extension custom editors hosted over editor groups, by webview handle.
@@ -836,6 +838,7 @@ impl App {
             webview_handle: None,
             sidebar_webviews: std::collections::BTreeMap::new(),
             textmate: None,
+            decoration_icons: Default::default(),
             custom_editor_webviews: std::collections::BTreeMap::new(),
             custom_editor_text_paths: std::collections::BTreeSet::new(),
             graphite_detail_webview: None,

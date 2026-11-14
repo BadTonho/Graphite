@@ -1,4 +1,11 @@
 {
+  "color.none_at_cursor": "Não há cor no cursor",
+  "color.no_provider": "Nenhuma extensão fornece cores para este documento",
+  "color.edit": "Digitar outra cor...",
+  "color.pick.title": "Escrever {color} como...",
+  "color.input.title": "Digite uma cor: #rrggbb, #rrggbbaa, rgb() ou rgba()",
+  "color.not_a_color": "Não é uma cor: {text}",
+  "color.changed": "O documento mudou; escolha a cor de novo",
   "auth.consent.access": "A extensão '{extension}' quer usar a conta '{account}' de {provider}.",
   "auth.consent.signin": "A extensão '{extension}' quer entrar usando {provider}.",
   "auth.consent.allow": "Permitir",

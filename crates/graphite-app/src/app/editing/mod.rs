@@ -7,6 +7,7 @@ pub(crate) mod autosave;
 pub(crate) mod change_navigation;
 pub(crate) mod comments;
 pub(crate) mod custom_editors;
+pub(crate) mod lens_rows;
 pub(crate) mod textmate;
 pub(crate) mod decoration_drawing;
 pub(crate) mod document;

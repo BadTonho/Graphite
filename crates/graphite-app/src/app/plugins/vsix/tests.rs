@@ -1641,6 +1641,69 @@ fn vsix_notebook_serializers_open_and_save_files_in_the_notebook_editor() {
 }
 
 #[test]
+fn vsix_decorations_offer_hover_messages_gutter_icons_and_ruler_marks() {
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let file = work.join("a.txt");
+    std::fs::write(&file, "héllo wörld\nsecond\n").unwrap();
+    let mut app = App::new_with_options(work, None, true);
+    app.profile_root = dir.path().join("profile");
+    app.open_file(file.clone());
+    let (session, _host) = Session::loopback();
+    app.plugins.vsix = Some(Runtime::for_test(session));
+    let uri = app.decoration_uri(&file).unwrap();
+    let mut call = |app: &mut App, method: &str, args: Value| {
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 1, "actor": "MainThreadTextEditors", "method": method, "args": args}),
+        )
+        .unwrap();
+        app.plugins.vsix = Some(runtime);
+    };
+    call(&mut app, "$registerTextEditorDecorationType", json!([
+        "ext", "deco-1",
+        {"gutterIconPath": "/icons/dot.svg", "overviewRulerColor": "#ff0000",
+         "before": {"contentText": "> "}}]));
+    call(&mut app, "$trySetDecorations", json!([uri, "deco-1", [
+        {"range": {"startLineNumber": 1, "startColumn": 7, "endLineNumber": 1, "endColumn": 12},
+         "hoverMessage": [{"value": "about wörld"}]},
+        {"range": {"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 3}},
+    ]]));
+
+    // The cursor inside the first range shows its message (columns count UTF-16 units).
+    app.editor_mut().set_cursor_line_col(0, 8);
+    assert_eq!(app.decoration_hover_at_cursor().as_deref(), Some("about wörld"));
+    app.editor_mut().set_cursor_line_col(0, 2);
+    assert_eq!(app.decoration_hover_at_cursor(), None, "outside the range");
+    app.editor_mut().set_cursor_line_col(1, 0);
+    assert_eq!(app.decoration_hover_at_cursor(), None, "a range without a message");
+
+    // The command shows it even when no provider answers, and keeps what a provider answered.
+    app.editor_mut().set_cursor_line_col(0, 8);
+    app.hover_text = None;
+    app.run_ui_command("editor.action.showHover");
+    assert_eq!(app.hover_text.as_deref(), Some("about wörld"));
+    app.hover_text = Some("from a provider".into());
+    app.run_ui_command("editor.action.showHover");
+    assert_eq!(app.hover_text.as_deref(), Some("from a provider"));
+
+    // Gutter icons and before text come with the first line of each range; the ruler lists lines.
+    let marks = app.vsix_line_decorations(&uri, 0, true);
+    assert_eq!(marks.len(), 1);
+    assert_eq!(marks[0].before.as_ref().unwrap().text, "> ");
+    assert_eq!(marks[0].gutter_icon.as_deref(), Some(std::path::Path::new("/icons/dot.svg")));
+    assert_eq!(
+        app.vsix_overview_marks(&uri, true).iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert!(app.vsix_overview_marks("file:///elsewhere", true).is_empty());
+    // A missing icon file is remembered as missing and does not fail.
+    assert!(crate::icon_theme::load_file_image(std::path::Path::new("/icons/dot.svg")).is_none());
+}
+
+#[test]
 fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
     use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};
     use winit::keyboard::{Key, NamedKey};
