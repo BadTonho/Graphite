@@ -192,7 +192,7 @@ pub(crate) struct EditorOverlay {
     pub bounds: [f64; 4],
 }
 
-fn resource_of(path: &Path) -> Option<String> {
+pub(super) fn resource_of(path: &Path) -> Option<String> {
     super::virtual_fs::uri_for_path(path)
         .or_else(|| DocumentUri::from_path(path).ok())
         .map(|uri| uri.as_str().to_owned())

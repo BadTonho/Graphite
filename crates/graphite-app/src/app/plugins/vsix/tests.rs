@@ -1413,6 +1413,233 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
     assert!(app.custom_editor_is_bound(&drawing), "other editors stay");
 }
 
+/// An app with a trusted workspace, a ready extension host and one installed extension that
+/// contributes the notebook type `sample-book` for `*.sbook` files.
+fn notebook_test_app(dir: &TempDir) -> (App, graphite_extension_host::code_oss::LoopbackHost, PathBuf) {
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let mut app = App::new_with_options(work.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let (session, host) = Session::loopback();
+    app.plugins.vsix = Some(Runtime::for_test(session));
+    app.plugins.installed_plugins_mut().push(Installed {
+        metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+            id: "test.books".into(),
+            version: "1.0.0".into(),
+            main: Some("index.js".into()),
+            notebooks: vec![graphite_plugins::manifest::CustomEditorContribution {
+                view_type: "sample-book".into(),
+                display_name: "Sample Book".into(),
+                patterns: vec!["*.sbook".into()],
+                priority: "default".into(),
+            }],
+            activation_events: vec!["onNotebook:sample-book".into()],
+            ..Default::default()
+        }),
+        enabled: true,
+        trusted_version: Some("1.0.0".into()),
+        directory: "test.books@1.0.0".into(),
+        dev_path: None,
+    });
+    (app, host, work)
+}
+
+fn notebook_request(app: &mut App, actor: &str, id: u64, method: &str, args: Value) {
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": id, "actor": actor, "method": method, "args": args}),
+    )
+    .unwrap();
+    app.plugins.vsix = Some(runtime);
+}
+
+fn notebook_finish(app: &mut App, call: &Value, outcome: Value) {
+    let mut event = json!({"id": call["id"]});
+    for (key, value) in outcome.as_object().unwrap() {
+        event[key] = value.clone();
+    }
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.finish_vsix_notebook(&mut runtime, &event);
+    app.plugins.vsix = Some(runtime);
+}
+
+fn notebook_drive(app: &mut App) {
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.drive_vsix_notebooks(&mut runtime);
+    app.plugins.vsix = Some(runtime);
+}
+
+#[test]
+fn vsix_notebook_controllers_run_cells_through_the_extension() {
+    use crate::app::notebooks::notebook_kernel::RunTarget;
+    use base64::Engine;
+    let dir = TempDir::new();
+    let (mut app, host, work) = notebook_test_app(&dir);
+    let file = work.join("a.ipynb");
+    std::fs::write(
+        &file,
+        r##"{"cells":[{"cell_type":"code","metadata":{},"source":["print(1)"],"outputs":[],"execution_count":null,"id":"c1"},
+        {"cell_type":"markdown","metadata":{},"source":["# t"],"id":"c2"}],"metadata":{},"nbformat":4,"nbformat_minor":5}"##,
+    )
+    .unwrap();
+    app.open_file(file.clone());
+    assert!(app.active_notebook().is_some(), "the notebook opened in the notebook editor");
+
+    // A registered controller is offered for the notebook and can be started.
+    notebook_request(&mut app, "MainThreadNotebookKernels", 1, "$addKernel", json!([7, {
+        "id": "ext.kernel", "notebookType": "jupyter-notebook", "extensionId": {"value": "test.books"},
+        "label": "Ext Kernel", "detail": "1.0", "supportedLanguages": ["python"]}]));
+    notebook_request(&mut app, "MainThreadNotebookKernels", 2, "$addKernel", json!([8, {
+        "id": "ext.other", "notebookType": "another-type", "label": "Other"}]));
+    let specs = app.vsix_notebook_kernel_specs();
+    assert_eq!(specs.len(), 1, "only controllers of this notebook type: {specs:?}");
+    assert_eq!(specs[0].name, "vsix:7");
+    assert_eq!(specs[0].display_name, "Ext Kernel (1.0)");
+    app.start_extension_kernel(specs[0].clone()).unwrap();
+    while host.next_sent().is_some() {}
+
+    // Running a cell sends it to the extension with the notebook it belongs to.
+    app.run_notebook_cells(RunTarget::Selected).unwrap();
+    notebook_drive(&mut app);
+    let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
+    let find = |method: &str| sent.iter().find(|m| m["method"] == method).cloned().unwrap_or_else(|| panic!("no {method}: {sent:?}"));
+    let cells = find("$acceptDocumentsAndEditorsDelta");
+    assert_eq!(cells["args"][0]["addedDocuments"].as_array().unwrap().len(), 2, "a document for each cell");
+    let notebook = find("$acceptDocumentAndEditorsDelta");
+    assert_eq!(notebook["actor"], "ExtHostNotebook");
+    assert_eq!(notebook["serializable"], json!([0]));
+    let model = &notebook["args"][0]["addedDocuments"][0];
+    assert_eq!(model["viewType"], "jupyter-notebook");
+    assert_eq!(model["cells"][0]["source"], json!(["print(1)"]));
+    assert_eq!(model["cells"][0]["cellKind"], 2);
+    assert_eq!(model["cells"][1]["cellKind"], 1);
+    let execute = find("$executeCells");
+    assert_eq!(execute["actor"], "ExtHostNotebookKernels");
+    assert_eq!(execute["args"][0], 7);
+    let handle = model["cells"][0]["handle"].clone();
+    assert_eq!(execute["args"][2], json!([handle]));
+    let notebook_uri = execute["args"][1]["$graphiteUri"].as_str().unwrap().to_owned();
+    assert!(app.active_notebook().unwrap().is_running());
+
+    // The execution the extension creates streams outputs and completes.
+    let encode = |text: &str| base64::engine::general_purpose::STANDARD.encode(text);
+    notebook_request(&mut app, "MainThreadNotebookKernels", 3, "$createExecution",
+        json!([100, "ext.kernel", notebook_uri, handle]));
+    notebook_request(&mut app, "MainThreadNotebookKernels", 4, "$updateExecution", json!([100, {"value": [
+        {"editType": 3, "executionOrder": 5},
+        {"editType": 1, "append": false, "outputs": [{"outputId": "o1", "items": [
+            {"mime": "application/vnd.code.notebook.stdout", "valueBytes": {"$bytes": encode("hello\n")}}]}]},
+    ], "buffers": []}]));
+    notebook_request(&mut app, "MainThreadNotebookKernels", 5, "$updateExecution", json!([100, [
+        {"editType": 2, "outputId": "o1", "append": true, "items": [
+            {"mime": "application/vnd.code.notebook.stdout", "valueBytes": {"$bytes": encode("world\n")}}]}]]));
+    notebook_request(&mut app, "MainThreadNotebookKernels", 6, "$completeExecution",
+        json!([100, {"value": {"lastRunSuccess": true}}]));
+    notebook_finish(&mut app, &execute, json!({"result": null}));
+    app.poll_kernels();
+    let session = app.active_notebook().unwrap();
+    assert!(!session.is_running());
+    assert_eq!(session.cells[0].cell.execution_count, Some(5));
+    assert_eq!(session.cells[0].cell.outputs.len(), 1);
+    assert_eq!(session.cells[0].cell.outputs[0]["text"], "hello\nworld\n");
+
+    // A failing handler ends the run with an error output.
+    app.run_notebook_cells(RunTarget::Selected).unwrap();
+    notebook_drive(&mut app);
+    let execute = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$executeCells").unwrap();
+    notebook_finish(&mut app, &execute, json!({"error": "Boom"}));
+    app.poll_kernels();
+    let session = app.active_notebook().unwrap();
+    assert!(!session.is_running());
+    assert_eq!(session.cells[0].cell.outputs.last().unwrap()["output_type"], "error");
+    assert_eq!(session.cells[0].cell.outputs.last().unwrap()["evalue"], "Boom");
+
+    // Interrupting reaches the extension; removing the controller ends the kernel.
+    app.run_notebook_cells(RunTarget::Selected).unwrap();
+    notebook_drive(&mut app);
+    while host.next_sent().is_some() {}
+    app.with_notebook(|session| session.interrupt_kernel());
+    notebook_drive(&mut app);
+    let cancel = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$cancelCells").expect("cancel");
+    assert_eq!(cancel["args"][0], 7);
+    notebook_request(&mut app, "MainThreadNotebookKernels", 7, "$removeKernel", json!([7]));
+    assert!(app.vsix_notebook_kernel_specs().is_empty());
+}
+
+#[test]
+fn vsix_notebook_serializers_open_and_save_files_in_the_notebook_editor() {
+    use base64::Engine;
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let dir = TempDir::new();
+    let (mut app, host, work) = notebook_test_app(&dir);
+    let file = work.join("story.sbook");
+    std::fs::write(&file, "abc").unwrap();
+    assert_eq!(app.default_notebook_type(&file).as_deref(), Some("sample-book"));
+    assert!(app.default_notebook_type(&work.join("a.ipynb")).is_none(), "ipynb keeps the Jupyter editor");
+    assert!(app.default_notebook_type(&work.join("a.txt")).is_none());
+
+    // The provider is not there yet: the open waits for it and the extension is activated.
+    app.open_file(file.clone());
+    let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
+    assert!(sent.iter().any(|m| m["type"] == "activateByEvent" && m["event"] == "onNotebook:sample-book"));
+    assert!(sent.iter().all(|m| m["method"] != "$dataToNotebook"));
+    assert!(app.documents.id_for_path(&file).is_none(), "the raw file is not opened as text");
+    notebook_request(&mut app, "MainThreadNotebook", 1, "$registerNotebookSerializer",
+        json!([3, {"id": "test.books", "location": null}, "sample-book", {}, null]));
+    let read = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$dataToNotebook").expect("read call");
+    assert_eq!(read["actor"], "ExtHostNotebook");
+    assert_eq!(read["args"], json!([3, {"$graphiteBytes": encode(b"abc")}]));
+
+    // The serializer's notebook opens in the notebook editor, through a mirror.
+    notebook_finish(&mut app, &read, json!({"result": {"value": {
+        "metadata": {"language_info": {"name": "python"}},
+        "cells": [{"cellKind": 2, "source": "x = 1", "language": "python", "outputs": []},
+                  {"cellKind": 1, "source": "# Story", "language": "markdown", "outputs": []}]}}}));
+    let session = app.active_notebook().expect("the notebook opened");
+    assert_eq!(session.cells.len(), 2);
+    assert_eq!(session.cells[0].text(), "x = 1");
+    let mirror = app.documents[app.active_document()].buffer.path().unwrap().to_path_buf();
+    assert!(mirror.starts_with(app.profile_root.join("notebook-mirror")));
+    assert_eq!(mirror.file_name().unwrap(), "story.sbook.ipynb");
+    assert_eq!(app.serialized_notebook_origin(&mirror).as_deref(), Some(file.as_path()));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "abc", "opening does not touch the file");
+
+    // Saving the mirror writes the real file through the serializer.
+    app.upload_serialized_notebook(&mirror);
+    let write = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$notebookToData").expect("write call");
+    assert_eq!(write["serializable"], json!([1]));
+    assert_eq!(write["bytes"], true);
+    assert_eq!(write["args"][0], 3);
+    let data = &write["args"][1];
+    assert_eq!(data["cells"][0]["source"], "x = 1");
+    assert_eq!(data["cells"][0]["cellKind"], 2);
+    assert_eq!(data["cells"][1]["cellKind"], 1);
+    notebook_finish(&mut app, &write, json!({"result": {"$bytes": encode(b"serialized!")}}));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "serialized!");
+
+    // A serializer error is reported and leaves the file alone.
+    app.upload_serialized_notebook(&mirror);
+    let write = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$notebookToData").unwrap();
+    notebook_finish(&mut app, &write, json!({"error": "cannot write"}));
+    assert!(app.status.contains("cannot write"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "serialized!");
+    // Other files do not go through a serializer.
+    app.upload_serialized_notebook(&work.join("plain.txt"));
+    assert!(std::iter::from_fn(|| host.next_sent()).all(|m| m["method"] != "$notebookToData"));
+
+    // A failing read falls back to the text editor.
+    let broken = work.join("broken.sbook");
+    std::fs::write(&broken, "xyz").unwrap();
+    app.open_file(broken.clone());
+    let read = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$dataToNotebook").unwrap();
+    notebook_finish(&mut app, &read, json!({"error": "not a book"}));
+    assert!(app.documents.id_for_path(&broken).is_some(), "opened as text instead");
+}
+
 #[test]
 fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
     use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};

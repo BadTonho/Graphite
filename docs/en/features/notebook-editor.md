@@ -105,3 +105,5 @@ A **section** is a markdown cell that starts with a heading (`#` to `######` and
 Folding, sticky scroll and line numbers are view settings: they do not modify the file.
 
 The outline view of a notebook lists the headings of its markdown cells as a tree, with the code cells (and, if asked, the functions and classes they declare) under the heading they follow. Clicking an entry goes to its cell and opens a fold that hid it. **Outline: show code cells**, **show code cell symbols** and **show markdown headers only** change what is listed.
+
+Kernels provided by extensions (notebook controllers) are listed with the installed Jupyter kernels by **Select notebook kernel**, and notebooks in a format an extension defines open in this editor too. See [Extension API](extension-api.md).

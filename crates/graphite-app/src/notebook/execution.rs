@@ -200,6 +200,11 @@ impl Session {
         }
     }
 
+    /// The uid of the cell a request of this notebook's kernel runs.
+    pub(crate) fn request_cell(&self, request: &str) -> Option<u64> {
+        self.kernel.requests.get(request).copied()
+    }
+
     fn cell_of(&self, request: &str) -> Option<usize> {
         let uid = *self.kernel.requests.get(request)?;
         self.cells.iter().position(|state| state.uid == uid)

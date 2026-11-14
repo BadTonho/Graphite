@@ -44,6 +44,14 @@ impl App {
 
     /// Opens `path`, with the custom editor an extension offers for it by default, if any.
     pub(crate) fn open_file(&mut self, path: PathBuf) {
+        if self.documents.id_for_path(&path).is_none() {
+            if let Some(view_type) = self.default_notebook_type(&path) {
+                // The notebook serializer reads the file; the notebook opens when it answers.
+                if self.open_serialized_notebook(&path, &view_type) {
+                    return;
+                }
+            }
+        }
         let editor = self.default_custom_editor(&path);
         self.open_file_as_text(path.clone());
         if let Some(editor) = editor {

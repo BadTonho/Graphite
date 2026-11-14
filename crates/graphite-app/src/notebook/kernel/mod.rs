@@ -15,7 +15,7 @@ pub(crate) use handle::attach;
 #[allow(unused_imports)]
 pub(crate) use handle::{launch, Command, KernelHandle, Notify};
 #[allow(unused_imports)]
-pub(crate) use protocol::{KernelEvent, KernelState};
+pub(crate) use protocol::{decode, KernelEvent, KernelState, Message};
 #[allow(unused_imports)]
 pub(crate) use spec::{installed, pick_spec, KernelSpec};
 

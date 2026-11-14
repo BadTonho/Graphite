@@ -33,7 +33,10 @@ impl App {
         if refresh || self.kernel_specs.is_none() {
             self.kernel_specs = Some((self.kernel_lister)());
         }
-        self.kernel_specs.clone().unwrap_or_default()
+        let mut specs = self.kernel_specs.clone().unwrap_or_default();
+        // The controllers extensions provide for this kind of notebook.
+        specs.extend(self.vsix_notebook_kernel_specs());
+        specs
     }
 
     /// Called from the kernel's threads; wakes the event loop to collect what arrived.
@@ -48,6 +51,9 @@ impl App {
 
     /// Starts `spec` for the active notebook, replacing the kernel it had.
     fn start_kernel(&mut self, spec: KernelSpec) -> Result<(), String> {
+        if spec.name.starts_with(crate::app::plugins::vsix::SPEC_PREFIX) {
+            return self.start_extension_kernel(spec);
+        }
         let document = self.active_document();
         let directory = self.documents[document]
             .buffer

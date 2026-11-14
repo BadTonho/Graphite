@@ -279,6 +279,7 @@
   "status.zen.enabled": "Zen Mode",
   "search.closed": "Search closed",
   "search.invalid_options": "Invalid search: {error}",
+  "notebook.opening_with_extension": "Opening {name} with its notebook serializer...",
   "custom_editor.opening": "Opening with {editor}...",
   "custom_editor.unavailable": "The extension host is not available to open this editor",
   "custom_editor.no_file": "Open a saved file first",

@@ -17,6 +17,7 @@ import { PersistentProtocol } from './code/out/vs/base/parts/ipc/common/ipc.net.
 import { NodeSocket } from './code/out/vs/base/parts/ipc/node/ipc.net.js';
 import { ExtHostContext, MainContext } from './code/out/vs/workbench/api/common/extHost.protocol.js';
 import { RPCProtocol } from './code/out/vs/workbench/services/extensions/common/rpcProtocol.js';
+import { SerializableObjectWithBuffers } from './code/out/vs/workbench/services/extensions/common/proxyIdentifier.js';
 import { isEngineValid } from './code/out/vs/platform/extensions/common/extensionValidator.js';
 
 const version = '1.145.2';
@@ -38,7 +39,9 @@ const debugConfigProviders = new Map();
 let workspaceRootUri;
 
 function send(message) {
-    const json = JSON.stringify(message, (_, value) => value?.$mid === 1
+    const json = JSON.stringify(message, (_, value) => value instanceof VSBuffer
+        ? { $bytes: Buffer.from(value.buffer).toString('base64') }
+        : value?.$mid === 1
         ? URI.revive(value).toString().replace(/^file:\/\/\/([a-z])%3A(?=\/)/i, 'file:///$1:') : value);
     process.stdout.write(json + '\n');
 }
@@ -54,6 +57,19 @@ async function stop(error) {
     process.exitCode = error ? 1 : 0;
     input.close();
     process.stdin.destroy();
+}
+
+// Graphite marks a URI as `{ $graphiteUri }` and bytes as `{ $graphiteBytes }` (base64), at any depth.
+function revive(value) {
+    if (Array.isArray(value)) return value.map(revive);
+    if (value && typeof value === 'object') {
+        if (typeof value.$graphiteUri === 'string') return URI.parse(value.$graphiteUri);
+        if (typeof value.$graphiteBytes === 'string') return VSBuffer.wrap(Buffer.from(value.$graphiteBytes, 'base64'));
+        const revived = {};
+        for (const [key, item] of Object.entries(value)) revived[key] = revive(item);
+        return revived;
+    }
+    return value;
 }
 
 function request(actor, method, args) {
@@ -100,6 +116,9 @@ async function extensions(packages) {
         // Contributions activate their extension without listing the event.
         for (const editor of manifest.contributes?.customEditors ?? []) {
             if (typeof editor.viewType === 'string') events.add(`onCustomEditor:${editor.viewType}`);
+        }
+        for (const notebook of manifest.contributes?.notebooks ?? []) {
+            if (typeof notebook.type === 'string') events.add(`onNotebook:${notebook.type}`);
         }
         for (const views of Object.values(manifest.contributes?.views ?? {})) {
             for (const view of Array.isArray(views) ? views : []) {
@@ -428,14 +447,16 @@ async function receive(message) {
             if (token) calls.set(message.id, token);
             try {
                 const actor = rpc.getProxy(ExtHostContext[message.actor]);
-                const args = message.args.map(arg => arg?.$graphiteUri ? URI.parse(arg.$graphiteUri)
-                    : typeof arg?.$graphiteBytes === 'string' ? VSBuffer.wrap(Buffer.from(arg.$graphiteBytes, 'base64')) : arg);
+                const args = message.args.map(revive);
+                // Arguments the protocol passes as `SerializableObjectWithBuffers`.
+                for (const index of message.serializable ?? []) args[index] = new SerializableObjectWithBuffers(args[index]);
                 if (token) args.push(token.token);
                 const result = await actor[message.method](...args);
                 // Binary answers (semantic tokens) reach Graphite as little-endian 32-bit words.
-                const reply = result instanceof VSBuffer
-                    ? (message.bytes ? { $bytes: Buffer.from(result.buffer).toString('base64') } : { $u32: words(result) })
-                    : result;
+                const plain = result instanceof SerializableObjectWithBuffers ? result.value : result;
+                const reply = plain instanceof VSBuffer
+                    ? (message.bytes ? { $bytes: Buffer.from(plain.buffer).toString('base64') } : { $u32: words(plain) })
+                    : plain;
                 if (message.id != null) send({ type: 'result', id: message.id, result: reply });
             } catch (error) {
                 if (message.id != null) send({ type: 'result', id: message.id, error: String(error) });

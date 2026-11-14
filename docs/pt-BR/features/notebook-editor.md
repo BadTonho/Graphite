@@ -105,3 +105,5 @@ Uma **seção** é uma célula markdown que começa com um título (`#` a `#####
 Recolher, rolagem fixa e números de linha são configurações de visualização: não modificam o arquivo.
 
 A visão de estrutura de um notebook lista os títulos das células markdown como uma árvore, com as células de código (e, se pedido, as funções e classes que declaram) sob o título que as precede. Clicar numa entrada vai até a célula e abre a seção recolhida que a escondia. **Estrutura: mostrar células de código**, **mostrar símbolos das células de código** e **mostrar só os títulos markdown** mudam o que é listado.
+
+Os kernels fornecidos por extensões (controladores de notebook) aparecem junto com os kernels Jupyter instalados em **Selecionar kernel do notebook**, e os notebooks em um formato que uma extensão define também abrem neste editor. Veja [API de extensões](extension-api.md).

@@ -76,3 +76,5 @@ workspace.registerFileSystemProvider
 authentication.getSession
 authentication.registerAuthenticationProvider
 window.registerCustomEditorProvider
+workspace.registerNotebookSerializer
+notebooks.createNotebookController

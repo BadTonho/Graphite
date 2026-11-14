@@ -278,6 +278,7 @@
   "status.zen.disabled": "Modo Zen fechado",
   "status.zen.enabled": "Modo Zen",
   "search.invalid_options": "Busca inválida: {error}",
+  "notebook.opening_with_extension": "Abrindo {name} com o serializador de notebook...",
   "custom_editor.opening": "Abrindo com {editor}...",
   "custom_editor.unavailable": "O host de extensões não está disponível para abrir este editor",
   "custom_editor.no_file": "Abra um arquivo salvo primeiro",

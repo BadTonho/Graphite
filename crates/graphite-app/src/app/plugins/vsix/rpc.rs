@@ -198,6 +198,13 @@ impl App {
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
+            (
+                "MainThreadNotebook"
+                | "MainThreadNotebookKernels"
+                | "MainThreadNotebookDocuments"
+                | "MainThreadNotebookEditors",
+                _,
+            ) => self.handle_vsix_notebook_request(runtime, actor, method, args),
             ("MainThreadCustomEditors", _) => {
                 self.handle_vsix_custom_editor_request(runtime, method, args)
             }

@@ -18,6 +18,9 @@ mod file_events;
 mod hierarchy;
 pub(crate) use hierarchy::Kind as HierarchyKind;
 mod language_results;
+mod notebook_data;
+mod notebooks;
+pub(crate) use notebooks::{JUPYTER_TYPE, SPEC_PREFIX};
 mod languages;
 mod passive;
 mod requested_commands;
@@ -75,6 +78,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Notebook serializers and controllers.
+    notebooks: notebooks::Notebooks,
     /// Custom editors registered via `MainThreadCustomEditors`.
     editors: editors::CustomEditors,
     /// Authentication providers registered via `MainThreadAuthentication`.
@@ -115,6 +120,7 @@ impl Runtime {
             || self.vfs.busy()
             || self.auth.busy()
             || self.editors.busy()
+            || self.notebooks.busy()
             || self.tasks.busy()
             || self.lm_tools.busy()
     }
@@ -148,6 +154,7 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            notebooks: Default::default(),
             editors: Default::default(),
             auth: Default::default(),
             vfs: Default::default(),
@@ -331,6 +338,7 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            notebooks: Default::default(),
             editors: Default::default(),
             auth: Default::default(),
             vfs: Default::default(),
@@ -425,6 +433,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(notebooks::is_notebook_reply) {
+                        self.finish_vsix_notebook(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(editors::is_editor_reply) {
                         self.finish_vsix_custom_editor(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(auth::is_auth_reply) {
@@ -493,6 +503,7 @@ impl App {
             runtime.vfs.expire(Instant::now());
             self.drive_vsix_auth(runtime);
             self.drive_vsix_custom_editors(runtime);
+            self.drive_vsix_notebooks(runtime);
             self.poll_vsix_tasks(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;

@@ -343,6 +343,9 @@ pub struct Vsix {
     /// Custom editors contributed via `contributes.customEditors`.
     #[serde(default)]
     pub custom_editors: Vec<CustomEditorContribution>,
+    /// Notebook types contributed via `contributes.notebooks`, served by a notebook serializer.
+    #[serde(default)]
+    pub notebooks: Vec<CustomEditorContribution>,
 }
 
 /// A custom editor an extension offers for some files (`contributes.customEditors`).
@@ -723,6 +726,9 @@ pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
     for editor in vsix_custom_editors(manifest) {
         implicit(format!("onCustomEditor:{}", editor.view_type));
     }
+    for notebook in vsix_notebooks(manifest) {
+        implicit(format!("onNotebook:{}", notebook.view_type));
+    }
     for views in manifest
         .pointer("/contributes/views")
         .and_then(Value::as_object)
@@ -751,13 +757,27 @@ pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
 }
 
 pub(crate) fn vsix_custom_editors(manifest: &Value) -> Vec<CustomEditorContribution> {
+    vsix_selector_contributions(manifest, "customEditors", "viewType")
+}
+
+/// The notebook types of `contributes.notebooks`, in the shape of a custom editor: the type, a
+/// name and the file patterns it opens.
+pub(crate) fn vsix_notebooks(manifest: &Value) -> Vec<CustomEditorContribution> {
+    vsix_selector_contributions(manifest, "notebooks", "type")
+}
+
+fn vsix_selector_contributions(
+    manifest: &Value,
+    contribution: &str,
+    type_key: &str,
+) -> Vec<CustomEditorContribution> {
     manifest
-        .pointer("/contributes/customEditors")
+        .pointer(&format!("/contributes/{contribution}"))
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|entry| {
-            let view_type = entry.get("viewType")?.as_str()?.trim();
+            let view_type = entry.get(type_key)?.as_str()?.trim();
             if view_type.is_empty() {
                 return None;
             }
@@ -1230,6 +1250,23 @@ mod activity_bar_tests {
         assert!(paint.matches(std::path::Path::new("/work/icons/a.svg")));
         assert!(!paint.matches(std::path::Path::new("/work/other/a.svg")));
         assert!(!paint.matches(std::path::Path::new("/work/pic.jpg")));
+    }
+
+    #[test]
+    fn notebook_types_are_parsed_and_activate_their_extension() {
+        let manifest = serde_json::json!({
+            "contributes": {"notebooks": [
+                {"type": "sample-book", "displayName": "Sample Book",
+                 "selector": [{"filenamePattern": "*.sbook"}]},
+                {"type": "", "selector": []}
+            ]}
+        });
+        let notebooks = vsix_notebooks(&manifest);
+        assert_eq!(notebooks.len(), 1);
+        assert_eq!(notebooks[0].view_type, "sample-book");
+        assert!(notebooks[0].matches(std::path::Path::new("/w/a.SBOOK")));
+        assert!(notebooks[0].is_default());
+        assert_eq!(vsix_activation_events(&manifest), ["onNotebook:sample-book"]);
     }
 
     #[test]
