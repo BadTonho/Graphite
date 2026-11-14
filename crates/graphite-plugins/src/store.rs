@@ -90,6 +90,24 @@ impl Store {
                             }
                         }
                     }
+                    if vsix.custom_editors.is_empty()
+                        && vsix.contributions.iter().any(|name| name == "customEditors")
+                    {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.custom_editors = crate::manifest::vsix_custom_editors(&manifest);
+                                vsix.activation_events =
+                                    crate::manifest::vsix_activation_events(&manifest);
+                            }
+                        }
+                    }
                     if vsix.debuggers.is_empty()
                         && vsix.contributions.iter().any(|name| name == "debuggers")
                     {

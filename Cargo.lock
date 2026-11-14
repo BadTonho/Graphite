@@ -3105,6 +3105,7 @@ dependencies = [
 name = "graphite-plugins"
 version = "0.1.0"
 dependencies = [
+ "globset",
  "reqwest",
  "semver",
  "serde",

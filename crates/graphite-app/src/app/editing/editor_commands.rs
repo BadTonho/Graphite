@@ -463,6 +463,7 @@ impl App {
                 encoding: crate::file_format::Encoding::Utf8,
                 line_ending: crate::file_format::LineEnding::Lf,
                 notebook: None,
+                custom_dirty: false,
             });
             self.editor_groups = super::editor_groups::EditorGroups::new(replacement);
         }

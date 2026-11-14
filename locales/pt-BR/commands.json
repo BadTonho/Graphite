@@ -204,6 +204,7 @@
   "command.typeNewline": "Inserir nova linha",
   "command.undo": "Desfazer",
   "command.workbench.action.closeActiveEditor": "Fechar editor ativo",
+  "command.workbench.action.reopenWithEditor": "Reabrir editor com...",
   "command.workbench.action.files.save": "Salvar",
   "command.workbench.action.files.saveAll": "Salvar tudo",
   "command.workbench.action.findInFiles": "Localizar em arquivos",

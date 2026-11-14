@@ -383,10 +383,21 @@ pub(super) fn actions_find(
     Ok(())
 }
 
+pub(super) fn workbench_action_reopen_with_editor(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.open_with_palette();
+    Ok(())
+}
+
 pub(super) fn workbench_action_files_save(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
+    if app.route_custom_editor_action(crate::app::plugins::vsix::EditorAction::Save) {
+        return Ok(());
+    }
     let job = app.command_job(false).expect("save command ticket");
     app.save_batch(
         vec![app.command_document()],
@@ -1128,6 +1139,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         workbench_action_terminal_toggle_terminal,
+    );
+    add(
+        registry,
+        "workbench.action.reopenWithEditor",
+        "Reopen editor with...",
+        "Workbench",
+        VIEW,
+        "documentHasPath",
+        None,
+        workbench_action_reopen_with_editor,
     );
     add(
         registry,

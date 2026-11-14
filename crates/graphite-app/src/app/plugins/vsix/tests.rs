@@ -1225,6 +1225,195 @@ fn vsix_github_sessions_come_from_graphites_own_sign_in() {
 }
 
 #[test]
+fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let drawing = work.join("art.draw");
+    let notes = work.join("todo.notes");
+    std::fs::write(&drawing, "binary-ish").unwrap();
+    std::fs::write(&notes, "- one\n").unwrap();
+
+    let mut app = App::new_with_options(work.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let (session, host) = Session::loopback();
+    app.plugins.vsix = Some(Runtime::for_test(session));
+    let editor = |view_type: &str, pattern: &str, priority: &str| {
+        graphite_plugins::manifest::CustomEditorContribution {
+            view_type: view_type.into(),
+            display_name: format!("{view_type} editor"),
+            patterns: vec![pattern.into()],
+            priority: priority.into(),
+        }
+    };
+    app.plugins.installed_plugins_mut().push(Installed {
+        metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+            id: "test.editors".into(),
+            version: "1.0.0".into(),
+            main: Some("index.js".into()),
+            custom_editors: vec![
+                editor("sample.paint", "*.draw", "default"),
+                editor("sample.notes", "*.notes", "option"),
+            ],
+            activation_events: vec!["onCustomEditor:sample.paint".into()],
+            ..Default::default()
+        }),
+        enabled: true,
+        trusted_version: Some("1.0.0".into()),
+        directory: "test.editors@1.0.0".into(),
+        dev_path: None,
+    });
+    let drain = |host: &graphite_extension_host::code_oss::LoopbackHost| -> Vec<Value> {
+        std::iter::from_fn(|| host.next_sent()).collect()
+    };
+    let find = |messages: &[Value], method: &str| -> Value {
+        messages
+            .iter()
+            .find(|message| message["method"] == method)
+            .cloned()
+            .unwrap_or_else(|| panic!("no {method} call in {messages:?}"))
+    };
+    let mut request = |app: &mut App, id: u64, method: &str, args: Value| {
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": id, "actor": "MainThreadCustomEditors", "method": method, "args": args}),
+        )
+        .unwrap();
+        app.plugins.vsix = Some(runtime);
+    };
+    let drive = |app: &mut App| {
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.drive_vsix_custom_editors(&mut runtime);
+        app.plugins.vsix = Some(runtime);
+    };
+    let finish = |app: &mut App, call: &Value, outcome: Value| {
+        let mut event = json!({"id": call["id"]});
+        for (key, value) in outcome.as_object().unwrap() {
+            event[key] = value.clone();
+        }
+        let mut runtime = app.plugins.vsix.take().unwrap();
+        app.finish_vsix_custom_editor(&mut runtime, &event);
+        app.plugins.vsix = Some(runtime);
+    };
+
+    // Files with a default custom editor open with it; the extension is activated for it.
+    assert_eq!(app.custom_editor_choices(&notes).len(), 1);
+    assert!(app.default_custom_editor(&notes).is_none(), "option editors do not open by default");
+    app.open_file(drawing.clone());
+    let id = app.documents.id_for_path(&drawing).expect("the file is open");
+    assert!(app.custom_editor_is_bound(&drawing));
+    let state = app.custom_editor_state(id).unwrap();
+    assert!(!state.ready && state.display_name == "sample.paint editor");
+    let activation = drain(&host);
+    assert!(activation.iter().any(|m| m["type"] == "activateByEvent" && m["event"] == "onCustomEditor:sample.paint"));
+    // Nothing is asked until the provider registers.
+    drive(&mut app);
+    assert!(drain(&host).iter().all(|m| m["method"] != "$createCustomDocument"));
+
+    // Custom documents are created, then the provider fills the page.
+    request(&mut app, 1, "$registerCustomEditorProvider",
+        json!([{"id": "test.editors", "location": null}, "sample.paint", {}, {}, false, false]));
+    drive(&mut app);
+    let sent = drain(&host);
+    let create = find(&sent, "$createCustomDocument");
+    assert_eq!(create["actor"], "ExtHostCustomEditors");
+    let resource = create["args"][0]["$graphiteUri"].as_str().unwrap().to_owned();
+    assert!(resource.ends_with("/art.draw"));
+    assert_eq!(create["args"][1], "sample.paint");
+    assert!(app.documents[id].buffer.is_read_only(), "the text behind the page is not editable");
+    finish(&mut app, &create, json!({"result": {"editable": true}}));
+    let resolve = find(&drain(&host), "$resolveCustomEditor");
+    let handle = resolve["args"][1].as_str().unwrap().to_owned();
+    assert_eq!(resolve["args"][0], json!({"$graphiteUri": resource}));
+    assert_eq!(resolve["args"][2], "sample.paint");
+    assert_eq!(resolve["args"][3]["title"], "art.draw");
+    assert!(app.plugins.vsix.as_ref().unwrap().webviews.contains(&handle));
+    finish(&mut app, &resolve, json!({"result": null}));
+    let state = app.custom_editor_state(id).unwrap();
+    assert!(state.ready && state.writable && !state.can_undo);
+
+    // The page arrives over the webview bridge.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(&mut runtime, &json!({"id": 2, "actor": "MainThreadWebviews",
+        "method": "$setHtml", "args": [handle, "<p>canvas</p>"]})).unwrap();
+    assert_eq!(runtime.webviews.panels[&handle].html, "<p>canvas</p>");
+    app.plugins.vsix = Some(runtime);
+    drain(&host);
+
+    // Edits the extension reports make the tab dirty; save goes to the extension.
+    request(&mut app, 3, "$onDidEdit", json!([resource, "sample.paint", 1, "Draw"]));
+    app.sync_custom_editor_webviews();
+    assert!(app.documents[id].is_dirty());
+    assert!(app.custom_editor_state(id).unwrap().can_undo);
+    assert!(app.route_custom_editor_action(EditorAction::Save));
+    let save = find(&drain(&host), "$onSave");
+    assert_eq!(save["args"], json!([{"$graphiteUri": resource}, "sample.paint"]));
+    assert_eq!(save["cancellable"], true);
+    assert!(app.documents[id].is_dirty(), "dirty until the extension has saved");
+    finish(&mut app, &save, json!({"result": null}));
+    app.sync_custom_editor_webviews();
+    assert!(!app.documents[id].is_dirty());
+
+    // Undo and redo go to the extension with the id of the edit.
+    request(&mut app, 4, "$onDidEdit", json!([resource, "sample.paint", 2, null]));
+    assert!(app.route_custom_editor_action(EditorAction::Undo));
+    let undo = find(&drain(&host), "$undo");
+    assert_eq!(undo["args"], json!([{"$graphiteUri": resource}, "sample.paint", 2, false]));
+    assert!(app.route_custom_editor_action(EditorAction::Redo));
+    let redo = find(&drain(&host), "$redo");
+    assert_eq!(redo["args"][2], 2);
+    assert_eq!(redo["args"][3], true);
+    assert!(app.route_custom_editor_action(EditorAction::Redo), "nothing to redo is still handled");
+    assert!(drain(&host).iter().all(|m| m["method"] != "$redo"));
+
+    // Open With: the text editor releases the page; the choice sticks across opens.
+    app.open_with_palette();
+    let ids: Vec<String> = app.command_palette.as_ref().unwrap().items.iter().map(|i| i.id.clone()).collect();
+    assert_eq!(ids, ["graphite.openWith:", "graphite.openWith:sample.paint"]);
+    app.command_palette = None;
+    app.reopen_with("");
+    assert!(!app.custom_editor_is_bound(&drawing));
+    assert!(!app.documents[id].buffer.is_read_only(), "the text is editable again");
+    assert!(!app.documents[id].is_dirty());
+    let sent = drain(&host);
+    assert!(sent.iter().any(|m| m["method"] == "$onDidDisposeWebviewPanel" && m["args"][0] == json!(handle)));
+    assert!(sent.iter().any(|m| m["method"] == "$disposeCustomDocument"));
+    app.open_file(drawing.clone());
+    assert!(!app.custom_editor_is_bound(&drawing), "the text choice is kept");
+    app.reopen_with("sample.paint");
+    assert!(app.custom_editor_is_bound(&drawing));
+
+    // A text editor works on the open text document and keeps its own undo and save.
+    request(&mut app, 5, "$registerTextEditorProvider",
+        json!([{"id": "test.editors", "location": null}, "sample.notes", {}, {}, false]));
+    app.open_file_as_text(notes.clone());
+    let notes_id = app.documents.id_for_path(&notes).unwrap();
+    app.reopen_with("sample.notes");
+    drive(&mut app);
+    let sent = drain(&host);
+    assert!(sent.iter().all(|m| m["method"] != "$createCustomDocument" || m["args"][1] != "sample.notes"));
+    let resolve = sent
+        .iter()
+        .find(|m| m["method"] == "$resolveCustomEditor" && m["args"][2] == "sample.notes")
+        .expect("a text editor is resolved without a custom document");
+    finish(&mut app, resolve, json!({"result": null}));
+    let state = app.custom_editor_state(notes_id).unwrap();
+    assert!(state.ready && state.kind == crate::app::plugins::vsix::EditorKind::Text);
+    assert!(!state.writable && !app.documents[notes_id].buffer.is_read_only());
+    assert!(!app.route_custom_editor_action(EditorAction::Save), "the document saves itself");
+
+    // Removing a provider returns its files to the text editor.
+    request(&mut app, 6, "$unregisterEditorProvider", json!(["sample.notes"]));
+    assert!(!app.custom_editor_is_bound(&notes));
+    app.sync_custom_editor_webviews();
+    assert!(app.custom_editor_is_bound(&drawing), "other editors stay");
+}
+
+#[test]
 fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
     use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};
     use winit::keyboard::{Key, NamedKey};

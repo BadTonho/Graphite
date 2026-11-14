@@ -75,3 +75,4 @@ scm.createSourceControl
 workspace.registerFileSystemProvider
 authentication.getSession
 authentication.registerAuthenticationProvider
+window.registerCustomEditorProvider

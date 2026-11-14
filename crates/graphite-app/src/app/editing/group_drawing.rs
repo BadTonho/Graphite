@@ -177,6 +177,19 @@ impl App {
                 r.set_clip(None);
                 continue;
             }
+            if let Some(editor) = self.custom_editor_state(document) {
+                // The extension's page is a native overlay over the body of the group.
+                if !editor.ready {
+                    r.draw_text(
+                        &self.tf("custom_editor.opening", &[("editor", &editor.display_name)]),
+                        rect.x + PAD,
+                        rect.y + tab_height + lh,
+                        rgb(Theme::color(Theme::DIM, 0x858585)),
+                    );
+                }
+                r.set_clip(None);
+                continue;
+            }
             if self.documents[document].notebook.is_some() {
                 self.draw_notebook(r, *rect, tab_height, lh, cw, document);
                 r.set_clip(None);

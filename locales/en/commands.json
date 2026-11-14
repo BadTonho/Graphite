@@ -204,6 +204,7 @@
   "command.typeNewline": "Type newline",
   "command.undo": "Undo",
   "command.workbench.action.closeActiveEditor": "Close active editor",
+  "command.workbench.action.reopenWithEditor": "Reopen editor with...",
   "command.workbench.action.files.save": "Save",
   "command.workbench.action.files.saveAll": "Save all",
   "command.workbench.action.findInFiles": "Find in files",

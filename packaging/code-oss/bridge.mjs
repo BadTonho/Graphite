@@ -97,6 +97,18 @@ async function extensions(packages) {
         for (const command of manifest.contributes?.commands ?? []) {
             if (typeof command.command === 'string') events.add(`onCommand:${command.command}`);
         }
+        // Contributions activate their extension without listing the event.
+        for (const editor of manifest.contributes?.customEditors ?? []) {
+            if (typeof editor.viewType === 'string') events.add(`onCustomEditor:${editor.viewType}`);
+        }
+        for (const views of Object.values(manifest.contributes?.views ?? {})) {
+            for (const view of Array.isArray(views) ? views : []) {
+                if (typeof view.id === 'string') events.add(`onView:${view.id}`);
+            }
+        }
+        for (const provider of manifest.contributes?.authentication ?? []) {
+            if (typeof provider.id === 'string') events.add(`onAuthenticationRequest:${provider.id}`);
+        }
         allExtensions.push({ ...manifest, identifier, extensionLocation: URI.file(directory),
             isBuiltin: false, isUserBuiltin: false, isUnderDevelopment: false, targetPlatform: 'universal' });
         activationEvents[id] = [...events];

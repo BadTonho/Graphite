@@ -141,6 +141,7 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
                 activation_events: vsix_activation_events(&m),
                 keybindings: vsix_keybindings(&m),
                 menus: vsix_menus(&m),
+                custom_editors: vsix_custom_editors(&m),
                 language_comments: vsix_language_comments(&m, |path| {
                     json(zip, &format!("extension/{path}")).ok()
                 }),

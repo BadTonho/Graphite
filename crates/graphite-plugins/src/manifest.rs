@@ -340,6 +340,46 @@ pub struct Vsix {
     /// Menu entries contributed via `contributes.menus`.
     #[serde(default)]
     pub menus: Menus,
+    /// Custom editors contributed via `contributes.customEditors`.
+    #[serde(default)]
+    pub custom_editors: Vec<CustomEditorContribution>,
+}
+
+/// A custom editor an extension offers for some files (`contributes.customEditors`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomEditorContribution {
+    pub view_type: String,
+    pub display_name: String,
+    /// The `filenamePattern` globs of the selector. A pattern with a `/` matches the whole path,
+    /// any other matches the file name, ignoring case.
+    pub patterns: Vec<String>,
+    /// `default` opens matching files automatically; `option` only through Open With.
+    pub priority: String,
+}
+
+impl CustomEditorContribution {
+    /// Whether the editor offers to open `path`.
+    pub fn matches(&self, path: &std::path::Path) -> bool {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let full = path.to_string_lossy().replace('\\', "/");
+        self.patterns.iter().any(|pattern| {
+            let target = if pattern.contains('/') { &full } else { &name };
+            globset::GlobBuilder::new(pattern)
+                .case_insensitive(true)
+                .literal_separator(false)
+                .build()
+                .is_ok_and(|glob| glob.compile_matcher().is_match(target))
+        })
+    }
+
+    /// Whether files it matches open with it without asking.
+    pub fn is_default(&self) -> bool {
+        self.priority == "default"
+    }
 }
 
 /// How to start a debug adapter: `runtime` (if any) runs `program`, a path inside the extension.
@@ -662,7 +702,7 @@ pub(crate) fn vsix_commands(manifest: &Value) -> Vec<Command> {
 }
 
 pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
-    manifest
+    let mut events: Vec<String> = manifest
         .get("activationEvents")
         .and_then(Value::as_array)
         .into_iter()
@@ -672,6 +712,77 @@ pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned)
+        })
+        .collect();
+    // Contributions activate their extension without listing the event.
+    let mut implicit = |event: String| {
+        if !events.contains(&event) {
+            events.push(event);
+        }
+    };
+    for editor in vsix_custom_editors(manifest) {
+        implicit(format!("onCustomEditor:{}", editor.view_type));
+    }
+    for views in manifest
+        .pointer("/contributes/views")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|containers| containers.values())
+    {
+        for id in views
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|view| view.get("id").and_then(Value::as_str))
+        {
+            implicit(format!("onView:{id}"));
+        }
+    }
+    for id in manifest
+        .pointer("/contributes/authentication")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|provider| provider.get("id").and_then(Value::as_str))
+    {
+        implicit(format!("onAuthenticationRequest:{id}"));
+    }
+    events
+}
+
+pub(crate) fn vsix_custom_editors(manifest: &Value) -> Vec<CustomEditorContribution> {
+    manifest
+        .pointer("/contributes/customEditors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let view_type = entry.get("viewType")?.as_str()?.trim();
+            if view_type.is_empty() {
+                return None;
+            }
+            let patterns: Vec<String> = entry
+                .get("selector")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|selector| selector.get("filenamePattern")?.as_str())
+                .map(str::to_owned)
+                .collect();
+            Some(CustomEditorContribution {
+                view_type: view_type.to_owned(),
+                display_name: entry
+                    .get("displayName")
+                    .and_then(Value::as_str)
+                    .unwrap_or(view_type)
+                    .to_owned(),
+                patterns,
+                priority: entry
+                    .get("priority")
+                    .and_then(Value::as_str)
+                    .unwrap_or("default")
+                    .to_owned(),
+            })
         })
         .collect()
 }
@@ -1094,6 +1205,52 @@ mod activity_bar_tests {
         let mut bad_native_main = valid;
         bad_native_main.main = "../outside-bin".into();
         assert!(bad_native_main.validate().is_err());
+    }
+
+    #[test]
+    fn custom_editors_are_parsed_and_match_files_by_pattern() {
+        let manifest = serde_json::json!({
+            "contributes": {"customEditors": [
+                {"viewType": "sample.paint", "displayName": "Paint",
+                 "selector": [{"filenamePattern": "*.PNG"}, {"filenamePattern": "**/icons/*.svg"}],
+                 "priority": "option"},
+                {"viewType": "sample.notes", "selector": [{"filenamePattern": "*.notes"}]},
+                {"viewType": "", "selector": []}
+            ]}
+        });
+        let editors = vsix_custom_editors(&manifest);
+        assert_eq!(editors.len(), 2);
+        assert_eq!(editors[0].display_name, "Paint");
+        assert!(!editors[0].is_default());
+        assert!(editors[1].is_default(), "the default priority is `default`");
+        assert_eq!(editors[1].display_name, "sample.notes");
+        let paint = &editors[0];
+        assert!(paint.matches(std::path::Path::new("/work/pic.png")));
+        assert!(paint.matches(std::path::Path::new("C:\\work\\Pic.PNG")));
+        assert!(paint.matches(std::path::Path::new("/work/icons/a.svg")));
+        assert!(!paint.matches(std::path::Path::new("/work/other/a.svg")));
+        assert!(!paint.matches(std::path::Path::new("/work/pic.jpg")));
+    }
+
+    #[test]
+    fn contributions_activate_their_extension_without_listing_the_event() {
+        let manifest = serde_json::json!({
+            "activationEvents": ["onView:sample.tree"],
+            "contributes": {
+                "customEditors": [{"viewType": "sample.paint", "selector": []}],
+                "views": {"sample.box": [{"id": "sample.tree", "name": "T"}, {"id": "sample.web", "name": "W"}]},
+                "authentication": [{"id": "sample.auth", "label": "A"}]
+            }
+        });
+        assert_eq!(
+            vsix_activation_events(&manifest),
+            [
+                "onView:sample.tree",
+                "onCustomEditor:sample.paint",
+                "onView:sample.web",
+                "onAuthenticationRequest:sample.auth"
+            ]
+        );
     }
 
     #[test]

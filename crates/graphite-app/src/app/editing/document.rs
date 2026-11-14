@@ -42,7 +42,21 @@ impl App {
         tab.highlights = Some(HighlightCache { revision, lines });
     }
 
+    /// Opens `path`, with the custom editor an extension offers for it by default, if any.
     pub(crate) fn open_file(&mut self, path: PathBuf) {
+        let editor = self.default_custom_editor(&path);
+        self.open_file_as_text(path.clone());
+        if let Some(editor) = editor {
+            if self.documents.id_for_path(&path).is_some()
+                && !self.custom_editor_is_bound(&path)
+            {
+                self.bind_custom_editor(&path, &editor.view_type);
+            }
+        }
+    }
+
+    /// Opens `path` in the text editor.
+    pub(crate) fn open_file_as_text(&mut self, path: PathBuf) {
         self.editor_groups
             .active_view_mut()
             .smart_selection_history
@@ -114,6 +128,7 @@ impl App {
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
                     notebook: None,
+                    custom_dirty: false,
                 };
                 let mut tab = tab;
                 super::notebook_ui::attach_notebook(&mut tab);

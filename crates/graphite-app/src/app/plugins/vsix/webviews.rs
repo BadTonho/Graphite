@@ -445,6 +445,8 @@ impl App {
                     }
                 } else if let Some(sidebar) = self.sidebar_webviews.get(handle) {
                     sidebar.host.evaluate_script(&script)?;
+                } else if let Some(editor) = self.custom_editor_webviews.get(handle) {
+                    editor.host.evaluate_script(&script)?;
                 }
                 Ok(json!(true))
             }
@@ -459,8 +461,10 @@ impl App {
     }
 
     pub(super) fn sync_vsix_webview_host(&mut self, runtime: &mut Runtime) -> Result<()> {
-        for (handle, sidebar) in &self.sidebar_webviews {
-            for message in sidebar.host.take_messages() {
+        let editors = self.custom_editor_webviews.iter().map(|(h, o)| (h, &o.host));
+        let sidebars = self.sidebar_webviews.iter().map(|(h, s)| (h, &s.host));
+        for (handle, host) in sidebars.chain(editors) {
+            for message in host.take_messages() {
                 let value =
                     serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
                 runtime.session.send(json!({

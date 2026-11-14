@@ -11,6 +11,8 @@ mod colors;
 mod debug;
 pub(crate) mod decorations;
 mod documents;
+mod editors;
+pub(crate) use editors::{EditorAction, EditorChoice, EditorOverlay, Kind as EditorKind};
 mod env_lm;
 mod file_events;
 mod hierarchy;
@@ -73,6 +75,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Custom editors registered via `MainThreadCustomEditors`.
+    editors: editors::CustomEditors,
     /// Authentication providers registered via `MainThreadAuthentication`.
     auth: auth::Auth,
     /// File system providers registered via `MainThreadFileSystem`.
@@ -110,6 +114,7 @@ impl Runtime {
             || self.webview_views.busy()
             || self.vfs.busy()
             || self.auth.busy()
+            || self.editors.busy()
             || self.tasks.busy()
             || self.lm_tools.busy()
     }
@@ -143,6 +148,7 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            editors: Default::default(),
             auth: Default::default(),
             vfs: Default::default(),
             scm: Default::default(),
@@ -325,6 +331,7 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            editors: Default::default(),
             auth: Default::default(),
             vfs: Default::default(),
             scm: Default::default(),
@@ -360,7 +367,10 @@ impl App {
             return;
         }
         let generation = self.plugins.vsix_generation;
-        match self.update_vsix(&mut runtime, generation) {
+        self.plugins.vsix_polling = true;
+        let outcome = self.update_vsix(&mut runtime, generation);
+        self.plugins.vsix_polling = false;
+        match outcome {
             Ok(()) if generation == self.plugins.vsix_generation => {
                 self.plugins.vsix = Some(runtime)
             }
@@ -415,6 +425,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(editors::is_editor_reply) {
+                        self.finish_vsix_custom_editor(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(auth::is_auth_reply) {
                         self.finish_vsix_auth(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(virtual_fs::is_fs_reply) {
@@ -480,6 +492,7 @@ impl App {
             self.expire_vsix_trees(runtime);
             runtime.vfs.expire(Instant::now());
             self.drive_vsix_auth(runtime);
+            self.drive_vsix_custom_editors(runtime);
             self.poll_vsix_tasks(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;

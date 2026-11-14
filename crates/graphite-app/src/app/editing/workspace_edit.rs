@@ -321,6 +321,7 @@ impl App {
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
                     notebook: None,
+                    custom_dirty: false,
                 })
             } else {
                 None

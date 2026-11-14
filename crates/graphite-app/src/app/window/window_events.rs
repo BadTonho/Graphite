@@ -15,6 +15,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.poll_plugins();
         self.sync_graphite_detail_webview();
         self.sync_sidebar_webviews();
+        self.sync_custom_editor_webviews();
         if let (Some(view), Some(gpu)) = (&self.webview, &self.gpu) {
             view.pump();
             let _ = view.set_bounds(&gpu.window);

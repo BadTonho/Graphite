@@ -64,6 +64,8 @@ pub(crate) struct Plugins {
     temporary: Option<PathBuf>,
     pub(crate) vsix: Option<vsix::Runtime>,
     vsix_generation: u64,
+    /// Set while the extension host's messages are being handled (its runtime is taken out).
+    pub(crate) vsix_polling: bool,
     pub(crate) native_tree_views: BTreeMap<String, super::extension_host::NativeTreeView>,
     pub(crate) native_webview: Option<super::extension_host::NativeWebviewPanel>,
     pub(crate) pending_commands: Vec<super::extension_host::PendingActivationCommand>,

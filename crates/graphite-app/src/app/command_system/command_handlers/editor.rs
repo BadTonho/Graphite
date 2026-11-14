@@ -861,6 +861,9 @@ pub(super) fn editor_unfold_all(
 }
 
 pub(super) fn undo(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.route_custom_editor_action(crate::app::plugins::vsix::EditorAction::Undo) {
+        return Ok(());
+    }
     {
         app.editor_mut().undo();
     };
@@ -868,6 +871,9 @@ pub(super) fn undo(app: &mut App, _invocation: &CommandInvocation) -> Result<(),
 }
 
 pub(super) fn redo(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.route_custom_editor_action(crate::app::plugins::vsix::EditorAction::Redo) {
+        return Ok(());
+    }
     {
         app.editor_mut().redo();
     };

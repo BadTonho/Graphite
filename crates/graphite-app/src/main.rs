@@ -321,6 +321,10 @@ struct App {
     webview_handle: Option<String>,
     /// Pages of extension webview views hosted over the side bar, by webview handle.
     sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
+    /// Pages of extension custom editors hosted over editor groups, by webview handle.
+    custom_editor_webviews: std::collections::BTreeMap<String, app::plugins::vsix::EditorOverlay>,
+    /// Files the user chose to open as text although a custom editor offers to open them.
+    custom_editor_text_paths: std::collections::BTreeSet<PathBuf>,
     graphite_detail_webview: Option<webview::WebviewHost>,
     graphite_detail_webview_target: Option<(u64, String)>,
     graphite_detail_webview_html: Option<String>,
@@ -599,6 +603,7 @@ impl App {
                     encoding: file_format::Encoding::Utf8,
                     line_ending: file_format::LineEnding::Lf,
                     notebook: None,
+                    custom_dirty: false,
                 },
             ),
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
@@ -828,6 +833,8 @@ impl App {
             webview_html: String::new(),
             webview_handle: None,
             sidebar_webviews: std::collections::BTreeMap::new(),
+            custom_editor_webviews: std::collections::BTreeMap::new(),
+            custom_editor_text_paths: std::collections::BTreeSet::new(),
             graphite_detail_webview: None,
             graphite_detail_webview_target: None,
             graphite_detail_webview_html: None,

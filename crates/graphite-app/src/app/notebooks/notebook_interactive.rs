@@ -44,6 +44,7 @@ impl App {
             encoding: crate::file_format::Encoding::Utf8,
             line_ending: crate::file_format::LineEnding::Lf,
             notebook: Some(Box::new(session)),
+            custom_dirty: false,
         };
         let id = self.documents.push(document);
         self.activate_editor_document(id);

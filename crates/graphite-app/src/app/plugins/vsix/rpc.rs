@@ -198,6 +198,9 @@ impl App {
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
+            ("MainThreadCustomEditors", _) => {
+                self.handle_vsix_custom_editor_request(runtime, method, args)
+            }
             ("MainThreadFileSystem", "$ensureActivation") => Ok(Value::Null),
             ("MainThreadFileSystem", _) => self.handle_vsix_virtual_fs_request(runtime, method, args),
             ("MainThreadSCM", _) => self.handle_vsix_scm_request(runtime, method, args),

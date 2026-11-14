@@ -251,6 +251,8 @@ impl App {
                 if let Err(error) = self.run_vsix_command(command) {
                     self.status = error;
                 }
+            } else if let Some(view_type) = id.strip_prefix("graphite.openWith:") {
+                self.reopen_with(view_type);
             } else if let Some(label) = id.strip_prefix("graphite.tasks.run:") {
                 if let Err(error) = self.run_task(label) {
                     self.status = error;

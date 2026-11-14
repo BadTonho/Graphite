@@ -347,6 +347,7 @@ fn document_store_identity_survives_data_replacement_and_retention_release() {
         encoding: file_format::Encoding::Utf8,
         line_ending: file_format::LineEnding::Lf,
         notebook: None,
+        custom_dirty: false,
         saved_format: (file_format::Encoding::Utf8, file_format::LineEnding::Lf),
     });
     let replacement = app.documents.remove(other).document;

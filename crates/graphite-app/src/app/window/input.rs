@@ -476,6 +476,10 @@ impl App {
             self.handle_notebook_key(event);
             return;
         }
+        if self.custom_editor_state(self.active_document()).is_some() {
+            // The text behind an extension's editor is not typed into.
+            return;
+        }
         if !ctrl && !self.editor_groups.active_view_mut().ime_composing {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {

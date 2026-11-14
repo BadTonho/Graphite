@@ -384,7 +384,11 @@ impl super::App {
                     ("editorReadonly".into(), editor.is_read_only().to_string()),
                     (
                         "editorWritable".into(),
-                        (!editor.is_read_only()).to_string(),
+                        (!editor.is_read_only()
+                            || self
+                                .custom_editor_state(view.document)
+                                .is_some_and(|state| state.writable))
+                        .to_string(),
                     ),
                     (
                         "editorHasSelection".into(),
@@ -402,8 +406,22 @@ impl super::App {
                         "documentHasPath".into(),
                         editor.path().is_some().to_string(),
                     ),
-                    ("canUndo".into(), editor.can_undo().to_string()),
-                    ("canRedo".into(), editor.can_redo().to_string()),
+                    (
+                        "canUndo".into(),
+                        match self.custom_editor_state(view.document) {
+                            Some(state) if state.writable => state.can_undo,
+                            _ => editor.can_undo(),
+                        }
+                        .to_string(),
+                    ),
+                    (
+                        "canRedo".into(),
+                        match self.custom_editor_state(view.document) {
+                            Some(state) if state.writable => state.can_redo,
+                            _ => editor.can_redo(),
+                        }
+                        .to_string(),
+                    ),
                     (
                         "canToggleLineComment".into(),
                         self.active_comment_tokens()

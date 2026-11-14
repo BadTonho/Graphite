@@ -21,11 +21,15 @@ pub(crate) struct Document {
     pub(crate) line_ending: file_format::LineEnding,
     /// The notebook this document is the file of; its buffer holds the file text.
     pub(crate) notebook: Option<Box<crate::notebook::Session>>,
+    /// Set while an extension's custom editor holds unsaved edits of this document.
+    pub(crate) custom_dirty: bool,
 }
 
 impl Document {
     pub(crate) fn is_dirty(&self) -> bool {
-        self.buffer.is_dirty() || self.saved_format != (self.encoding, self.line_ending)
+        self.buffer.is_dirty()
+            || self.saved_format != (self.encoding, self.line_ending)
+            || self.custom_dirty
     }
 }
 
