@@ -11,7 +11,7 @@ Plan for the feature parity work that is still to do. Stages 1 to 3 are done as 
 | 3. Daily tools | Explorer, source control, local history, timeline, outline, preferences, tasks, debug, extensions, snippets, output | Done, with the leftovers below |
 | 4. Merge and diff editors | Three-way merge editor, multi-file diff | Done, with the leftovers below |
 | 5. Notebooks | Notebook editor, interactive window, REPL | Done, with the leftovers below |
-| 6. Services | Chat, sync, remote, update and similar | To do, needs decisions |
+| 6. Services | Chat, sync, remote, update and similar | Done, with the exclusions below |
 
 ## Stage 4: merge editor and multi-file diff
 
@@ -43,15 +43,19 @@ Decisions: the protocol is Jupyter's, over a built-in ZeroMQ transport, talking 
 
 ## Stage 6: service-dependent features
 
-About 230 commands. None of them can be built without choosing a backend, so each needs a decision first.
+Implemented across dedicated modules and commands, with each backend decision documented below.
 
-| Area | Commands | What has to be decided |
-| --- | ---: | --- |
-| Chat, inline chat, agents, sessions, voice | ~170 | Which model service, how it authenticates, what the chat can read and change |
-| User data sync | ~13 | Where settings are stored and how conflicts are resolved |
-| Edit sessions, remote and tunnels | ~14 | Transport and authentication |
-| Update | ~14 | Release channel and installer behavior |
-| Issue reporting, sharing | ~6 | Destination service |
+| Area | Backend and design decision | Reference |
+| --- | --- | --- |
+| Chat, inline chat, agents, sessions | `graphite-chat` SSE providers (Anthropic & OpenAI-compatible, `chat-provider.json`), explicit `ToolApprovalPolicy`, inline chat diffs, and local session persistence | [Chat, inline chat, and agent sessions](../features/chat.md) |
+| User data sync | Private GitHub Gist (`read:user gist`) with three-way JSON key merge, manual conflict acceptance, and timestamped local backups (`sync-backups/`) | [User data sync](../features/user-data-sync.md) |
+| Edit sessions, remote and tunnels | System OpenSSH client (`ssh`) with `~/.ssh/config` host parsing, RFC 6455 WebSocket relay (`ws://`), port cleanup, and `<profile>/edit-sessions.json` snapshots | [Remote workspaces, tunnels, and edit sessions](../features/remote-and-edit-sessions.md) |
+| Update | GitHub Releases (`stable` / `prerelease`), strict `SemVer` ordering, and `ring::digest::SHA256` verification before staging | [Application updates and redacted issue reporter](../features/updates-and-issue-reporter.md) |
+| Issue reporting, troubleshooting | Automatic secret/path redaction, troubleshooting session log, and pre-filled GitHub Issue URLs | [Application updates and redacted issue reporter](../features/updates-and-issue-reporter.md) |
+
+Intentional exclusions and unverified checks:
+- Voice dictation and proprietary vendor billing/account commands remain excluded.
+- Interactive desktop window rendering of new chat/quick-chat panels requires a live window and was not checked visually.
 
 ## Leftovers from stages 1 to 3
 

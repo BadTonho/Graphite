@@ -11,7 +11,7 @@ Plano do trabalho de paridade de recursos que ainda falta fazer. As etapas 1 a 3
 | 3. Ferramentas do dia a dia | Explorador, controle de código-fonte, histórico local, linha do tempo, outline, preferências, tarefas, depuração, extensões, snippets, saída | Feita, com as sobras abaixo |
 | 4. Editores de merge e de diff | Editor de merge de três vias, diff de vários arquivos | Feita, com as sobras abaixo |
 | 5. Notebooks | Editor de notebook, janela interativa, REPL | Feita, com as sobras abaixo |
-| 6. Serviços | Chat, sync, remoto, atualização e afins | A fazer, exige decisões |
+| 6. Serviços | Chat, sync, remoto, atualização e afins | Feita, com as exclusões abaixo |
 
 ## Etapa 4: editor de merge e diff de vários arquivos
 
@@ -43,15 +43,19 @@ Decisões: o protocolo é o do Jupyter sobre um transporte ZeroMQ próprio, fala
 
 ## Etapa 6: recursos que dependem de serviços
 
-Cerca de 230 comandos. Nenhum pode ser construído sem escolher um backend, então cada um precisa de uma decisão antes.
+Implementada em módulos e comandos dedicados, com as decisões de backend registradas abaixo.
 
-| Área | Comandos | O que precisa ser decidido |
-| --- | ---: | --- |
-| Chat, chat inline, agentes, sessões, voz | ~170 | Qual serviço de modelo, como ele autentica, o que o chat pode ler e alterar |
-| Sincronização de dados do usuário | ~13 | Onde as configurações ficam guardadas e como os conflitos se resolvem |
-| Sessões de edição, remoto e túneis | ~14 | Transporte e autenticação |
-| Atualização | ~14 | Canal de versões e comportamento do instalador |
-| Relato de problemas, compartilhamento | ~6 | Serviço de destino |
+| Área | Decisão de backend e arquitetura | Referência |
+| --- | --- | --- |
+| Chat, chat inline, agentes, sessões | Provedores SSE em `graphite-chat` (Anthropic e compatíveis com OpenAI, `chat-provider.json`), `ToolApprovalPolicy` explícito, diff de chat inline e sessões persistidas | [Chat, Chat Inline e Sessões de Agentes](../features/chat.md) |
+| Sincronização de dados do usuário | Gist privado no GitHub (`read:user gist`) com mesclagem JSON de três vias, aceitação manual de conflitos e backups locais com timestamp (`sync-backups/`) | [Sincronização de Dados do Usuário](../features/user-data-sync.md) |
+| Sessões de edição, remoto e túneis | Cliente OpenSSH do sistema (`ssh`) com leitura de `~/.ssh/config`, relay WebSocket RFC 6455 (`ws://`), limpeza de portas e snapshots em `<perfil>/edit-sessions.json` | [Workspaces Remotos, Túneis e Sessões de Edição](../features/remote-and-edit-sessions.md) |
+| Atualização | GitHub Releases (`stable` / `prerelease`), ordenação `SemVer` estrita e verificação `ring::digest::SHA256` antes do staging | [Atualizações e Relator de Problemas com Redação de Segredos](../features/updates-and-issue-reporter.md) |
+| Relato de problemas, diagnóstico | Redação automática de segredos e caminhos, log de solução de problemas e URLs pré-preenchidas de issue no GitHub | [Atualizações e Relator de Problemas com Redação de Segredos](../features/updates-and-issue-reporter.md) |
+
+Exclusões intencionais e verificações não executadas:
+- Comandos de voz e fluxos proprietários de cobrança/conta continuam excluídos.
+- A renderização visual interativa em janela desktop dos novos painéis de chat/quick chat exige janela ativa e não foi verificada visualmente.
 
 ## Sobras das etapas 1 a 3
 
