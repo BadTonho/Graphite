@@ -713,6 +713,18 @@ impl App {
                 }
             }
         } else {
+            if self.plugins.vsix.is_none() && self.vsix_workspace_trusted() {
+                let runtime_path = graphite_extension_host::code_oss::Session::bundled_runtime();
+                if runtime_path.is_some() {
+                    let _ = self.start_vsix_host(runtime_path);
+                }
+            }
+            for view in &entry.views {
+                if self.is_vsix_tree_view(&view.id) {
+                    self.notify_vsix_tree_visible(&view.id, true);
+                    self.request_vsix_tree_children(&view.id, None);
+                }
+            }
             self.status = format!("{} · {}", entry.title, entry.plugin_id);
         }
     }

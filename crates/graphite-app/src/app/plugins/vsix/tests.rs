@@ -657,3 +657,328 @@ fn official_host_creates_a_debug_adapter_from_an_extension_factory() {
     let (_stream, _) = listener.accept().unwrap();
     app.debug.stop().unwrap();
 }
+
+#[test]
+fn vsix_tree_view_registers_fetches_expands_refreshes_and_disposes() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+
+    let register = json!({
+        "id": 1,
+        "actor": "MainThreadTreeViews",
+        "method": "$registerTreeViewDataProvider",
+        "args": ["ext.sampleView", { "showCollapseAll": true, "canSelectMany": false }]
+    });
+    app.handle_vsix_request(&mut runtime, &register).unwrap();
+    let get_root = host.next_sent().expect("initial $getChildren call");
+    assert_eq!(get_root["type"], "call");
+    assert_eq!(get_root["actor"], "ExtHostTreeViews");
+    assert_eq!(get_root["method"], "$getChildren");
+    assert_eq!(get_root["args"], json!(["ext.sampleView", null]));
+    let root_call_id = get_root["id"].as_u64().unwrap();
+    let ack = host.next_sent().expect("register ack");
+    assert_eq!(ack["type"], "reply");
+
+    // Metadata calls.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 2,
+            "actor": "MainThreadTreeViews",
+            "method": "$setTitle",
+            "args": ["ext.sampleView", "Explorer Ext", "v1"]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 3,
+            "actor": "MainThreadTreeViews",
+            "method": "$setMessage",
+            "args": ["ext.sampleView", { "value": "Loaded from extension" }]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 4,
+            "actor": "MainThreadTreeViews",
+            "method": "$setBadge",
+            "args": ["ext.sampleView", { "value": 3, "tooltip": "3 items" }]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    let meta = runtime.tree_views.meta("ext.sampleView").unwrap();
+    assert_eq!(meta.title.as_deref(), Some("Explorer Ext"));
+    assert_eq!(meta.message.as_deref(), Some("Loaded from extension"));
+    assert_eq!(meta.badge_value, Some(3));
+
+    app.plugins.vsix = Some(runtime);
+
+    // Deliver root items via loopback result.
+    host.emit(json!({
+        "type": "result",
+        "id": root_call_id,
+        "result": [
+            { "handle": "folder-1", "label": { "label": "src" }, "collapsibleState": 1, "description": "dir" },
+            { "handle": "leaf-1", "label": "README.md", "collapsibleState": 0, "command": { "id": "ext.openReadme", "title": "Open" } }
+        ]
+    }));
+    app.poll_plugins();
+
+    let rows = app.plugin_tree_items("ext.sampleView");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].item.label, "src");
+    assert_eq!(rows[0].item.description.as_deref(), Some("dir"));
+    assert_eq!(rows[1].item.label, "README.md");
+
+    // Click collapsed folder -> emits $setExpanded, $setSelectionAndFocus, $getChildren([folder-1]).
+    assert!(app.click_plugin_tree_row("ext.sampleView", 0));
+    let mut saw_expand = false;
+    let mut saw_select = false;
+    let mut child_call_id = None;
+    while let Some(msg) = host.next_sent() {
+        if msg["actor"] == "ExtHostTreeViews" {
+            match msg["method"].as_str() {
+                Some("$setExpanded") => {
+                    assert_eq!(msg["args"], json!(["ext.sampleView", "folder-1", true]));
+                    saw_expand = true;
+                }
+                Some("$setSelectionAndFocus") => {
+                    saw_select = true;
+                }
+                Some("$getChildren") => {
+                    assert_eq!(msg["args"], json!(["ext.sampleView", ["folder-1"]]));
+                    child_call_id = msg["id"].as_u64();
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(saw_expand && saw_select);
+    let child_call_id = child_call_id.expect("child fetch id");
+
+    host.emit(json!({
+        "type": "result",
+        "id": child_call_id,
+        "result": [[0, { "handle": "child-1", "label": "main.rs", "collapsibleState": 0 }]]
+    }));
+    app.poll_plugins();
+
+    let rows = app.plugin_tree_items("ext.sampleView");
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[1].item.label, "main.rs");
+    assert_eq!(rows[1].depth, 1);
+
+    // Targeted refresh invalidates only folder-1 and re-requests it.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 5,
+            "actor": "MainThreadTreeViews",
+            "method": "$refresh",
+            "args": ["ext.sampleView", { "folder-1": {} }]
+        }),
+    )
+    .unwrap();
+    let refresh_call = host.next_sent().expect("refresh child request");
+    let refresh_ack = host.next_sent();
+    let (refresh_call, _ack) = if refresh_call["type"] == "call" {
+        (refresh_call, refresh_ack)
+    } else {
+        (
+            refresh_ack.expect("refresh child request"),
+            Some(refresh_call),
+        )
+    };
+    assert_eq!(refresh_call["method"], "$getChildren");
+    assert_eq!(
+        refresh_call["args"],
+        json!(["ext.sampleView", ["folder-1"]])
+    );
+
+    // Dispose removes tree view completely.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 6,
+            "actor": "MainThreadTreeViews",
+            "method": "$disposeTreeView",
+            "args": ["ext.sampleView"]
+        }),
+    )
+    .unwrap();
+    app.plugins.vsix = Some(runtime);
+    assert!(app.plugin_tree_items("ext.sampleView").is_empty());
+}
+
+#[test]
+fn vsix_webview_enforces_local_resource_roots_and_handles_bidirectional_messages() {
+    let dir = TempDir::new();
+    let ext_root = dir.path().join("extension");
+    let media_dir = ext_root.join("media");
+    let outside_dir = dir.path().join("outside");
+    std::fs::create_dir_all(&media_dir).unwrap();
+    std::fs::create_dir_all(&outside_dir).unwrap();
+    let allowed_js = media_dir.join("app.js");
+    let blocked_js = outside_dir.join("secret.js");
+    std::fs::write(&allowed_js, "console.log('ok');").unwrap();
+    std::fs::write(&blocked_js, "console.log('nope');").unwrap();
+
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+
+    let ext_uri = graphite_core_api::DocumentUri::from_path(&ext_root).unwrap();
+    let media_uri = graphite_core_api::DocumentUri::from_path(&media_dir).unwrap();
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 10,
+            "actor": "MainThreadWebviewPanels",
+            "method": "$createWebviewPanel",
+            "args": [
+                { "id": { "value": "test.webview" }, "location": { "$graphiteUri": ext_uri.as_str() } },
+                "panel-1",
+                "sample.panel",
+                {
+                    "title": "Sample Webview",
+                    "webviewOptions": {
+                        "enableScripts": true,
+                        "localResourceRoots": [{ "$graphiteUri": media_uri.as_str() }]
+                    }
+                }
+            ]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    let allowed_path = allowed_js.to_string_lossy().replace('\\', "/");
+    let allowed_url_path = if allowed_path.starts_with('/') {
+        allowed_path.clone()
+    } else {
+        format!("/{allowed_path}")
+    };
+    let blocked_path = blocked_js.to_string_lossy().replace('\\', "/");
+    let blocked_url_path = if blocked_path.starts_with('/') {
+        blocked_path
+    } else {
+        format!("/{blocked_path}")
+    };
+    let media_path = media_dir.to_string_lossy().replace('\\', "/");
+    let media_url_path = if media_path.starts_with('/') {
+        media_path
+    } else {
+        format!("/{media_path}")
+    };
+
+    let html = format!(
+        r#"<html><body>
+            <script src="https://file+.vscode-resource.vscode-cdn.net{allowed_url_path}"></script>
+            <script src="vscode-resource://file{blocked_url_path}"></script>
+            <img src="https://file+.vscode-resource.vscode-cdn.net{media_url_path}/../../outside/secret.js">
+        </body></html>"#
+    );
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 11,
+            "actor": "MainThreadWebviews",
+            "method": "$setHtml",
+            "args": ["panel-1", html]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    let panel_html = runtime.webviews.active_panel().unwrap().html.clone();
+    assert!(
+        panel_html.contains("app.js"),
+        "expected allowed local asset: {panel_html}"
+    );
+    assert!(
+        !panel_html.contains("secret.js"),
+        "blocked assets must not survive rewrite: {panel_html}"
+    );
+    assert_eq!(panel_html.matches("about:blank#blocked").count(), 2);
+
+    // Title update & reveal + outbound message (JSON object).
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 12,
+            "actor": "MainThreadWebviewPanels",
+            "method": "$setTitle",
+            "args": ["panel-1", "Renamed Panel"]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 13,
+            "actor": "MainThreadWebviews",
+            "method": "$postMessage",
+            "args": ["panel-1", { "kind": "pong", "count": 2 }]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 14,
+            "actor": "MainThreadWebviewPanels",
+            "method": "$reveal",
+            "args": ["panel-1", { "viewColumn": 1 }]
+        }),
+    )
+    .unwrap();
+    let reveal_event = host.next_sent().expect("reveal view state notification");
+    assert_eq!(reveal_event["actor"], "ExtHostWebviewPanels");
+    assert_eq!(reveal_event["method"], "$onDidChangeWebviewPanelViewState");
+    let _reveal_reply = host.next_sent().expect("reveal reply");
+
+    assert_eq!(
+        runtime.webviews.active_panel().unwrap().title,
+        "Renamed Panel"
+    );
+    assert_eq!(
+        runtime.webviews.active_panel().unwrap().outbound_messages,
+        vec![json!({ "kind": "pong", "count": 2 })]
+    );
+
+    app.plugins.vsix = Some(runtime);
+    app.send_vsix_webview_message("panel-1", json!({ "action": "save" }))
+        .unwrap();
+    let inbound = host.next_sent().expect("inbound $onMessage");
+    assert_eq!(inbound["actor"], "ExtHostWebviews");
+    assert_eq!(inbound["method"], "$onMessage");
+    assert_eq!(inbound["args"], json!(["panel-1", { "action": "save" }]));
+
+    app.close_vsix_webview("panel-1").unwrap();
+    let disposed = host.next_sent().expect("disposal notification");
+    assert_eq!(disposed["actor"], "ExtHostWebviewPanels");
+    assert_eq!(disposed["method"], "$onDidDisposeWebviewPanel");
+    assert!(app.vsix_webview().is_none());
+}

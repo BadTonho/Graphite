@@ -171,48 +171,11 @@ impl App {
                 Ok(json!({"isFocused":true,"isActive":true}))
             }
             ("MainThreadLanguageModelTools", "$getTools") => Ok(json!([])),
-            ("MainThreadWebviewPanels", "$createWebviewPanel") => {
-                let handle = text(1)?;
-                self.webview_handle = Some(handle.to_owned());
-                self.status = args
-                    .get(3)
-                    .and_then(|data| data["title"].as_str())
-                    .unwrap_or("Webview")
-                    .to_owned();
-                self.show_webview_html("<!doctype html><html><head><title>Graphite Webview</title></head><body></body></html>")?;
-                Ok(Value::Null)
+            ("MainThreadTreeViews", _) => self.handle_vsix_tree_request(runtime, method, args),
+            ("MainThreadWebviewPanels", _) => {
+                self.handle_vsix_webview_panel_request(runtime, method, args)
             }
-            ("MainThreadWebviewPanels", "$disposeWebview") => {
-                let handle = text(0)?;
-                if self.webview_handle.as_deref() == Some(handle) {
-                    self.close_webview();
-                }
-                Ok(Value::Null)
-            }
-            ("MainThreadWebviewPanels", "$setTitle" | "$reveal") => Ok(Value::Null),
-            ("MainThreadWebviews", "$setHtml") => {
-                let handle = text(0)?;
-                if self.webview_handle.as_deref() == Some(handle) {
-                    let html = text(1)?;
-                    self.show_webview_html(html)?;
-                }
-                Ok(Value::Null)
-            }
-            ("MainThreadWebviews", "$setOptions") => Ok(Value::Null),
-            ("MainThreadWebviews", "$postMessage") => {
-                let handle = text(0)?;
-                if self.webview_handle.as_deref() == Some(handle) {
-                    let message = text(1)?;
-                    let encoded =
-                        serde_json::to_string(message).map_err(|error| error.to_string())?;
-                    if let Some(webview) = &self.webview {
-                        webview.evaluate_script(&format!(
-                            "window.postMessage(JSON.parse({encoded}), '*')"
-                        ))?;
-                    }
-                }
-                Ok(json!(true))
-            }
+            ("MainThreadWebviews", _) => self.handle_vsix_webview_request(runtime, method, args),
             ("MainThreadProgress", "$startProgress") => {
                 if let Some(title) = arg(1)?["title"].as_str() {
                     self.status = title.to_owned();
@@ -259,7 +222,12 @@ impl App {
 
     /// Notes each unsupported `actor.method` once per session in
     /// `<profile>/code-oss/unsupported-api.log`, so compatibility gaps can be measured.
-    fn record_unsupported_vsix_call(&self, runtime: &mut Runtime, actor: &str, method: &str) {
+    pub(super) fn record_unsupported_vsix_call(
+        &self,
+        runtime: &mut Runtime,
+        actor: &str,
+        method: &str,
+    ) {
         let call = format!("{actor}.{method}");
         if !runtime.unsupported.insert(call.clone()) {
             return;

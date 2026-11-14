@@ -30,6 +30,8 @@ mod testing;
 #[cfg(test)]
 mod tests;
 mod text_search;
+mod tree_views;
+mod webviews;
 mod workbench;
 
 pub(crate) struct Runtime {
@@ -59,6 +61,10 @@ pub(crate) struct Runtime {
     lenses: code_lens::CodeLenses,
     /// Color swatches of the active document.
     colors: colors::Colors,
+    /// Tree views registered via `MainThreadTreeViews`.
+    tree_views: tree_views::TreeViews,
+    /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
+    webviews: webviews::Webviews,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
     /// Commands extensions asked for that Graphite does not have.
@@ -76,6 +82,7 @@ impl Runtime {
             || self.hierarchy.busy()
             || self.lenses.busy()
             || self.colors.busy()
+            || self.tree_views.busy()
     }
 }
 
@@ -104,6 +111,8 @@ impl Runtime {
             hierarchy: Default::default(),
             lenses: Default::default(),
             colors: Default::default(),
+            tree_views: Default::default(),
+            webviews: Default::default(),
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         }
@@ -125,7 +134,7 @@ pub(crate) fn eligible(record: &Installed) -> bool {
 }
 
 impl App {
-    fn vsix_workspace_trusted(&self) -> bool {
+    pub(crate) fn vsix_workspace_trusted(&self) -> bool {
         self.workspace_trust
             .as_ref()
             .is_some_and(|trust| trust.is_trusted(self.tree.root()))
@@ -221,7 +230,7 @@ impl App {
     }
 
     /// Starts the Code OSS extension host and loads the approved extensions into it.
-    pub(super) fn start_vsix_host(&mut self, runtime_path: Option<PathBuf>) -> Result<()> {
+    pub(crate) fn start_vsix_host(&mut self, runtime_path: Option<PathBuf>) -> Result<()> {
         let path = runtime_path
             .ok_or("Code OSS runtime is unavailable. Use the portable Graphite package.")?;
         let store = self
@@ -276,6 +285,8 @@ impl App {
             hierarchy: Default::default(),
             lenses: Default::default(),
             colors: Default::default(),
+            tree_views: Default::default(),
+            webviews: Default::default(),
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         });
@@ -289,6 +300,7 @@ impl App {
             self.command_palette = None;
             self.hover_text = None;
             self.completion_items.clear();
+            self.clear_vsix_tree_views();
         }
     }
 
@@ -354,6 +366,8 @@ impl App {
                         self.finish_vsix_hierarchy(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(passive::is_passive_reply) {
                         self.finish_vsix_passive(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
+                        self.finish_vsix_tree(runtime, &event);
                     } else if event["id"].as_u64() == Some(1) {
                         runtime.command = None;
                         if let Some(error) = event["error"].as_str() {
@@ -402,17 +416,10 @@ impl App {
             self.expire_vsix_hierarchy(runtime);
             self.drive_vsix_code_lens(runtime)?;
             self.drive_vsix_colors(runtime)?;
+            self.expire_vsix_trees(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
-            if let (Some(handle), Some(webview)) =
-                (self.webview_handle.as_deref(), self.webview.as_ref())
-            {
-                for message in webview.take_messages() {
-                    let value =
-                        serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
-                    runtime.session.send(json!({"type":"call","actor":"ExtHostWebviews","method":"$onMessage","args":[handle,value]}))?;
-                }
-            }
+            self.sync_vsix_webview_host(runtime)?;
             if let Some((owner, command, _)) = &runtime.command {
                 if !runtime.sent {
                     runtime.session.send(

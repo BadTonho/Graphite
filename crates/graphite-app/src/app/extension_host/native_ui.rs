@@ -194,6 +194,9 @@ impl App {
         view_id: &str,
         element_id: Option<String>,
     ) {
+        if self.request_vsix_tree_children(view_id, element_id.clone()) {
+            return;
+        }
         let Some(owner) = self
             .plugins
             .native_tree_views
@@ -294,33 +297,47 @@ impl App {
         let Some(row) = rows.get(row_index) else {
             return false;
         };
+        let is_vsix = self.is_vsix_tree_view(view_id);
         let mut fetch_children = false;
+        let mut toggled_expanded = None;
         if row.item.collapsible_state != TreeCollapsibleState::None {
             if let Some(tree) = self.plugins.native_tree_views.get_mut(view_id) {
                 if tree.expanded.contains(&row.item.id) {
                     tree.expanded.remove(&row.item.id);
+                    toggled_expanded = Some(false);
                 } else {
                     tree.expanded.insert(row.item.id.clone());
                     fetch_children = !tree.children.contains_key(&Some(row.item.id.clone()));
+                    toggled_expanded = Some(true);
                 }
             }
+        }
+        if is_vsix {
+            if let Some(expanded) = toggled_expanded {
+                self.notify_vsix_tree_expand(view_id, &row.item.id, expanded);
+            }
+            self.notify_vsix_tree_select(view_id, &row.item.id);
         }
         if fetch_children {
             self.request_native_tree_children(view_id, Some(row.item.id.clone()));
         }
         if let Some(command) = &row.item.command {
-            let arguments = if command.arguments.is_empty() {
-                Value::Null
+            if is_vsix {
+                self.execute_vsix_tree_command(&command.id, command.arguments.clone());
             } else {
-                Value::Array(command.arguments.clone())
-            };
-            let ticket = self.execute_command(CommandRequest {
-                id: command.id.clone(),
-                arguments,
-                target: CommandTarget::Global,
-            });
-            if let Some(Err(error)) = ticket.try_result() {
-                self.status = self.command_error_text(&error);
+                let arguments = if command.arguments.is_empty() {
+                    Value::Null
+                } else {
+                    Value::Array(command.arguments.clone())
+                };
+                let ticket = self.execute_command(CommandRequest {
+                    id: command.id.clone(),
+                    arguments,
+                    target: CommandTarget::Global,
+                });
+                if let Some(Err(error)) = ticket.try_result() {
+                    self.status = self.command_error_text(&error);
+                }
             }
         }
         true
