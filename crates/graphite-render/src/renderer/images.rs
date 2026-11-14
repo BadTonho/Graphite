@@ -107,7 +107,16 @@ impl Renderer {
         };
         let (uv0, uv1) = slot_uvs(slot);
         let (tx, ty) = self.translation;
-        self.push_quad_mode(x + tx, y + ty, x + w + tx, y + h + ty, uv0, uv1, [1.0; 4], 1.0);
+        self.push_quad_mode(
+            x + tx,
+            y + ty,
+            x + w + tx,
+            y + h + ty,
+            uv0,
+            uv1,
+            [1.0; 4],
+            1.0,
+        );
     }
 }
 
@@ -124,7 +133,12 @@ mod tests {
 
     #[test]
     fn texture_coordinates_stay_half_a_texel_inside_the_slot() {
-        let (uv0, uv1) = slot_uvs(Slot { x: 10, y: 20, w: 4, h: 6 });
+        let (uv0, uv1) = slot_uvs(Slot {
+            x: 10,
+            y: 20,
+            w: 4,
+            h: 6,
+        });
         let size = ATLAS_SIZE as f32;
         assert_eq!(uv0, [10.5 / size, 20.5 / size]);
         assert_eq!(uv1, [13.5 / size, 25.5 / size]);
