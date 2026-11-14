@@ -10,6 +10,7 @@ mod colors;
 mod debug;
 pub(crate) mod decorations;
 mod documents;
+mod env_lm;
 mod file_events;
 mod hierarchy;
 pub(crate) use hierarchy::Kind as HierarchyKind;
@@ -68,6 +69,12 @@ pub(crate) struct Runtime {
     webviews: webviews::Webviews,
     /// Task providers and executions registered via `MainThreadTask`.
     tasks: tasks::Tasks,
+    /// Language model tools registered via `MainThreadLanguageModelTools`.
+    lm_tools: env_lm::LanguageModelTools,
+    /// Activation events already sent to the VSIX extension host in this session.
+    activated_events: BTreeSet<String>,
+    /// Whether initial startup / workspaceContains activations have been dispatched.
+    startup_activated: bool,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
     /// Commands extensions asked for that Graphite does not have.
@@ -87,6 +94,7 @@ impl Runtime {
             || self.colors.busy()
             || self.tree_views.busy()
             || self.tasks.busy()
+            || self.lm_tools.busy()
     }
 }
 
@@ -118,6 +126,9 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             tasks: Default::default(),
+            lm_tools: Default::default(),
+            activated_events: BTreeSet::new(),
+            startup_activated: false,
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         }
@@ -293,6 +304,9 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             tasks: Default::default(),
+            lm_tools: Default::default(),
+            activated_events: BTreeSet::new(),
+            startup_activated: false,
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         });
@@ -376,6 +390,8 @@ impl App {
                         self.finish_vsix_tree(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tasks::is_task_reply) {
                         self.finish_vsix_task(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(env_lm::is_lm_tool_reply) {
+                        self.finish_vsix_lm_tool(runtime, &event);
                     } else if event["id"].as_u64() == Some(1) {
                         runtime.command = None;
                         if let Some(error) = event["error"].as_str() {
@@ -416,6 +432,7 @@ impl App {
             return Err("Code OSS command timed out".into());
         }
         if runtime.ready {
+            self.trigger_vsix_startup_activations(runtime);
             self.reply_vsix_editor_commands(runtime)?;
             self.drive_vsix_debug_adapter(runtime)?;
             runtime.languages.update(&runtime.session)?;

@@ -311,7 +311,7 @@ pub enum Metadata {
     Native(Manifest),
     Vsix(Vsix),
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Vsix {
     pub id: String,
     pub version: String,
@@ -331,6 +331,15 @@ pub struct Vsix {
     /// Debug adapters the extension contributes (`contributes.debuggers`).
     #[serde(default)]
     pub debuggers: Vec<DebuggerContribution>,
+    /// Activation events from VSIX `activationEvents`.
+    #[serde(default)]
+    pub activation_events: Vec<String>,
+    /// Keybindings contributed via `contributes.keybindings`.
+    #[serde(default)]
+    pub keybindings: Vec<Keybinding>,
+    /// Menu entries contributed via `contributes.menus`.
+    #[serde(default)]
+    pub menus: Menus,
 }
 
 /// How to start a debug adapter: `runtime` (if any) runs `program`, a path inside the extension.
@@ -609,6 +618,101 @@ pub(crate) fn vsix_commands(manifest: &Value) -> Vec<Command> {
             })
         })
         .collect()
+}
+
+pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
+    manifest
+        .get("activationEvents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|v| {
+            v.as_str()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+pub(crate) fn vsix_keybindings(manifest: &Value) -> Vec<Keybinding> {
+    manifest
+        .pointer("/contributes/keybindings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let command = entry.get("command").and_then(Value::as_str)?.trim();
+            if command.is_empty() {
+                return None;
+            }
+            #[cfg(target_os = "windows")]
+            let raw_key = entry
+                .get("win")
+                .and_then(Value::as_str)
+                .or_else(|| entry.get("key").and_then(Value::as_str));
+            #[cfg(not(target_os = "windows"))]
+            let raw_key = entry
+                .get("linux")
+                .and_then(Value::as_str)
+                .or_else(|| entry.get("key").and_then(Value::as_str));
+            let key = raw_key?.trim();
+            if key.is_empty() {
+                return None;
+            }
+            let when = entry
+                .get("when")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            Some(Keybinding {
+                command: command.to_owned(),
+                key: key.to_owned(),
+                when,
+            })
+        })
+        .collect()
+}
+
+fn parse_vsix_menu_list(manifest: &Value, pointer: &str) -> Vec<MenuItem> {
+    manifest
+        .pointer(pointer)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let command = entry.get("command").and_then(Value::as_str)?.trim();
+            if command.is_empty() {
+                return None;
+            }
+            let when = entry
+                .get("when")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let group = entry
+                .get("group")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            Some(MenuItem {
+                command: command.to_owned(),
+                when,
+                group,
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn vsix_menus(manifest: &Value) -> Menus {
+    Menus {
+        command_palette: parse_vsix_menu_list(manifest, "/contributes/menus/commandPalette"),
+        editor_context: parse_vsix_menu_list(manifest, "/contributes/menus/editor~1context"),
+        view_item_context: parse_vsix_menu_list(manifest, "/contributes/menus/view~1item~1context"),
+    }
 }
 impl Metadata {
     pub fn id(&self) -> &str {
@@ -900,5 +1004,41 @@ mod activity_bar_tests {
         let mut bad_native_main = valid;
         bad_native_main.main = "../outside-bin".into();
         assert!(bad_native_main.validate().is_err());
+    }
+
+    #[test]
+    fn vsix_activation_events_keybindings_and_menus_are_parsed() {
+        let manifest = serde_json::json!({
+            "activationEvents": ["onLanguage:rust", "", "workspaceContains:Cargo.toml"],
+            "contributes": {
+                "keybindings": [
+                    { "command": "ext.fmt", "key": "ctrl+alt+f", "when": "editorTextFocus" },
+                    { "command": "", "key": "ctrl+k" }
+                ],
+                "menus": {
+                    "commandPalette": [{ "command": "ext.fmt", "when": "editorTextFocus" }],
+                    "editor/context": [{ "command": "ext.fmt", "group": "1_modification" }],
+                    "view/item/context": [{ "command": "ext.refresh", "group": "inline" }]
+                }
+            }
+        });
+        assert_eq!(
+            vsix_activation_events(&manifest),
+            vec!["onLanguage:rust", "workspaceContains:Cargo.toml"]
+        );
+        let keys = vsix_keybindings(&manifest);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].command, "ext.fmt");
+        assert_eq!(keys[0].key, "ctrl+alt+f");
+        assert_eq!(keys[0].when.as_deref(), Some("editorTextFocus"));
+
+        let menus = vsix_menus(&manifest);
+        assert_eq!(menus.command_palette.len(), 1);
+        assert_eq!(menus.editor_context.len(), 1);
+        assert_eq!(
+            menus.editor_context[0].group.as_deref(),
+            Some("1_modification")
+        );
+        assert_eq!(menus.view_item_context.len(), 1);
     }
 }

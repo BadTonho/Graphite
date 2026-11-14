@@ -1231,3 +1231,211 @@ fn vsix_tasks_provider_custom_execution_and_cwd_confinement() {
     assert_eq!(ended_evt["method"], "$onDidEndTask");
     let _complete_reply = host.next_sent();
 }
+
+#[test]
+fn vsix_activation_events_menus_keybindings_and_open_uri() {
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+
+    let mut app = App::new_with_options(work, None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+
+    let (session, host) = Session::loopback();
+    let runtime = Runtime::for_test(session);
+    app.plugins.vsix = Some(runtime);
+
+    app.plugins.installed_plugins_mut().push(Installed {
+        metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+            id: "test.rust-helper".into(),
+            version: "1.0.0".into(),
+            description: "Rust helper".into(),
+            engines: json!({ "vscode": "^1.100.0" }),
+            main: Some("index.js".into()),
+            contributions: vec!["commands".into(), "keybindings".into(), "menus".into()],
+            commands: vec![graphite_plugins::manifest::Command {
+                id: "ext.rustFmt".into(),
+                title: "Rust Ext Format".into(),
+            }],
+            activation_events: vec![
+                "onLanguage:rust".into(),
+                "workspaceContains:Cargo.toml".into(),
+            ],
+            keybindings: vec![graphite_plugins::manifest::Keybinding {
+                command: "ext.rustFmt".into(),
+                key: "ctrl+alt+f".into(),
+                when: Some("editorTextFocus".into()),
+            }],
+            menus: graphite_plugins::manifest::Menus {
+                command_palette: vec![graphite_plugins::manifest::MenuItem {
+                    command: "ext.rustFmt".into(),
+                    when: Some("editorTextFocus".into()),
+                    group: None,
+                }],
+                editor_context: vec![graphite_plugins::manifest::MenuItem {
+                    command: "ext.rustFmt".into(),
+                    when: None,
+                    group: Some("1_modification".into()),
+                }],
+                view_item_context: vec![],
+            },
+            ..Default::default()
+        }),
+        enabled: true,
+        trusted_version: Some("1.0.0".into()),
+        directory: "test.rust-helper@1.0.0".into(),
+        dev_path: None,
+    });
+
+    // Menus & keybindings resolve cleanly.
+    app.sync_plugin_keybindings();
+    let editor_menu =
+        app.plugin_menu_items(crate::app::extension_host::PluginMenuLocation::EditorContext);
+    assert_eq!(editor_menu.len(), 1);
+    assert_eq!(editor_menu[0].title, "Rust Ext Format");
+    assert_eq!(editor_menu[0].group.as_deref(), Some("1_modification"));
+
+    // Keybinding dispatches the VSIX command execution onto the active VSIX host,
+    // and startup polling fires matching `workspaceContains` activation events automatically.
+    assert!(app.handle_keybinding_stroke("ctrl+alt+f"));
+    app.poll_plugins();
+    let mut saw_execute = false;
+    let mut saw_workspace_contains = false;
+    while let Some(msg) = host.next_sent() {
+        if msg["type"] == "execute" && msg["command"] == "ext.rustFmt" {
+            saw_execute = true;
+            assert_eq!(msg["owner"], "test.rust-helper");
+        }
+        if msg["type"] == "activateByEvent" && msg["event"] == "workspaceContains:Cargo.toml" {
+            saw_workspace_contains = true;
+        }
+    }
+    assert!(
+        saw_execute,
+        "expected VSIX keybinding to queue execute message"
+    );
+    assert!(
+        saw_workspace_contains,
+        "expected startup poll to fire workspaceContains:Cargo.toml activateByEvent"
+    );
+
+    // Explicit `workspaceContains` trigger matches cleanly and `onLanguage` emits activateByEvent.
+    let activated_ws = app.trigger_vsix_activation_event("workspaceContains");
+    assert_eq!(activated_ws, vec!["test.rust-helper"]);
+
+    let activated_lang = app.activate_plugins_for_event("onLanguage:rust");
+    assert!(activated_lang.contains(&"test.rust-helper".to_owned()));
+    let mut saw_on_language = false;
+    while let Some(msg) = host.next_sent() {
+        if msg["type"] == "activateByEvent" && msg["event"] == "onLanguage:rust" {
+            saw_on_language = true;
+        }
+    }
+    assert!(
+        saw_on_language,
+        "expected onLanguage:rust activateByEvent message"
+    );
+
+    // MainThreadWindow.$openUri accepts https URIs and rejects file URIs.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 40,
+            "actor": "MainThreadWindow",
+            "method": "$openUri",
+            "args": [null, "file:///etc/passwd"]
+        }),
+    )
+    .unwrap();
+    let rejected = host.next_sent().expect("$openUri file error");
+    assert!(rejected["error"].as_str().unwrap().contains("https"));
+}
+
+#[test]
+fn vsix_language_model_tools_register_bridge_to_chat_and_invoke() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 50,
+            "actor": "MainThreadLanguageModelTools",
+            "method": "$registerToolWithDefinition",
+            "args": [{
+                "id": "ext.search_docs",
+                "toolReferenceName": "search_docs",
+                "modelDescription": "Search extension docs",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "query": { "type": "string" } },
+                    "required": ["query"]
+                }
+            }]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 51,
+            "actor": "MainThreadLanguageModelTools",
+            "method": "$getTools",
+            "args": []
+        }),
+    )
+    .unwrap();
+    let tools_reply = host.next_sent().expect("$getTools reply");
+    assert_eq!(tools_reply["result"].as_array().unwrap().len(), 1);
+
+    app.plugins.vsix = Some(runtime);
+    let specs = app.plugin_chat_tool_specs();
+    assert!(specs.iter().any(|t| t.name == "search_docs"));
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.invoke_plugin_chat_tool("search_docs", json!({ "query": "treeview" }), Some(tx))
+        .unwrap();
+    let call = host.next_sent().expect("$invokeTool call");
+    assert_eq!(call["actor"], "ExtHostLanguageModelTools");
+    assert_eq!(call["method"], "$invokeTool");
+    assert_eq!(call["args"][0]["toolId"], "ext.search_docs");
+    let call_id = call["id"].as_u64().unwrap();
+
+    host.emit(json!({
+        "type": "result",
+        "id": call_id,
+        "result": { "content": [{ "value": "TreeView docs result" }] }
+    }));
+    app.poll_plugins();
+
+    assert_eq!(rx.try_recv().unwrap().unwrap(), "TreeView docs result");
+
+    // Unregister removes the tool from plugin_chat_tool_specs.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 52,
+            "actor": "MainThreadLanguageModelTools",
+            "method": "$unregisterTool",
+            "args": ["ext.search_docs"]
+        }),
+    )
+    .unwrap();
+    app.plugins.vsix = Some(runtime);
+    assert!(app.plugin_chat_tool_specs().is_empty());
+}

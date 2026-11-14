@@ -138,6 +138,9 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
                 activity_bar: vsix_activity_bar(&m),
                 snippets: vsix_snippets(&m),
                 debuggers: vsix_debuggers(&m),
+                activation_events: vsix_activation_events(&m),
+                keybindings: vsix_keybindings(&m),
+                menus: vsix_menus(&m),
                 language_comments: vsix_language_comments(&m, |path| {
                     json(zip, &format!("extension/{path}")).ok()
                 }),

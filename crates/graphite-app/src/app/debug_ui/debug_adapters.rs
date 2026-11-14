@@ -437,6 +437,7 @@ mod tests {
                     program: program.map(str::to_owned),
                     ..Default::default()
                 })],
+                ..Default::default()
             }),
             directory,
             enabled,

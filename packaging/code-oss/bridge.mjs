@@ -403,6 +403,10 @@ async function receive(message) {
         case 'execute':
             await execute(message);
             break;
+        case 'activateByEvent':
+            await synchronization;
+            await rpc.getProxy(ExtHostContext.ExtHostExtensionService).$activateByEvent(message.event, 1);
+            break;
         case 'provideDebugAdapter':
             await provideDebugAdapter(message);
             break;

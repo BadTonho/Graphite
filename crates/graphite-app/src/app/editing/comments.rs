@@ -299,6 +299,7 @@ mod tests {
             }],
             snippets: vec![],
             debuggers: vec![],
+            ..Default::default()
         });
         app.plugins
             .installed_plugins_mut()

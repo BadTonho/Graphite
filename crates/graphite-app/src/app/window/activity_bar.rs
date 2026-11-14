@@ -713,6 +713,9 @@ impl App {
                 }
             }
         } else {
+            for view in &entry.views {
+                self.activate_plugins_for_event(&format!("onView:{}", view.id));
+            }
             if self.plugins.vsix.is_none() && self.vsix_workspace_trusted() {
                 let runtime_path = graphite_extension_host::code_oss::Session::bundled_runtime();
                 if runtime_path.is_some() {
@@ -1872,6 +1875,7 @@ mod tests {
                     language_comments: vec![],
                     snippets: vec![],
                     debuggers: vec![],
+                    ..Default::default()
                 },
             ),
             enabled: true,

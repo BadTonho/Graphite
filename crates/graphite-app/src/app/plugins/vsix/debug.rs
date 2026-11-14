@@ -254,6 +254,7 @@ mod tests {
                 language_comments: vec![],
                 snippets: vec![],
                 debuggers: vec![],
+                ..Default::default()
             }),
             enabled: true,
             trusted_version: approved.then(|| "1.0.0".to_owned()),

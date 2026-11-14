@@ -232,6 +232,58 @@ impl App {
                 return ticket;
             }
         }
+        if let Some(vsix_key) = request.id.strip_prefix("graphite.vsix:") {
+            let args = match request.arguments {
+                Value::Null => Vec::new(),
+                Value::Array(items) => items,
+                other => vec![other],
+            };
+            let result = self
+                .run_vsix_command_with_args(vsix_key, args)
+                .map(|()| Value::Null)
+                .map_err(CommandError::Failed);
+            self.command_runtime.next += 1;
+            let (sender, receiver) = mpsc::channel();
+            let _ = sender.send(result);
+            return CommandTicket {
+                id: self.command_runtime.next,
+                cancellation,
+                receiver,
+            };
+        }
+        if registry().get(&request.id).is_none() {
+            if let Some(owner) = self.plugins.installed.iter().find_map(|record| {
+                let graphite_plugins::manifest::Metadata::Vsix(vsix) = &record.metadata else {
+                    return None;
+                };
+                if !record.enabled || record.trusted_version.as_deref() != Some(&vsix.version) {
+                    return None;
+                }
+                vsix.commands
+                    .iter()
+                    .any(|c| c.id == request.id)
+                    .then(|| vsix.id.clone())
+            }) {
+                let args = match request.arguments {
+                    Value::Null => Vec::new(),
+                    Value::Array(items) => items,
+                    other => vec![other],
+                };
+                let key = format!("{owner}:{}", request.id);
+                let result = self
+                    .run_vsix_command_with_args(&key, args)
+                    .map(|()| Value::Null)
+                    .map_err(CommandError::Failed);
+                self.command_runtime.next += 1;
+                let (sender, receiver) = mpsc::channel();
+                let _ = sender.send(result);
+                return CommandTicket {
+                    id: self.command_runtime.next,
+                    cancellation,
+                    receiver,
+                };
+            }
+        }
         self.refresh_command_context();
         self.command_runtime.next += 1;
         let id = self.command_runtime.next;

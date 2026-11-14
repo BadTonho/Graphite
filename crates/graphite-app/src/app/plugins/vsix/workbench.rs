@@ -93,12 +93,25 @@ pub(super) fn dispatch(
     let text = |index: usize| args.get(index).and_then(Value::as_str).unwrap_or_default();
     let result = match (actor, method) {
         ("MainThreadWindow", "$openUri") => {
-            let uri = args
+            let uri_str = args
                 .get(1)
-                .and_then(Value::as_str)
-                .unwrap_or_else(|| text(0));
-            if uri.starts_with("https://") {
-                crate::app::plugins::drawing::open_external_https(uri);
+                .and_then(|v| {
+                    v.as_str()
+                        .or_else(|| v["external"].as_str())
+                        .or_else(|| v["$graphiteUri"].as_str())
+                })
+                .map(str::to_owned)
+                .or_else(|| {
+                    args.first().and_then(|v| {
+                        v.as_str()
+                            .or_else(|| v["external"].as_str())
+                            .or_else(|| v["$graphiteUri"].as_str())
+                            .map(str::to_owned)
+                    })
+                })
+                .unwrap_or_default();
+            if uri_str.starts_with("https://") {
+                crate::app::plugins::drawing::open_external_https(&uri_str);
                 Ok(json!(true))
             } else {
                 Err("Graphite opens only https links for extensions".into())

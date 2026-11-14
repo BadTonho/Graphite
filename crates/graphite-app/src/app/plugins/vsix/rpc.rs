@@ -170,7 +170,9 @@ impl App {
             ("MainThreadWindow", "$getInitialState") => {
                 Ok(json!({"isFocused":true,"isActive":true}))
             }
-            ("MainThreadLanguageModelTools", "$getTools") => Ok(json!([])),
+            ("MainThreadLanguageModelTools", _) => {
+                self.handle_vsix_lm_tool_request(runtime, method, args)
+            }
             ("MainThreadTreeViews", _) => self.handle_vsix_tree_request(runtime, method, args),
             ("MainThreadTask", _) => self.handle_vsix_task_request(runtime, method, args),
             ("MainThreadWebviewPanels", _) => {

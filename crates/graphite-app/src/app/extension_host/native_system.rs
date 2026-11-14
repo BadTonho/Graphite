@@ -482,10 +482,11 @@ impl App {
                 schema: tool.schema.clone(),
             });
         }
+        specs.extend(self.vsix_lm_tool_specs());
         specs
     }
 
-    /// Invokes a named plugin chat tool across `extension_host` and `plugins.hosts`.
+    /// Invokes a named plugin chat tool across `extension_host`, `plugins.hosts`, and active VSIX extensions.
     pub(crate) fn invoke_plugin_chat_tool(
         &mut self,
         name: &str,
@@ -545,7 +546,7 @@ impl App {
                 }
             }
         }
-        Err(format!("Plugin chat tool `{name}` is unavailable"))
+        self.invoke_vsix_lm_tool(name, input, reply)
     }
 
     pub(crate) fn apply_native_chat_tool_reply(

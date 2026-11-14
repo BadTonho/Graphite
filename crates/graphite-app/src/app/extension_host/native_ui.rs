@@ -582,18 +582,24 @@ impl App {
     pub(crate) fn sync_plugin_keybindings(&mut self) {
         let mut specs = Vec::new();
         for record in &self.plugins.installed {
-            let Metadata::Native(manifest) = &record.metadata else {
-                continue;
+            let (version, keybindings, prefix) = match &record.metadata {
+                Metadata::Native(manifest) => {
+                    (&manifest.version, &manifest.keybindings, None::<&str>)
+                }
+                Metadata::Vsix(vsix) if vsix.main.is_some() => {
+                    (&vsix.version, &vsix.keybindings, Some(vsix.id.as_str()))
+                }
+                Metadata::Vsix(_) => continue,
             };
-            if !record.enabled || record.trusted_version.as_deref() != Some(&manifest.version) {
+            if !record.enabled || record.trusted_version.as_deref() != Some(version.as_str()) {
                 continue;
             }
-            for binding in &manifest.keybindings {
-                specs.push((
-                    binding.key.clone(),
-                    binding.command.clone(),
-                    binding.when.clone(),
-                ));
+            for binding in keybindings {
+                let command = match prefix {
+                    Some(id) => format!("graphite.vsix:{id}:{}", binding.command),
+                    None => binding.command.clone(),
+                };
+                specs.push((binding.key.clone(), command, binding.when.clone()));
             }
         }
         self.keymap.set_plugin_bindings(&specs);
@@ -609,16 +615,22 @@ impl App {
         let context = self.context_keys.resolve_target(target);
         let mut items = Vec::new();
         for record in &self.plugins.installed {
-            let Metadata::Native(manifest) = &record.metadata else {
-                continue;
+            let (plugin_id, version, menus, commands) = match &record.metadata {
+                Metadata::Native(manifest) => (
+                    &manifest.id,
+                    &manifest.version,
+                    &manifest.menus,
+                    &manifest.commands,
+                ),
+                Metadata::Vsix(vsix) => (&vsix.id, &vsix.version, &vsix.menus, &vsix.commands),
             };
-            if !record.enabled || record.trusted_version.as_deref() != Some(&manifest.version) {
+            if !record.enabled || record.trusted_version.as_deref() != Some(version.as_str()) {
                 continue;
             }
             let menu = match location {
-                PluginMenuLocation::CommandPalette => &manifest.menus.command_palette,
-                PluginMenuLocation::EditorContext => &manifest.menus.editor_context,
-                PluginMenuLocation::ViewItemContext => &manifest.menus.view_item_context,
+                PluginMenuLocation::CommandPalette => &menus.command_palette,
+                PluginMenuLocation::EditorContext => &menus.editor_context,
+                PluginMenuLocation::ViewItemContext => &menus.view_item_context,
             };
             for entry in menu {
                 let enabled = entry.when.as_deref().is_none_or(|when| {
@@ -628,14 +640,13 @@ impl App {
                 if !enabled && location != PluginMenuLocation::CommandPalette {
                     continue;
                 }
-                let title = manifest
-                    .commands
+                let title = commands
                     .iter()
                     .find(|cmd| cmd.id == entry.command)
                     .map(|cmd| cmd.title.clone())
                     .unwrap_or_else(|| entry.command.clone());
                 items.push(ResolvedPluginMenuItem {
-                    plugin_id: manifest.id.clone(),
+                    plugin_id: plugin_id.clone(),
                     command: entry.command.clone(),
                     title,
                     group: entry.group.clone(),
@@ -657,7 +668,7 @@ impl App {
     }
 
     pub(crate) fn activate_plugins_for_event(&mut self, event: &str) -> Vec<String> {
-        let targets: Vec<String> = self
+        let mut targets: Vec<String> = self
             .plugins
             .installed
             .iter()
@@ -677,6 +688,7 @@ impl App {
         for id in &targets {
             self.queue_plugin_start(id.clone());
         }
+        targets.extend(self.trigger_vsix_activation_event(event));
         targets
     }
 }
