@@ -23,7 +23,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | `workspace.fs` | Answered by the extension host directly on the local disk; it does not go through Graphite. |
 | Text decorations | `window.createTextEditorDecorationType` and `TextEditor.setDecorations` draw background colors, borders (`border`, `outline`), whole-line marks and `after` text at the end of a line, with `dark` and `light` variants. Colors can be hex, `rgb()`/`rgba()` or common theme colors. Fonts, gutter icons, overview ruler marks, `before` text and hover messages are ignored, and decorations are not drawn in word-wrap mode yet. Ranges are not adjusted while the document is edited; the extension normally sets them again. |
 | Debug adapters | An extension that registers a `DebugAdapterDescriptorFactory` can supply the adapter for its debug type: executable and local TCP server descriptors work. Configuration providers, named pipes and inline implementations are not supported yet. See [Debug panel](debug-panel.md). |
-| Webview | One webview panel, HTML content, messages both ways. |
+| Webview | Several webview panels, HTML content, messages both ways; resource URIs are confined to `localResourceRoots` (or the extension and workspace roots). |
 
 ## Declarative contributions
 
@@ -38,13 +38,13 @@ A VSIX without a Node.js entry point (themes, snippets, language packs) runs no 
 
 | `themes` | Color themes are imported into the profile and selected with `workbench.colorTheme`, by label or id. Disabling the extension removes them. |
 
-Keybindings, grammars and icon themes are listed in the package but not applied yet.
+Keybindings are bound into the active keymap when the extension is approved and the workspace is trusted. Grammars and icon themes are listed in the package but not applied yet.
 
 ## Not yet
 
 - Language providers beyond the list above (none left that Graphite knows of; the color picker and color presentations are not supported). Code actions that only run an extension command, and file operations inside a rename, are not applied.
-- Extension-owned pseudoterminals, terminal data events, tasks, debugging, source control, and virtual file systems (`registerFileSystemProvider`).
-- Several webview panels, `asWebviewUri`, and `localResourceRoots`.
+- Source control and virtual file systems (`registerFileSystemProvider`).
+- Webview views in the sidebar.
 - Custom editors and notebook kernels.
 
 Requests outside this list get the error `Graphite does not support <actor>.<method>`, and the extension sees that error. Registrations of capabilities that are not implemented (`$register*`, `$unregister*`, `$emit*`) are accepted without an error so they do not clutter the status bar. Every unsupported call is recorded once per session in `<profile>/code-oss/unsupported-api.log`, which shows what an extension needs that Graphite does not provide yet.

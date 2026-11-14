@@ -23,7 +23,7 @@ Extensões VSIX rodam no extension host oficial do Code OSS 1.145.2, em um proce
 | `workspace.fs` | Respondido pelo próprio extension host direto no disco local; não passa pelo Graphite. |
 | Decorações de texto | `window.createTextEditorDecorationType` e `TextEditor.setDecorations` desenham cores de fundo, bordas (`border`, `outline`), marcas de linha inteira e texto `after` no fim da linha, com variantes `dark` e `light`. As cores podem ser hex, `rgb()`/`rgba()` ou cores de tema comuns. Fontes, ícones de gutter, marcas da régua, texto `before` e mensagens de hover são ignorados, e as decorações ainda não são desenhadas no modo de quebra de linha. Os intervalos não são ajustados durante a edição; a extensão normalmente os define de novo. |
 | Adaptadores de depuração | Uma extensão que registra um `DebugAdapterDescriptorFactory` pode fornecer o adaptador do seu tipo de depuração: descritores de executável e de servidor TCP local funcionam. Provedores de configuração, named pipes e implementações inline ainda não são suportados. Veja [Painel de depuração](debug-panel.md). |
-| Webview | Um painel webview, conteúdo HTML, mensagens nos dois sentidos. |
+| Webview | Vários painéis webview, conteúdo HTML, mensagens nos dois sentidos; URIs de recursos ficam restritas a `localResourceRoots` (ou às raízes da extensão e do workspace). |
 
 ## Contribuições declarativas
 
@@ -38,13 +38,13 @@ Um VSIX sem ponto de entrada Node.js (temas, snippets, pacotes de idioma) não e
 
 | `themes` | Os temas de cores são importados para o perfil e selecionados com `workbench.colorTheme`, por rótulo ou id. Desabilitar a extensão os remove. |
 
-Atalhos de teclado, gramáticas e temas de ícones constam no pacote, mas ainda não são aplicados.
+Atalhos de teclado são vinculados ao keymap ativo quando a extensão é aprovada e o workspace é confiável. Gramáticas e temas de ícones constam no pacote, mas ainda não são aplicados.
 
 ## Ainda não
 
 - Provedores de linguagem além da lista acima (nenhum que o Graphite conheça; o seletor de cor e as apresentações de cor não são suportados). Code actions que apenas executam um comando da extensão, e operações de arquivo dentro de uma renomeação, não são aplicadas.
-- Pseudoterminais de propriedade da extensão, eventos de dados do terminal, tasks, depuração, controle de versão e sistemas de arquivos virtuais (`registerFileSystemProvider`).
-- Vários painéis webview, `asWebviewUri` e `localResourceRoots`.
+- Controle de versão e sistemas de arquivos virtuais (`registerFileSystemProvider`).
+- Webview views na barra lateral.
 - Editores customizados e kernels de notebook.
 
 Chamadas fora desta lista recebem o erro `Graphite does not support <actor>.<method>`, e a extensão recebe esse erro. Registros de capacidades não implementadas (`$register*`, `$unregister*`, `$emit*`) são aceitos sem erro para não poluir a barra de status. Cada chamada não suportada é registrada uma vez por sessão em `<perfil>/code-oss/unsupported-api.log`, que mostra o que uma extensão precisa e o Graphite ainda não oferece.
