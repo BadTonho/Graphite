@@ -193,6 +193,45 @@ impl App {
         if self.extension_host.commands.contains_key(&request.id) {
             return self.execute_host_command(request, cancellation);
         }
+        if let Some(plugin_id) = self.plugins.installed.iter().find_map(|record| {
+            let graphite_plugins::manifest::Metadata::Native(manifest) = &record.metadata else {
+                return None;
+            };
+            if !record.enabled || record.trusted_version.as_deref() != Some(&manifest.version) {
+                return None;
+            }
+            let matches_cmd = manifest.commands.iter().any(|c| c.id == request.id)
+                || manifest
+                    .activation_events
+                    .iter()
+                    .any(|e| e == &format!("onCommand:{}", request.id));
+            matches_cmd.then(|| manifest.id.clone())
+        }) {
+            if !self
+                .plugins
+                .hosts
+                .get(&plugin_id)
+                .is_some_and(|host| host.native_active)
+            {
+                self.queue_plugin_start(plugin_id.clone());
+                self.command_runtime.next += 1;
+                let (sender, receiver) = mpsc::channel();
+                let ticket = CommandTicket {
+                    id: self.command_runtime.next,
+                    cancellation: cancellation.clone(),
+                    receiver,
+                };
+                self.plugins.pending_commands.push(
+                    super::extension_host::PendingActivationCommand {
+                        plugin_id,
+                        request,
+                        cancellation,
+                        sender,
+                    },
+                );
+                return ticket;
+            }
+        }
         self.refresh_command_context();
         self.command_runtime.next += 1;
         let id = self.command_runtime.next;

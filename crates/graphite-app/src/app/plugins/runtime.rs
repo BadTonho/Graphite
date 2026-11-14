@@ -15,6 +15,28 @@ fn dev_watch_mtime(root: &std::path::Path, main: &str) -> Option<std::time::Syst
 }
 
 impl App {
+    pub(crate) fn queue_plugin_start(&mut self, id: String) {
+        if self
+            .plugins
+            .hosts
+            .get(&id)
+            .is_some_and(|h| h.supervisor.is_some())
+            || self
+                .extension_host
+                .native_manifest
+                .as_ref()
+                .is_some_and(|m| m.id == id)
+        {
+            return;
+        }
+        if self.plugins.worker.is_some() {
+            if !self.plugins.startup.iter().any(|pending| pending == &id) {
+                self.plugins.startup.push(id);
+            }
+        } else {
+            self.start_plugin(id);
+        }
+    }
     pub(crate) fn plugin_console_log_path(&self, id: &str) -> Option<PathBuf> {
         self.plugins
             .store
@@ -27,6 +49,7 @@ impl App {
                 self.plugins.installed = records;
                 self.reload_extension_snippets();
                 self.sync_extension_themes();
+                self.sync_plugin_keybindings();
             }
         }
         if self.plugins.worker.is_some() {
@@ -128,6 +151,7 @@ impl App {
             self.clear_host_session();
             std::mem::swap(&mut self.extension_host, &mut host);
         }
+        self.clear_native_ui_for_plugin(id);
     }
     pub(crate) fn poll_plugins(&mut self) {
         if let Some(result) = self
@@ -168,13 +192,19 @@ impl App {
                     if self.plugins.installed.is_empty() {
                         self.plugins.startup = records
                             .iter()
-                            .filter(|r| r.enabled && matches!(r.metadata, Metadata::Native(_)))
+                            .filter(|r| match &r.metadata {
+                                Metadata::Native(manifest) => {
+                                    r.enabled && Self::manifest_matches_startup(manifest)
+                                }
+                                Metadata::Vsix(_) => false,
+                            })
                             .map(|r| r.metadata.id().to_owned())
                             .collect();
                     }
                     self.plugins.installed = records;
                     self.reload_extension_snippets();
                     self.sync_extension_themes();
+                    self.sync_plugin_keybindings();
                     if self.active_plugin_activity.as_ref().is_some_and(|active| {
                         !self
                             .plugin_activity_entries()
@@ -318,6 +348,34 @@ impl App {
                 }
             }
             self.plugins.hosts.insert(id.clone(), host);
+            if self.plugins.hosts.get(&id).is_some_and(|h| h.native_active) {
+                let mut ready_cmds = Vec::new();
+                let mut rest = Vec::new();
+                for pending in self.plugins.pending_commands.drain(..) {
+                    if pending.plugin_id == id {
+                        ready_cmds.push(pending);
+                    } else {
+                        rest.push(pending);
+                    }
+                }
+                self.plugins.pending_commands = rest;
+                if !ready_cmds.is_empty() {
+                    let mut active_host = self.plugins.hosts.remove(&id).unwrap();
+                    std::mem::swap(&mut self.extension_host, &mut active_host);
+                    for pending in ready_cmds {
+                        self.command_runtime.next += 1;
+                        let exec_id = self.command_runtime.next;
+                        self.dispatch_host_command(
+                            exec_id,
+                            pending.sender,
+                            pending.request,
+                            pending.cancellation,
+                        );
+                    }
+                    std::mem::swap(&mut self.extension_host, &mut active_host);
+                    self.plugins.hosts.insert(id.clone(), active_host);
+                }
+            }
             if should_reload {
                 dev_reload.push(id);
             }
@@ -325,6 +383,14 @@ impl App {
         for id in dev_reload {
             self.reload_plugin(&id);
         }
+        if let Some(language) = self
+            .documents
+            .get(self.active_document())
+            .and_then(|doc| doc.language)
+        {
+            self.activate_plugins_for_event(&format!("onLanguage:{}", language.name()));
+        }
+        self.sync_native_webview_host();
         self.poll_vsix();
     }
 }

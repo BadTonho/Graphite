@@ -45,6 +45,45 @@ export interface OutputChannel extends Disposable {
   clear(): Promise<void>;
   show(): Promise<void>;
 }
+export type TreeCollapsibleState = 'none' | 'collapsed' | 'expanded';
+export interface TreeItemCommand {
+  id: string;
+  title?: string;
+  arguments?: unknown[];
+}
+export interface TreeItem {
+  id?: string;
+  label: string;
+  description?: string;
+  tooltip?: string;
+  collapsibleState?: TreeCollapsibleState;
+  command?: TreeItemCommand;
+  contextValue?: string;
+}
+export interface TreeDataProvider<T = TreeItem> {
+  getChildren(element?: T, signal?: AbortSignal): Promise<T[] | undefined> | T[] | undefined;
+  getTreeItem?(element: T): Promise<TreeItem> | TreeItem;
+  onDidChangeTreeData?(listener: (element?: T) => void): Disposable | void;
+}
+export interface TreeViewHandle<T = TreeItem> extends Disposable {
+  refresh(element?: T | string): Promise<void>;
+}
+export interface WebviewPanelOptions {
+  html?: string;
+}
+export interface WebviewHandle {
+  html: string;
+  setHtml(html: string): Promise<void>;
+  postMessage(message: unknown): Promise<void>;
+  onDidReceiveMessage(listener: (message: unknown) => void | Promise<void>): Disposable;
+}
+export interface WebviewPanel extends Disposable {
+  readonly viewType: string;
+  title: string;
+  readonly webview: WebviewHandle;
+  setTitle(title: string): Promise<void>;
+  onDidDispose(listener: () => void | Promise<void>): Disposable;
+}
 export interface StorageArea {
   get<T = unknown>(key?: string): Promise<T | null>;
   set(key: string, value: unknown): Promise<void>;
@@ -77,6 +116,8 @@ export interface Graphite {
     showQuickPick(items: QuickPickItem[] | string[], options?: QuickPickOptions): Promise<QuickPickItem | QuickPickItem[] | null>;
     createStatusBarItem(id?: string): StatusBarItem;
     createOutputChannel(name: string): Promise<OutputChannel>;
+    registerTreeDataProvider<T = TreeItem>(viewId: string, provider: TreeDataProvider<T>): Promise<TreeViewHandle<T>>;
+    createWebviewPanel(viewType: string, title: string, options?: WebviewPanelOptions): Promise<WebviewPanel>;
   };
   storage: {
     global: StorageArea;

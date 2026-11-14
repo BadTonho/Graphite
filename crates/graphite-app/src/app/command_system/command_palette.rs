@@ -48,20 +48,81 @@ impl App {
                         .is_ok_and(|condition| condition.evaluate(&context)),
             }
         }));
+        let menu_when: std::collections::HashMap<(&str, &str), Option<&str>> = self
+            .plugins
+            .installed
+            .iter()
+            .filter_map(|record| match &record.metadata {
+                graphite_plugins::manifest::Metadata::Native(manifest) => Some(manifest),
+                graphite_plugins::manifest::Metadata::Vsix(_) => None,
+            })
+            .flat_map(|manifest| {
+                manifest.menus.command_palette.iter().map(move |item| {
+                    (
+                        (manifest.id.as_str(), item.command.as_str()),
+                        item.when.as_deref(),
+                    )
+                })
+            })
+            .collect();
         items.extend(self.plugins.hosts.iter().flat_map(|(plugin_id, host)| {
             let context = &context;
-            host.commands.values().map(move |command| PaletteItem {
-                id: command.metadata.id.clone(),
-                title: command.metadata.title.clone(),
-                source: format!("Plugin {plugin_id}"),
-                enabled: command
-                    .metadata
-                    .targets
-                    .contains(&graphite_core_api::TargetKind::View)
-                    && crate::keybindings::Condition::parse(&command.metadata.enablement)
-                        .is_ok_and(|condition| condition.evaluate(&context)),
+            let menu_when = &menu_when;
+            host.commands.values().map(move |command| {
+                let menu_enabled = menu_when
+                    .get(&(plugin_id.as_str(), command.metadata.id.as_str()))
+                    .and_then(|when| *when)
+                    .is_none_or(|when| {
+                        crate::keybindings::Condition::parse(when)
+                            .is_ok_and(|cond| cond.evaluate(context))
+                    });
+                PaletteItem {
+                    id: command.metadata.id.clone(),
+                    title: command.metadata.title.clone(),
+                    source: format!("Plugin {plugin_id}"),
+                    enabled: menu_enabled
+                        && command
+                            .metadata
+                            .targets
+                            .contains(&graphite_core_api::TargetKind::View)
+                        && crate::keybindings::Condition::parse(&command.metadata.enablement)
+                            .is_ok_and(|condition| condition.evaluate(context)),
+                }
             })
         }));
+        for record in &self.plugins.installed {
+            let graphite_plugins::manifest::Metadata::Native(manifest) = &record.metadata else {
+                continue;
+            };
+            if !record.enabled
+                || record.trusted_version.as_deref() != Some(&manifest.version)
+                || self
+                    .plugins
+                    .hosts
+                    .get(&manifest.id)
+                    .is_some_and(|h| h.native_active)
+            {
+                continue;
+            }
+            for cmd in &manifest.commands {
+                if items.iter().any(|existing| existing.id == cmd.id) {
+                    continue;
+                }
+                let menu_enabled = menu_when
+                    .get(&(manifest.id.as_str(), cmd.id.as_str()))
+                    .and_then(|when| *when)
+                    .is_none_or(|when| {
+                        crate::keybindings::Condition::parse(when)
+                            .is_ok_and(|cond| cond.evaluate(&context))
+                    });
+                items.push(PaletteItem {
+                    id: cmd.id.clone(),
+                    title: cmd.title.clone(),
+                    source: format!("Plugin {}", manifest.id),
+                    enabled: menu_enabled,
+                });
+            }
+        }
         let trusted = self
             .workspace_trust
             .as_ref()

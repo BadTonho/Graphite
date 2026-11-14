@@ -233,6 +233,9 @@ fn native_registration_cannot_escape_manifest_or_shadow_builtins() {
         description: String::new(),
         commands: vec![],
         activity_bar: vec![],
+        activation_events: vec![],
+        keybindings: vec![],
+        menus: Default::default(),
     });
     for id in ["undo", "other.plugin.command", "local.test.undeclared"] {
         let metadata = CommandMetadata {
@@ -963,6 +966,9 @@ fn native_dev_plugin_captures_console_logs_and_hot_reloads_on_entry_change() {
                 title: "Ping".into(),
             }],
             activity_bar: Vec::new(),
+            activation_events: Vec::new(),
+            keybindings: Vec::new(),
+            menus: Default::default(),
         })
         .unwrap(),
     )
@@ -1082,4 +1088,279 @@ export async function activate(_context, g) {
         std::thread::sleep(Duration::from_millis(5));
     };
     assert_eq!(v2, json!("v2"));
+}
+
+#[test]
+fn native_plugins_support_tree_views_webviews_menus_keybindings_and_lazy_activation() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(temp.path()).unwrap();
+    app.workspace_trust = Some(trust);
+    let store = Store::new(temp.path().join("plugins"));
+
+    // 1. Eager Rich-UI plugin: TreeDataProvider + WebviewPanel + Keybindings + Menus
+    let rich = temp.path().join("richui");
+    graphite_plugins::sdk::create(&rich).unwrap();
+    let rich_id = "local.rich";
+    std::fs::write(
+        rich.join("graphite-plugin.json"),
+        serde_json::to_vec(&json!({
+            "id": rich_id,
+            "version": "0.1.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "Rich UI plugin",
+            "commands": [
+                { "id": "local.rich.selectNode", "title": "Select Tree Node" },
+                { "id": "local.rich.openPanel", "title": "Open Webview Panel" },
+                { "id": "local.rich.refreshTree", "title": "Refresh Tree" }
+            ],
+            "activityBar": [{
+                "id": "local.rich.sidebar",
+                "title": "Rich Explorer",
+                "views": [{ "id": "local.rich.tree", "title": "Items", "kind": "tree" }]
+            }],
+            "keybindings": [{
+                "command": "local.rich.openPanel",
+                "key": "ctrl+alt+r"
+            }],
+            "menus": {
+                "commandPalette": [{ "command": "local.rich.openPanel", "when": "resourceExtname == .nonexistent" }],
+                "editorContext": [{ "command": "local.rich.refreshTree", "group": "navigation" }]
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(rich.join("dist")).unwrap();
+    std::fs::write(
+        rich.join("dist/index.js"),
+        r#"
+export async function activate(_context, g) {
+  let suffix = 'init';
+  let onTreeChange;
+  const tree = await g.window.registerTreeDataProvider('local.rich.tree', {
+    onDidChangeTreeData(listener) { onTreeChange = listener; return { async dispose() {} }; },
+    getChildren(element) {
+      if (!element) {
+        return [{ id: 'folder-1', label: `Folder (${suffix})`, collapsibleState: 'collapsed' }];
+      }
+      if (element.id === 'folder-1') {
+        return [{
+          id: 'leaf-1',
+          label: 'Child Item',
+          description: 'leaf',
+          command: { id: 'local.rich.selectNode', arguments: ['leaf-arg'] }
+        }];
+      }
+      return [];
+    }
+  });
+  await g.commands.registerCommand('local.rich.selectNode', async arg => {
+    await g.storage.global.set('selected', arg);
+    return arg;
+  });
+  await g.commands.registerCommand('local.rich.refreshTree', async () => {
+    suffix = 'reloaded';
+    await tree.refresh();
+    return suffix;
+  });
+  await g.commands.registerCommand('local.rich.openPanel', async () => {
+    const panel = await g.window.createWebviewPanel('rich.view', 'Rich Preview', { html: '<h1>Boot</h1>' });
+    await panel.webview.setHtml('<h1>Updated</h1>');
+    await panel.setTitle('Updated Preview');
+    panel.webview.onDidReceiveMessage(async msg => {
+      await panel.webview.postMessage({ echo: msg });
+    });
+    await g.storage.global.set('openedViaShortcut', true);
+    return 'panel-open';
+  });
+}
+"#,
+    )
+    .unwrap();
+    let rich_pkg = graphite_plugins::package::pack(&rich).unwrap();
+    store.install(&rich_pkg).unwrap();
+    store.enable(rich_id, true).unwrap();
+
+    // 2. Lazy-activated plugin triggered only onCommand:local.lazy.ping
+    let lazy = temp.path().join("lazyext");
+    graphite_plugins::sdk::create(&lazy).unwrap();
+    let lazy_id = "local.lazy";
+    std::fs::write(
+        lazy.join("graphite-plugin.json"),
+        serde_json::to_vec(&json!({
+            "id": lazy_id,
+            "version": "0.1.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "Lazy plugin",
+            "activationEvents": ["onCommand:local.lazy.ping"],
+            "commands": [{ "id": "local.lazy.ping", "title": "Lazy Ping" }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(lazy.join("dist")).unwrap();
+    std::fs::write(
+        lazy.join("dist/index.js"),
+        r#"
+export async function activate(_context, g) {
+  await g.commands.registerCommand('local.lazy.ping', () => 'lazy-pong');
+}
+"#,
+    )
+    .unwrap();
+    let lazy_pkg = graphite_plugins::package::pack(&lazy).unwrap();
+    store.install(&lazy_pkg).unwrap();
+    store.enable(lazy_id, true).unwrap();
+
+    let installed = store.list().unwrap();
+    let startup: Vec<_> = installed
+        .iter()
+        .filter(|r| match &r.metadata {
+            graphite_plugins::manifest::Metadata::Native(manifest) => {
+                r.enabled && App::manifest_matches_startup(manifest)
+            }
+            graphite_plugins::manifest::Metadata::Vsix(_) => false,
+        })
+        .map(|r| r.metadata.id().to_owned())
+        .collect();
+    app.plugins.installed = installed;
+    app.plugins.store = Some(store);
+    app.sync_plugin_keybindings();
+    for id in startup {
+        app.queue_plugin_start(id);
+    }
+    app.poll_plugins();
+
+    let deadline = Instant::now() + Duration::from_secs(6);
+    while !app
+        .plugins
+        .hosts
+        .get(rich_id)
+        .is_some_and(|h| h.native_active && h.commands.len() == 3)
+        || app.plugin_tree_items("local.rich.tree").is_empty()
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "rich UI plugin did not load tree"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Lazy plugin did NOT start eagerly!
+    assert!(!app.plugins.hosts.contains_key(lazy_id));
+
+    // TreeDataProvider: root populated, click expands folder-1 & fetches leaf-1, click leaf-1 invokes command
+    let roots = app.plugin_tree_items("local.rich.tree");
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].item.label, "Folder (init)");
+    assert!(app.click_plugin_tree_row("local.rich.tree", 0));
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.plugin_tree_items("local.rich.tree").len() != 2 {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "folder children were not loaded");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let rows = app.plugin_tree_items("local.rich.tree");
+    assert_eq!(rows[1].depth, 1);
+    assert_eq!(rows[1].item.label, "Child Item");
+    assert!(app.click_plugin_tree_row("local.rich.tree", 1));
+
+    // Verify refreshTree updates tree items
+    let refresh_ticket = app.execute_command(CommandRequest {
+        id: "local.rich.refreshTree".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_plugins();
+        if let Some(res) = refresh_ticket.try_result() {
+            assert_eq!(res.unwrap(), json!("reloaded"));
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app
+        .plugin_tree_items("local.rich.tree")
+        .first()
+        .is_some_and(|r| r.item.label == "Folder (reloaded)")
+    {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Keybinding ctrl+alt+r triggers local.rich.openPanel and creates WebviewPanel
+    assert!(app.handle_keybinding_stroke("ctrl+alt+r"));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app
+        .native_webview()
+        .is_none_or(|p| p.html != "<h1>Updated</h1>" || p.title != "Updated Preview")
+    {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "webview panel did not update");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let handle = app.native_webview().unwrap().handle.clone();
+    assert!(app.send_webview_message(&handle, json!({"hello": "world"})));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app
+        .native_webview()
+        .is_none_or(|p| p.outbound_messages.is_empty())
+    {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "webview echo not received");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        app.native_webview().unwrap().outbound_messages[0],
+        json!({"echo": {"hello": "world"}})
+    );
+
+    // Menus: editorContext exposes local.rich.refreshTree, commandPalette when disables openPanel
+    let editor_menus =
+        app.plugin_menu_items(crate::app::extension_host::PluginMenuLocation::EditorContext);
+    assert!(editor_menus
+        .iter()
+        .any(|m| m.command == "local.rich.refreshTree" && m.enabled));
+    app.open_command_palette();
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(palette
+        .items
+        .iter()
+        .any(|item| item.id == "local.rich.openPanel" && !item.enabled));
+    // Lazy plugin command IS discoverable in Command Palette even before activation!
+    assert!(palette
+        .items
+        .iter()
+        .any(|item| item.id == "local.lazy.ping" && item.enabled));
+    app.command_palette = None;
+
+    // Executing lazy plugin command activates local.lazy on demand and resolves ticket!
+    let lazy_ticket = app.execute_command(CommandRequest {
+        id: "local.lazy.ping".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(6);
+    let lazy_reply = loop {
+        app.poll_plugins();
+        if let Some(res) = lazy_ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline, "lazy activation timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(lazy_reply, json!("lazy-pong"));
 }

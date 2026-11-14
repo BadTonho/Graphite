@@ -35,6 +35,10 @@ impl App {
         };
         let save_parent =
             parent.is_some_and(|id| self.extension_host.save_replies.contains_key(&id));
+        let callback_parent = parent.is_some_and(|id| {
+            self.extension_host.tree_replies.contains_key(&id)
+                || self.extension_host.webview_deliveries.contains(&id)
+        });
         if save_parent
             && !matches!(
                 &request,
@@ -56,7 +60,8 @@ impl App {
             );
             return;
         }
-        let parent_view = if let Some(parent) = parent.filter(|_| !save_parent) {
+        let parent_view = if let Some(parent) = parent.filter(|_| !save_parent && !callback_parent)
+        {
             let pending = self
                 .extension_host
                 .outbound
@@ -85,6 +90,7 @@ impl App {
             RpcRequest::Activated if self.extension_host.native_manifest.is_some() => {
                 self.extension_host.native_active = true;
                 self.extension_host.activation_deadline = None;
+                self.on_native_plugin_activated();
                 Ok(Value::Null)
             }
             RpcRequest::RegisterSaveParticipant(metadata) => {
@@ -325,6 +331,15 @@ impl App {
                 self.native_storage_set(scope, key, value)?;
                 Ok(Value::Null)
             }
+            request @ (ServiceRequest::RegisterTreeDataProvider { .. }
+            | ServiceRequest::RefreshTreeView { .. }
+            | ServiceRequest::CreateWebviewPanel { .. }
+            | ServiceRequest::SetWebviewHtml { .. }
+            | ServiceRequest::SetWebviewTitle { .. }
+            | ServiceRequest::PostWebviewMessage { .. }
+            | ServiceRequest::DisposeWebviewPanel { .. }) => self
+                .handle_native_ui_service(request)
+                .unwrap_or_else(|| Err(ServiceError::Failed("Unhandled UI request".into()))),
             ServiceRequest::Execute(_)
             | ServiceRequest::Save(_)
             | ServiceRequest::PromptInput { .. }

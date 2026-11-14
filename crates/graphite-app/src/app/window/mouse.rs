@@ -234,6 +234,11 @@ impl App {
         }
 
         if self.primary_sidebar_contains(mx, my, window_width, window_height, lh) {
+            if self.active_plugin_activity.is_some()
+                && self.plugin_activity_sidebar_click(mx, my, window_width, lh)
+            {
+                return;
+            }
             if self.scm_visible {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);

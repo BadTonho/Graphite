@@ -14,6 +14,50 @@ pub struct Manifest {
     pub commands: Vec<Command>,
     #[serde(default)]
     pub activity_bar: Vec<ActivityBarContainer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub activation_events: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keybindings: Vec<Keybinding>,
+    #[serde(default, skip_serializing_if = "Menus::is_empty")]
+    pub menus: Menus,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Keybinding {
+    pub command: String,
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Menus {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_palette: Vec<MenuItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub editor_context: Vec<MenuItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub view_item_context: Vec<MenuItem>,
+}
+
+impl Menus {
+    pub fn is_empty(&self) -> bool {
+        self.command_palette.is_empty()
+            && self.editor_context.is_empty()
+            && self.view_item_context.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MenuItem {
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Command {
@@ -100,6 +144,39 @@ impl Manifest {
                 {
                     return Err("Activity bar views need unique plugin-prefixed IDs, titles and valid kinds".into());
                 }
+            }
+        }
+        let prefix = format!("{}.", self.id);
+        for event in &self.activation_events {
+            let valid = event == "*"
+                || event == "onStartupFinished"
+                || event
+                    .strip_prefix("onCommand:")
+                    .is_some_and(|v| !v.is_empty())
+                || event
+                    .strip_prefix("onLanguage:")
+                    .is_some_and(|v| !v.is_empty())
+                || event.strip_prefix("onView:").is_some_and(|v| !v.is_empty());
+            if !valid {
+                return Err("Unsupported activation event in manifest".into());
+            }
+        }
+        for binding in &self.keybindings {
+            if !binding.command.starts_with(&prefix) || binding.key.trim().is_empty() {
+                return Err(
+                    "Plugin keybindings need a plugin-prefixed command and nonempty key".into(),
+                );
+            }
+        }
+        for item in self
+            .menus
+            .command_palette
+            .iter()
+            .chain(&self.menus.editor_context)
+            .chain(&self.menus.view_item_context)
+        {
+            if !item.command.starts_with(&prefix) {
+                return Err("Plugin menu items need a plugin-prefixed command".into());
             }
         }
         Ok(())
@@ -596,5 +673,37 @@ mod activity_bar_tests {
         let text = serde_json::to_string(&debuggers).unwrap();
         let back: Vec<DebuggerContribution> = serde_json::from_str(&text).unwrap();
         assert_eq!(back, debuggers);
+    }
+
+    #[test]
+    fn native_manifest_validates_activation_events_keybindings_and_menus() {
+        let valid: Manifest = serde_json::from_value(serde_json::json!({
+            "id": "local.ui",
+            "version": "1.0.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "UI test",
+            "commands": [{ "id": "local.ui.open", "title": "Open" }],
+            "activationEvents": ["onCommand:local.ui.open", "onView:local.ui.tree"],
+            "keybindings": [{ "command": "local.ui.open", "key": "ctrl+alt+u", "when": "editorTextFocus" }],
+            "menus": {
+                "commandPalette": [{ "command": "local.ui.open", "when": "editorTextFocus" }],
+                "editorContext": [{ "command": "local.ui.open", "group": "navigation" }]
+            }
+        }))
+        .unwrap();
+        valid.validate().unwrap();
+
+        let mut bad_binding = valid.clone();
+        bad_binding.keybindings[0].command = "workbench.action.files.save".into();
+        assert!(bad_binding.validate().is_err());
+
+        let mut bad_event = valid.clone();
+        bad_event.activation_events.push("onUnknown:foo".into());
+        assert!(bad_event.validate().is_err());
+
+        let mut bad_menu = valid;
+        bad_menu.menus.editor_context[0].command = "other.plugin.cmd".into();
+        assert!(bad_menu.validate().is_err());
     }
 }

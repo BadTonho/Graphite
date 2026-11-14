@@ -2,7 +2,9 @@
 mod commands;
 mod documents;
 mod saving;
+mod ui;
 pub use saving::*;
+pub use ui::*;
 pub mod protocol;
 mod uri;
 pub use commands::*;
@@ -151,5 +153,38 @@ pub enum ServiceRequest {
         key: String,
         #[serde(default)]
         value: Option<Value>,
+    },
+    RegisterTreeDataProvider {
+        #[serde(rename = "viewId", alias = "view_id")]
+        view_id: String,
+    },
+    RefreshTreeView {
+        #[serde(rename = "viewId", alias = "view_id")]
+        view_id: String,
+        #[serde(rename = "elementId", alias = "element_id", default)]
+        element_id: Option<String>,
+    },
+    CreateWebviewPanel {
+        handle: String,
+        #[serde(rename = "viewType", alias = "view_type")]
+        view_type: String,
+        title: String,
+        #[serde(default)]
+        html: String,
+    },
+    SetWebviewHtml {
+        handle: String,
+        html: String,
+    },
+    SetWebviewTitle {
+        handle: String,
+        title: String,
+    },
+    PostWebviewMessage {
+        handle: String,
+        message: Value,
+    },
+    DisposeWebviewPanel {
+        handle: String,
     },
 }

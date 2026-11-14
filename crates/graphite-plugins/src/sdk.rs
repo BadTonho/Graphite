@@ -25,6 +25,9 @@ pub fn create(destination: &Path) -> Result<()> {
             title: "Hello from my plugin".into(),
         }],
         activity_bar: Vec::new(),
+        activation_events: Vec::new(),
+        keybindings: Vec::new(),
+        menus: Default::default(),
     };
     m.validate()?;
     fs::create_dir_all(destination.join("src")).map_err(|e| e.to_string())?;

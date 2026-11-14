@@ -692,14 +692,26 @@ impl App {
         self.close_project_search();
         self.scm_visible = false;
         self.active_plugin_activity = Some(entry.key.clone());
-        if self.plugins.installed_plugins().iter().any(|record| {
+        let is_native = self.plugins.installed_plugins().iter().any(|record| {
             record.metadata.id() == entry.plugin_id
                 && matches!(
                     record.metadata,
                     graphite_plugins::manifest::Metadata::Native(_)
                 )
-        }) {
-            self.start_plugin(entry.plugin_id);
+        });
+        if is_native {
+            for view in &entry.views {
+                self.activate_plugins_for_event(&format!("onView:{}", view.id));
+            }
+            if !self.plugins.hosts.contains_key(&entry.plugin_id) {
+                self.start_plugin(entry.plugin_id);
+            } else {
+                for view in &entry.views {
+                    if view.kind == "tree" {
+                        self.request_native_tree_children(&view.id, None);
+                    }
+                }
+            }
         } else {
             self.status = format!("{} · {}", entry.title, entry.plugin_id);
         }
@@ -748,19 +760,61 @@ impl App {
             line_height * 2.8,
             rgb(Theme::color(Theme::DIM, 0x858585)),
         );
-        for (index, view) in entry.views.iter().enumerate() {
-            let y = line_height * (4.0 + index as f32);
+        let mut row = 0usize;
+        for view in &entry.views {
+            let y = line_height * (4.0 + row as f32);
             if y + line_height >= height {
                 break;
             }
             let chars = ((width - PAD * 2.0) / cell_width.max(1.0)).max(1.0) as usize;
-            let label = format!("{}  ({})", view.title, view.kind);
+            let tree_rows = if view.kind == "tree" {
+                self.plugin_tree_items(&view.id)
+            } else {
+                Vec::new()
+            };
+            let header = if tree_rows.is_empty() {
+                format!("{}  ({})", view.title, view.kind)
+            } else {
+                view.title.clone()
+            };
             renderer.draw_text(
-                &label.chars().take(chars).collect::<String>(),
+                &header.chars().take(chars).collect::<String>(),
                 ACTIVITY_BAR_WIDTH + PAD,
                 y,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
+            row += 1;
+            let expanded = self
+                .plugins
+                .native_tree_views
+                .get(&view.id)
+                .map(|t| &t.expanded);
+            for item in tree_rows {
+                let item_y = line_height * (4.0 + row as f32);
+                if item_y + line_height >= height {
+                    break;
+                }
+                let glyph = match item.item.collapsible_state {
+                    graphite_core_api::TreeCollapsibleState::None => "•",
+                    _ if expanded.is_some_and(|set| set.contains(&item.item.id)) => "▾",
+                    _ => "▸",
+                };
+                let indent = "  ".repeat(item.depth);
+                let desc = item
+                    .item
+                    .description
+                    .as_deref()
+                    .map(|d| format!("  {d}"))
+                    .unwrap_or_default();
+                let line = format!("{indent}{glyph} {}{desc}", item.item.label);
+                renderer.draw_text(
+                    &line.chars().take(chars).collect::<String>(),
+                    ACTIVITY_BAR_WIDTH + PAD,
+                    item_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
+                row += 1;
+            }
         }
         if entry.views.is_empty() {
             renderer.draw_text(
@@ -1743,6 +1797,9 @@ mod tests {
                                 kind: "tree".into(),
                             }],
                         }],
+                        activation_events: vec![],
+                        keybindings: vec![],
+                        menus: Default::default(),
                     },
                 ),
                 enabled: true,

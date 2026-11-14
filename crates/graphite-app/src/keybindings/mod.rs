@@ -28,6 +28,7 @@ pub(crate) enum Resolution {
 #[derive(Debug)]
 pub(crate) struct Keymap {
     defaults: Vec<Binding>,
+    plugin_bindings: Vec<Binding>,
     bindings: Vec<Binding>,
     pending: Vec<String>,
 }
@@ -48,6 +49,7 @@ impl Default for Keymap {
             .collect();
         Self {
             defaults,
+            plugin_bindings: Vec::new(),
             bindings: Vec::new(),
             pending: Vec::new(),
         }
@@ -66,20 +68,52 @@ impl Keymap {
         if let Some(binding) = custom {
             return Some(format_binding_keys(&binding.keys));
         }
-        let binding = self.defaults.iter().find(|binding| {
-            binding.command == command
-                && !self.bindings.iter().any(|custom| {
-                    custom.keys == binding.keys
-                        && (custom.command == format!("-{command}") || custom.command != command)
-                })
-        })?;
+        let binding = self
+            .defaults
+            .iter()
+            .chain(&self.plugin_bindings)
+            .find(|binding| {
+                binding.command == command
+                    && !self.bindings.iter().any(|custom| {
+                        custom.keys == binding.keys
+                            && (custom.command == format!("-{command}")
+                                || custom.command != command)
+                    })
+            })?;
         Some(format_binding_keys(&binding.keys))
+    }
+
+    pub(crate) fn set_plugin_bindings(&mut self, specs: &[(String, String, Option<String>)]) {
+        self.plugin_bindings = specs
+            .iter()
+            .filter_map(|(key, command, when)| {
+                let keys = key
+                    .split_whitespace()
+                    .map(normalize_stroke)
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()?;
+                if keys.is_empty() || command.trim().is_empty() {
+                    return None;
+                }
+                let condition = match when {
+                    Some(expr) => when::parse(expr).ok(),
+                    None => None,
+                };
+                Some(Binding {
+                    keys,
+                    command: command.clone(),
+                    arguments: serde_json::Value::Null,
+                    condition,
+                })
+            })
+            .collect();
     }
 
     pub(crate) fn reference_bindings(&self) -> Vec<(String, String)> {
         let mut rows = self
             .defaults
             .iter()
+            .chain(&self.plugin_bindings)
             .filter(|binding| {
                 !self.bindings.iter().any(|custom| {
                     custom.keys == binding.keys
@@ -170,7 +204,12 @@ impl Keymap {
         self.pending.push(stroke.clone());
         let mut retried = false;
         loop {
-            let all: Vec<_> = self.defaults.iter().chain(&self.bindings).collect();
+            let all: Vec<_> = self
+                .defaults
+                .iter()
+                .chain(&self.plugin_bindings)
+                .chain(&self.bindings)
+                .collect();
             let active = |binding: &Binding| {
                 binding
                     .condition

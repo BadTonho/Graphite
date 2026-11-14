@@ -8,8 +8,13 @@ use std::{
 };
 mod lifecycle;
 mod native_services;
+mod native_ui;
 mod requests;
 pub(crate) use native_services::{NativePrompt, NativeStatusItem};
+#[cfg_attr(not(test), allow(unused_imports))]
+pub(crate) use native_ui::{
+    NativeTreeView, NativeWebviewPanel, PendingActivationCommand, PluginMenuLocation,
+};
 pub(crate) struct OwnedCommand {
     pub resource: u64,
     pub session: u64,
@@ -31,6 +36,8 @@ pub(crate) struct ExtensionRuntime {
     pub commands: HashMap<String, OwnedCommand>,
     pub participants: std::collections::BTreeMap<u64, (u64, SaveParticipantMetadata)>,
     pub save_replies: HashMap<u64, std::sync::mpsc::Sender<ServiceResult<serde_json::Value>>>,
+    pub tree_replies: HashMap<u64, (String, Option<String>)>,
+    pub webview_deliveries: HashSet<u64>,
     pub subscriptions: HashMap<u64, DocumentSubscription>,
     pub outbound: HashMap<u64, u64>,
     pub incoming: HashMap<u64, Incoming>,
@@ -44,20 +51,13 @@ pub(crate) struct ExtensionRuntime {
     pub wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 impl App {
-    pub(crate) fn execute_host_command(
+    pub(crate) fn dispatch_host_command(
         &mut self,
+        id: u64,
+        sender: std::sync::mpsc::Sender<Result<serde_json::Value, CommandError>>,
         request: CommandRequest,
         cancellation: CancellationToken,
-    ) -> CommandTicket {
-        self.refresh_command_context();
-        self.command_runtime.next += 1;
-        let id = self.command_runtime.next;
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let ticket = CommandTicket {
-            id,
-            cancellation: cancellation.clone(),
-            receiver,
-        };
+    ) {
         let validate = || {
             cancellation.check()?;
             if self.extension_host.native_manifest.is_some() && !self.extension_host.native_active {
@@ -86,7 +86,7 @@ impl App {
         };
         if let Err(error) = validate() {
             let _ = sender.send(Err(error));
-            return ticket;
+            return;
         }
         let now = Instant::now();
         let rpc = self
@@ -108,7 +108,7 @@ impl App {
             Ok(rpc) => rpc,
             Err(error) => {
                 let _ = sender.send(Err(command_error(error)));
-                return ticket;
+                return;
             }
         };
         let view = self.command_target_view(request.target).unwrap();
@@ -127,6 +127,23 @@ impl App {
         );
         let _ = view;
         self.extension_host.outbound.insert(rpc, id);
+    }
+
+    pub(crate) fn execute_host_command(
+        &mut self,
+        request: CommandRequest,
+        cancellation: CancellationToken,
+    ) -> CommandTicket {
+        self.refresh_command_context();
+        self.command_runtime.next += 1;
+        let id = self.command_runtime.next;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let ticket = CommandTicket {
+            id,
+            cancellation: cancellation.clone(),
+            receiver,
+        };
+        self.dispatch_host_command(id, sender, request, cancellation);
         ticket
     }
 }

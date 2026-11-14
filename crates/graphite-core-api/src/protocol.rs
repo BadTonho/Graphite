@@ -29,6 +29,15 @@ pub enum RpcRequest {
         command: String,
         arguments: Value,
     },
+    ProvideTreeChildren {
+        view_id: String,
+        #[serde(default)]
+        element_id: Option<String>,
+    },
+    DeliverWebviewMessage {
+        handle: String,
+        message: Value,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Message {

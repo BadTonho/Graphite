@@ -50,6 +50,8 @@ impl App {
         self.extension_host.commands.clear();
         self.extension_host.participants.clear();
         self.extension_host.save_replies.clear();
+        self.extension_host.tree_replies.clear();
+        self.extension_host.webview_deliveries.clear();
         self.extension_host.subscriptions.clear();
         self.extension_host.prompt = None;
         self.extension_host.status_items.clear();
@@ -128,6 +130,15 @@ impl App {
                 HostEvent::Completed { id, result, .. } => {
                     if let Some(sender) = self.extension_host.save_replies.remove(&id) {
                         let _ = sender.send(result);
+                        continue;
+                    }
+                    if let Some((view_id, element_id)) =
+                        self.extension_host.tree_replies.remove(&id)
+                    {
+                        self.apply_native_tree_children(&view_id, element_id, result);
+                        continue;
+                    }
+                    if self.extension_host.webview_deliveries.remove(&id) {
                         continue;
                     }
                     if let Some(execution) = self.extension_host.outbound.remove(&id) {
