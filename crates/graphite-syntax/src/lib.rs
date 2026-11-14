@@ -90,6 +90,18 @@ pub enum Language {
     Yaml,
     Bash,
     Markdown,
+    Java,
+    CSharp,
+    Php,
+    Kotlin,
+    Scala,
+    Ruby,
+    Sql,
+    PowerShell,
+    Lua,
+    Zig,
+    Elixir,
+    Scss,
 }
 
 impl Language {
@@ -110,6 +122,18 @@ impl Language {
             "yml" | "yaml" => Some(Self::Yaml),
             "sh" | "bash" | "zsh" => Some(Self::Bash),
             "md" | "markdown" => Some(Self::Markdown),
+            "java" => Some(Self::Java),
+            "cs" => Some(Self::CSharp),
+            "php" | "phtml" => Some(Self::Php),
+            "kt" | "kts" => Some(Self::Kotlin),
+            "scala" | "sc" => Some(Self::Scala),
+            "rb" | "rake" | "gemspec" => Some(Self::Ruby),
+            "sql" => Some(Self::Sql),
+            "ps1" | "psm1" | "psd1" => Some(Self::PowerShell),
+            "lua" => Some(Self::Lua),
+            "zig" => Some(Self::Zig),
+            "ex" | "exs" => Some(Self::Elixir),
+            "scss" => Some(Self::Scss),
             _ => None,
         }
     }
@@ -135,6 +159,18 @@ impl Language {
         Self::Yaml,
         Self::Bash,
         Self::Markdown,
+        Self::Java,
+        Self::CSharp,
+        Self::Php,
+        Self::Kotlin,
+        Self::Scala,
+        Self::Ruby,
+        Self::Sql,
+        Self::PowerShell,
+        Self::Lua,
+        Self::Zig,
+        Self::Elixir,
+        Self::Scss,
     ];
 
     /// Canonical lowercase identifier for this language.
@@ -155,6 +191,18 @@ impl Language {
             Self::Yaml => "yaml",
             Self::Bash => "bash",
             Self::Markdown => "markdown",
+            Self::Java => "java",
+            Self::CSharp => "csharp",
+            Self::Php => "php",
+            Self::Kotlin => "kotlin",
+            Self::Scala => "scala",
+            Self::Ruby => "ruby",
+            Self::Sql => "sql",
+            Self::PowerShell => "powershell",
+            Self::Lua => "lua",
+            Self::Zig => "zig",
+            Self::Elixir => "elixir",
+            Self::Scss => "scss",
         }
     }
 
@@ -175,6 +223,18 @@ impl Language {
             Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
             Self::Bash => tree_sitter_bash::LANGUAGE.into(),
             Self::Markdown => tree_sitter_md::LANGUAGE.into(),
+            Self::Java => tree_sitter_java::LANGUAGE.into(),
+            Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Self::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+            Self::Kotlin => tree_sitter_kotlin::language(),
+            Self::Scala => tree_sitter_scala::LANGUAGE.into(),
+            Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+            Self::Sql => tree_sitter_sequel::LANGUAGE.into(),
+            Self::PowerShell => tree_sitter_powershell::LANGUAGE.into(),
+            Self::Lua => tree_sitter_lua::LANGUAGE.into(),
+            Self::Zig => tree_sitter_zig::LANGUAGE.into(),
+            Self::Elixir => tree_sitter_elixir::LANGUAGE.into(),
+            Self::Scss => tree_sitter_scss::language(),
         }
     }
     pub(crate) fn highlight_query(self) -> &'static str {
@@ -194,6 +254,18 @@ impl Language {
             Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY,
             Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY,
             Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
+            Self::Java => tree_sitter_java::HIGHLIGHTS_QUERY,
+            Self::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY,
+            Self::Php => tree_sitter_php::HIGHLIGHTS_QUERY,
+            Self::Kotlin => tree_sitter_kotlin::HIGHLIGHTS_QUERY,
+            Self::Scala => tree_sitter_scala::HIGHLIGHTS_QUERY,
+            Self::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY,
+            Self::Sql => tree_sitter_sequel::HIGHLIGHTS_QUERY,
+            Self::PowerShell => tree_sitter_powershell::HIGHLIGHTS_QUERY,
+            Self::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY,
+            Self::Zig => tree_sitter_zig::HIGHLIGHTS_QUERY,
+            Self::Elixir => tree_sitter_elixir::HIGHLIGHTS_QUERY,
+            Self::Scss => tree_sitter_scss::HIGHLIGHTS_QUERY,
         }
     }
 }
@@ -284,6 +356,20 @@ fn is_scope_node_kind(kind: &str) -> bool {
             | "class_declaration"
             | "class_specifier"
             | "interface_declaration"
+            | "trait_declaration"
+            | "trait_definition"
+            | "object_definition"
+            | "object_declaration"
+            | "record_declaration"
+            | "struct_declaration"
+            | "constructor_declaration"
+            | "namespace_declaration"
+            | "function_statement"
+            | "test_declaration"
+            | "module"
+            | "class"
+            | "method"
+            | "singleton_method"
             | "type_alias_declaration"
             | "type_declaration"
             | "enum_declaration"
@@ -523,6 +609,18 @@ mod tests {
             ("ci.yml", Language::Yaml),
             ("build.sh", Language::Bash),
             ("README.md", Language::Markdown),
+            ("App.java", Language::Java),
+            ("Program.cs", Language::CSharp),
+            ("index.php", Language::Php),
+            ("Main.kt", Language::Kotlin),
+            ("Main.scala", Language::Scala),
+            ("app.rb", Language::Ruby),
+            ("schema.sql", Language::Sql),
+            ("deploy.ps1", Language::PowerShell),
+            ("init.lua", Language::Lua),
+            ("build.zig", Language::Zig),
+            ("app.ex", Language::Elixir),
+            ("theme.scss", Language::Scss),
         ];
         for (path, expected) in cases {
             assert_eq!(
@@ -578,6 +676,54 @@ mod tests {
                 "#!/usr/bin/env bash\nfunction hi() { echo \"ok\"; }\n",
             ),
             (Language::Markdown, "# Heading\n\n- item one\n"),
+            (
+                Language::Java,
+                "public class App { public static void main(String[] args) { System.out.println(\"hi\"); } }\n",
+            ),
+            (
+                Language::CSharp,
+                "namespace Demo { public class Program { public static int Main() => 0; } }\n",
+            ),
+            (
+                Language::Php,
+                "<?php\nfunction greet(string $name): string { return \"hi $name\"; }\n",
+            ),
+            (
+                Language::Kotlin,
+                "fun main(args: Array<String>) { val msg = \"hi\"; println(msg) }\n",
+            ),
+            (
+                Language::Scala,
+                "object Main { def greet(name: String): String = s\"hi $name\" }\n",
+            ),
+            (
+                Language::Ruby,
+                "class Greeter\n  def hi(name)\n    \"hi #{name}\"\n  end\nend\n",
+            ),
+            (
+                Language::Sql,
+                "SELECT id, name FROM users WHERE active = true ORDER BY id DESC;\n",
+            ),
+            (
+                Language::PowerShell,
+                "function Get-Greeting { param([string]$Name) return \"hi $Name\" }\n",
+            ),
+            (
+                Language::Lua,
+                "local function greet(name)\n  return \"hi \" .. name\nend\n",
+            ),
+            (
+                Language::Zig,
+                "const std = @import(\"std\");\npub fn main() void { _ = std; }\n",
+            ),
+            (
+                Language::Elixir,
+                "defmodule Demo do\n  def greet(name), do: \"hi #{name}\"\nend\n",
+            ),
+            (
+                Language::Scss,
+                "$accent: #056ef0;\n.card { color: $accent; &:hover { opacity: 0.8; } }\n",
+            ),
         ];
 
         let mut full = Highlighter::new();
@@ -613,5 +759,15 @@ mod tests {
         let md = "# Title\n\n## Section\n\nParagraph\n";
         let md_headers = declaration_headers(Language::Markdown, md);
         assert!(md_headers.iter().any(|h| h.text.contains("# Title")));
+
+        let java = "public class Service {\n  public void run() {\n    int x = 1;\n  }\n}\n";
+        let java_sticky = enclosing_scope_headers(Language::Java, java, 2);
+        assert!(java_sticky.iter().any(|h| h.text.contains("Service")));
+        assert!(java_sticky.iter().any(|h| h.text.contains("run")));
+
+        let ruby = "class Worker\n  def perform\n    puts 'ok'\n  end\nend\n";
+        let ruby_headers = declaration_headers(Language::Ruby, ruby);
+        assert!(ruby_headers.iter().any(|h| h.text.contains("Worker")));
+        assert!(ruby_headers.iter().any(|h| h.text.contains("perform")));
     }
 }
