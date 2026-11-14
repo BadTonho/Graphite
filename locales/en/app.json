@@ -279,6 +279,8 @@
   "status.zen.enabled": "Zen Mode",
   "search.closed": "Search closed",
   "search.invalid_options": "Invalid search: {error}",
+  "explorer.virtual.saved": "Saved",
+  "explorer.virtual.no_runtime": "The extension that serves this file is not running",
   "explorer.rename.prompt": "Rename or move to (folders in the name move it):",
   "explorer.rename.hint": "Enter applies, Escape cancels",
   "explorer.rename.invalid": "Enter a relative name",

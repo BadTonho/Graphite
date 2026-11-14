@@ -6,6 +6,11 @@ impl WindowService for App {
                 .service_document_id(uri)
                 .ok_or(ServiceError::NotFound)?;
             self.activate_editor_document(id);
+        } else if uri.is_virtual() {
+            let path = crate::app::plugins::vsix::virtual_fs::mirror_path(uri)
+                .filter(|path| path.is_file())
+                .ok_or(ServiceError::NotFound)?;
+            self.open_file(path);
         } else {
             let path = uri.to_path()?;
             self.open_file(path);

@@ -416,11 +416,14 @@ async function receive(message) {
             if (token) calls.set(message.id, token);
             try {
                 const actor = rpc.getProxy(ExtHostContext[message.actor]);
-                const args = message.args.map(arg => arg?.$graphiteUri ? URI.parse(arg.$graphiteUri) : arg);
+                const args = message.args.map(arg => arg?.$graphiteUri ? URI.parse(arg.$graphiteUri)
+                    : typeof arg?.$graphiteBytes === 'string' ? VSBuffer.wrap(Buffer.from(arg.$graphiteBytes, 'base64')) : arg);
                 if (token) args.push(token.token);
                 const result = await actor[message.method](...args);
                 // Binary answers (semantic tokens) reach Graphite as little-endian 32-bit words.
-                const reply = result instanceof VSBuffer ? { $u32: words(result) } : result;
+                const reply = result instanceof VSBuffer
+                    ? (message.bytes ? { $bytes: Buffer.from(result.buffer).toString('base64') } : { $u32: words(result) })
+                    : result;
                 if (message.id != null) send({ type: 'result', id: message.id, result: reply });
             } catch (error) {
                 if (message.id != null) send({ type: 'result', id: message.id, error: String(error) });

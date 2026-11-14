@@ -28,6 +28,7 @@ impl App {
                 .result
                 .map_err(|error| format!("{}: {error}", active.snapshot.path.display()));
             if result.is_ok() {
+                self.upload_virtual_document(&active.snapshot.path);
                 let snapshot = &active.snapshot;
                 let doc = &self.documents[document];
                 for request in &active.requests {

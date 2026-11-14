@@ -278,6 +278,8 @@
   "status.zen.disabled": "Modo Zen fechado",
   "status.zen.enabled": "Modo Zen",
   "search.invalid_options": "Busca inválida: {error}",
+  "explorer.virtual.saved": "Salvo",
+  "explorer.virtual.no_runtime": "A extensão que atende este arquivo não está em execução",
   "explorer.rename.prompt": "Renomear ou mover para (pastas no nome movem o item):",
   "explorer.rename.hint": "Enter aplica, Esc cancela",
   "explorer.rename.invalid": "Informe um nome relativo",

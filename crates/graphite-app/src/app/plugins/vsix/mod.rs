@@ -36,6 +36,8 @@ mod tests;
 mod text_search;
 mod tree_views;
 mod webview_views;
+pub(crate) mod virtual_fs;
+pub(crate) use virtual_fs::VirtualRow;
 pub(crate) use webview_views::SidebarWebview;
 mod webviews;
 mod workbench;
@@ -71,6 +73,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// File system providers registered via `MainThreadFileSystem`.
+    vfs: virtual_fs::VirtualFs,
     /// Source control providers registered via `MainThreadSCM`.
     scm: scm::Scm,
     /// Sidebar webview views registered via `MainThreadWebviewViews`.
@@ -102,6 +106,7 @@ impl Runtime {
             || self.colors.busy()
             || self.tree_views.busy()
             || self.webview_views.busy()
+            || self.vfs.busy()
             || self.tasks.busy()
             || self.lm_tools.busy()
     }
@@ -135,6 +140,7 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            vfs: Default::default(),
             scm: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
@@ -315,6 +321,7 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            vfs: Default::default(),
             scm: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
@@ -403,6 +410,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(virtual_fs::is_fs_reply) {
+                        self.finish_vsix_virtual_fs(runtime, &event);
                     } else if event["id"]
                         .as_u64()
                         .is_some_and(webview_views::is_view_reply)
@@ -462,6 +471,7 @@ impl App {
             self.drive_vsix_code_lens(runtime)?;
             self.drive_vsix_colors(runtime)?;
             self.expire_vsix_trees(runtime);
+            runtime.vfs.expire(Instant::now());
             self.poll_vsix_tasks(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;

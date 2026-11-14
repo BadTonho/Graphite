@@ -72,3 +72,4 @@ workspace.isTrusted
 workspace.createFileSystemWatcher
 env.clipboard
 scm.createSourceControl
+workspace.registerFileSystemProvider

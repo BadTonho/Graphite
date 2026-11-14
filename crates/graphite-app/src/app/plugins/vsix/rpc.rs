@@ -55,6 +55,15 @@ impl App {
                     .send(json!({"type":"reply", "id":id, "error":error}))
             }
         }
+        match self.start_vsix_virtual_open(runtime, id, actor, method, args) {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(error) => {
+                return runtime
+                    .session
+                    .send(json!({"type":"reply", "id":id, "error":error}))
+            }
+        }
         let result = self.dispatch_vsix_request(runtime, actor, method, args);
         match result {
             Ok(result) => runtime
@@ -178,6 +187,8 @@ impl App {
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
+            ("MainThreadFileSystem", "$ensureActivation") => Ok(Value::Null),
+            ("MainThreadFileSystem", _) => self.handle_vsix_virtual_fs_request(runtime, method, args),
             ("MainThreadSCM", _) => self.handle_vsix_scm_request(runtime, method, args),
             ("MainThreadWebviewViews", _) => {
                 self.handle_vsix_webview_view_request(runtime, method, args)
@@ -210,7 +221,6 @@ impl App {
             )
             | ("MainThreadExtensionService", "$setPerformanceMarks")
             | ("MainThreadConsole", "$logExtensionHostMessage")
-            | ("MainThreadFileSystem", "$ensureActivation")
             | ("MainThreadDebugService", "$registerDebugTypes")
             | ("MainThreadLogger", "$registerLogger" | "$deregisterLogger")
             | ("MainThreadProgress", "$progressEnd")

@@ -359,6 +359,10 @@ impl App {
             let first_row_y = sidebar_lh * 1.5;
             if my >= first_row_y {
                 let row = ((my - first_row_y) / sidebar_lh) as usize + self.explorer_scroll;
+                if row >= self.tree.rows.len() {
+                    self.activate_virtual_explorer_row(row - self.tree.rows.len());
+                    return;
+                }
                 if let Some(entry) = self.tree.rows.get(row).map(|row| row.entry.path.clone()) {
                     self.explorer_select(entry.clone());
                     self.explorer_drag = Some(entry);

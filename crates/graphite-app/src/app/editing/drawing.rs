@@ -127,6 +127,7 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }
+            self.draw_virtual_explorer_rows(r, sidebar_lh, cw, h);
         }
         if self.zen_mode {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));

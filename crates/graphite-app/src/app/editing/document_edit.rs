@@ -47,7 +47,10 @@ impl Drop for EditorSession<'_> {
         let uri = self
             .editor
             .path()
-            .map(graphite_core_api::DocumentUri::from_path)
+            .map(|path| {
+                crate::app::plugins::vsix::virtual_fs::uri_for_path(path)
+                    .map_or_else(|| graphite_core_api::DocumentUri::from_path(path), Ok)
+            })
             .unwrap_or_else(|| Ok(graphite_core_api::DocumentUri::untitled(self.document)));
         if let Ok(uri) = uri {
             self.events.record(graphite_core_api::DocumentSnapshot {

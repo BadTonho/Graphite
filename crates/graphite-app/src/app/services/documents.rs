@@ -6,7 +6,13 @@ pub(in crate::app) fn document_uri(
     document
         .buffer
         .path()
-        .map_or_else(|| Ok(DocumentUri::untitled(id)), DocumentUri::from_path)
+        .map_or_else(
+            || Ok(DocumentUri::untitled(id)),
+            |path| {
+                crate::app::plugins::vsix::virtual_fs::uri_for_path(path)
+                    .map_or_else(|| DocumentUri::from_path(path), Ok)
+            },
+        )
 }
 pub(in crate::app) fn snapshot_document(
     id: DocumentId,
@@ -32,6 +38,9 @@ impl App {
                 .iter()
                 .find(|d| DocumentUri::untitled(d.id) == *uri && d.buffer.path().is_none())
                 .map(|d| d.id)
+        } else if uri.is_virtual() {
+            crate::app::plugins::vsix::virtual_fs::mirror_path(uri)
+                .and_then(|path| self.documents.id_for_path(&path))
         } else {
             uri.to_path()
                 .ok()

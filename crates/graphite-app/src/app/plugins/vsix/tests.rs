@@ -826,6 +826,161 @@ fn vsix_tree_view_registers_fetches_expands_refreshes_and_disposes() {
 }
 
 #[test]
+fn vsix_virtual_files_open_through_a_mirror_are_identified_by_uri_and_save_back() {
+    use base64::Engine;
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    // The mirror root is process-wide, so these tests share one profile (their schemes differ).
+    app.profile_root = std::env::temp_dir().join("graphite-vfs-tests-profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    let scheme_uri = "vfstest-b:/notes/a.txt";
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 1, "actor": "MainThreadFileSystem", "method": "$registerFileSystemProvider",
+            "args": [5, "vfstest-b", 2, null]}),
+    )
+    .unwrap();
+    let watch = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$watch")
+        .expect("the provider root is watched");
+    assert_eq!(watch["args"][0], 5);
+    assert!(graphite_core_api::DocumentUri::parse(scheme_uri).is_ok());
+
+    // Opening is asynchronous: the file is read from the provider, the request is answered later.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 7, "actor": "MainThreadDocuments", "method": "$tryOpenDocument", "args": [scheme_uri]}),
+    )
+    .unwrap();
+    let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
+    assert!(sent.iter().all(|message| message["id"] != 7), "no early reply: {sent:?}");
+    let read = sent.iter().find(|message| message["method"] == "$readFile").expect("read call");
+    assert_eq!(read["actor"], "ExtHostFileSystem");
+    assert_eq!(read["bytes"], true);
+    assert_eq!(read["args"], json!([5, {"$graphiteUri": scheme_uri}]));
+    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": read["id"], "result": {"$bytes": encode(b"hello")}}));
+    let reply = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["type"] == "reply")
+        .expect("deferred reply");
+    assert_eq!(reply["id"], 7);
+    assert_eq!(reply["result"], scheme_uri);
+
+    // The document is identified by its virtual URI and its text is the provider's content.
+    let documents = graphite_core_api::DocumentService::documents(&app).unwrap();
+    let opened = documents.iter().find(|document| document.uri.as_str() == scheme_uri)
+        .expect("document with the virtual URI");
+    assert_eq!(opened.text, "hello");
+    let mirror = super::virtual_fs::mirror_path(&graphite_core_api::DocumentUri::parse(scheme_uri).unwrap()).unwrap();
+    assert_eq!(std::fs::read_to_string(&mirror).unwrap(), "hello");
+    assert!(mirror.starts_with(app.profile_root.join("virtual-fs")));
+
+    // A provider failure is reported to the extension that asked.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 8, "actor": "MainThreadDocuments", "method": "$tryOpenDocument", "args": ["vfstest-b:/missing"]}),
+    )
+    .unwrap();
+    let read = std::iter::from_fn(|| host.next_sent()).find(|message| message["method"] == "$readFile").unwrap();
+    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": read["id"], "error": "FileNotFound"}));
+    let failure = std::iter::from_fn(|| host.next_sent()).find(|message| message["id"] == 8).unwrap();
+    assert_eq!(failure["error"], "FileNotFound");
+
+    // Saving writes the mirror back through the provider.
+    app.plugins.vsix = Some(runtime);
+    app.upload_virtual_document(&mirror);
+    let write = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$writeFile")
+        .expect("write call");
+    assert_eq!(write["args"][0], 5);
+    assert_eq!(write["args"][1], json!({"$graphiteUri": scheme_uri}));
+    assert_eq!(write["args"][2], json!({"$graphiteBytes": encode(b"hello")}));
+    app.upload_virtual_document(&dir.path().join("plain.txt"));
+    assert!(std::iter::from_fn(|| host.next_sent()).all(|message| message["method"] != "$writeFile"));
+
+    // The explorer lists the provider's root and its folders once they are read.
+    let rows = app.virtual_explorer_rows();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].uri, "vfstest-b:/");
+    app.activate_virtual_explorer_row(0);
+    let list = std::iter::from_fn(|| host.next_sent()).find(|message| message["method"] == "$readdir").unwrap();
+    assert_eq!(list["args"], json!([5, {"$graphiteUri": "vfstest-b:/"}]));
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": list["id"], "result": [["notes", 2], ["b.txt", 1]]}));
+    app.plugins.vsix = Some(runtime);
+    let names: Vec<String> = app.virtual_explorer_rows().into_iter().map(|row| row.name).collect();
+    assert_eq!(names, ["vfstest-b", "notes", "b.txt"]);
+
+    // Removing the provider removes the folder and the scheme.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 2, "actor": "MainThreadFileSystem", "method": "$unregisterProvider", "args": [5]}),
+    )
+    .unwrap();
+    app.plugins.vsix = Some(runtime);
+    assert!(app.virtual_explorer_rows().is_empty());
+    assert!(graphite_core_api::DocumentUri::parse(scheme_uri).is_err());
+}
+
+#[test]
+fn vsix_virtual_file_operations_call_the_provider_and_refresh_the_folder() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    // The mirror root is process-wide, so these tests share one profile (their schemes differ).
+    app.profile_root = std::env::temp_dir().join("graphite-vfs-tests-profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 1, "actor": "MainThreadFileSystem", "method": "$registerFileSystemProvider",
+            "args": [9, "vfstest-c", 2048, null]}),
+    )
+    .unwrap();
+    while host.next_sent().is_some() {}
+    assert!(runtime.vfs.is_readonly("vfstest-c"));
+
+    let call = |host: &graphite_extension_host::code_oss::LoopbackHost, method: &str| {
+        std::iter::from_fn(|| host.next_sent())
+            .find(|message| message["method"] == method)
+            .unwrap_or_else(|| panic!("no {method} call"))
+    };
+    app.request_virtual_stat(&mut runtime, "vfstest-c:/d/x.txt").unwrap();
+    let stat = call(&host, "$stat");
+    assert_eq!(stat["args"], json!([9, {"$graphiteUri": "vfstest-c:/d/x.txt"}]));
+
+    app.request_virtual_delete(&mut runtime, "vfstest-c:/d/x.txt").unwrap();
+    let delete = call(&host, "$delete");
+    assert_eq!(delete["args"][1], json!({"$graphiteUri": "vfstest-c:/d/x.txt"}));
+    assert_eq!(delete["args"][2]["recursive"], true);
+    // A finished delete asks for the parent folder again.
+    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": delete["id"], "result": null}));
+    let refresh = call(&host, "$readdir");
+    assert_eq!(refresh["args"][1], json!({"$graphiteUri": "vfstest-c:/d"}));
+
+    app.request_virtual_rename(&mut runtime, "vfstest-c:/d/a", "vfstest-c:/d/b").unwrap();
+    let rename = call(&host, "$rename");
+    assert_eq!(rename["args"][2], json!({"$graphiteUri": "vfstest-c:/d/b"}));
+    // A failure is reported and does not refresh.
+    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": rename["id"], "error": "NoPermissions"}));
+    assert!(app.status.contains("NoPermissions"));
+    assert!(std::iter::from_fn(|| host.next_sent()).all(|message| message["method"] != "$readdir"));
+
+    // An unknown scheme has no provider.
+    assert!(app.request_virtual_stat(&mut runtime, "nope:/x").is_err());
+    // A change event refetches expanded folders only.
+    runtime.vfs.dirs_for_test("vfstest-c:/", true);
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 3, "actor": "MainThreadFileSystem", "method": "$onFileSystemChange", "args": [9, []]}),
+    )
+    .unwrap();
+    assert_eq!(call(&host, "$readdir")["args"][1], json!({"$graphiteUri": "vfstest-c:/"}));
+}
+
+#[test]
 fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
     use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};
     use winit::keyboard::{Key, NamedKey};

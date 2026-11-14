@@ -160,7 +160,7 @@ impl App {
     }
 
     pub(crate) fn explorer_scroll_by(&mut self, rows: isize) {
-        let last = self.tree.rows.len().saturating_sub(1);
+        let last = self.explorer_row_count().saturating_sub(1);
         self.explorer_scroll = self.explorer_scroll.saturating_add_signed(rows).min(last);
     }
 }
