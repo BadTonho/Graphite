@@ -32,6 +32,7 @@ mod output_snippets;
 mod parts;
 mod preferences;
 mod quick;
+mod remote_commands;
 mod scm;
 mod sync_commands;
 mod task_commands;
@@ -198,6 +199,7 @@ pub(crate) fn register(registry: &mut CommandRegistry) {
     configuration::register(registry);
     chat_commands::register(registry);
     sync_commands::register(registry);
+    remote_commands::register(registry);
     for (id, title, arguments, handler) in [
         (
             "type",

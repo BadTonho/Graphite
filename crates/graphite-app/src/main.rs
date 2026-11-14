@@ -17,12 +17,15 @@ use documents::{document, document_store, file_format};
 mod explorer;
 use explorer::{file_icons, file_nesting, tree};
 mod vcs;
-use vcs::{scm, scm_branches, scm_changes, scm_remote, merge, multi_diff};
+use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_remote};
 mod language;
-use language::{lsp, json_schema, semantic_tokens};
+use language::{json_schema, lsp, semantic_tokens};
 mod tooling;
-use tooling::{terminal, terminal_links, terminal_shell, debugger, test_explorer, ports, process_explorer, previews, webview};
 use document::Document;
+use tooling::{
+    debugger, ports, previews, process_explorer, terminal, terminal_links, terminal_shell,
+    test_explorer, webview,
+};
 mod keybindings;
 mod notebook;
 #[cfg(test)]
@@ -326,6 +329,7 @@ struct App {
     initial_cli_request: Option<cli::CliRequest>,
     chat: app::chat::ChatState,
     sync: app::user_data_sync::SyncState,
+    remote: app::remote::RemoteState,
 }
 
 impl App {
@@ -550,6 +554,11 @@ impl App {
             app::user_data_sync::SyncState::isolated()
         } else {
             app::user_data_sync::SyncState::load(&profile_root)
+        };
+        let remote = if isolated {
+            app::remote::RemoteState::isolated()
+        } else {
+            app::remote::RemoteState::load(&profile_root)
         };
         let initial_document_id = next_document_id();
         Self {
@@ -821,6 +830,7 @@ impl App {
             initial_cli_request: None,
             chat,
             sync,
+            remote,
         }
     }
 }
