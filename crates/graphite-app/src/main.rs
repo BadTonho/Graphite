@@ -419,14 +419,14 @@ impl App {
             LspManager::default()
         } else {
             match LspManager::load_config(&config::lsp_config_path(), &translator) {
-                Ok(config) => LspManager::from_config(config),
+                Ok(config) => LspManager::from_config_with_defaults(config),
                 Err(error) if config::lsp_config_path().exists() => {
                     let _ = lsp_sender.send(LspUiEvent::Status(
                         translator.format("lsp.config_error", &[("error", &error)]),
                     ));
                     LspManager::default()
                 }
-                Err(_) => LspManager::default(),
+                Err(_) => LspManager::from_config_with_defaults(Vec::new()),
             }
         };
         let mut settings_error = if !isolated && profiles.is_none() {

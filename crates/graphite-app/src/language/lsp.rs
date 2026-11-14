@@ -1,3 +1,4 @@
+mod defaults;
 mod dispatch;
 mod protocol;
 mod requests;
@@ -277,6 +278,13 @@ impl LspManager {
                 .into_iter()
                 .map(|c| (c.extension.to_ascii_lowercase(), c))
                 .collect(),
+            ..Default::default()
+        }
+    }
+
+    pub fn from_config_with_defaults(configs: Vec<ServerConfig>) -> Self {
+        Self {
+            configs: defaults::resolve_default_configs(configs, defaults::executable_in_path),
             ..Default::default()
         }
     }
