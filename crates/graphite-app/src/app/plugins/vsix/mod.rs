@@ -23,6 +23,8 @@ pub(crate) use file_events::{changes as file_changes, FileChange};
 pub(crate) use languages::Feature as VsixLanguageFeature;
 mod prompts;
 mod rpc;
+mod scm;
+pub(crate) use scm::{ExtensionRow, ScmProvider};
 mod selection_ranges;
 mod semantic;
 mod storage;
@@ -69,6 +71,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Source control providers registered via `MainThreadSCM`.
+    scm: scm::Scm,
     /// Sidebar webview views registered via `MainThreadWebviewViews`.
     webview_views: webview_views::WebviewViews,
     /// Task providers and executions registered via `MainThreadTask`.
@@ -131,6 +135,7 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            scm: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
             activated_events: BTreeSet::new(),
@@ -310,6 +315,7 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            scm: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
             activated_events: BTreeSet::new(),
@@ -329,6 +335,7 @@ impl App {
             self.completion_items.clear();
             self.clear_vsix_tree_views();
             self.stop_sidebar_webviews();
+            self.scm_extension_input = None;
         }
     }
 

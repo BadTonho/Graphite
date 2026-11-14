@@ -253,6 +253,7 @@ impl App {
                     self.scm_repositories_collapsed,
                     self.scm_staged_collapsed,
                     self.scm_changes_collapsed,
+                    &self.vsix_scm_rows(),
                 );
                 if !self.scm_repositories_collapsed {
                     if layout.repo_sync.contains(local_x, local_y) {
@@ -274,6 +275,7 @@ impl App {
                 }
                 if layout.commit_field.contains(local_x, local_y) {
                     self.scm_commit_prompt = true;
+                    self.scm_extension_input = None;
                     return;
                 }
                 if layout.commit_button.contains(local_x, local_y)
@@ -283,6 +285,7 @@ impl App {
                     return;
                 }
                 self.scm_commit_prompt = false;
+                self.scm_extension_input = None;
                 if layout.branch_row.contains(local_x, local_y) && !self.scm_repositories_collapsed
                 {
                     if layout.refresh.contains(local_x, local_y) {
@@ -324,6 +327,10 @@ impl App {
                             } else {
                                 self.scm_changes_collapsed = !self.scm_changes_collapsed;
                             }
+                        }
+                        ScmListRowKind::Extension(extension) => {
+                            let row = *row;
+                            self.click_extension_scm_row(&row, extension, local_x, local_y);
                         }
                         ScmListRowKind::File { index, staged } => {
                             self.scm_selected = index;

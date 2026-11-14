@@ -71,3 +71,4 @@ workspace.isTrusted
 # Added later:
 workspace.createFileSystemWatcher
 env.clipboard
+scm.createSourceControl

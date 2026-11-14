@@ -271,6 +271,8 @@ struct App {
     branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
     scm_commit_message: String,
     scm_commit_prompt: bool,
+    /// The extension source control whose commit box has the keyboard focus.
+    scm_extension_input: Option<u64>,
     diff_view: Option<app::scm_ui::DiffView>,
     diff_loading: bool,
     conflict_view: Option<app::scm_ui::ConflictView>,
@@ -785,6 +787,7 @@ impl App {
             branch_name_prompt: None,
             scm_commit_message: String::new(),
             scm_commit_prompt: false,
+            scm_extension_input: None,
             diff_view: None,
             diff_loading: false,
             conflict_view: None,

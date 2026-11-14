@@ -166,6 +166,16 @@ impl App {
                 return;
             }
         }
+        if self.scm_extension_input.is_some()
+            && self.handle_extension_scm_input_key(
+                &event.logical_key,
+                event.text.as_deref(),
+                ctrl,
+                self.modifiers.alt_key(),
+            )
+        {
+            return;
+        }
         if self.scm_commit_prompt {
             if ctrl && matches!(event.logical_key, Key::Named(NamedKey::Enter)) {
                 if !self.scm_commit_message.trim().is_empty() {

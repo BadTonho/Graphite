@@ -1,11 +1,11 @@
 use super::command_execution::{deliver_command_event, CommandError};
 use super::*;
 
-fn scm_centered_text_x(x: f32, width: f32, text: &str, cell_width: f32) -> f32 {
+pub(super) fn scm_centered_text_x(x: f32, width: f32, text: &str, cell_width: f32) -> f32 {
     (x + (width - text.chars().count() as f32 * cell_width) * 0.5).max(x)
 }
 
-fn scm_file_label_x(icon_x: f32, icon_size: f32, icon_gap: f32) -> f32 {
+pub(super) fn scm_file_label_x(icon_x: f32, icon_size: f32, icon_gap: f32) -> f32 {
     icon_x + icon_size + icon_gap
 }
 
@@ -34,6 +34,8 @@ pub(crate) enum ScmListRowKind {
         index: usize,
         staged: bool,
     },
+    /// A row of a source control an extension registered.
+    Extension(crate::app::plugins::vsix::ExtensionRow),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,6 +90,7 @@ pub(crate) fn scm_panel_layout(
     repositories_collapsed: bool,
     staged_collapsed: bool,
     changes_collapsed: bool,
+    extension_rows: &[crate::app::plugins::vsix::ExtensionRow],
 ) -> ScmPanelLayout {
     let left = ACTIVITY_BAR_WIDTH + PAD;
     let right = sidebar_width - PAD;
@@ -126,43 +129,49 @@ pub(crate) fn scm_panel_layout(
         .iter()
         .filter(|file| file.unstaged || file.untracked || file.conflicted)
         .count();
-    if staged_count > 0 {
+    // Without a repository there is no Git list; extension providers are still listed.
+    if snapshot.error.is_some() {
+        entries.extend(extension_rows.iter().map(|row| ScmListRowKind::Extension(*row)));
+    } else {
+        if staged_count > 0 {
+            entries.push(ScmListRowKind::Section {
+                staged: true,
+                count: staged_count,
+                collapsed: staged_collapsed,
+            });
+            if !staged_collapsed {
+                entries.extend(
+                    snapshot
+                        .files
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, file)| file.staged)
+                        .map(|(index, _)| ScmListRowKind::File {
+                            index,
+                            staged: true,
+                        }),
+                );
+            }
+        }
         entries.push(ScmListRowKind::Section {
-            staged: true,
-            count: staged_count,
-            collapsed: staged_collapsed,
+            staged: false,
+            count: changes_count,
+            collapsed: changes_collapsed,
         });
-        if !staged_collapsed {
+        if !changes_collapsed {
             entries.extend(
                 snapshot
                     .files
                     .iter()
                     .enumerate()
-                    .filter(|(_, file)| file.staged)
+                    .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
                     .map(|(index, _)| ScmListRowKind::File {
                         index,
-                        staged: true,
+                        staged: false,
                     }),
             );
         }
-    }
-    entries.push(ScmListRowKind::Section {
-        staged: false,
-        count: changes_count,
-        collapsed: changes_collapsed,
-    });
-    if !changes_collapsed {
-        entries.extend(
-            snapshot
-                .files
-                .iter()
-                .enumerate()
-                .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
-                .map(|(index, _)| ScmListRowKind::File {
-                    index,
-                    staged: false,
-                }),
-        );
+        entries.extend(extension_rows.iter().map(|row| ScmListRowKind::Extension(*row)));
     }
     let list_top = commit_y + row_height * 2.50;
     let available = ((height - list_top - row_height * 1.2) / row_height).max(0.0) as usize;
@@ -267,7 +276,7 @@ pub(crate) fn scm_panel_layout(
     }
 }
 
-fn scm_fit_label(text: &str, max_chars: usize) -> String {
+pub(super) fn scm_fit_label(text: &str, max_chars: usize) -> String {
     let char_count = text.chars().count();
     if char_count <= max_chars {
         return text.to_owned();
@@ -279,14 +288,14 @@ fn scm_fit_label(text: &str, max_chars: usize) -> String {
     }
 }
 
-fn scm_visible_tail(text: &str, max_chars: usize) -> String {
+pub(super) fn scm_visible_tail(text: &str, max_chars: usize) -> String {
     let chars = text.chars().collect::<Vec<_>>();
     chars[chars.len().saturating_sub(max_chars)..]
         .iter()
         .collect()
 }
 
-fn scm_icon_color(color: u32) -> u32 {
+pub(super) fn scm_icon_color(color: u32) -> u32 {
     let dark = Theme::color(0x000000, 0xffffff) == 0x000000;
     let channels = [
         ((color >> 16) & 0xff),
@@ -302,7 +311,7 @@ fn scm_icon_color(color: u32) -> u32 {
     (blend(channels[0]) << 16) | (blend(channels[1]) << 8) | blend(channels[2])
 }
 
-fn draw_scm_control_slot(renderer: &mut Renderer, bounds: ScmRect, hovered: bool) {
+pub(super) fn draw_scm_control_slot(renderer: &mut Renderer, bounds: ScmRect, hovered: bool) {
     let inset = 2.0;
     let background = if hovered {
         Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
@@ -341,6 +350,28 @@ mod scm_sidebar_layout_tests {
     }
 
     #[test]
+    fn without_a_repository_only_extension_rows_are_listed() {
+        use crate::app::plugins::vsix::ExtensionRow;
+        let snapshot = crate::scm::Snapshot {
+            error: Some("not a repository".into()),
+            ..Default::default()
+        };
+        let extension = [ExtensionRow::Provider(1), ExtensionRow::Input(1)];
+        let layout = scm_panel_layout(&snapshot, SIDEBAR_WIDTH, 700.0, 20.0, 9.0, 0, false, false, false, &extension);
+        assert_eq!(layout.list_rows.len(), 2);
+        assert!(layout
+            .list_rows
+            .iter()
+            .all(|row| matches!(row.kind, ScmListRowKind::Extension(_))));
+        let with_git = scm_panel_layout(&crate::scm::Snapshot::default(), SIDEBAR_WIDTH, 700.0, 20.0, 9.0, 0, false, false, false, &extension);
+        assert!(matches!(with_git.list_rows[0].kind, ScmListRowKind::Section { .. }));
+        assert!(matches!(
+            with_git.list_rows.last().unwrap().kind,
+            ScmListRowKind::Extension(ExtensionRow::Input(1))
+        ));
+    }
+
+    #[test]
     fn branch_buttons_have_separate_hit_areas_and_a_visible_gap() {
         let layout = scm_panel_layout(
             &crate::scm::Snapshot::default(),
@@ -352,6 +383,7 @@ mod scm_sidebar_layout_tests {
             false,
             false,
             false,
+            &[],
         );
         assert!(layout.branch_picker.x + layout.branch_picker.width < layout.refresh.x);
         assert!(layout.branch_picker.contains(
@@ -382,6 +414,7 @@ mod scm_sidebar_layout_tests {
             false,
             false,
             false,
+            &[],
         );
         let changes = layout
             .list_rows
@@ -980,6 +1013,7 @@ impl App {
             self.scm_repositories_collapsed,
             self.scm_staged_collapsed,
             self.scm_changes_collapsed,
+            &self.vsix_scm_rows(),
         );
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
@@ -1186,14 +1220,19 @@ impl App {
             renderer.draw_text(
                 error,
                 left,
-                list_top + row_h,
+                list_top,
                 rgb(Theme::color(Theme::TEXT, 0x9b2226)),
             );
-            return;
         }
         for row in &layout.list_rows {
             let y = row.bounds.y;
             match row.kind {
+                ScmListRowKind::Extension(extension) => self.draw_extension_scm_row(
+                    renderer,
+                    row,
+                    extension,
+                    [row_h, line_height, cell_width, sidebar_width],
+                ),
                 ScmListRowKind::Section {
                     staged,
                     count,

@@ -191,6 +191,7 @@ mod button_layout_tests {
             false,
             false,
             false,
+            &[],
         );
         let more = layout.repo_more;
         assert!(more.x + more.width <= width);

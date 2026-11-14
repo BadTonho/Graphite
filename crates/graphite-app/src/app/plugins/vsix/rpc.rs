@@ -178,6 +178,7 @@ impl App {
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
+            ("MainThreadSCM", _) => self.handle_vsix_scm_request(runtime, method, args),
             ("MainThreadWebviewViews", _) => {
                 self.handle_vsix_webview_view_request(runtime, method, args)
             }

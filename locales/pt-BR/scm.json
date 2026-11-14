@@ -62,6 +62,8 @@
   "scm.sidebar.commit": "✓ Commit",
   "scm.sidebar.commit_prompt": "Commit: {message}_",
   "scm.sidebar.no_repository": "Nenhum repositório Git",
+  "scm.sidebar.extension_placeholder": "Mensagem (Ctrl+Enter para confirmar)",
+  "scm.sidebar.extension_no_accept": "Este controle de código não tem comando de confirmação",
   "scm.sidebar.shortcuts": "Ctrl+Enter confirma · Esc sai da mensagem",
   "scm.sidebar.title": "CONTROLE DE CÓDIGO",
   "scm.status.commit_created": "Commit {id} criado",

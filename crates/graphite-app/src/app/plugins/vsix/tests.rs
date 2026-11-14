@@ -826,6 +826,94 @@ fn vsix_tree_view_registers_fetches_expands_refreshes_and_disposes() {
 }
 
 #[test]
+fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
+    use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};
+    use winit::keyboard::{Key, NamedKey};
+
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    let root_uri = graphite_core_api::DocumentUri::from_path(dir.path()).unwrap();
+    let mut call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
+        app.handle_vsix_request(
+            runtime,
+            &json!({"id": 1, "actor": "MainThreadSCM", "method": method, "args": args}),
+        )
+        .unwrap();
+    };
+
+    call(&mut app, &mut runtime, "$registerSourceControl",
+        json!([1, null, "sample", "Sample SCM", root_uri.as_str(), null, false, "scm://sample/input"]));
+    call(&mut app, &mut runtime, "$registerGroups", json!([1, [[10, "changes", "Changes", {}, false]], [
+        [10, [[0, 0, [
+            [100, "file:///work/a.txt", [null, null], "Modified", false, false, "", {"id": "sample.open", "title": "Open"}],
+            [101, "file:///work/b.txt", [null, null], "", true, true, "", null],
+        ]]]]
+    ]]));
+    call(&mut app, &mut runtime, "$updateSourceControl",
+        json!([1, {"count": 2, "acceptInputCommand": {"id": "sample.commit", "title": "Commit"}}]));
+    call(&mut app, &mut runtime, "$setInputBoxPlaceholder", json!([1, "Say something"]));
+    app.plugins.vsix = Some(runtime);
+
+    let rows = app.vsix_scm_rows();
+    assert_eq!(rows.len(), 5, "{rows:?}");
+    assert_eq!(app.vsix_scm().unwrap().providers()[0].display_count(), 2);
+    assert_eq!(app.vsix_scm().unwrap().providers()[0].placeholder.as_deref(), Some("Say something"));
+
+    // The panel layout appends the extension rows after the Git ones.
+    let layout = crate::app::scm_ui::scm_panel_layout(
+        &crate::scm::Snapshot::default(), 300.0, 900.0, 20.0, 9.0, 0, false, false, false, &rows);
+    let listed = layout.list_rows.iter()
+        .filter(|row| matches!(row.kind, ScmListRowKind::Extension(_))).count();
+    assert_eq!(listed, 5);
+
+    // Clicking the commit box focuses it, typing forwards the value to the extension.
+    let row = |action_x: f32| ScmListRow {
+        bounds: ScmRect { x: 0.0, y: 0.0, width: 300.0, height: 20.0 },
+        chevron: ScmRect { x: 0.0, y: 0.0, width: 10.0, height: 20.0 },
+        action: ScmRect { x: action_x, y: 0.0, width: 18.0, height: 20.0 },
+        kind: ScmListRowKind::Extension(rows[1]),
+    };
+    app.click_extension_scm_row(&row(250.0), rows[1], 20.0, 5.0);
+    assert_eq!(app.scm_extension_input, Some(1));
+    assert!(app.handle_extension_scm_input_key(&Key::Character("h".into()), Some("h"), false, false));
+    assert!(app.handle_extension_scm_input_key(&Key::Character("i".into()), Some("i"), false, false));
+    assert!(app.handle_extension_scm_input_key(&Key::Named(NamedKey::Backspace), None, false, false));
+    assert_eq!(app.vsix_scm().unwrap().providers()[0].input, "h");
+    let change = std::iter::from_fn(|| host.next_sent())
+        .filter(|message| message["method"] == "$onInputBoxValueChange")
+        .last()
+        .expect("input change forwarded");
+    assert_eq!(change["actor"], "ExtHostSCM");
+    assert_eq!(change["args"], json!([1, "h"]));
+
+    // A resource with a command is opened by the extension; one without opens as a file elsewhere.
+    app.click_extension_scm_row(&row(250.0), rows[3], 20.0, 5.0);
+    let open = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$executeResourceCommand")
+        .expect("resource command requested");
+    assert_eq!(open["args"], json!([1, 10, 100, false]));
+
+    // Collapsing the group hides its resources; escape leaves the box.
+    app.toggle_vsix_scm_group(1, 10);
+    assert_eq!(app.vsix_scm_rows().len(), 3);
+    assert!(app.handle_extension_scm_input_key(&Key::Named(NamedKey::Escape), None, false, false));
+    assert_eq!(app.scm_extension_input, None);
+    assert!(!app.handle_extension_scm_input_key(&Key::Character("x".into()), Some("x"), false, false));
+
+    // Accepting without an accept command reports it; unregistering removes the provider.
+    app.plugins.vsix.as_mut().unwrap().scm.clear_accept_for_test(1);
+    app.accept_vsix_scm_input(1);
+    assert_eq!(app.status, app.t("scm.sidebar.extension_no_accept"));
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    call(&mut app, &mut runtime, "$unregisterSourceControl", json!([1]));
+    app.plugins.vsix = Some(runtime);
+    assert!(app.vsix_scm_rows().is_empty());
+}
+
+#[test]
 fn vsix_webview_views_resolve_update_their_header_and_are_disposed_with_the_provider() {
     let dir = TempDir::new();
     let ext_root = dir.path().join("extension");

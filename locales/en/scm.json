@@ -62,6 +62,8 @@
   "scm.sidebar.commit": "✓ Commit",
   "scm.sidebar.commit_prompt": "Commit: {message}_",
   "scm.sidebar.no_repository": "No Git repository",
+  "scm.sidebar.extension_placeholder": "Message (Ctrl+Enter to accept)",
+  "scm.sidebar.extension_no_accept": "This source control has no accept command",
   "scm.sidebar.shortcuts": "Ctrl+Enter commits · Esc leaves message",
   "scm.sidebar.title": "SOURCE CONTROL",
   "scm.status.commit_created": "Commit {id} created",
