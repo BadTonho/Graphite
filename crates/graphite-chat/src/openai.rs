@@ -21,7 +21,9 @@ pub fn build_body(model: &str, request: &Request) -> Value {
                 for block in &message.blocks {
                     match block {
                         Block::ToolResult { id, content, .. } => {
-                            messages.push(json!({"role": "tool", "tool_call_id": id, "content": content}));
+                            messages.push(
+                                json!({"role": "tool", "tool_call_id": id, "content": content}),
+                            );
                         }
                         Block::Text { text: part } => text.push_str(part),
                         Block::ToolUse { .. } => {}
@@ -97,14 +99,19 @@ impl Decoder {
         let value: Value = serde_json::from_str(data)
             .map_err(|_| ChatError::Protocol("The server sent a chunk that is not JSON".into()))?;
         if let Some(message) = value["error"]["message"].as_str() {
-            return Err(ChatError::Http { status: 0, message: message.to_string() });
+            return Err(ChatError::Http {
+                status: 0,
+                message: message.to_string(),
+            });
         }
         if let Some(usage) = value.get("usage").filter(|usage| usage.is_object()) {
             self.usage.input_tokens = usage["prompt_tokens"].as_u64().unwrap_or(0) as u32;
             self.usage.output_tokens = usage["completion_tokens"].as_u64().unwrap_or(0) as u32;
         }
         let mut out = Vec::new();
-        let Some(choice) = value["choices"].get(0) else { return Ok(out) };
+        let Some(choice) = value["choices"].get(0) else {
+            return Ok(out);
+        };
         let delta = &choice["delta"];
         if let Some(text) = delta["content"].as_str().filter(|text| !text.is_empty()) {
             out.push(StreamEvent::Text(text.to_string()));
@@ -142,8 +149,11 @@ impl Decoder {
             let input = if arguments.trim().is_empty() {
                 json!({})
             } else {
-                serde_json::from_str(&arguments)
-                    .map_err(|_| ChatError::Protocol(format!("The arguments of tool call {name} are not valid JSON")))?
+                serde_json::from_str(&arguments).map_err(|_| {
+                    ChatError::Protocol(format!(
+                        "The arguments of tool call {name} are not valid JSON"
+                    ))
+                })?
             };
             out.push(StreamEvent::ToolUse { id, name, input });
         }
@@ -157,7 +167,10 @@ impl Decoder {
         }
         self.finished = true;
         let mut out = self.flush_calls()?;
-        out.push(StreamEvent::Finished { stop: self.stop.unwrap_or(StopReason::EndTurn), usage: self.usage });
+        out.push(StreamEvent::Finished {
+            stop: self.stop.unwrap_or(StopReason::EndTurn),
+            usage: self.usage,
+        });
         Ok(out)
     }
 
@@ -172,7 +185,10 @@ mod tests {
     use crate::message::{Message, ToolSpec};
 
     fn chunk(value: Value) -> SseEvent {
-        SseEvent { event: None, data: value.to_string() }
+        SseEvent {
+            event: None,
+            data: value.to_string(),
+        }
     }
 
     #[test]
@@ -183,28 +199,56 @@ mod tests {
                 Message::user("hi"),
                 Message::assistant(vec![
                     Block::Text { text: "ok".into() },
-                    Block::ToolUse { id: "c1".into(), name: "read".into(), input: json!({"path": "a"}) },
+                    Block::ToolUse {
+                        id: "c1".into(),
+                        name: "read".into(),
+                        input: json!({"path": "a"}),
+                    },
                 ]),
-                Message::tool_results(vec![Block::ToolResult { id: "c1".into(), content: "data".into(), is_error: false }]),
+                Message::tool_results(vec![Block::ToolResult {
+                    id: "c1".into(),
+                    content: "data".into(),
+                    is_error: false,
+                }]),
             ],
-            tools: vec![ToolSpec { name: "read".into(), description: "d".into(), schema: json!({"type": "object"}) }],
+            tools: vec![ToolSpec {
+                name: "read".into(),
+                description: "d".into(),
+                schema: json!({"type": "object"}),
+            }],
             max_tokens: 100,
         };
         let body = build_body("m", &request);
         assert_eq!(body["messages"][0]["role"], "system");
-        assert_eq!(body["messages"][2]["tool_calls"][0]["function"]["arguments"], "{\"path\":\"a\"}");
-        assert_eq!(body["messages"][3], json!({"role": "tool", "tool_call_id": "c1", "content": "data"}));
-        assert_eq!(body["tools"][0]["function"]["parameters"], json!({"type": "object"}));
+        assert_eq!(
+            body["messages"][2]["tool_calls"][0]["function"]["arguments"],
+            "{\"path\":\"a\"}"
+        );
+        assert_eq!(
+            body["messages"][3],
+            json!({"role": "tool", "tool_call_id": "c1", "content": "data"})
+        );
+        assert_eq!(
+            body["tools"][0]["function"]["parameters"],
+            json!({"type": "object"})
+        );
         assert_eq!(body["max_tokens"], 100);
     }
 
     #[test]
     fn an_assistant_message_with_only_tool_calls_has_null_content() {
         let request = Request {
-            messages: vec![Message::assistant(vec![Block::ToolUse { id: "c".into(), name: "n".into(), input: json!({}) }])],
+            messages: vec![Message::assistant(vec![Block::ToolUse {
+                id: "c".into(),
+                name: "n".into(),
+                input: json!({}),
+            }])],
             ..Request::default()
         };
-        assert_eq!(build_body("m", &request)["messages"][0]["content"], Value::Null);
+        assert_eq!(
+            build_body("m", &request)["messages"][0]["content"],
+            Value::Null
+        );
     }
 
     #[test]
@@ -214,12 +258,21 @@ mod tests {
         for event in [
             chunk(json!({"choices": [{"delta": {"content": "He"}}]})),
             chunk(json!({"choices": [{"delta": {"content": "llo"}}]})),
-            chunk(json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "read", "arguments": "{\"pa"}}]}}]})),
-            chunk(json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "th\":1}"}}]}}]})),
-            chunk(json!({"choices": [{"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "list", "arguments": ""}}]}}]})),
+            chunk(
+                json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "read", "arguments": "{\"pa"}}]}}]}),
+            ),
+            chunk(
+                json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "th\":1}"}}]}}]}),
+            ),
+            chunk(
+                json!({"choices": [{"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "list", "arguments": ""}}]}}]}),
+            ),
             chunk(json!({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]})),
             chunk(json!({"choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 4}})),
-            SseEvent { event: None, data: "[DONE]".into() },
+            SseEvent {
+                event: None,
+                data: "[DONE]".into(),
+            },
         ] {
             events.extend(decoder.push(&event).unwrap());
         }
@@ -228,9 +281,23 @@ mod tests {
             vec![
                 StreamEvent::Text("He".into()),
                 StreamEvent::Text("llo".into()),
-                StreamEvent::ToolUse { id: "c1".into(), name: "read".into(), input: json!({"path": 1}) },
-                StreamEvent::ToolUse { id: "c2".into(), name: "list".into(), input: json!({}) },
-                StreamEvent::Finished { stop: StopReason::ToolUse, usage: Usage { input_tokens: 9, output_tokens: 4 } },
+                StreamEvent::ToolUse {
+                    id: "c1".into(),
+                    name: "read".into(),
+                    input: json!({"path": 1})
+                },
+                StreamEvent::ToolUse {
+                    id: "c2".into(),
+                    name: "list".into(),
+                    input: json!({})
+                },
+                StreamEvent::Finished {
+                    stop: StopReason::ToolUse,
+                    usage: Usage {
+                        input_tokens: 9,
+                        output_tokens: 4
+                    }
+                },
             ]
         );
     }
@@ -238,18 +305,35 @@ mod tests {
     #[test]
     fn a_server_without_done_is_finished_by_the_caller_once() {
         let mut decoder = Decoder::new();
-        decoder.push(&chunk(json!({"choices": [{"delta": {"content": "x"}, "finish_reason": "length"}]}))).unwrap();
+        decoder
+            .push(&chunk(
+                json!({"choices": [{"delta": {"content": "x"}, "finish_reason": "length"}]}),
+            ))
+            .unwrap();
         let end = decoder.finish().unwrap();
-        assert_eq!(end, vec![StreamEvent::Finished { stop: StopReason::MaxTokens, usage: Usage::default() }]);
+        assert_eq!(
+            end,
+            vec![StreamEvent::Finished {
+                stop: StopReason::MaxTokens,
+                usage: Usage::default()
+            }]
+        );
         assert!(decoder.finish().unwrap().is_empty());
     }
 
     #[test]
     fn errors_and_broken_arguments_are_reported() {
         let mut decoder = Decoder::new();
-        assert!(matches!(decoder.push(&chunk(json!({"error": {"message": "quota"}}))), Err(ChatError::Http { message, .. }) if message == "quota"));
+        assert!(
+            matches!(decoder.push(&chunk(json!({"error": {"message": "quota"}}))), Err(ChatError::Http { message, .. }) if message == "quota")
+        );
         let mut decoder = Decoder::new();
         decoder.push(&chunk(json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c", "function": {"name": "n", "arguments": "{x"}}]}}]}))).unwrap();
-        assert!(matches!(decoder.push(&chunk(json!({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}))), Err(ChatError::Protocol(_))));
+        assert!(matches!(
+            decoder.push(&chunk(
+                json!({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]})
+            )),
+            Err(ChatError::Protocol(_))
+        ));
     }
 }

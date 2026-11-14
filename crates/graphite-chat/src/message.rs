@@ -14,11 +14,21 @@ pub enum Role {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Block {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// The model asks for a tool to run. `input` is the parsed JSON arguments.
-    ToolUse { id: String, name: String, input: Value },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
     /// The outcome of a tool run, sent back as a user message.
-    ToolResult { id: String, content: String, is_error: bool },
+    ToolResult {
+        id: String,
+        content: String,
+        is_error: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,15 +39,24 @@ pub struct Message {
 
 impl Message {
     pub fn user(text: impl Into<String>) -> Self {
-        Self { role: Role::User, blocks: vec![Block::Text { text: text.into() }] }
+        Self {
+            role: Role::User,
+            blocks: vec![Block::Text { text: text.into() }],
+        }
     }
 
     pub fn assistant(blocks: Vec<Block>) -> Self {
-        Self { role: Role::Assistant, blocks }
+        Self {
+            role: Role::Assistant,
+            blocks,
+        }
     }
 
     pub fn tool_results(results: Vec<Block>) -> Self {
-        Self { role: Role::User, blocks: results }
+        Self {
+            role: Role::User,
+            blocks: results,
+        }
     }
 
     /// All the plain text of the message, joined.
@@ -99,8 +118,15 @@ pub enum StopReason {
 pub enum StreamEvent {
     Text(String),
     /// A complete tool call, reported once its arguments have fully arrived.
-    ToolUse { id: String, name: String, input: Value },
-    Finished { stop: StopReason, usage: Usage },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    Finished {
+        stop: StopReason,
+        usage: Usage,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,7 +134,10 @@ pub enum ChatError {
     /// No provider is configured or the key is missing.
     NotConfigured(String),
     /// The server answered with an error status.
-    Http { status: u16, message: String },
+    Http {
+        status: u16,
+        message: String,
+    },
     /// The connection failed or dropped.
     Network(String),
     /// The server sent something this client cannot read.
@@ -119,7 +148,9 @@ pub enum ChatError {
 impl std::fmt::Display for ChatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotConfigured(text) | Self::Network(text) | Self::Protocol(text) => f.write_str(text),
+            Self::NotConfigured(text) | Self::Network(text) | Self::Protocol(text) => {
+                f.write_str(text)
+            }
             Self::Http { status, message } => write!(f, "{message} (HTTP {status})"),
             Self::Cancelled => f.write_str("cancelled"),
         }

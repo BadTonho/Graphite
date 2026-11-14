@@ -182,12 +182,19 @@ pub(super) const DEFAULT_LANGUAGE_SERVERS: &[DefaultServerSpec] = &[
     DefaultServerSpec {
         extensions: &["cs"],
         language_id: "csharp",
-        candidates: &[("csharp-ls", &[]), ("OmniSharp", &["-lsp"]), ("omnisharp", &["-lsp"])],
+        candidates: &[
+            ("csharp-ls", &[]),
+            ("OmniSharp", &["-lsp"]),
+            ("omnisharp", &["-lsp"]),
+        ],
     },
     DefaultServerSpec {
         extensions: &["php", "phtml"],
         language_id: "php",
-        candidates: &[("intelephense", &["--stdio"]), ("phpactor", &["language-server"])],
+        candidates: &[
+            ("intelephense", &["--stdio"]),
+            ("phpactor", &["language-server"]),
+        ],
     },
     DefaultServerSpec {
         extensions: &["kt", "kts"],
@@ -207,7 +214,10 @@ pub(super) const DEFAULT_LANGUAGE_SERVERS: &[DefaultServerSpec] = &[
     DefaultServerSpec {
         extensions: &["sql"],
         language_id: "sql",
-        candidates: &[("sql-language-server", &["up", "--method", "stdio"]), ("sqls", &[])],
+        candidates: &[
+            ("sql-language-server", &["up", "--method", "stdio"]),
+            ("sqls", &[]),
+        ],
     },
     DefaultServerSpec {
         extensions: &["lua"],
@@ -232,7 +242,10 @@ pub(super) const DEFAULT_LANGUAGE_SERVERS: &[DefaultServerSpec] = &[
     DefaultServerSpec {
         extensions: &["scss"],
         language_id: "scss",
-        candidates: &[("vscode-css-language-server", &["--stdio"]), ("css-languageserver", &["--stdio"])],
+        candidates: &[
+            ("vscode-css-language-server", &["--stdio"]),
+            ("css-languageserver", &["--stdio"]),
+        ],
     },
 ];
 

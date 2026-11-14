@@ -88,7 +88,13 @@ mod tests {
         assert!(parser.push(b"event: ping\nda").is_empty());
         let events = parser.push(b"ta: {\"a\":1}\n\nevent: x\ndata: 2\n\n");
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0], SseEvent { event: Some("ping".into()), data: "{\"a\":1}".into() });
+        assert_eq!(
+            events[0],
+            SseEvent {
+                event: Some("ping".into()),
+                data: "{\"a\":1}".into()
+            }
+        );
         assert_eq!(events[1].data, "2");
     }
 
@@ -96,14 +102,26 @@ mod tests {
     fn crlf_comments_and_multiline_data_are_handled() {
         let mut parser = SseParser::new();
         let events = parser.push(b": keep-alive\r\ndata: one\r\ndata: two\r\n\r\n");
-        assert_eq!(events, vec![SseEvent { event: None, data: "one\ntwo".into() }]);
+        assert_eq!(
+            events,
+            vec![SseEvent {
+                event: None,
+                data: "one\ntwo".into()
+            }]
+        );
     }
 
     #[test]
     fn a_stream_cut_mid_event_is_flushed_on_finish() {
         let mut parser = SseParser::new();
         assert!(parser.push(b"data: tail").is_empty());
-        assert_eq!(parser.finish(), vec![SseEvent { event: None, data: "tail".into() }]);
+        assert_eq!(
+            parser.finish(),
+            vec![SseEvent {
+                event: None,
+                data: "tail".into()
+            }]
+        );
     }
 
     #[test]

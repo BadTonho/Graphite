@@ -69,11 +69,16 @@ impl Decoder {
         }
         let data: Value = serde_json::from_str(&event.data)
             .map_err(|_| ChatError::Protocol("The server sent an event that is not JSON".into()))?;
-        let kind = data["type"].as_str().or(event.event.as_deref()).unwrap_or("");
+        let kind = data["type"]
+            .as_str()
+            .or(event.event.as_deref())
+            .unwrap_or("");
         let mut out = Vec::new();
         match kind {
             "message_start" => {
-                self.usage.input_tokens = data["message"]["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32;
+                self.usage.input_tokens = data["message"]["usage"]["input_tokens"]
+                    .as_u64()
+                    .unwrap_or(0) as u32;
             }
             "content_block_start" => {
                 let block = &data["content_block"];
@@ -94,7 +99,9 @@ impl Decoder {
                         }
                     }
                     Some("input_json_delta") => {
-                        if let (Some((_, _, json)), Some(part)) = (self.tool.as_mut(), delta["partial_json"].as_str()) {
+                        if let (Some((_, _, json)), Some(part)) =
+                            (self.tool.as_mut(), delta["partial_json"].as_str())
+                        {
                             json.push_str(part);
                         }
                     }
@@ -106,8 +113,11 @@ impl Decoder {
                     let input = if json.trim().is_empty() {
                         json!({})
                     } else {
-                        serde_json::from_str(&json)
-                            .map_err(|_| ChatError::Protocol(format!("The arguments of tool call {name} are not valid JSON")))?
+                        serde_json::from_str(&json).map_err(|_| {
+                            ChatError::Protocol(format!(
+                                "The arguments of tool call {name} are not valid JSON"
+                            ))
+                        })?
                     };
                     out.push(StreamEvent::ToolUse { id, name, input });
                 }
@@ -127,11 +137,19 @@ impl Decoder {
             }
             "message_stop" => {
                 self.finished = true;
-                out.push(StreamEvent::Finished { stop: self.stop.unwrap_or(StopReason::EndTurn), usage: self.usage });
+                out.push(StreamEvent::Finished {
+                    stop: self.stop.unwrap_or(StopReason::EndTurn),
+                    usage: self.usage,
+                });
             }
             "error" => {
-                let message = data["error"]["message"].as_str().unwrap_or("The model service reported an error");
-                return Err(ChatError::Http { status: 0, message: message.to_string() });
+                let message = data["error"]["message"]
+                    .as_str()
+                    .unwrap_or("The model service reported an error");
+                return Err(ChatError::Http {
+                    status: 0,
+                    message: message.to_string(),
+                });
             }
             _ => {}
         }
@@ -150,7 +168,10 @@ mod tests {
     use crate::message::{Message, ToolSpec};
 
     fn ev(name: &str, data: Value) -> SseEvent {
-        SseEvent { event: Some(name.into()), data: data.to_string() }
+        SseEvent {
+            event: Some(name.into()),
+            data: data.to_string(),
+        }
     }
 
     #[test]
@@ -159,10 +180,22 @@ mod tests {
             system: "be brief".into(),
             messages: vec![
                 Message::user("hi"),
-                Message::assistant(vec![Block::ToolUse { id: "t1".into(), name: "read".into(), input: json!({"path": "a"}) }]),
-                Message::tool_results(vec![Block::ToolResult { id: "t1".into(), content: "text".into(), is_error: false }]),
+                Message::assistant(vec![Block::ToolUse {
+                    id: "t1".into(),
+                    name: "read".into(),
+                    input: json!({"path": "a"}),
+                }]),
+                Message::tool_results(vec![Block::ToolResult {
+                    id: "t1".into(),
+                    content: "text".into(),
+                    is_error: false,
+                }]),
             ],
-            tools: vec![ToolSpec { name: "read".into(), description: "reads".into(), schema: json!({"type": "object"}) }],
+            tools: vec![ToolSpec {
+                name: "read".into(),
+                description: "reads".into(),
+                schema: json!({"type": "object"}),
+            }],
             max_tokens: 0,
         };
         let body = build_body("m", &request);
@@ -180,16 +213,40 @@ mod tests {
         let mut decoder = Decoder::new();
         let mut events = Vec::new();
         for event in [
-            ev("message_start", json!({"type": "message_start", "message": {"usage": {"input_tokens": 12}}})),
-            ev("content_block_start", json!({"type": "content_block_start", "content_block": {"type": "text"}})),
-            ev("content_block_delta", json!({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hel"}})),
-            ev("content_block_delta", json!({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "lo"}})),
+            ev(
+                "message_start",
+                json!({"type": "message_start", "message": {"usage": {"input_tokens": 12}}}),
+            ),
+            ev(
+                "content_block_start",
+                json!({"type": "content_block_start", "content_block": {"type": "text"}}),
+            ),
+            ev(
+                "content_block_delta",
+                json!({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hel"}}),
+            ),
+            ev(
+                "content_block_delta",
+                json!({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "lo"}}),
+            ),
             ev("content_block_stop", json!({"type": "content_block_stop"})),
-            ev("content_block_start", json!({"type": "content_block_start", "content_block": {"type": "tool_use", "id": "t1", "name": "read"}})),
-            ev("content_block_delta", json!({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{\"pa"}})),
-            ev("content_block_delta", json!({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "th\":\"a\"}"}})),
+            ev(
+                "content_block_start",
+                json!({"type": "content_block_start", "content_block": {"type": "tool_use", "id": "t1", "name": "read"}}),
+            ),
+            ev(
+                "content_block_delta",
+                json!({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{\"pa"}}),
+            ),
+            ev(
+                "content_block_delta",
+                json!({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "th\":\"a\"}"}}),
+            ),
             ev("content_block_stop", json!({"type": "content_block_stop"})),
-            ev("message_delta", json!({"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 7}})),
+            ev(
+                "message_delta",
+                json!({"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 7}}),
+            ),
             ev("message_stop", json!({"type": "message_stop"})),
         ] {
             events.extend(decoder.push(&event).unwrap());
@@ -199,8 +256,18 @@ mod tests {
             vec![
                 StreamEvent::Text("Hel".into()),
                 StreamEvent::Text("lo".into()),
-                StreamEvent::ToolUse { id: "t1".into(), name: "read".into(), input: json!({"path": "a"}) },
-                StreamEvent::Finished { stop: StopReason::ToolUse, usage: Usage { input_tokens: 12, output_tokens: 7 } },
+                StreamEvent::ToolUse {
+                    id: "t1".into(),
+                    name: "read".into(),
+                    input: json!({"path": "a"})
+                },
+                StreamEvent::Finished {
+                    stop: StopReason::ToolUse,
+                    usage: Usage {
+                        input_tokens: 12,
+                        output_tokens: 7
+                    }
+                },
             ]
         );
         assert!(decoder.is_finished());
@@ -210,8 +277,20 @@ mod tests {
     fn a_tool_call_without_arguments_gets_an_empty_object() {
         let mut decoder = Decoder::new();
         decoder.push(&ev("content_block_start", json!({"type": "content_block_start", "content_block": {"type": "tool_use", "id": "t", "name": "list"}}))).unwrap();
-        let out = decoder.push(&ev("content_block_stop", json!({"type": "content_block_stop"}))).unwrap();
-        assert_eq!(out, vec![StreamEvent::ToolUse { id: "t".into(), name: "list".into(), input: json!({}) }]);
+        let out = decoder
+            .push(&ev(
+                "content_block_stop",
+                json!({"type": "content_block_stop"}),
+            ))
+            .unwrap();
+        assert_eq!(
+            out,
+            vec![StreamEvent::ToolUse {
+                id: "t".into(),
+                name: "list".into(),
+                input: json!({})
+            }]
+        );
     }
 
     #[test]
@@ -219,16 +298,34 @@ mod tests {
         let mut decoder = Decoder::new();
         decoder.push(&ev("content_block_start", json!({"type": "content_block_start", "content_block": {"type": "tool_use", "id": "t", "name": "x"}}))).unwrap();
         decoder.push(&ev("content_block_delta", json!({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{bad"}}))).unwrap();
-        assert!(matches!(decoder.push(&ev("content_block_stop", json!({"type": "content_block_stop"}))), Err(ChatError::Protocol(_))));
-        let error = Decoder::new().push(&ev("error", json!({"type": "error", "error": {"message": "overloaded"}})));
+        assert!(matches!(
+            decoder.push(&ev(
+                "content_block_stop",
+                json!({"type": "content_block_stop"})
+            )),
+            Err(ChatError::Protocol(_))
+        ));
+        let error = Decoder::new().push(&ev(
+            "error",
+            json!({"type": "error", "error": {"message": "overloaded"}}),
+        ));
         assert!(matches!(error, Err(ChatError::Http { message, .. }) if message == "overloaded"));
     }
 
     #[test]
     fn pings_and_unknown_events_are_ignored() {
         let mut decoder = Decoder::new();
-        assert!(decoder.push(&SseEvent { event: Some("ping".into()), data: "{}".into() }).unwrap().is_empty());
-        assert!(decoder.push(&ev("future_event", json!({"type": "future_event"}))).unwrap().is_empty());
+        assert!(decoder
+            .push(&SseEvent {
+                event: Some("ping".into()),
+                data: "{}".into()
+            })
+            .unwrap()
+            .is_empty());
+        assert!(decoder
+            .push(&ev("future_event", json!({"type": "future_event"})))
+            .unwrap()
+            .is_empty());
         assert!(!decoder.is_finished());
     }
 }
