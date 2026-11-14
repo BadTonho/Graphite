@@ -101,6 +101,139 @@ pub(super) const DEFAULT_LANGUAGE_SERVERS: &[DefaultServerSpec] = &[
         language_id: "markdown",
         candidates: &[("marksman", &["server"])],
     },
+    DefaultServerSpec {
+        extensions: &["java"],
+        language_id: "java",
+        candidates: &[("jdtls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["cs"],
+        language_id: "csharp",
+        candidates: &[
+            ("csharp-ls", &[]),
+            ("OmniSharp", &["-lsp"]),
+            ("omnisharp", &["-lsp"]),
+        ],
+    },
+    DefaultServerSpec {
+        extensions: &["php", "phtml"],
+        language_id: "php",
+        candidates: &[
+            ("intelephense", &["--stdio"]),
+            ("phpactor", &["language-server"]),
+        ],
+    },
+    DefaultServerSpec {
+        extensions: &["kt", "kts"],
+        language_id: "kotlin",
+        candidates: &[("kotlin-language-server", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["scala", "sc"],
+        language_id: "scala",
+        candidates: &[("metals", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["rb", "rake", "gemspec"],
+        language_id: "ruby",
+        candidates: &[("ruby-lsp", &[]), ("solargraph", &["stdio"])],
+    },
+    DefaultServerSpec {
+        extensions: &["sql"],
+        language_id: "sql",
+        candidates: &[
+            ("sql-language-server", &["up", "--method", "stdio"]),
+            ("sqls", &[]),
+        ],
+    },
+    DefaultServerSpec {
+        extensions: &["lua"],
+        language_id: "lua",
+        candidates: &[("lua-language-server", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["zig"],
+        language_id: "zig",
+        candidates: &[("zls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["ex", "exs"],
+        language_id: "elixir",
+        candidates: &[("elixir-ls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["ps1", "psm1", "psd1"],
+        language_id: "powershell",
+        candidates: &[("powershell-editor-services", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["scss"],
+        language_id: "scss",
+        candidates: &[
+            ("vscode-css-language-server", &["--stdio"]),
+            ("css-languageserver", &["--stdio"]),
+        ],
+    },
+    DefaultServerSpec {
+        extensions: &["java"],
+        language_id: "java",
+        candidates: &[("jdtls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["cs"],
+        language_id: "csharp",
+        candidates: &[("csharp-ls", &[]), ("OmniSharp", &["-lsp"]), ("omnisharp", &["-lsp"])],
+    },
+    DefaultServerSpec {
+        extensions: &["php", "phtml"],
+        language_id: "php",
+        candidates: &[("intelephense", &["--stdio"]), ("phpactor", &["language-server"])],
+    },
+    DefaultServerSpec {
+        extensions: &["kt", "kts"],
+        language_id: "kotlin",
+        candidates: &[("kotlin-language-server", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["scala", "sc"],
+        language_id: "scala",
+        candidates: &[("metals", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["rb", "rake", "gemspec"],
+        language_id: "ruby",
+        candidates: &[("ruby-lsp", &[]), ("solargraph", &["stdio"])],
+    },
+    DefaultServerSpec {
+        extensions: &["sql"],
+        language_id: "sql",
+        candidates: &[("sql-language-server", &["up", "--method", "stdio"]), ("sqls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["lua"],
+        language_id: "lua",
+        candidates: &[("lua-language-server", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["zig"],
+        language_id: "zig",
+        candidates: &[("zls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["ex", "exs"],
+        language_id: "elixir",
+        candidates: &[("elixir-ls", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["ps1", "psm1", "psd1"],
+        language_id: "powershell",
+        candidates: &[("powershell-editor-services", &[])],
+    },
+    DefaultServerSpec {
+        extensions: &["scss"],
+        language_id: "scss",
+        candidates: &[("vscode-css-language-server", &["--stdio"]), ("css-languageserver", &["--stdio"])],
+    },
 ];
 
 pub(super) fn resolve_default_configs<F>(
@@ -238,6 +371,18 @@ mod tests {
                     | "yaml-language-server"
                     | "bash-language-server"
                     | "marksman"
+                    | "jdtls"
+                    | "csharp-ls"
+                    | "intelephense"
+                    | "kotlin-language-server"
+                    | "metals"
+                    | "ruby-lsp"
+                    | "sqls"
+                    | "lua-language-server"
+                    | "zls"
+                    | "elixir-ls"
+                    | "powershell-editor-services"
+                    | "vscode-css-language-server"
             )
         });
 
@@ -252,6 +397,18 @@ mod tests {
         assert_eq!(detected["yaml"].command, "yaml-language-server");
         assert_eq!(detected["sh"].language_id, "shellscript");
         assert_eq!(detected["md"].command, "marksman");
+        assert_eq!(detected["java"].command, "jdtls");
+        assert_eq!(detected["cs"].language_id, "csharp");
+        assert_eq!(detected["php"].args, vec!["--stdio"]);
+        assert_eq!(detected["kt"].command, "kotlin-language-server");
+        assert_eq!(detected["scala"].command, "metals");
+        assert_eq!(detected["rb"].command, "ruby-lsp");
+        assert_eq!(detected["sql"].command, "sqls");
+        assert_eq!(detected["lua"].command, "lua-language-server");
+        assert_eq!(detected["zig"].command, "zls");
+        assert_eq!(detected["ex"].command, "elixir-ls");
+        assert_eq!(detected["ps1"].command, "powershell-editor-services");
+        assert_eq!(detected["scss"].language_id, "scss");
         assert!(!detected.contains_key("html"));
     }
 
