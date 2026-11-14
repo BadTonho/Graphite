@@ -324,6 +324,7 @@ struct App {
     startup_metrics: Vec<String>,
     cli_waiters: Vec<app::cli_ui::CliWaiter>,
     initial_cli_request: Option<cli::CliRequest>,
+    chat: app::chat::ChatState,
 }
 
 impl App {
@@ -538,6 +539,11 @@ impl App {
             None
         } else {
             graphite_auth::load_session(&profile_root)
+        };
+        let chat = if isolated {
+            app::chat::ChatState::default()
+        } else {
+            app::chat::ChatState::load_from_profile(&profile_root)
         };
         let initial_document_id = next_document_id();
         Self {
@@ -807,6 +813,7 @@ impl App {
             )],
             cli_waiters: Vec::new(),
             initial_cli_request: None,
+            chat,
         }
     }
 }

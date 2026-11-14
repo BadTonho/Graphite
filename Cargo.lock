@@ -2953,6 +2953,7 @@ dependencies = [
  "gix",
  "globset",
  "graphite-auth",
+ "graphite-chat",
  "graphite-core-api",
  "graphite-extension-host",
  "graphite-i18n",

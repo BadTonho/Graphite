@@ -641,6 +641,7 @@ impl App {
             }
             UserEvent::ScmHistory(result) => self.show_scm_history(result),
             UserEvent::GitHubAuth(event) => self.handle_github_auth_event(event),
+            UserEvent::Chat(event) => self.handle_chat_ui_event(event),
             UserEvent::ScmSnapshot(snapshot) => {
                 self.accept_scm_snapshot(snapshot);
                 if let Some(gpu) = &self.gpu {

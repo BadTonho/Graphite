@@ -1,18 +1,40 @@
-//! Model service access for Graphite's chat.
+//! Model service access, sessions, tools, and agent loop for Graphite's chat.
 //!
 //! One provider-neutral conversation model ([`Message`], [`Request`], [`StreamEvent`]) is sent
 //! to either the Anthropic Messages API or any OpenAI-compatible server, and the streamed reply
-//! comes back as the same events. The crate does no UI and runs no tools: the app owns what the
-//! model may read or change.
+//! comes back as the same events.
 
+pub mod agent;
 pub mod anthropic;
 mod message;
 pub mod openai;
 mod provider;
+pub mod session;
 mod sse;
 mod store;
+pub mod tools;
 
-pub use message::{Block, ChatError, Message, Request, Role, StopReason, StreamEvent, ToolSpec, Usage};
+pub use agent::{
+    build_system_prompt, run_turn, write_proposed_edit, ActiveFileContext, AgentTurnEvent,
+    ChatContext, FileAttachment, HttpModelStreamer, ModelStreamer,
+};
+pub use message::{
+    Block, ChatError, Message, Request, Role, StopReason, StreamEvent, ToolSpec, Usage,
+};
 pub use provider::{stream, ProviderConfig, ProviderKind};
+pub use session::{
+    extract_code_blocks, AgentLogEntry, AgentMode, ChatSession, ChatTurn, Checkpoint,
+    CheckpointEntry, CodeBlock, EditReviewStatus, PendingFileEdit, TurnStatus, UsageSummary,
+};
 pub use sse::{SseEvent, SseParser};
-pub use store::{delete_provider, load_provider, save_provider, SETTINGS_FILE};
+pub use store::{
+    delete_provider, delete_session, load_approval_policy, load_provider, load_sessions,
+    save_approval_policy, save_provider, save_session, APPROVAL_POLICY_FILE, SESSIONS_DIR,
+    SETTINGS_FILE,
+};
+pub use tools::{
+    execute_tool, resolve_workspace_path, summarize_tool_call, tool_specs_for_mode,
+    ApprovalDecision, CommandRunner, PendingToolApproval, ProposedEdit, SystemCommandRunner,
+    ToolApprovalPolicy, ToolExecutionResult, TOOL_LIST_FILES, TOOL_PROPOSE_EDIT, TOOL_READ_FILE,
+    TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
+};

@@ -338,6 +338,8 @@ pub(crate) enum UserEvent {
     ScmHistory(Result<String, String>),
     /// Progress of a GitHub sign-in running on a background thread.
     GitHubAuth(crate::app::github_auth::GitHubAuthEvent),
+    /// Streaming and tool-approval events from background chat/agent turns.
+    Chat(crate::app::chat::ChatUiEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
     /// A notebook kernel has events to collect.

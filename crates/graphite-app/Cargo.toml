@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 graphite-core-api = { path = "../graphite-core-api" }
+graphite-chat = { path = "../graphite-chat" }
 graphite-extension-host = { path = "../graphite-extension-host" }
 graphite-i18n = { path = "../graphite-i18n" }
 graphite-plugins = { path = "../graphite-plugins" }
