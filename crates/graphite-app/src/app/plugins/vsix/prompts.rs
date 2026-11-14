@@ -10,6 +10,8 @@ enum Kind {
     Input,
     Pick { instance: u64, many: bool },
     Message,
+    /// The user decides whether an extension may use an account (see `auth.rs`).
+    Consent,
 }
 
 impl App {
@@ -87,6 +89,27 @@ impl App {
         Ok(true)
     }
 
+    /// Asks the user to allow or deny; the answer goes to [`App::resolve_auth_consent`].
+    pub(super) fn open_vsix_consent_prompt(&mut self, runtime: &mut Runtime, title: String) {
+        runtime.prompt = Some(Prompt {
+            id: 0,
+            kind: Kind::Consent,
+        });
+        self.open_command_palette();
+        let choice = |id: &str, key: &str| PaletteItem {
+            id: id.into(),
+            title: self.t(key).into(),
+            source: "VSIX".into(),
+            enabled: true,
+        };
+        self.command_palette = Some(CommandPalette {
+            query: String::new(),
+            selected: 0,
+            items: vec![choice("1", "auth.consent.allow"), choice("2", "auth.consent.deny")],
+            extension_prompt: Some((title, false)),
+        });
+    }
+
     pub(super) fn set_vsix_prompt_items(
         &mut self,
         runtime: &Runtime,
@@ -108,6 +131,20 @@ impl App {
     }
 
     pub(crate) fn answer_vsix_prompt(&mut self, value: Option<(String, Option<String>)>) {
+        let consent = self
+            .plugins
+            .vsix
+            .as_ref()
+            .and_then(|runtime| runtime.prompt.as_ref())
+            .is_some_and(|prompt| matches!(prompt.kind, Kind::Consent));
+        if consent {
+            if let Some(runtime) = &mut self.plugins.vsix {
+                runtime.prompt = None;
+            }
+            let allowed = value.and_then(|(_, selected)| selected).as_deref() == Some("1");
+            self.resolve_auth_consent(allowed);
+            return;
+        }
         let Some(runtime) = &mut self.plugins.vsix else {
             return;
         };
@@ -121,6 +158,7 @@ impl App {
                 Kind::Input => Some(json!(query)),
                 Kind::Pick { many: true, .. } => handle.map(|id| json!([id])),
                 Kind::Pick { .. } | Kind::Message => handle.map(|id| json!(id)),
+                Kind::Consent => None,
             };
             if let Some(result) = result {
                 reply["result"] = result;

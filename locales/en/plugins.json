@@ -1,4 +1,8 @@
 {
+  "auth.consent.access": "The extension '{extension}' wants to use the {provider} account '{account}'.",
+  "auth.consent.signin": "The extension '{extension}' wants to sign in using {provider}.",
+  "auth.consent.allow": "Allow",
+  "auth.consent.deny": "Deny",
   "plugins.accessibility.details": "Details: {details}. Escape returns",
   "plugins.accessibility.disabled": "disabled",
   "plugins.accessibility.enabled": "enabled",

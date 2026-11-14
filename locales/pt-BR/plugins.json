@@ -1,4 +1,8 @@
 {
+  "auth.consent.access": "A extensão '{extension}' quer usar a conta '{account}' de {provider}.",
+  "auth.consent.signin": "A extensão '{extension}' quer entrar usando {provider}.",
+  "auth.consent.allow": "Permitir",
+  "auth.consent.deny": "Negar",
   "plugins.accessibility.details": "Detalhes: {details}. Esc retorna",
   "plugins.accessibility.disabled": "desativado",
   "plugins.accessibility.enabled": "ativado",

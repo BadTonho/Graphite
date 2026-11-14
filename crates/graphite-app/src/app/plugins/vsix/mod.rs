@@ -5,6 +5,7 @@ use graphite_extension_host::code_oss::Session;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Duration};
 
+mod auth;
 mod code_lens;
 mod colors;
 mod debug;
@@ -37,7 +38,6 @@ mod text_search;
 mod tree_views;
 mod webview_views;
 pub(crate) mod virtual_fs;
-pub(crate) use virtual_fs::VirtualRow;
 pub(crate) use webview_views::SidebarWebview;
 mod webviews;
 mod workbench;
@@ -73,6 +73,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Authentication providers registered via `MainThreadAuthentication`.
+    auth: auth::Auth,
     /// File system providers registered via `MainThreadFileSystem`.
     vfs: virtual_fs::VirtualFs,
     /// Source control providers registered via `MainThreadSCM`.
@@ -107,6 +109,7 @@ impl Runtime {
             || self.tree_views.busy()
             || self.webview_views.busy()
             || self.vfs.busy()
+            || self.auth.busy()
             || self.tasks.busy()
             || self.lm_tools.busy()
     }
@@ -140,6 +143,7 @@ impl Runtime {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            auth: Default::default(),
             vfs: Default::default(),
             scm: Default::default(),
             tasks: Default::default(),
@@ -321,6 +325,7 @@ impl App {
             tree_views: Default::default(),
             webviews: Default::default(),
             webview_views: Default::default(),
+            auth: Default::default(),
             vfs: Default::default(),
             scm: Default::default(),
             tasks: Default::default(),
@@ -410,6 +415,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(auth::is_auth_reply) {
+                        self.finish_vsix_auth(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(virtual_fs::is_fs_reply) {
                         self.finish_vsix_virtual_fs(runtime, &event);
                     } else if event["id"]
@@ -472,6 +479,7 @@ impl App {
             self.drive_vsix_colors(runtime)?;
             self.expire_vsix_trees(runtime);
             runtime.vfs.expire(Instant::now());
+            self.drive_vsix_auth(runtime);
             self.poll_vsix_tasks(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;

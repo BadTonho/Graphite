@@ -169,6 +169,7 @@ impl Scm {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn providers(&self) -> &[ScmProvider] {
         &self.providers
     }

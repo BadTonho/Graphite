@@ -6,12 +6,16 @@ use std::path::Path;
 pub const SESSION_FILE: &str = "github-session.json";
 
 /// A signed-in GitHub account. The token is a secret: `Debug` never prints it.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {
     pub token: String,
     pub login: String,
     #[serde(default)]
     pub name: Option<String>,
+    /// The OAuth scopes requested when the token was issued, separated by spaces. A session saved
+    /// before this was recorded has none.
+    #[serde(default)]
+    pub scope: String,
 }
 
 impl std::fmt::Debug for Session {
@@ -21,6 +25,7 @@ impl std::fmt::Debug for Session {
             .field("token", &"<redacted>")
             .field("login", &self.login)
             .field("name", &self.name)
+            .field("scope", &self.scope)
             .finish()
     }
 }
@@ -70,6 +75,7 @@ mod tests {
             token: "gho_secret".into(),
             login: "octocat".into(),
             name: Some("Mona".into()),
+            ..Default::default()
         }
     }
 

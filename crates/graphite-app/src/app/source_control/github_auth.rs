@@ -35,7 +35,7 @@ impl App {
     }
 
     /// Starts the device flow for this profile with an explicit OAuth `scope`.
-    pub(crate) fn start_github_sign_in_with_scope(&mut self, scope: &'static str) {
+    pub(crate) fn start_github_sign_in_with_scope(&mut self, scope: &str) {
         if self.github_sign_in_pending {
             self.status = self.t("github.sign_in.pending").into();
             return;
@@ -52,12 +52,13 @@ impl App {
         self.status = self.t("github.sign_in.starting").into();
         let profile = self.profile_root.clone();
         let client = client.to_owned();
+        let scope = scope.to_owned();
         std::thread::spawn(move || {
             let outcome = graphite_auth::ReqwestTransport::new().and_then(|transport| {
                 graphite_auth::sign_in_with_scope(
                     &transport,
                     &client,
-                    scope,
+                    &scope,
                     |code: &DeviceCode| {
                         let _ = proxy.send_event(UserEvent::GitHubAuth(GitHubAuthEvent::Code {
                             user_code: code.user_code.clone(),
@@ -95,12 +96,14 @@ impl App {
                 self.github_sign_in_pending = false;
                 self.status = self.tf("github.sign_in.done", &[("login", &session.login)]);
                 self.github_session = Some(session);
+                self.finish_github_auth_requests();
                 self.finish_turning_on_sync();
             }
             GitHubAuthEvent::Finished(Err(error)) => {
                 self.github_code_dialog = None;
                 self.github_sign_in_pending = false;
                 self.status = self.tf("github.sign_in.failed", &[("error", &error)]);
+                self.finish_github_auth_requests();
             }
         }
     }
@@ -111,6 +114,7 @@ impl App {
             Ok(()) => {
                 self.github_session = None;
                 self.status = self.t("github.sign_out.done").into();
+                self.notify_github_signed_out();
             }
             Err(error) => {
                 self.status = self.tf("github.sign_out.failed", &[("error", &error)]);
@@ -127,7 +131,7 @@ mod tests {
         Session {
             token: "gho_secret".into(),
             login: "octocat".into(),
-            name: None,
+            ..Default::default()
         }
     }
 

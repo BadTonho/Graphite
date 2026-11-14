@@ -46,6 +46,17 @@ impl App {
             runtime.editor_commands.insert(id, ticket);
             return Ok(());
         }
+        if actor == "MainThreadAuthentication" {
+            return match self.handle_vsix_auth_request(runtime, id, method, args) {
+                Ok(Some(result)) => runtime
+                    .session
+                    .send(json!({"type":"reply", "id":id, "result":result})),
+                Ok(None) => Ok(()),
+                Err(error) => runtime
+                    .session
+                    .send(json!({"type":"reply", "id":id, "error":error})),
+            };
+        }
         match self.start_vsix_prompt(runtime, id, actor, method, args) {
             Ok(true) => return Ok(()),
             Ok(false) => {}

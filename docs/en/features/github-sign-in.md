@@ -32,4 +32,4 @@ The environment variable replaces the built-in ID for that build. Never add a cl
 
 - The sign-in needs internet access to github.com and api.github.com.
 - A code expires after about 15 minutes. If it expires, choose sign-in again.
-- The sign-in covers the profile menu only; other features do not call GitHub with the account yet.
+- Extensions can use the account through `authentication.getSession("github", ...)`, but only after you allow each one in a prompt. The session remembers the scopes it was issued with; an extension that needs more scopes starts a new sign-in. See [Extension API](extension-api.md).

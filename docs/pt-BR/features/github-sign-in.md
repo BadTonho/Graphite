@@ -32,4 +32,4 @@ A variável de ambiente substitui o ID embutido naquele build. Nunca coloque um 
 
 - O login precisa de acesso à internet para github.com e api.github.com.
 - O código expira em cerca de 15 minutos. Se expirar, escolha o login de novo.
-- O login vale só para o menu de perfil; outros recursos ainda não usam a conta para chamar o GitHub.
+- As extensões podem usar a conta por `authentication.getSession("github", ...)`, mas só depois que você permitir cada uma em um aviso. A sessão lembra os escopos com que foi emitida; uma extensão que precisa de mais escopos inicia um novo login. Veja [API de extensões](extension-api.md).

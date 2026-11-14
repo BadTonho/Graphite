@@ -980,6 +980,250 @@ fn vsix_virtual_file_operations_call_the_provider_and_refresh_the_folder() {
     assert_eq!(call(&host, "$readdir")["args"][1], json!({"$graphiteUri": "vfstest-c:/"}));
 }
 
+/// Plays the extension host for authentication tests.
+struct AuthHarness {
+    app: App,
+    runtime: Option<Runtime>,
+    host: graphite_extension_host::code_oss::LoopbackHost,
+}
+
+impl AuthHarness {
+    fn new(dir: &TempDir) -> Self {
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.profile_root = dir.path().join("profile");
+        let (session, host) = Session::loopback();
+        Self { app, runtime: Some(Runtime::for_test(session)), host }
+    }
+
+    fn request(&mut self, id: u64, method: &str, args: Value) {
+        let mut runtime = self.runtime.take().unwrap();
+        self.app
+            .handle_vsix_request(&mut runtime, &json!({"id": id, "actor": "MainThreadAuthentication", "method": method, "args": args}))
+            .unwrap();
+        self.runtime = Some(runtime);
+    }
+
+    /// Everything sent to the extension host so far.
+    fn sent(&self) -> Vec<Value> {
+        std::iter::from_fn(|| self.host.next_sent()).collect()
+    }
+
+    fn call(&self, method: &str) -> Value {
+        self.sent()
+            .into_iter()
+            .find(|message| message["method"] == method)
+            .unwrap_or_else(|| panic!("no {method} call"))
+    }
+
+    fn reply_of(&self, id: u64) -> Value {
+        self.sent()
+            .into_iter()
+            .find(|message| message["type"] == "reply" && message["id"] == id)
+            .unwrap_or_else(|| panic!("no reply to {id}"))
+    }
+
+    fn finish(&mut self, call: &Value, outcome: Value) {
+        let mut event = json!({"id": call["id"]});
+        for (key, value) in outcome.as_object().unwrap() {
+            event[key] = value.clone();
+        }
+        let mut runtime = self.runtime.take().unwrap();
+        self.app.finish_vsix_auth(&mut runtime, &event);
+        self.runtime = Some(runtime);
+    }
+
+    /// Opens the next consent prompt and answers it.
+    fn answer_consent(&mut self, allow: bool) -> String {
+        let mut runtime = self.runtime.take().unwrap();
+        self.app.drive_vsix_auth(&mut runtime);
+        self.app.plugins.vsix = Some(runtime);
+        let title = self
+            .app
+            .command_palette
+            .as_ref()
+            .expect("consent prompt")
+            .extension_prompt
+            .clone()
+            .unwrap()
+            .0;
+        // The palette closes itself before it reports the choice.
+        self.app.command_palette = None;
+        self.app
+            .answer_vsix_prompt(Some((String::new(), Some(if allow { "1" } else { "2" }.into()))));
+        self.runtime = self.app.plugins.vsix.take();
+        title
+    }
+}
+
+fn sample_session() -> Value {
+    json!({"id": "s1", "accessToken": "tok", "account": {"id": "u1", "label": "User"}, "scopes": ["a"]})
+}
+
+#[test]
+fn vsix_authentication_providers_release_sessions_only_after_consent() {
+    use super::auth::AccessStore;
+    let dir = TempDir::new();
+    let mut h = AuthHarness::new(&dir);
+    h.request(1, "$registerAuthenticationProvider", json!([{"id": "sample", "label": "Sample", "supportsMultipleAccounts": false}]));
+    assert_eq!(h.reply_of(1)["result"], Value::Null);
+    let get = |silent: bool, create: bool| {
+        json!(["sample", ["a"], "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}])
+    };
+
+    // A silent request without a session answers undefined and never asks.
+    h.request(10, "$getSession", get(true, false));
+    let lookup = h.call("$getSessions");
+    assert_eq!(lookup["actor"], "ExtHostAuthentication");
+    assert_eq!(lookup["args"], json!(["sample", ["a"], {}]));
+    h.finish(&lookup, json!({"result": []}));
+    assert_eq!(h.reply_of(10)["result"], Value::Null);
+
+    // createIfNone asks the user, then creates the session and allows the extension for it.
+    h.request(11, "$getSession", get(false, true));
+    let lookup = h.call("$getSessions");
+    h.finish(&lookup, json!({"result": []}));
+    let title = h.answer_consent(true);
+    assert!(title.contains("Pub Ext") && title.contains("Sample"), "{title}");
+    let create = h.call("$createSession");
+    assert_eq!(create["args"], json!(["sample", ["a"], {}]));
+    h.finish(&create, json!({"result": sample_session()}));
+    let reply = h.reply_of(11);
+    assert_eq!(reply["result"]["accessToken"], "tok");
+    assert!(AccessStore::load(&h.app.profile_root).is_allowed("sample", "u1", "pub.ext"));
+
+    // The same extension now gets the session without a question.
+    h.request(12, "$getSession", get(true, false));
+    let lookup = h.call("$getSessions");
+    h.finish(&lookup, json!({"result": [sample_session()]}));
+    assert_eq!(h.reply_of(12)["result"]["id"], "s1");
+    assert!(h.app.command_palette.is_none());
+
+    // Another extension has to be allowed, and a refusal is an error.
+    h.request(13, "$getSession", json!(["sample", ["a"], "other.ext", "Other", {}]));
+    let lookup = h.call("$getSessions");
+    h.finish(&lookup, json!({"result": [sample_session()]}));
+    let title = h.answer_consent(false);
+    assert!(title.contains("Other") && title.contains("User"), "{title}");
+    assert_eq!(h.reply_of(13)["error"], "User did not consent to login.");
+    assert!(!AccessStore::load(&h.app.profile_root).is_allowed("sample", "u1", "other.ext"));
+
+    // A silent request from an extension that was not allowed learns nothing.
+    h.request(14, "$getSession", json!(["sample", ["a"], "other.ext", "Other", {"silent": true}]));
+    let lookup = h.call("$getSessions");
+    h.finish(&lookup, json!({"result": [sample_session()]}));
+    assert_eq!(h.reply_of(14)["result"], Value::Null);
+
+    // Accounts are the distinct accounts of the sessions.
+    h.request(15, "$getAccounts", json!(["sample"]));
+    let lookup = h.call("$getSessions");
+    assert_eq!(lookup["args"], json!(["sample", null, {}]));
+    h.finish(&lookup, json!({"result": [sample_session(), sample_session()]}));
+    assert_eq!(h.reply_of(15)["result"], json!([{"id": "u1", "label": "User"}]));
+
+    // Removing a session and session changes go through to the extensions.
+    h.request(16, "$removeSession", json!(["sample", "s1"]));
+    let removal = h.call("$removeSession");
+    assert_eq!(removal["args"], json!(["sample", "s1"]));
+    h.finish(&removal, json!({"result": null}));
+    assert_eq!(h.reply_of(16)["result"], Value::Null);
+    h.request(17, "$sendDidChangeSessions", json!(["sample", {"added": [], "removed": [], "changed": []}]));
+    let change = h.call("$onDidChangeAuthenticationSessions");
+    assert_eq!(change["args"], json!(["sample", "Sample"]));
+}
+
+#[test]
+fn vsix_authentication_waits_for_a_provider_that_registers_late() {
+    let dir = TempDir::new();
+    let mut h = AuthHarness::new(&dir);
+    h.request(20, "$getSession", json!(["late", ["a"], "pub.ext", "Pub", {"createIfNone": true}]));
+    let sent = h.sent();
+    let activation = sent.iter().find(|message| message["type"] == "activateByEvent").expect("activation");
+    assert_eq!(activation["event"], "onAuthenticationRequest:late");
+    assert!(sent.iter().all(|message| message["id"] != 20), "no answer while waiting");
+    h.request(21, "$registerAuthenticationProvider", json!([{"id": "late", "label": "Late"}]));
+    assert_eq!(h.call("$getSessions")["args"][0], "late");
+
+    // A provider that never shows up fails the call once the wait is over.
+    h.request(22, "$getSession", json!(["never", ["a"], "pub.ext", "Pub", {}]));
+    let mut runtime = h.runtime.take().unwrap();
+    runtime.auth.expire_waiting_for_test();
+    h.app.drive_vsix_auth(&mut runtime);
+    h.runtime = Some(runtime);
+    assert_eq!(h.reply_of(22)["error"], "No authentication provider 'never' is currently registered.");
+    // Silent requests for an unknown provider answer undefined at once.
+    h.request(23, "$getSession", json!(["never", ["a"], "pub.ext", "Pub", {"silent": true}]));
+    assert_eq!(h.reply_of(23)["result"], Value::Null);
+}
+
+#[test]
+fn vsix_github_sessions_come_from_graphites_own_sign_in() {
+    use super::auth::AccessStore;
+    let dir = TempDir::new();
+    let mut h = AuthHarness::new(&dir);
+    h.app.github_session = Some(graphite_auth::Session {
+        token: "gho_x".into(),
+        login: "octocat".into(),
+        scope: "read:user user:email".into(),
+        ..Default::default()
+    });
+    let get = |scopes: Value, silent: bool, create: bool| {
+        json!(["github", scopes, "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}])
+    };
+
+    h.request(30, "$getSession", get(json!(["read:user"]), true, false));
+    assert_eq!(h.reply_of(30)["result"], Value::Null, "not allowed yet");
+    h.request(31, "$getSession", get(json!(["read:user"]), false, false));
+    let title = h.answer_consent(true);
+    assert!(title.contains("GitHub") && title.contains("octocat"), "{title}");
+    let session = h.reply_of(31)["result"].clone();
+    assert_eq!(session["accessToken"], "gho_x");
+    assert_eq!(session["scopes"], json!(["read:user"]));
+    assert_eq!(session["account"], json!({"id": "octocat", "label": "octocat"}));
+    assert!(AccessStore::load(&h.app.profile_root).is_allowed("github", "octocat", "pub.ext"));
+    h.request(32, "$getSession", get(json!(["user:email"]), true, false));
+    assert_eq!(h.reply_of(32)["result"]["accessToken"], "gho_x");
+
+    // Scopes the sign-in does not have: silent requests get nothing; others offer a new sign-in.
+    h.request(33, "$getSession", get(json!(["gist"]), true, false));
+    assert_eq!(h.reply_of(33)["result"], Value::Null);
+    h.request(34, "$getSession", get(json!(["gist"]), false, true));
+    let title = h.answer_consent(true);
+    assert!(title.contains("sign in"), "{title}");
+    // Tests have no event loop, so the sign-in cannot start; the caller hears why.
+    assert!(h.reply_of(34)["error"].is_string());
+
+    // With a sign-in in progress the call waits, then receives the account that signed in.
+    h.app.github_sign_in_pending = true;
+    h.request(35, "$getSession", get(json!(["gist"]), false, true));
+    h.answer_consent(true);
+    assert!(h.sent().iter().all(|message| message["id"] != 35));
+    h.app.plugins.vsix = h.runtime.take();
+    h.app.handle_github_auth_event(crate::app::source_control::github_auth::GitHubAuthEvent::Finished(Ok(
+        graphite_auth::Session {
+            token: "gho_new".into(),
+            login: "octocat".into(),
+            scope: "read:user gist".into(),
+            ..Default::default()
+        },
+    )));
+    h.runtime = h.app.plugins.vsix.take();
+    let sent = h.sent();
+    let reply = sent.iter().find(|message| message["id"] == 35).expect("deferred reply");
+    assert_eq!(reply["result"]["accessToken"], "gho_new");
+    assert!(sent.iter().any(|message| message["method"] == "$onDidChangeAuthenticationSessions"
+        && message["args"] == json!(["github", "GitHub"])));
+
+    // Accounts and sign-out.
+    h.request(36, "$getAccounts", json!(["github"]));
+    assert_eq!(h.reply_of(36)["result"], json!([{"id": "octocat", "label": "octocat"}]));
+    h.request(37, "$removeSession", json!(["github", "github-octocat"]));
+    assert_eq!(h.reply_of(37)["result"], Value::Null);
+    assert!(h.app.github_session.is_none());
+    assert!(!AccessStore::load(&h.app.profile_root).is_allowed("github", "octocat", "pub.ext"));
+    h.request(38, "$getAccounts", json!(["github"]));
+    assert_eq!(h.reply_of(38)["result"], json!([]));
+}
+
 #[test]
 fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resources() {
     use crate::app::scm_ui::{ScmListRow, ScmListRowKind, ScmRect};

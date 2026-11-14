@@ -442,7 +442,7 @@ mod tests {
         app.github_session = Some(graphite_auth::Session {
             token: "gho_secret".into(),
             login: "octocat".into(),
-            name: None,
+            ..Default::default()
         });
         app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
         let rows = app.profile_menu.as_ref().unwrap().rows.clone();

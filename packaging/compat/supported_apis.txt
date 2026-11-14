@@ -73,3 +73,5 @@ workspace.createFileSystemWatcher
 env.clipboard
 scm.createSourceControl
 workspace.registerFileSystemProvider
+authentication.getSession
+authentication.registerAuthenticationProvider
