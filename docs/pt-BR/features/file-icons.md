@@ -1,12 +1,13 @@
 # Ícones de arquivos
 
-O Graphite desenha um ícone colorido ao lado de cada arquivo e pasta em três
+O Graphite desenha um ícone colorido ao lado de cada arquivo e pasta nestes
 lugares:
 
 - na barra lateral do **Explorer**, incluindo chevrons que indicam o estado da
   pasta;
 - na lista do **Quick Open** (`Ctrl+P`);
-- nas **abas do editor**.
+- nas **abas do editor**;
+- na lista de **Controle de Versão**.
 
 O ícone é escolhido pelo nome do arquivo, não pelo conteúdo, então funciona
 para arquivos que não estão abertos e não depende de um language server.
@@ -62,6 +63,44 @@ XML, SQL), ferramentas de build (CMake, Make, Gradle, Maven, Bazel), bancos de
 dados, containers e infraestrutura (Docker, Kubernetes, Helm, Terraform,
 Nginx), documentos, imagens, áudio, vídeo, fontes, arquivos compactados, lock
 files e binários.
+
+## Temas de ícones de extensões
+
+Uma extensão VSIX habilitada pode contribuir temas de ícones de arquivo (`contributes.iconThemes`).
+Escolha um com **Tema de Ícones de Arquivo** (engrenagem de configurações, submenu **Temas**, ou a
+paleta de comandos). O seletor lista **Nenhum**, **Ícones do Graphite (integrado)** e todos os temas
+das extensões habilitadas, e grava a escolha em `workbench.iconTheme` no `settings.json` do perfil,
+mantendo os comentários e o layout desse arquivo:
+
+| `workbench.iconTheme` | Ícones desenhados |
+| --- | --- |
+| ausente | os ícones integrados descritos acima |
+| `null` | nenhum ícone de arquivo |
+| o id de um tema | esse tema, enquanto a extensão estiver habilitada; senão os ícones integrados |
+
+A configuração também pode ficar no `settings.json` de um workspace. O tema vale para o Explorer, o
+Quick Open, as abas do editor e a lista de Controle de Versão.
+
+O que um tema pode usar:
+
+- **Associações**: `fileNames`, `fileExtensions` (extensões compostas como `spec.ts` vencem `ts`),
+  `languageIds`, `file`, `folder`, `folderExpanded`, `folderNames`, `folderNamesExpanded`,
+  `rootFolder`, `rootFolderExpanded`, `rootFolderNames` e `rootFolderNamesExpanded`. Os nomes são
+  comparados sem diferenciar maiúsculas de minúsculas. Para `languageIds`, a linguagem vem das
+  linguagens que outras extensões habilitadas contribuem (extensões e nomes de arquivo) e depois da
+  detecção de linguagem do próprio Graphite.
+- **Variantes**: as seções `light` e `highContrast` substituem as associações base enquanto um tema
+  de cores claro ou de alto contraste está ativo.
+- **Imagens**: `iconPath` para um arquivo SVG, PNG ou JPEG. As imagens são rasterizadas uma vez,
+  quando o ícone aparece pela primeira vez.
+- **Glifos de fonte**: `fontCharacter`, `fontColor`, `fontSize` e `fontId` com a lista `fonts`;
+  fontes TrueType, OpenType, WOFF e WOFF2 são lidas.
+- **`hidesExplorerArrows`**: esconde os chevrons das pastas no Explorer.
+
+Todo arquivo que um tema lê precisa ficar dentro da pasta da extensão; imagens têm limite de 1 MiB
+e fontes de 8 MiB. Uma entrada cujo arquivo falta ou não pode ser lido não desenha ícone, e um
+arquivo de tema que não pode ser interpretado é informado na barra de status e mantém os ícones
+integrados.
 
 ## Cores
 

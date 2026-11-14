@@ -59,12 +59,43 @@ impl Renderer {
     /// the visible ink is centered in the box, so icons with different bearings
     /// line up on the same baseline.
     pub fn draw_icon(&mut self, icon: char, x: f32, y: f32, size: f32, color: Color) {
+        self.draw_icon_from(0, crate::icons::FAMILY, icon, x, y, size, color);
+    }
+
+    /// Draws `icon` from a font supplied at run time, centered like [`Self::draw_icon`]. The
+    /// font is loaded the first time its id is drawn; a font that cannot be read draws nothing.
+    pub fn draw_font_icon(
+        &mut self,
+        font: &IconFont,
+        icon: char,
+        x: f32,
+        y: f32,
+        size: f32,
+        color: Color,
+    ) {
+        let Some(family) = self.icon_font_family(font) else {
+            return;
+        };
+        self.draw_icon_from(font.id.max(1), &family, icon, x, y, size, color);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_icon_from(
+        &mut self,
+        font_key: u64,
+        family: &str,
+        icon: char,
+        x: f32,
+        y: f32,
+        size: f32,
+        color: Color,
+    ) {
         if !size.is_finite() || size <= 0.0 {
             return;
         }
         let (tx, ty) = self.translation;
         let (x, y) = (x + tx, y + ty);
-        let key = (icon, size.to_bits());
+        let key = (font_key, icon, size.to_bits());
         if self.icon_cache.len() > 512 {
             self.icon_cache.clear();
         }
@@ -74,7 +105,7 @@ impl Renderer {
             buffer.set_size(None, None);
             buffer.set_text(
                 &icon.to_string(),
-                &Attrs::new().family(Family::Name(crate::icons::FAMILY)),
+                &Attrs::new().family(Family::Name(family)),
                 Shaping::Advanced,
                 None,
             );

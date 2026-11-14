@@ -7,6 +7,7 @@ pub fn project_settings(value: &Value, translator: &Translator) -> (Value, Vec<S
         "editor.insertSpaces",
         "workbench.colorTheme",
         "workbench.colorCustomizations",
+        "workbench.iconTheme",
         "files.readonlyInclude",
         "editor.detectIndentation",
         "files.trimTrailingWhitespace",

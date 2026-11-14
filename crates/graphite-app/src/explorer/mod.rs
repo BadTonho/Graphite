@@ -5,4 +5,5 @@ use super::*;
 
 pub(crate) mod file_icons;
 pub(crate) mod file_nesting;
+pub(crate) mod icon_theme;
 pub(crate) mod tree;

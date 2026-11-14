@@ -100,6 +100,7 @@ impl App {
         if changed {
             self.apply_selected_theme();
         }
+        self.sync_icon_theme();
     }
 
     /// Resolves `workbench.colorTheme` again after the available themes changed. A selection

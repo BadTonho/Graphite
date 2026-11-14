@@ -37,8 +37,9 @@ Um VSIX sem ponto de entrada Node.js (temas, snippets, pacotes de idioma) não e
 | `snippets` | Os arquivos de snippets são carregados para extensões habilitadas, com escopo na linguagem contribuinte. Um snippet do usuário ou do projeto com o mesmo prefixo e escopo os substitui. |
 
 | `themes` | Os temas de cores são importados para o perfil e selecionados com `workbench.colorTheme`, por rótulo ou id. Desabilitar a extensão os remove. |
+| `iconThemes` | Os temas de ícones de arquivo são selecionados com **Tema de Ícones de Arquivo** ou `workbench.iconTheme`, e desenhados no Explorer, no Quick Open, nas abas e no Controle de Versão. Veja [Ícones de arquivos](file-icons.md#temas-de-ícones-de-extensões). |
 
-Atalhos de teclado são vinculados ao keymap ativo quando a extensão é aprovada e o workspace é confiável. Gramáticas e temas de ícones constam no pacote, mas ainda não são aplicados.
+Atalhos de teclado são vinculados ao keymap ativo quando a extensão é aprovada e o workspace é confiável. Gramáticas constam no pacote, mas ainda não são aplicadas.
 
 ## Ainda não
 

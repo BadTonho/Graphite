@@ -257,6 +257,7 @@ pub(super) fn graphite_action_toggle_theme(
         DARK_THEME.store(dark, Ordering::Relaxed);
         config::save_dark_theme_in(&app.profile_root, dark);
     };
+    app.tree.refresh_icons();
     Ok(())
 }
 

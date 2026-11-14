@@ -3,6 +3,7 @@ mod import_themes;
 mod language;
 mod paths;
 mod settings;
+mod settings_edit;
 mod sidebar_layout;
 mod snippets;
 mod theme_includes;
@@ -21,6 +22,7 @@ pub use settings::{
     editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
     workspace_configuration_in,
 };
+pub(crate) use settings_edit::set_user_setting;
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
 pub(crate) use sidebar_layout::{
     load_activity_bar_preferences, save_activity_bar_preferences, ActivityBarPosition,

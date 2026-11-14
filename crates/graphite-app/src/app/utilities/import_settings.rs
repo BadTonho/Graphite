@@ -15,6 +15,7 @@ impl App {
         } = settings;
         DARK_THEME.store(dark, Ordering::Relaxed);
         Theme::set_imported_colors(colors);
+        self.sync_icon_theme();
         self.font_size = prefs.font_size;
         self.tab_size = prefs.tab_size;
         self.insert_spaces = prefs.insert_spaces;

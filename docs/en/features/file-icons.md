@@ -1,10 +1,11 @@
 # File icons
 
-Graphite draws a colored icon next to every file and folder in three places:
+Graphite draws a colored icon next to every file and folder in these places:
 
 - the **Explorer** sidebar, including chevrons that show folder state;
 - the **Quick Open** list (`Ctrl+P`);
-- **editor tabs**.
+- **editor tabs**;
+- the **Source Control** list.
 
 The icon is chosen from the file name, not from the file contents, so it works
 for files that are not open and does not require a language server.
@@ -58,6 +59,43 @@ The mapping also covers data and configuration formats (JSON, YAML, TOML, XML,
 SQL), build tools (CMake, Make, Gradle, Maven, Bazel), databases, containers
 and infrastructure (Docker, Kubernetes, Helm, Terraform, Nginx), documents,
 images, audio, video, fonts, archives, lock files and binaries.
+
+## Icon themes from extensions
+
+An enabled VSIX extension can contribute file icon themes (`contributes.iconThemes`). Choose one
+with **File Icon Theme** (settings gear, **Themes** submenu, or the command palette). The picker
+lists **None**, **Graphite Icons (built-in)** and every theme of the enabled extensions, and writes
+the choice to `workbench.iconTheme` in the profile's `settings.json`, keeping the comments and
+layout of that file:
+
+| `workbench.iconTheme` | Icons drawn |
+| --- | --- |
+| not set | the built-in icons described above |
+| `null` | no file icons |
+| a theme id | that theme, while its extension is enabled; otherwise the built-in icons |
+
+The setting can also be placed in a workspace's `settings.json`. The theme applies to the Explorer,
+Quick Open, editor tabs and the Source Control list.
+
+What a theme can use:
+
+- **Associations**: `fileNames`, `fileExtensions` (compound extensions such as `spec.ts` win over
+  `ts`), `languageIds`, `file`, `folder`, `folderExpanded`, `folderNames`, `folderNamesExpanded`,
+  `rootFolder`, `rootFolderExpanded`, `rootFolderNames` and `rootFolderNamesExpanded`. Names are
+  matched case-insensitively. For `languageIds`, the language comes from the languages other
+  enabled extensions contribute (extensions and file names), then from Graphite's own language
+  detection.
+- **Variants**: the `light` and `highContrast` sections override the base associations while a
+  light or high-contrast color theme is active.
+- **Images**: `iconPath` to an SVG, PNG or JPEG file. Images are rasterized once, when an icon
+  first appears.
+- **Font glyphs**: `fontCharacter`, `fontColor`, `fontSize` and `fontId` with the `fonts` list;
+  TrueType, OpenType, WOFF and WOFF2 fonts are read.
+- **`hidesExplorerArrows`**: hides the folder chevrons in the Explorer.
+
+Every file a theme reads must stay inside its extension folder; images are limited to 1 MiB and
+fonts to 8 MiB. An entry whose file is missing or unreadable draws no icon, and a theme file that
+cannot be parsed is reported in the status bar and leaves the built-in icons in place.
 
 ## Colors
 

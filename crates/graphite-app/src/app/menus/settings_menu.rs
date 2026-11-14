@@ -347,7 +347,7 @@ impl App {
                     command: C::FileIconTheme,
                     label: self.t("settings_menu.file_icon_theme").into(),
                     shortcut: String::new(),
-                    enabled: false,
+                    enabled: true,
                     checked: false,
                 },
                 I {
@@ -803,7 +803,8 @@ impl App {
             }
             SettingsSubcommand::DarkTheme => self.set_theme(true),
             SettingsSubcommand::LightTheme => self.set_theme(false),
-            SettingsSubcommand::FileIconTheme | SettingsSubcommand::ProductIconTheme => {}
+            SettingsSubcommand::FileIconTheme => self.open_icon_theme_picker(),
+            SettingsSubcommand::ProductIconTheme => {}
             SettingsSubcommand::DensityDefault => {
                 self.set_layout_density(config::LayoutDensity::Default)
             }
@@ -1024,14 +1025,14 @@ mod tests {
     }
 
     #[test]
-    fn theme_submenu_marks_icon_theme_choices_unavailable() {
+    fn theme_submenu_offers_file_icon_themes_but_not_product_icons() {
         let temp = crate::test_support::TempDir::new();
         let app = App::new_with_options(temp.path().to_path_buf(), None, true);
         let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
         assert!(matches!(
             rows[3],
             SettingsSubmenuRow::Item {
-                enabled: false,
+                enabled: true,
                 command: SettingsSubcommand::FileIconTheme,
                 ..
             }

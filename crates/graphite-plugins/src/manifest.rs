@@ -476,6 +476,44 @@ pub(crate) fn vsix_snippets(manifest: &Value) -> Vec<SnippetContribution> {
         .collect()
 }
 
+/// A file icon theme the extension contributes (`contributes.iconThemes`).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IconThemeContribution {
+    pub id: String,
+    /// Display name; the id when the extension gives none.
+    pub label: String,
+    /// Path of the theme file relative to the extension root, validated by
+    /// [`crate::package::safe_path`].
+    pub path: String,
+}
+
+/// Reads `contributes.iconThemes` from an extension's `package.json`. Entries without an id or
+/// with a path that leaves the extension are skipped.
+pub fn vsix_icon_themes(manifest: &Value) -> Vec<IconThemeContribution> {
+    manifest
+        .pointer("/contributes/iconThemes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.trim();
+            let path = entry.get("path")?.as_str()?;
+            let path = path.strip_prefix("./").unwrap_or(path);
+            let label = entry
+                .get("label")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|label| !label.is_empty())
+                .unwrap_or(id);
+            (!id.is_empty() && crate::package::safe_path(path)).then(|| IconThemeContribution {
+                id: id.to_owned(),
+                label: label.to_owned(),
+                path: path.to_owned(),
+            })
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageComments {
@@ -892,6 +930,33 @@ mod activity_bar_tests {
         let round_trip: Vsix =
             serde_json::from_value(serde_json::to_value(&vsix).unwrap()).unwrap();
         assert!(round_trip.debuggers.is_empty());
+    }
+
+    #[test]
+    fn icon_themes_keep_safe_entries_and_default_the_label() {
+        let manifest = serde_json::json!({"contributes": {"iconThemes": [
+            {"id": "pack", "label": "Pack Icons", "path": "./icons/pack.json"},
+            {"id": "bare", "path": "icons/bare.json"},
+            {"id": "escape", "label": "Escape", "path": "../outside.json"},
+            {"label": "No id", "path": "icons/x.json"},
+        ]}});
+        let themes = vsix_icon_themes(&manifest);
+        assert_eq!(
+            themes,
+            vec![
+                IconThemeContribution {
+                    id: "pack".into(),
+                    label: "Pack Icons".into(),
+                    path: "icons/pack.json".into(),
+                },
+                IconThemeContribution {
+                    id: "bare".into(),
+                    label: "bare".into(),
+                    path: "icons/bare.json".into(),
+                },
+            ]
+        );
+        assert!(vsix_icon_themes(&serde_json::json!({})).is_empty());
     }
 
     #[test]

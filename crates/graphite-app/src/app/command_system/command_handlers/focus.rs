@@ -55,6 +55,7 @@ fn toggle_high_contrast(
     let enabled = !HIGH_CONTRAST.load(Ordering::Relaxed);
     HIGH_CONTRAST.store(enabled, Ordering::Relaxed);
     crate::config::save_high_contrast_in(&app.profile_root, enabled);
+    app.tree.refresh_icons();
     let state = app
         .t(if enabled { "common.on" } else { "common.off" })
         .to_owned();

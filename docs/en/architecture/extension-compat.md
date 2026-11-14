@@ -25,6 +25,6 @@ The Plugins sidebar installs VSIX packages disabled. The approved installation, 
 | `debug` & `testing` | Register `DebugAdapterDescriptorFactory` / sessions through `MainThreadDebugService` and test controllers, test items, profiles and run updates through `MainThreadTesting`. |
 | `lm` (`LanguageModelTools`) | Register VSIX chat tools (`MainThreadLanguageModelTools`), expose them to Graphite's built-in chat tool list, and dispatch `$invokeTool` calls when the workspace is trusted. |
 
-Unsupported `MainThread*` actor methods fail explicitly with unsupported-operation errors and are recorded for session inspection. Themes and snippets are also inspectable from VSIX packages; Open VSX is the public registry used by Graphite.
+Unsupported `MainThread*` actor methods fail explicitly with unsupported-operation errors and are recorded for session inspection. Color themes, file icon themes and snippets from VSIX packages are applied without starting the extension host; Open VSX is the public registry used by Graphite.
 
 See [portable builds](../contributing/building.md), [plugin installation](../contributing/plugins.md) and [v0.5 validation](../features/v0.5-extensions-automation.md).

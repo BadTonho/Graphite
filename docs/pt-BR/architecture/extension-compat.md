@@ -25,6 +25,6 @@ O painel Plugins instala os pacotes VSIX desabilitados. A instalação aprovada,
 | `debug` e `testing` | Registrar fábricas/sessões de depuração (`MainThreadDebugService`) e controladores, itens, perfis e execuções de teste (`MainThreadTesting`). |
 | `lm` (`LanguageModelTools`) | Registrar ferramentas VSIX para chat (`MainThreadLanguageModelTools`), expô-las à lista de ferramentas do chat nativo do Graphite e despachar chamadas `$invokeTool` quando o workspace for confiável. |
 
-Métodos de atores `MainThread*` não suportados falham explicitamente com erro de operação indisponível e são registrados para inspeção da sessão. Temas e snippets também podem ser inspecionados a partir de pacotes VSIX; o Open VSX é o registro público usado pelo Graphite.
+Métodos de atores `MainThread*` não suportados falham explicitamente com erro de operação indisponível e são registrados para inspeção da sessão. Temas de cores, temas de ícones de arquivo e snippets de pacotes VSIX são aplicados sem iniciar o extension host; o Open VSX é o registro público usado pelo Graphite.
 
 Veja [builds portáteis](../contributing/building.md), [instalação de plugins](../contributing/plugins.md) e [validação da v0.5](../features/v0.5-extensions-automation.md).

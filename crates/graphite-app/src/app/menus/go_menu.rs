@@ -101,6 +101,8 @@ pub(crate) enum GoPickerKind {
     Kernel,
     /// Search through the cells of the active notebook: picking a line goes to it.
     NotebookFind,
+    /// The file icon themes: picking one writes `workbench.iconTheme`.
+    IconTheme,
 }
 
 #[derive(Clone, Debug)]
@@ -820,6 +822,15 @@ impl App {
                     .cloned()
                 {
                     self.select_kernel(item.line);
+                }
+            }
+            GoPickerKind::IconTheme => {
+                if let Some(item) = self
+                    .go_picker_rows_from(&picker)
+                    .get(picker.selected)
+                    .cloned()
+                {
+                    self.select_icon_theme(item.line);
                 }
             }
             GoPickerKind::NotebookFind => {

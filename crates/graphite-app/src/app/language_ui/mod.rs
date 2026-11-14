@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+pub(crate) mod extension_icon_themes;
 pub(crate) mod extension_snippets;
 pub(crate) mod extension_themes;
 pub(crate) mod lsp_features;

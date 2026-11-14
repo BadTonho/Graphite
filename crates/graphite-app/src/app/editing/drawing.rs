@@ -97,7 +97,7 @@ impl App {
                 let icon_slot = sidebar_lh;
                 let icon_size = (sidebar_lh * 0.85).round();
                 let chevron_size = (sidebar_lh * 0.72).round();
-                if row.entry.is_dir {
+                if row.entry.is_dir && !crate::icon_theme::hides_explorer_arrows() {
                     let chevron = if row.expanded {
                         crate::file_icons::CHEVRON_DOWN
                     } else {
@@ -112,12 +112,13 @@ impl App {
                     );
                 }
                 let icon_x = indent + chevron_slot;
-                r.draw_icon(
-                    row.icon.glyph,
+                crate::icon_theme::draw(
+                    r,
+                    &row.icon,
                     icon_x + (icon_slot - icon_size) * 0.5,
                     y + (sidebar_lh - icon_size) * 0.5,
                     icon_size,
-                    rgb(row.icon.color),
+                    |color| color,
                 );
                 r.draw_text(
                     &row.entry.name,
@@ -213,14 +214,15 @@ impl App {
                     );
                 }
                 let relative = self.tree.relative_path(path);
-                let icon = crate::file_icons::for_path(path);
+                let icon = crate::icon_theme::for_path(path);
                 let icon_size = (lh * 0.85).round();
-                r.draw_icon(
-                    icon.glyph,
+                crate::icon_theme::draw(
+                    r,
+                    &icon,
                     x + PAD,
                     item_y + (lh - icon_size) * 0.5,
                     icon_size,
-                    rgb(icon.color),
+                    |color| color,
                 );
                 r.draw_text(
                     &relative.display().to_string(),
@@ -315,6 +317,9 @@ impl App {
             let prompt = match picker.kind {
                 super::go_menu::GoPickerKind::LineColumn => {
                     format!("{} {}", self.t("go.line_column_prompt"), picker.query)
+                }
+                super::go_menu::GoPickerKind::IconTheme => {
+                    format!("{} {}", self.t("icon_theme.prompt"), picker.query)
                 }
                 _ => format!("{} {}", self.t("go.symbol_prompt"), picker.query),
             };

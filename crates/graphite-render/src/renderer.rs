@@ -1,10 +1,12 @@
 //! GPU renderer: solid rectangles and cosmic-text glyphs drawn as textured quads.
 
 mod clip;
+mod icon_fonts;
 mod images;
 mod text;
-use text::measure_char_width;
+pub use icon_fonts::IconFont;
 pub use images::Image;
+use text::measure_char_width;
 
 use crate::atlas::{ShelfPacker, Slot, ATLAS_SIZE};
 use crate::icons;
@@ -79,7 +81,11 @@ pub struct Renderer {
     font_system: FontSystem,
     swash: SwashCache,
     line_cache: HashMap<(String, u32), Buffer>,
-    icon_cache: HashMap<(char, u32), Buffer>,
+    /// Shaped icon glyphs by (font key, glyph, size bits); font key 0 is the embedded font.
+    icon_cache: HashMap<(u64, char, u32), Buffer>,
+    /// Family names of the icon fonts loaded at run time, by [`IconFont::id`]; `None` when the
+    /// font could not be read, so it is not tried again.
+    icon_fonts: HashMap<u64, Option<String>>,
     clear: Color,
     char_width: f32,
     metrics: Metrics,
@@ -336,6 +342,7 @@ impl Renderer {
             swash: SwashCache::new(),
             line_cache: HashMap::new(),
             icon_cache: HashMap::new(),
+            icon_fonts: HashMap::new(),
             clear: rgb(0x1e1e1e),
             char_width,
             metrics,

@@ -511,6 +511,7 @@
   "command.workbench.action.openFolderSettingsFile": "Open folder settings (JSON)",
   "command.workbench.action.openGlobalKeybindingsFile": "Open keyboard shortcuts (JSON)",
   "command.workbench.action.openDefaultKeybindingsFile": "Open default keyboard shortcuts (JSON)",
+  "command.workbench.action.selectIconTheme": "File icon theme",
   "command.category.preferences": "Preferences",
   "command.workbench.action.tasks.runTask": "Run task...",
   "command.workbench.action.tasks.showTasks": "Show running tasks",

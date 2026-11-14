@@ -781,6 +781,7 @@ impl App {
     pub(crate) fn set_theme(&mut self, dark: bool) {
         DARK_THEME.store(dark, std::sync::atomic::Ordering::Relaxed);
         config::save_dark_theme_in(&self.profile_root, dark);
+        self.tree.refresh_icons();
     }
 
     pub(crate) fn spawn_window(&mut self, profile: Option<String>) {

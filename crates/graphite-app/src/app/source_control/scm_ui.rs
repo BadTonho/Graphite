@@ -1260,15 +1260,16 @@ impl App {
                             rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
                         );
                     }
-                    let icon = crate::file_icons::for_path(&item.path);
+                    let icon = crate::icon_theme::for_path(&item.path);
                     let icon_size = (row_h * 0.72).round();
                     let icon_x = left + cell_width;
-                    renderer.draw_icon(
-                        icon.glyph,
+                    crate::icon_theme::draw(
+                        renderer,
+                        &icon,
                         icon_x,
                         y + (row_h - icon_size) * 0.5,
                         icon_size,
-                        rgb(scm_icon_color(icon.color)),
+                        scm_icon_color,
                     );
                     let full = item.path.to_string_lossy();
                     let name = item

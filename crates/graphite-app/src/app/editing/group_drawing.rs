@@ -118,15 +118,16 @@ impl App {
                     let icon = tab
                         .buffer
                         .path()
-                        .map(crate::file_icons::for_path)
-                        .unwrap_or(crate::file_icons::FILE);
+                        .map(crate::icon_theme::for_path)
+                        .unwrap_or_else(|| crate::icon_theme::for_entry("", false, false, false));
                     let icon_size = (lh * 0.8).round();
-                    r.draw_icon(
-                        icon.glyph,
+                    crate::icon_theme::draw(
+                        r,
+                        &icon,
                         x + PAD,
                         rect.y + (lh * 1.5 - icon_size) * 0.5,
                         icon_size,
-                        rgb(icon.color),
+                        |color| color,
                     );
                     let label_color = if view.preview_revision.is_some() {
                         Theme::color(Theme::DIM, 0x858585)

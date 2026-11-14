@@ -1,6 +1,5 @@
 //! Flattened, expandable file tree built on top of `graphite-workspace`.
 
-use crate::file_icons::FileIcon;
 use graphite_workspace::{Entry, Workspace};
 use std::{collections::HashSet, path::PathBuf};
 
@@ -8,7 +7,7 @@ pub struct TreeRow {
     pub entry: Entry,
     pub depth: usize,
     pub expanded: bool,
-    pub icon: FileIcon,
+    pub icon: crate::icon_theme::Icon,
     pub workspace_root: bool,
     /// A companion file shown under its parent (file nesting).
     pub nested: bool,
@@ -142,6 +141,18 @@ impl FileTree {
         self.rebuild();
     }
 
+    /// Looks the row icons up again, after the icon theme or the color theme changed.
+    pub fn refresh_icons(&mut self) {
+        for row in &mut self.rows {
+            row.icon = crate::icon_theme::for_entry(
+                &row.entry.name,
+                row.entry.is_dir,
+                row.expanded,
+                row.workspace_root,
+            );
+        }
+    }
+
     pub fn replace_workspace(&mut self, workspace: Workspace) {
         self.workspace = workspace;
         self.expanded.clear();
@@ -191,6 +202,7 @@ impl FileTree {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| root.display().to_string());
                 let expanded = self.expanded.contains(&root);
+                let icon = crate::icon_theme::for_entry(&name, true, expanded, true);
                 rows.push(TreeRow {
                     entry: Entry {
                         path: root.clone(),
@@ -199,7 +211,7 @@ impl FileTree {
                     },
                     depth: 0,
                     expanded,
-                    icon: crate::file_icons::for_entry("", true, expanded),
+                    icon,
                     workspace_root: true,
                     nested: false,
                     nested_count: 0,
@@ -248,7 +260,7 @@ impl FileTree {
         out: &mut Vec<TreeRow>,
     ) {
         let expanded = entry.is_dir && self.expanded.contains(&entry.path);
-        let icon = crate::file_icons::for_entry(&entry.name, entry.is_dir, expanded);
+        let icon = crate::icon_theme::for_entry(&entry.name, entry.is_dir, expanded, false);
         out.push(TreeRow {
             entry: entry.clone(),
             depth,

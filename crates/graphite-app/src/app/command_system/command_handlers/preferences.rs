@@ -57,8 +57,13 @@ fn prefs_10(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn select_icon_theme(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_icon_theme_picker();
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 11] = [
+    let commands: [(&'static str, &'static str, Handler); 12] = [
         (
             "workbench.action.openGlobalSettings",
             "Open user settings",
@@ -109,6 +114,11 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.openDefaultKeybindingsFile",
             "Open default keyboard shortcuts (JSON)",
             prefs_10,
+        ),
+        (
+            "workbench.action.selectIconTheme",
+            "File icon theme",
+            select_icon_theme,
         ),
     ];
     for (id, title, handler) in commands {

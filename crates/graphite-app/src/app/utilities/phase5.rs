@@ -277,6 +277,7 @@ impl App {
             config::load_dark_theme_from(&self.profile_root),
             Ordering::Relaxed,
         );
+        self.sync_icon_theme();
         let (snippets, warnings) =
             config::load_snippets_for_workspace_in(&self.profile_root, &workspace, &translator);
         self.snippet_load_warnings = warnings;

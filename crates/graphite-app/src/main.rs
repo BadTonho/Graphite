@@ -15,7 +15,7 @@ mod config;
 mod documents;
 use documents::{document, document_store, file_format};
 mod explorer;
-use explorer::{file_icons, file_nesting, tree};
+use explorer::{file_icons, file_nesting, icon_theme, tree};
 mod vcs;
 use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_remote};
 mod language;
