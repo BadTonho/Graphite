@@ -288,7 +288,9 @@ impl App {
             C::DuplicateSelection => self.run_ui_command("editor.action.duplicateSelection"),
             C::AddCursorAbove => self.run_ui_command("editor.action.insertCursorAbove"),
             C::AddCursorBelow => self.run_ui_command("editor.action.insertCursorBelow"),
-            C::AddCursorsToLineEnds => self.run_ui_command("editor.action.insertCursorAtEndOfEachLineSelected"),
+            C::AddCursorsToLineEnds => {
+                self.run_ui_command("editor.action.insertCursorAtEndOfEachLineSelected")
+            }
             C::AddNextOccurrence => {
                 self.run_ui_command("editor.action.addSelectionToNextFindMatch")
             }

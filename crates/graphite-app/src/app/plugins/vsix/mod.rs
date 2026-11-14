@@ -14,8 +14,8 @@ mod file_events;
 mod hierarchy;
 pub(crate) use hierarchy::Kind as HierarchyKind;
 mod language_results;
-mod passive;
 mod languages;
+mod passive;
 mod requested_commands;
 pub(crate) use decorations::LineMark as DecorationMark;
 pub(crate) use file_events::{changes as file_changes, FileChange};
@@ -347,7 +347,10 @@ impl App {
                         self.finish_vsix_colors(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(code_lens::is_lens_reply) {
                         self.finish_vsix_code_lens(runtime, &event);
-                    } else if event["id"].as_u64().is_some_and(hierarchy::is_hierarchy_reply) {
+                    } else if event["id"]
+                        .as_u64()
+                        .is_some_and(hierarchy::is_hierarchy_reply)
+                    {
                         self.finish_vsix_hierarchy(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(passive::is_passive_reply) {
                         self.finish_vsix_passive(runtime, &event);

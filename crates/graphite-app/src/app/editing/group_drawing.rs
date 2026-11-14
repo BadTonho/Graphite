@@ -8,7 +8,12 @@ pub(crate) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) 
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| {
-            let key = match tab.notebook.as_deref().and_then(crate::notebook::Session::interactive).map(|state| state.kind) {
+            let key = match tab
+                .notebook
+                .as_deref()
+                .and_then(crate::notebook::Session::interactive)
+                .map(|state| state.kind)
+            {
                 Some(crate::notebook::InteractiveKind::Window) => "notebook.interactive.title",
                 Some(crate::notebook::InteractiveKind::Repl) => "notebook.repl.title",
                 None => "common.untitled",
@@ -247,7 +252,16 @@ impl App {
                 body_rect.y = body_y;
                 body_rect.height = body_height;
                 self.draw_wrapped_view(r, body_rect, view, text_x, gutter, visible, lh, cw);
-                draw_sticky_headers(r, *rect, &sticky_headers, sticky_focus, text_x, tab_height, lh, cw);
+                draw_sticky_headers(
+                    r,
+                    *rect,
+                    &sticky_headers,
+                    sticky_focus,
+                    text_x,
+                    tab_height,
+                    lh,
+                    cw,
+                );
                 continue;
             }
             let decoration_uri = buffer
@@ -255,13 +269,12 @@ impl App {
                 .and_then(|path| graphite_core_api::DocumentUri::from_path(path).ok())
                 .map(|uri| uri.as_str().to_owned());
             let folds = super::fold_commands::effective_folds(view, buffer.revision());
-            let fold_hidden =
-                super::folding::hidden_ranges(
-                    buffer,
-                    folds,
-                    tab.indentation.tab_size,
-                    super::fold_commands::region_source(view, tab),
-                );
+            let fold_hidden = super::folding::hidden_ranges(
+                buffer,
+                folds,
+                tab.indentation.tab_size,
+                super::fold_commands::region_source(view, tab),
+            );
             let rows =
                 super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
             for (row, &line) in rows.iter().enumerate() {
@@ -413,11 +426,8 @@ impl App {
                     );
                     &layered
                 };
-                let merged = super::drawing_helpers::overlay_classes(
-                    &text,
-                    syntax,
-                    &bracket_overlays,
-                );
+                let merged =
+                    super::drawing_helpers::overlay_classes(&text, syntax, &bracket_overlays);
                 draw_code_line(r, &text, &merged, text_x, y, cw, tab.indentation.tab_size);
                 if let Some(uri) = &decoration_uri {
                     self.draw_line_decorations(
@@ -431,17 +441,17 @@ impl App {
                     );
                 }
                 if self.view_preferences.whitespace != config::WhitespaceRendering::None {
-                if let Some(uri) = &decoration_uri {
-                    self.draw_debug_inline_value(
-                        r,
-                        uri,
-                        buffer.revision(),
-                        line,
-                        &text,
-                        tab.indentation.tab_size,
-                        (text_x, y, cw),
-                    );
-                }
+                    if let Some(uri) = &decoration_uri {
+                        self.draw_debug_inline_value(
+                            r,
+                            uri,
+                            buffer.revision(),
+                            line,
+                            &text,
+                            tab.indentation.tab_size,
+                            (text_x, y, cw),
+                        );
+                    }
                     draw_whitespace_markers(
                         r,
                         &text,
@@ -559,7 +569,16 @@ impl App {
                     );
                 }
             }
-            draw_sticky_headers(r, *rect, &sticky_headers, sticky_focus, text_x, tab_height, lh, cw);
+            draw_sticky_headers(
+                r,
+                *rect,
+                &sticky_headers,
+                sticky_focus,
+                text_x,
+                tab_height,
+                lh,
+                cw,
+            );
             if minimap_width > 0.0 {
                 let x = rect.x + rect.width - minimap_width;
                 r.draw_rect(
@@ -699,7 +718,13 @@ fn draw_sticky_headers(
     for (index, header) in headers.iter().enumerate() {
         let y = rect.y + tab_height + line_height * index as f32;
         if focused == Some(index) {
-            renderer.draw_rect(rect.x, y, rect.width, line_height, rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)));
+            renderer.draw_rect(
+                rect.x,
+                y,
+                rect.width,
+                line_height,
+                rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+            );
         }
         renderer.draw_text(
             &format!("{:>3}", header.line + 1),

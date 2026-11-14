@@ -136,14 +136,15 @@ impl App {
             && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
             && mx >= window_width - 240.0
         {
-            let first_row = if self.outline.filter_on_type { 2.5 } else { 1.5 };
+            let first_row = if self.outline.filter_on_type {
+                2.5
+            } else {
+                1.5
+            };
             let row = ((my / lh) - first_row).floor();
             if row >= 0.0 {
                 let row = row as usize;
-                let depth = self
-                    .outline_rows()
-                    .get(row)
-                    .map_or(0, |entry| entry.depth);
+                let depth = self.outline_rows().get(row).map_or(0, |entry| entry.depth);
                 let chevron_start = window_width - 240.0 + PAD + depth as f32 * 2.0 * cw;
                 self.outline_click(row, mx < chevron_start + cw * 2.0);
             }

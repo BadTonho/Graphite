@@ -18,9 +18,9 @@ mod runtime;
 mod tests;
 pub(crate) mod vsix;
 use layout::PluginsTab;
-pub(crate) use vsix::{file_changes, DecorationMark, FileChange, VsixLanguageFeature};
 pub(crate) use vsix::eligible as vsix_extension_runnable;
 pub(crate) use vsix::HierarchyKind as VsixHierarchyKind;
+pub(crate) use vsix::{file_changes, DecorationMark, FileChange, VsixLanguageFeature};
 
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),

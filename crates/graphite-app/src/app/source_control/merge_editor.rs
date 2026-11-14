@@ -175,7 +175,9 @@ impl MergeEditor {
 
     /// Largest scroll position that still fills `window` rows.
     pub(crate) fn max_scroll(&self, window: usize) -> usize {
-        self.visible.len().saturating_sub(window.min(self.visible.len()))
+        self.visible
+            .len()
+            .saturating_sub(window.min(self.visible.len()))
     }
 
     pub(crate) fn scroll_by(&mut self, delta: isize, window: usize) {

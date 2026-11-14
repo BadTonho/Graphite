@@ -21,9 +21,12 @@ impl Session {
             if self.is_hidden_cell(index) {
                 hidden[index] = true;
             }
-            if self.folded.contains(&self.cells[index].uid) && heading_level(self, index).is_some() {
+            if self.folded.contains(&self.cells[index].uid) && heading_level(self, index).is_some()
+            {
                 let end = section_end(self, index);
-                hidden[index + 1..end].iter_mut().for_each(|slot| *slot = true);
+                hidden[index + 1..end]
+                    .iter_mut()
+                    .for_each(|slot| *slot = true);
                 index = end;
                 continue;
             }
@@ -78,7 +81,9 @@ impl Session {
 
     pub(crate) fn fold_all(&mut self) {
         let uids: Vec<u64> = (0..self.cells.len())
-            .filter(|&index| heading_level(self, index).is_some() && section_end(self, index) > index + 1)
+            .filter(|&index| {
+                heading_level(self, index).is_some() && section_end(self, index) > index + 1
+            })
             .map(|index| self.cells[index].uid)
             .collect();
         self.folded.extend(uids);
@@ -213,10 +218,7 @@ mod tests {
     #[test]
     fn a_heading_with_nothing_under_it_cannot_fold_and_a_text_before_any_heading_neither() {
         let mut notebook = Notebook::new();
-        notebook.cells = vec![
-            Cell::new(Code, "before"),
-            Cell::new(Markdown, "# Alone"),
-        ];
+        notebook.cells = vec![Cell::new(Code, "before"), Cell::new(Markdown, "# Alone")];
         let mut session = Session::from_notebook(notebook);
         session.set_focus(1, false);
         assert!(!session.fold_at_focus());
@@ -257,7 +259,6 @@ mod tests {
         session.focus_visible_by(5, false);
         assert_eq!(session.focus, 4);
     }
-
 
     #[test]
     fn revealing_a_cell_opens_every_fold_above_it() {

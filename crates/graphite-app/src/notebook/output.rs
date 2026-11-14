@@ -122,7 +122,8 @@ mod tests {
 
     #[test]
     fn an_error_without_a_traceback_shows_its_name_and_value() {
-        let lines = output_lines(&[json!({"output_type": "error", "ename": "KeyError", "evalue": "'x'"})]);
+        let lines =
+            output_lines(&[json!({"output_type": "error", "ename": "KeyError", "evalue": "'x'"})]);
         assert_eq!(lines, ["KeyError: 'x'"]);
     }
 
@@ -137,7 +138,9 @@ mod tests {
 
     #[test]
     fn carriage_returns_keep_the_last_write_of_a_line() {
-        let lines = output_lines(&[json!({"output_type": "stream", "name": "stderr", "text": "10%\r50%\r100%\ndone\n"})]);
+        let lines = output_lines(&[
+            json!({"output_type": "stream", "name": "stderr", "text": "10%\r50%\r100%\ndone\n"}),
+        ]);
         assert_eq!(lines, ["100%", "done"]);
     }
 

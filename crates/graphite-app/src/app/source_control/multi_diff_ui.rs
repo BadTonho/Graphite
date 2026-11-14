@@ -61,7 +61,11 @@ impl App {
     }
 
     /// Shows the collected changes, or says why there is nothing to show.
-    pub(crate) fn show_multi_diff(&mut self, set: ChangeSet, result: Result<Vec<FileInput>, String>) {
+    pub(crate) fn show_multi_diff(
+        &mut self,
+        set: ChangeSet,
+        result: Result<Vec<FileInput>, String>,
+    ) {
         match result {
             Err(error) => {
                 self.status = self.tf("multi_diff.failed", &[("error", &error)]);
@@ -142,7 +146,8 @@ impl App {
         }
         self.multi_diff = None;
         self.open_file(path);
-        self.editor_mut().set_cursor_line_col(line.saturating_sub(1), 0);
+        self.editor_mut()
+            .set_cursor_line_col(line.saturating_sub(1), 0);
     }
 
     /// Keys of the multi-file diff.
@@ -163,8 +168,12 @@ impl App {
                     diff.select_file(-1);
                 }
             }
-            Key::Named(NamedKey::ArrowDown) => self.run_ui_command("multiDiffEditor.goToNextChange"),
-            Key::Named(NamedKey::ArrowUp) => self.run_ui_command("multiDiffEditor.goToPreviousChange"),
+            Key::Named(NamedKey::ArrowDown) => {
+                self.run_ui_command("multiDiffEditor.goToNextChange")
+            }
+            Key::Named(NamedKey::ArrowUp) => {
+                self.run_ui_command("multiDiffEditor.goToPreviousChange")
+            }
             Key::Named(NamedKey::Enter) if list => {
                 self.run_ui_command("graphite.multiDiff.toggleFile")
             }
@@ -180,7 +189,13 @@ impl App {
                     diff.scroll_by(-window, window as usize);
                 }
             }
-            _ => match event.text.as_deref().unwrap_or("").to_ascii_lowercase().as_str() {
+            _ => match event
+                .text
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str()
+            {
                 "c" => self.run_ui_command("multiDiffEditor.collapseAll"),
                 "e" => self.run_ui_command("multiDiffEditor.expandAll"),
                 " " => self.run_ui_command("graphite.multiDiff.toggleFile"),
@@ -206,7 +221,11 @@ impl App {
         let Some(diff) = self.multi_diff.as_mut() else {
             return;
         };
-        let list_width = if diff.list_focus { width * LIST_SHARE } else { 0.0 };
+        let list_width = if diff.list_focus {
+            width * LIST_SHARE
+        } else {
+            0.0
+        };
         if y < top {
             return;
         }
@@ -225,7 +244,13 @@ impl App {
         }
     }
 
-    pub(crate) fn draw_multi_diff(&self, renderer: &mut Renderer, width: f32, height: f32, line_height: f32) {
+    pub(crate) fn draw_multi_diff(
+        &self,
+        renderer: &mut Renderer,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) {
         let Some(diff) = self.multi_diff.as_ref() else {
             return;
         };
@@ -238,7 +263,11 @@ impl App {
         renderer.draw_text(
             &self.tf(
                 "multi_diff.header",
-                &[("title", &diff.title), ("added", &added), ("removed", &removed)],
+                &[
+                    ("title", &diff.title),
+                    ("added", &added),
+                    ("removed", &removed),
+                ],
             ),
             PAD,
             line_height * 0.2,
@@ -247,7 +276,11 @@ impl App {
         renderer.draw_text(self.t("multi_diff.hint"), PAD, line_height * 0.9, dim);
         let top = line_height * TITLE_LINES;
         let window = (((height - top) / line_height).floor() as usize).max(1);
-        let list_width = if diff.list_focus { width * LIST_SHARE } else { 0.0 };
+        let list_width = if diff.list_focus {
+            width * LIST_SHARE
+        } else {
+            0.0
+        };
         let green = rgb(Theme::color(0x1d3a27, 0xdcf5e1));
         let red = rgb(Theme::color(0x4a2326, 0xfbe3e4));
         let header_bar = rgb(Theme::color(0x2d2d30, 0xececec));
@@ -255,7 +288,13 @@ impl App {
         let selected_row = rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff));
 
         if diff.list_focus {
-            renderer.draw_rect(0.0, top, list_width, height - top, rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)));
+            renderer.draw_rect(
+                0.0,
+                top,
+                list_width,
+                height - top,
+                rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
+            );
             renderer.set_clip(Some([0.0, top, list_width, height]));
             for (index, file) in diff.files.iter().enumerate().take(window) {
                 let y = top + line_height * index as f32;
@@ -263,7 +302,12 @@ impl App {
                     renderer.draw_rect(0.0, y, list_width, line_height, selected_row);
                 }
                 let columns = ((list_width - PAD * 2.0) / char_width).max(0.0) as usize;
-                renderer.draw_text(&file.path.chars().take(columns).collect::<String>(), PAD, y, text);
+                renderer.draw_text(
+                    &file.path.chars().take(columns).collect::<String>(),
+                    PAD,
+                    y,
+                    text,
+                );
             }
             renderer.set_clip(None);
         }
@@ -281,7 +325,11 @@ impl App {
                 RowRef::Header(index) => {
                     let file = &diff.files[index];
                     renderer.draw_rect(body_x, y, body_width, line_height, header_bar);
-                    let chevron = if file.collapsed { "\u{25b8}" } else { "\u{25be}" };
+                    let chevron = if file.collapsed {
+                        "\u{25b8}"
+                    } else {
+                        "\u{25be}"
+                    };
                     let tag = match file.status {
                         FileStatus::Added => "A",
                         FileStatus::Deleted => "D",
@@ -305,59 +353,73 @@ impl App {
                         .current
                         .and_then(|current| diff.changes().get(current))
                         .map(|change| change.file);
-                    if current_file == Some(index) && diff.changes().get(diff.current.unwrap_or(0)).is_some_and(|change| change.piece.is_none()) {
+                    if current_file == Some(index)
+                        && diff
+                            .changes()
+                            .get(diff.current.unwrap_or(0))
+                            .is_some_and(|change| change.piece.is_none())
+                    {
                         renderer.draw_rect(body_x, y, 3.0, line_height, accent);
                     }
                 }
-                RowRef::Piece(file_index, piece_index) => match &diff.files[file_index].pieces[piece_index] {
-                    Piece::Gap(count) => {
-                        renderer.draw_text(
-                            &self.tf("multi_diff.gap", &[("count", count)]),
-                            body_x + PAD + char_width * 12.0,
-                            y,
-                            dim,
-                        );
-                    }
-                    Piece::Line(line) => {
-                        match line.kind {
-                            LineKind::Added => renderer.draw_rect(body_x, y, body_width, line_height, green),
-                            LineKind::Removed => renderer.draw_rect(body_x, y, body_width, line_height, red),
-                            LineKind::Context => {}
+                RowRef::Piece(file_index, piece_index) => {
+                    match &diff.files[file_index].pieces[piece_index] {
+                        Piece::Gap(count) => {
+                            renderer.draw_text(
+                                &self.tf("multi_diff.gap", &[("count", count)]),
+                                body_x + PAD + char_width * 12.0,
+                                y,
+                                dim,
+                            );
                         }
-                        let number = |value: Option<usize>| match value {
-                            Some(value) => format!("{value:>5}"),
-                            None => "     ".to_owned(),
-                        };
-                        let sign = match line.kind {
-                            LineKind::Added => '+',
-                            LineKind::Removed => '-',
-                            LineKind::Context => ' ',
-                        };
-                        renderer.draw_text(
-                            &format!("{} {} ", number(line.old_line), number(line.new_line)),
-                            body_x + PAD,
-                            y,
-                            dim,
-                        );
-                        let text_x = body_x + PAD + char_width * 12.0;
-                        let room = columns.saturating_sub(12);
-                        renderer.draw_text(
-                            &format!("{sign} {}", line.text).chars().take(room).collect::<String>(),
-                            text_x,
-                            y,
-                            text,
-                        );
-                        let is_current = diff
-                            .current
-                            .and_then(|current| diff.changes().get(current))
-                            .is_some_and(|change| {
-                                change.file == file_index && change.piece == Some(piece_index)
-                            });
-                        if is_current {
-                            renderer.draw_rect(body_x, y, 3.0, line_height, accent);
+                        Piece::Line(line) => {
+                            match line.kind {
+                                LineKind::Added => {
+                                    renderer.draw_rect(body_x, y, body_width, line_height, green)
+                                }
+                                LineKind::Removed => {
+                                    renderer.draw_rect(body_x, y, body_width, line_height, red)
+                                }
+                                LineKind::Context => {}
+                            }
+                            let number = |value: Option<usize>| match value {
+                                Some(value) => format!("{value:>5}"),
+                                None => "     ".to_owned(),
+                            };
+                            let sign = match line.kind {
+                                LineKind::Added => '+',
+                                LineKind::Removed => '-',
+                                LineKind::Context => ' ',
+                            };
+                            renderer.draw_text(
+                                &format!("{} {} ", number(line.old_line), number(line.new_line)),
+                                body_x + PAD,
+                                y,
+                                dim,
+                            );
+                            let text_x = body_x + PAD + char_width * 12.0;
+                            let room = columns.saturating_sub(12);
+                            renderer.draw_text(
+                                &format!("{sign} {}", line.text)
+                                    .chars()
+                                    .take(room)
+                                    .collect::<String>(),
+                                text_x,
+                                y,
+                                text,
+                            );
+                            let is_current = diff
+                                .current
+                                .and_then(|current| diff.changes().get(current))
+                                .is_some_and(|change| {
+                                    change.file == file_index && change.piece == Some(piece_index)
+                                });
+                            if is_current {
+                                renderer.draw_rect(body_x, y, 3.0, line_height, accent);
+                            }
                         }
                     }
-                },
+                }
             }
         }
         renderer.set_clip(None);

@@ -81,10 +81,17 @@ impl Session {
             return false;
         };
         let text = state.text();
-        let line_start: usize = text.lines().take(line).map(|text| text.chars().count() + 1).sum();
+        let line_start: usize = text
+            .lines()
+            .take(line)
+            .map(|text| text.chars().count() + 1)
+            .sum();
         let content = text.lines().nth(line).unwrap_or("");
         let needle = fold(query);
-        let column = matches(&fold(content), &needle).first().copied().unwrap_or(0);
+        let column = matches(&fold(content), &needle)
+            .first()
+            .copied()
+            .unwrap_or(0);
         let length = if needle.is_empty() { 0 } else { needle.len() };
         self.select_range(cell, line_start + column, line_start + column + length);
         true
@@ -136,7 +143,11 @@ impl Session {
                 if forward {
                     positions.iter().copied().find(|&start| start >= sel_end)
                 } else {
-                    positions.iter().copied().rev().find(|&start| start + needle.len() <= sel_start)
+                    positions
+                        .iter()
+                        .copied()
+                        .rev()
+                        .find(|&start| start + needle.len() <= sel_start)
                 }
             } else if forward {
                 positions.first().copied()
@@ -177,7 +188,10 @@ mod tests {
         let session = session(&["Alpha\nbeta", "no match", "xx ALPHA yy\nalpha"]);
         let found = session.find_lines("alpha", 10);
         assert_eq!(
-            found.iter().map(|line| (line.cell, line.line)).collect::<Vec<_>>(),
+            found
+                .iter()
+                .map(|line| (line.cell, line.line))
+                .collect::<Vec<_>>(),
             [(0, 0), (2, 0), (2, 1)]
         );
         assert_eq!(found[1].text, "xx ALPHA yy");
@@ -186,13 +200,15 @@ mod tests {
         assert!(session.find_lines("zzz", 10).is_empty());
     }
 
-
     #[test]
     fn the_search_list_has_every_non_empty_line_up_to_the_limit() {
         let session = session(&["a\n\n  \nb", "c"]);
         let lines = session.all_lines(10);
         assert_eq!(
-            lines.iter().map(|line| (line.cell, line.line, line.text.as_str())).collect::<Vec<_>>(),
+            lines
+                .iter()
+                .map(|line| (line.cell, line.line, line.text.as_str()))
+                .collect::<Vec<_>>(),
             [(0, 0, "a"), (0, 3, "b"), (1, 0, "c")]
         );
         assert_eq!(session.all_lines(2).len(), 2);

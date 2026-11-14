@@ -54,9 +54,7 @@ impl App {
             Some((path, root)),
             canonical_path.as_deref().map(|path| (path, root)),
             canonical_root.as_deref().map(|root| (path, root)),
-            canonical_path
-                .as_deref()
-                .zip(canonical_root.as_deref()),
+            canonical_path.as_deref().zip(canonical_root.as_deref()),
         ]
         .into_iter()
         .flatten()

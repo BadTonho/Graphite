@@ -610,7 +610,9 @@ fn debug_factory_fixture(path: &PathBuf) {
         "contributes":{"debuggers":[{"type":"fixture-debug","label":"Fixture"}]}
     });
     let options = zip::write::SimpleFileOptions::default();
-    archive.start_file("extension/package.json", options).unwrap();
+    archive
+        .start_file("extension/package.json", options)
+        .unwrap();
     serde_json::to_writer(&mut archive, &manifest).unwrap();
     archive.start_file("extension/index.js", options).unwrap();
     archive.write_all(DEBUG_FACTORY_FIXTURE.as_bytes()).unwrap();

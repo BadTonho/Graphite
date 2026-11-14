@@ -43,13 +43,19 @@ pub(crate) fn parse_spec(name: &str, json: &str) -> Result<KernelSpec, String> {
         language: value["language"].as_str().unwrap_or("").to_owned(),
         argv,
         env,
-        interrupt_mode: value["interrupt_mode"].as_str().unwrap_or("signal").to_owned(),
+        interrupt_mode: value["interrupt_mode"]
+            .as_str()
+            .unwrap_or("signal")
+            .to_owned(),
     })
 }
 
 /// The directories that can hold kernelspecs, most specific first. `env` reads an environment
 /// variable; `home` is the user's home directory.
-pub(crate) fn search_dirs(env: &dyn Fn(&str) -> Option<String>, home: Option<&Path>) -> Vec<PathBuf> {
+pub(crate) fn search_dirs(
+    env: &dyn Fn(&str) -> Option<String>,
+    home: Option<&Path>,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(paths) = env("JUPYTER_PATH") {
         for path in std::env::split_paths(&paths) {
@@ -76,7 +82,12 @@ pub(crate) fn search_dirs(env: &dyn Fn(&str) -> Option<String>, home: Option<&Pa
         } else if let Some(data) = env("XDG_DATA_HOME").filter(|data| !data.is_empty()) {
             dirs.push(PathBuf::from(data).join("jupyter").join("kernels"));
         } else if let Some(home) = home {
-            dirs.push(home.join(".local").join("share").join("jupyter").join("kernels"));
+            dirs.push(
+                home.join(".local")
+                    .join("share")
+                    .join("jupyter")
+                    .join("kernels"),
+            );
         }
         dirs.push(PathBuf::from("/usr/local/share/jupyter/kernels"));
         dirs.push(PathBuf::from("/usr/share/jupyter/kernels"));
@@ -237,7 +248,9 @@ mod tests {
     fn invalid_kernelspecs_are_rejected() {
         assert!(parse_spec("x", "nope").is_err());
         assert!(parse_spec("x", "{}").unwrap_err().contains("argv"));
-        assert!(parse_spec("x", r#"{"argv": []}"#).unwrap_err().contains("empty"));
+        assert!(parse_spec("x", r#"{"argv": []}"#)
+            .unwrap_err()
+            .contains("empty"));
     }
 
     #[test]
@@ -245,8 +258,16 @@ mod tests {
         let user = TempDir::new();
         let system = TempDir::new();
         write_spec(user.path(), "python3", PYTHON);
-        write_spec(system.path(), "python3", r#"{"argv": ["other"], "display_name": "System"}"#);
-        write_spec(system.path(), "julia", r#"{"argv": ["julia"], "display_name": "Julia", "language": "julia"}"#);
+        write_spec(
+            system.path(),
+            "python3",
+            r#"{"argv": ["other"], "display_name": "System"}"#,
+        );
+        write_spec(
+            system.path(),
+            "julia",
+            r#"{"argv": ["julia"], "display_name": "Julia", "language": "julia"}"#,
+        );
         write_spec(system.path(), "broken", "{");
         fs::create_dir_all(system.path().join("empty")).unwrap();
         let specs = discover(&[
@@ -262,7 +283,12 @@ mod tests {
     #[test]
     fn search_directories_follow_the_environment() {
         let env = |name: &str| match name {
-            "JUPYTER_PATH" => Some(std::env::join_paths(["/opt/a", "/opt/b"]).unwrap().to_string_lossy().into_owned()),
+            "JUPYTER_PATH" => Some(
+                std::env::join_paths(["/opt/a", "/opt/b"])
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             "JUPYTER_DATA_DIR" => Some("/data".to_owned()),
             "APPDATA" => Some("C:/Users/me/AppData/Roaming".to_owned()),
             "PROGRAMDATA" => Some("C:/ProgramData".to_owned()),
@@ -274,7 +300,9 @@ mod tests {
         assert_eq!(dirs[1], PathBuf::from("/opt/b").join("kernels"));
         assert_eq!(dirs[2], PathBuf::from("/data").join("kernels"));
         if cfg!(windows) {
-            assert!(dirs.iter().any(|dir| dir.ends_with("jupyter/kernels") || dir.ends_with("jupyter\\kernels")));
+            assert!(dirs
+                .iter()
+                .any(|dir| dir.ends_with("jupyter/kernels") || dir.ends_with("jupyter\\kernels")));
         } else if !cfg!(target_os = "macos") {
             assert!(dirs.contains(&PathBuf::from("/xdg/jupyter/kernels")));
             assert!(dirs.contains(&PathBuf::from("/usr/share/jupyter/kernels")));
@@ -283,7 +311,6 @@ mod tests {
         let none = |_: &str| None;
         assert!(search_dirs(&none, None).len() <= 3);
     }
-
 
     fn spec_named(name: &str, language: &str) -> KernelSpec {
         KernelSpec {
@@ -318,7 +345,11 @@ mod tests {
         let root = TempDir::new();
         let bin = root.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
-        let python = if cfg!(windows) { "python.exe" } else { "python3" };
+        let python = if cfg!(windows) {
+            "python.exe"
+        } else {
+            "python3"
+        };
         fs::write(bin.join(python), "").unwrap();
         let path = std::env::join_paths([bin.clone(), root.path().join("nothing")]).unwrap();
         let dirs = prefix_dirs(&path);

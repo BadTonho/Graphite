@@ -1445,8 +1445,17 @@ mod flow_tests {
         let spans = app.semantic_spans(&uri, revision, 0, "let x\n");
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].range, 0..3);
-        assert!(app.semantic_spans(&uri, revision + 1, 0, "let x\n").is_empty(), "stale");
-        assert!(app.semantic_spans("file:///other", revision, 0, "let x\n").is_empty());
-        assert!(app.semantic_spans(&uri, revision, 1, "x\n").is_empty(), "no tokens on that line");
+        assert!(
+            app.semantic_spans(&uri, revision + 1, 0, "let x\n")
+                .is_empty(),
+            "stale"
+        );
+        assert!(app
+            .semantic_spans("file:///other", revision, 0, "let x\n")
+            .is_empty());
+        assert!(
+            app.semantic_spans(&uri, revision, 1, "x\n").is_empty(),
+            "no tokens on that line"
+        );
     }
 }

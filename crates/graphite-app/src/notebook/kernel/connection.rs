@@ -98,7 +98,13 @@ mod tests {
     fn allocated_ports_are_distinct_and_the_key_is_random() {
         let one = Connection::allocate().unwrap();
         let two = Connection::allocate().unwrap();
-        let ports = [one.shell_port, one.iopub_port, one.stdin_port, one.control_port, one.hb_port];
+        let ports = [
+            one.shell_port,
+            one.iopub_port,
+            one.stdin_port,
+            one.control_port,
+            one.hb_port,
+        ];
         let distinct: std::collections::HashSet<_> = ports.iter().collect();
         assert_eq!(distinct.len(), 5);
         assert!(ports.iter().all(|port| *port > 0));
@@ -109,7 +115,8 @@ mod tests {
     #[test]
     fn the_connection_file_has_every_field_a_kernel_needs() {
         let connection = Connection::allocate().unwrap();
-        let value: serde_json::Value = serde_json::from_str(&connection.to_json("python3")).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&connection.to_json("python3")).unwrap();
         assert_eq!(value["transport"], "tcp");
         assert_eq!(value["signature_scheme"], "hmac-sha256");
         assert_eq!(value["ip"], "127.0.0.1");
@@ -125,7 +132,9 @@ mod tests {
         let first = connection.write("k").unwrap();
         let second = connection.write("k").unwrap();
         assert_ne!(first, second);
-        assert!(std::fs::read_to_string(&first).unwrap().contains(&connection.key));
+        assert!(std::fs::read_to_string(&first)
+            .unwrap()
+            .contains(&connection.key));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

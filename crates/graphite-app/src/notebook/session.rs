@@ -210,7 +210,12 @@ impl Session {
 
     /// Records the kernel the notebook runs on in its metadata, as Jupyter does. Returns whether
     /// the metadata changed.
-    pub(crate) fn set_kernelspec(&mut self, name: &str, display_name: &str, language: &str) -> bool {
+    pub(crate) fn set_kernelspec(
+        &mut self,
+        name: &str,
+        display_name: &str,
+        language: &str,
+    ) -> bool {
         let wanted = serde_json::json!({
             "display_name": display_name,
             "language": language,
@@ -471,7 +476,9 @@ impl Session {
             let end = target.buffer.len_chars();
             let revision = target.buffer.revision();
             {
-                let mut editor = target.buffer.edit(&mut target.selection, ViewId(target_uid));
+                let mut editor = target
+                    .buffer
+                    .edit(&mut target.selection, ViewId(target_uid));
                 editor.set_selection(end, end);
                 editor.insert(&addition);
             }
@@ -758,8 +765,11 @@ mod tests {
         assert_eq!(session.insert_above(CellKind::Code), 1);
         assert_eq!(session.cells.len(), 4);
         assert_eq!(texts(&session), ["a", "", "", "b"]);
-        let ids: std::collections::HashSet<_> =
-            session.cells.iter().map(|state| state.cell.id.clone()).collect();
+        let ids: std::collections::HashSet<_> = session
+            .cells
+            .iter()
+            .map(|state| state.cell.id.clone())
+            .collect();
         assert_eq!(ids.len(), 4);
     }
 
@@ -769,7 +779,13 @@ mod tests {
         session.focus_by(1, false);
         session.focus_by(1, true);
         let removed = session.delete_selected();
-        assert_eq!(removed.iter().map(|cell| cell.source.as_str()).collect::<Vec<_>>(), ["b", "c"]);
+        assert_eq!(
+            removed
+                .iter()
+                .map(|cell| cell.source.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "c"]
+        );
         assert_eq!(texts(&session), ["a"]);
         assert_eq!(session.focus, 0);
         session.delete_selected();
@@ -795,7 +811,11 @@ mod tests {
         assert!(session.redo() && session.redo() && session.redo());
         assert_eq!(texts(&session), after);
         assert_eq!(
-            session.cells.iter().map(|state| state.cell.kind).collect::<Vec<_>>(),
+            session
+                .cells
+                .iter()
+                .map(|state| state.cell.kind)
+                .collect::<Vec<_>>(),
             kinds
         );
         assert!(!session.redo());
@@ -982,7 +1002,10 @@ mod tests {
         session.set_focus(2, false);
         session.line_numbers = true;
         let mut smaller = Notebook::new();
-        smaller.cells = vec![Cell::new(CellKind::Code, "x"), Cell::new(CellKind::Code, "y")];
+        smaller.cells = vec![
+            Cell::new(CellKind::Code, "x"),
+            Cell::new(CellKind::Code, "y"),
+        ];
         session.reload(smaller);
         assert_eq!(texts(&session), ["x", "y"]);
         assert_eq!(session.focus, 1);

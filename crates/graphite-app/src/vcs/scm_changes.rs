@@ -65,17 +65,22 @@ pub(crate) fn collect(
         .ok_or_else(|| translator.text("scm.error.bare_repository").to_owned())?
         .to_path_buf();
     let head = repo
-        .index_from_tree(&repo.head_tree_id_or_empty().map_err(|error| error.to_string())?)
+        .index_from_tree(
+            &repo
+                .head_tree_id_or_empty()
+                .map_err(|error| error.to_string())?,
+        )
         .map_err(|error| error.to_string())?;
     let index = repo.open_index().ok();
-    let blob_of = |index: &gix::index::State, relative: &str, staged_only: bool| -> Option<Vec<u8>> {
-        let wanted = relative.as_bytes().as_bstr();
-        let entry = index.entries().iter().find(|entry| {
-            entry.path_in(index.path_backing()) == wanted
-                && (!staged_only || entry.stage() == gix::index::entry::Stage::Unconflicted)
-        })?;
-        repo.find_blob(entry.id).ok().map(|blob| blob.data.to_vec())
-    };
+    let blob_of =
+        |index: &gix::index::State, relative: &str, staged_only: bool| -> Option<Vec<u8>> {
+            let wanted = relative.as_bytes().as_bstr();
+            let entry = index.entries().iter().find(|entry| {
+                entry.path_in(index.path_backing()) == wanted
+                    && (!staged_only || entry.stage() == gix::index::entry::Stage::Unconflicted)
+            })?;
+            repo.find_blob(entry.id).ok().map(|blob| blob.data.to_vec())
+        };
     let mut inputs = Vec::new();
     for file in files {
         let selected = match set {
@@ -163,10 +168,19 @@ mod tests {
         assert_eq!(edited.old.as_deref(), Some("one\ntwo\n"));
         assert_eq!(edited.new.as_deref(), Some("one\nTWO\nthree\n"));
         let gone = find(&inputs, "gone.txt");
-        assert_eq!((gone.old.as_deref(), gone.new.as_deref()), (Some("bye\n"), None));
+        assert_eq!(
+            (gone.old.as_deref(), gone.new.as_deref()),
+            (Some("bye\n"), None)
+        );
         let fresh = find(&inputs, "fresh.txt");
-        assert_eq!((fresh.old.as_deref(), fresh.new.as_deref()), (None, Some("new\n")));
-        assert_eq!(find(&inputs, "loose.txt").new.as_deref(), Some("untracked\n"));
+        assert_eq!(
+            (fresh.old.as_deref(), fresh.new.as_deref()),
+            (None, Some("new\n"))
+        );
+        assert_eq!(
+            find(&inputs, "loose.txt").new.as_deref(),
+            Some("untracked\n")
+        );
         assert!(find(&inputs, "photo.bin").binary);
         assert!(!inputs.iter().any(|input| input.path == "kept.txt"));
     }
@@ -178,7 +192,10 @@ mod tests {
         let mut paths: Vec<_> = inputs.iter().map(|input| input.path.as_str()).collect();
         paths.sort();
         assert_eq!(paths, ["edited.txt", "fresh.txt"]);
-        assert_eq!(find(&inputs, "edited.txt").new.as_deref(), Some("one\nTWO\n"));
+        assert_eq!(
+            find(&inputs, "edited.txt").new.as_deref(),
+            Some("one\nTWO\n")
+        );
     }
 
     #[test]

@@ -4,15 +4,15 @@
 use super::*;
 
 pub(crate) mod notebook_drawing;
-pub(crate) mod notebook_view;
 pub(crate) mod notebook_interactive;
-pub(crate) mod notebook_kernel;
-pub(crate) mod notebook_ui;
-#[cfg(test)]
-pub(crate) mod notebook_kernel_tests;
-#[cfg(test)]
-pub(crate) mod notebook_view_tests;
 #[cfg(test)]
 pub(crate) mod notebook_interactive_tests;
+pub(crate) mod notebook_kernel;
+#[cfg(test)]
+pub(crate) mod notebook_kernel_tests;
+pub(crate) mod notebook_ui;
 #[cfg(test)]
 pub(crate) mod notebook_ui_tests;
+pub(crate) mod notebook_view;
+#[cfg(test)]
+pub(crate) mod notebook_view_tests;

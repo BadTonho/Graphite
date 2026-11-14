@@ -35,13 +35,17 @@ fn unfold_all(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> 
 }
 
 fn run_section(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    let sent = app.run_notebook_section(false).map_err(CommandError::Failed)?;
+    let sent = app
+        .run_notebook_section(false)
+        .map_err(CommandError::Failed)?;
     app.status = app.tf("notebook.running", &[("count", &sent)]);
     Ok(())
 }
 
 fn run_single(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    let sent = app.run_notebook_section(true).map_err(CommandError::Failed)?;
+    let sent = app
+        .run_notebook_section(true)
+        .map_err(CommandError::Failed)?;
     app.status = app.tf("notebook.running", &[("count", &sent)]);
     Ok(())
 }
@@ -100,12 +104,42 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     let commands: [Entry; 16] = [
         ("notebook.fold", "Fold the Section", NOTEBOOK, fold),
         ("notebook.unfold", "Unfold the Section", NOTEBOOK, unfold),
-        ("notebook.section.foldSection", "Fold Section", NOTEBOOK, fold),
-        ("notebook.section.expandSection", "Expand Section", NOTEBOOK, unfold),
-        ("graphite.notebook.foldAll", "Fold All Sections", NOTEBOOK, fold_all),
-        ("graphite.notebook.unfoldAll", "Unfold All Sections", NOTEBOOK, unfold_all),
-        ("notebook.section.runCells", "Run the Cells of the Section", NOTEBOOK, run_section),
-        ("notebook.section.runSingleCell", "Run Only the Cell", NOTEBOOK, run_single),
+        (
+            "notebook.section.foldSection",
+            "Fold Section",
+            NOTEBOOK,
+            fold,
+        ),
+        (
+            "notebook.section.expandSection",
+            "Expand Section",
+            NOTEBOOK,
+            unfold,
+        ),
+        (
+            "graphite.notebook.foldAll",
+            "Fold All Sections",
+            NOTEBOOK,
+            fold_all,
+        ),
+        (
+            "graphite.notebook.unfoldAll",
+            "Unfold All Sections",
+            NOTEBOOK,
+            unfold_all,
+        ),
+        (
+            "notebook.section.runCells",
+            "Run the Cells of the Section",
+            NOTEBOOK,
+            run_section,
+        ),
+        (
+            "notebook.section.runSingleCell",
+            "Run Only the Cell",
+            NOTEBOOK,
+            run_single,
+        ),
         (
             "notebook.action.toggleNotebookStickyScroll",
             "Toggle Notebook Sticky Scroll",
@@ -113,15 +147,30 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             toggle_sticky,
         ),
         ("notebook.find", "Find in the Notebook", NOTEBOOK, find),
-        ("notebook.findNext.fromWidget", "Find Next in the Notebook", NOTEBOOK, find_next),
+        (
+            "notebook.findNext.fromWidget",
+            "Find Next in the Notebook",
+            NOTEBOOK,
+            find_next,
+        ),
         (
             "notebook.findPrevious.fromWidget",
             "Find Previous in the Notebook",
             NOTEBOOK,
             find_previous,
         ),
-        ("notebook.hideFind", "Hide the Notebook Search", NOTEBOOK, hide_find),
-        ("notebook.setProfile", "Set the Notebook Kernel Profile", NOTEBOOK, set_profile),
+        (
+            "notebook.hideFind",
+            "Hide the Notebook Search",
+            NOTEBOOK,
+            hide_find,
+        ),
+        (
+            "notebook.setProfile",
+            "Set the Notebook Kernel Profile",
+            NOTEBOOK,
+            set_profile,
+        ),
         (
             "notebook.toggleLineNumbersFromEditorTitle",
             "Toggle Line Numbers from the Editor Title",
@@ -136,7 +185,9 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, enablement, handler) in commands {
-        add(registry, id, title, "Notebook", ALL, enablement, None, handler);
+        add(
+            registry, id, title, "Notebook", ALL, enablement, None, handler,
+        );
     }
     let outline: [Entry; 2] = [
         (
@@ -153,6 +204,8 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, enablement, handler) in outline {
-        add(registry, id, title, "Notebook", ALL, enablement, None, handler);
+        add(
+            registry, id, title, "Notebook", ALL, enablement, None, handler,
+        );
     }
 }

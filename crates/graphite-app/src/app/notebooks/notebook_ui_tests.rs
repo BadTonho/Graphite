@@ -23,7 +23,8 @@ fn open() -> (crate::test_support::TempDir, App, PathBuf) {
 }
 
 fn session(app: &App) -> &crate::notebook::Session {
-    app.active_notebook().expect("the active editor is a notebook")
+    app.active_notebook()
+        .expect("the active editor is a notebook")
 }
 
 fn sources(app: &App) -> Vec<String> {
@@ -63,7 +64,10 @@ fn editing_a_cell_makes_the_document_dirty_and_undo_makes_it_clean_again() {
     assert_eq!(sources(&app)[1], "# print('hi')");
     let document = app.active_document();
     assert!(app.documents[document].is_dirty());
-    assert!(app.documents[document].buffer.text().contains("# print('hi')"));
+    assert!(app.documents[document]
+        .buffer
+        .text()
+        .contains("# print('hi')"));
     app.run_ui_command("notebook.undo");
     assert_eq!(sources(&app)[1], "print('hi')");
     assert!(!app.documents[document].is_dirty());
@@ -135,7 +139,10 @@ fn collapsing_copying_and_line_numbers() {
     assert!(!session(&app).line_numbers);
     app.run_ui_command("notebook.cell.copy");
     app.run_ui_command("notebook.cell.paste");
-    assert_eq!(sources(&app), ["# Title", "print('hi')", "print('hi')", "x = 1"]);
+    assert_eq!(
+        sources(&app),
+        ["# Title", "print('hi')", "print('hi')", "x = 1"]
+    );
     let cells = &session(&app).cells;
     assert_ne!(cells[1].cell.id, cells[2].cell.id);
     // Collapsing does not touch the document.
@@ -150,7 +157,8 @@ fn saving_writes_the_notebook_and_keeps_the_editing_state() {
     app.run_ui_command("notebook.cell.edit");
     app.with_notebook(|session| session.edit(|editor| editor.insert("y")));
     app.save();
-    let written = crate::notebook::Notebook::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let written =
+        crate::notebook::Notebook::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(written.cells[2].source, "yx = 1");
     // The unknown parts of the file are still there.
     assert_eq!(written.kernel_name(), Some("python3"));

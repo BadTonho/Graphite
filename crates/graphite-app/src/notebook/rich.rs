@@ -92,7 +92,11 @@ fn unescape(text: &str) -> String {
                 .strip_prefix("#x")
                 .or_else(|| entity.strip_prefix("#X"))
                 .and_then(|hex| u32::from_str_radix(hex, 16).ok())
-                .or_else(|| entity.strip_prefix('#').and_then(|number| number.parse().ok()))
+                .or_else(|| {
+                    entity
+                        .strip_prefix('#')
+                        .and_then(|number| number.parse().ok())
+                })
                 .and_then(char::from_u32),
         };
         match decoded {
@@ -193,7 +197,9 @@ pub(crate) fn html_text(html: &str) -> String {
         if chars[index..].starts_with(&['<', '!', '-', '-']) {
             // A comment runs to its own end, which may contain `>`.
             let rest: String = chars[index..].iter().collect();
-            index += rest.find("-->").map_or(chars.len() - index, |end| rest[..end + 3].chars().count());
+            index += rest
+                .find("-->")
+                .map_or(chars.len() - index, |end| rest[..end + 3].chars().count());
             continue;
         }
         let Some(close) = chars[index..].iter().position(|&c| c == '>') else {
@@ -238,7 +244,9 @@ pub(crate) fn html_text(html: &str) -> String {
                     if rows.is_empty() {
                         rows.push(Vec::new());
                     }
-                    rows.last_mut().expect("a row exists").push(done.trim().to_owned());
+                    rows.last_mut()
+                        .expect("a row exists")
+                        .push(done.trim().to_owned());
                 }
             }
             ("table", true) => {
@@ -261,7 +269,11 @@ pub(crate) fn html_text(html: &str) -> String {
                 newline(&mut out);
                 out.push_str("• ");
             }
-            ("p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "li" | "blockquote", _) => {
+            (
+                "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "li"
+                | "blockquote",
+                _,
+            ) => {
                 newline(&mut out);
             }
             _ => {}
@@ -272,9 +284,16 @@ pub(crate) fn html_text(html: &str) -> String {
 }
 
 /// Decodes a base64 image, scales it for the texture atlas and works out the size to show it at.
-fn decode_image(encoded: &str, hint: Option<(f32, f32)>, limits: &Limits) -> Result<RichImage, String> {
+fn decode_image(
+    encoded: &str,
+    hint: Option<(f32, f32)>,
+    limits: &Limits,
+) -> Result<RichImage, String> {
     if encoded.len() > limits.max_image_bytes {
-        return Err(format!("image too large ({} MB)", encoded.len() / (1024 * 1024)));
+        return Err(format!(
+            "image too large ({} MB)",
+            encoded.len() / (1024 * 1024)
+        ));
     }
     let compact: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
     let bytes = base64::engine::general_purpose::STANDARD
@@ -283,7 +302,9 @@ fn decode_image(encoded: &str, hint: Option<(f32, f32)>, limits: &Limits) -> Res
     let reader = image::ImageReader::new(std::io::Cursor::new(&bytes))
         .with_guessed_format()
         .map_err(|error| error.to_string())?;
-    let (width, height) = reader.into_dimensions().map_err(|error| error.to_string())?;
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|error| error.to_string())?;
     if u64::from(width) * u64::from(height) > limits.max_pixels {
         return Err(format!("image too large ({width}x{height})"));
     }
@@ -294,7 +315,12 @@ fn decode_image(encoded: &str, hint: Option<(f32, f32)>, limits: &Limits) -> Res
         let scale = limits.max_texture_side as f32 / longest as f32;
         let new_width = ((rgba.width() as f32 * scale).round() as u32).max(1);
         let new_height = ((rgba.height() as f32 * scale).round() as u32).max(1);
-        rgba = image::imageops::resize(&rgba, new_width, new_height, image::imageops::FilterType::Triangle);
+        rgba = image::imageops::resize(
+            &rgba,
+            new_width,
+            new_height,
+            image::imageops::FilterType::Triangle,
+        );
     }
     // The size to show: the notebook's own hint when it has one, else the pixels of the image
     // as it was (not as it was scaled for the texture), fitted into the display box.
@@ -353,7 +379,10 @@ fn data_blocks(output: &Value, limits: &Limits) -> Vec<Block> {
             if kinds.is_empty() {
                 Vec::new()
             } else {
-                vec![Block::Lines(vec![format!("[{} output not shown]", kinds.join(", "))])]
+                vec![Block::Lines(vec![format!(
+                    "[{} output not shown]",
+                    kinds.join(", ")
+                )])]
             }
         }
     }
@@ -373,7 +402,9 @@ pub(crate) fn blocks(outputs: &[Value], limits: &Limits) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
     for output in outputs {
         match output.get("output_type").and_then(Value::as_str) {
-            Some("execute_result") | Some("display_data") => blocks.extend(data_blocks(output, limits)),
+            Some("execute_result") | Some("display_data") => {
+                blocks.extend(data_blocks(output, limits))
+            }
             _ => {
                 let lines = super::output::output_lines(std::slice::from_ref(output));
                 if !lines.is_empty() {
@@ -410,7 +441,9 @@ fn limit(blocks: Vec<Block>, limits: &Limits) -> Vec<Block> {
         }
     }
     if dropped > 0 {
-        kept.push(Block::Lines(vec![format!("… {dropped} more line(s) not shown")]));
+        kept.push(Block::Lines(vec![format!(
+            "… {dropped} more line(s) not shown"
+        )]));
     }
     kept
 }
@@ -433,7 +466,10 @@ mod tests {
         let image = image::RgbaImage::from_pixel(width, height, image::Rgba([200, 30, 30, 255]));
         let mut bytes = Vec::new();
         image::DynamicImage::ImageRgba8(image)
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
             .unwrap();
         base64::engine::general_purpose::STANDARD.encode(bytes)
     }
@@ -442,7 +478,10 @@ mod tests {
         let image = image::RgbImage::from_pixel(width, height, image::Rgb([20, 120, 220]));
         let mut bytes = Vec::new();
         image::DynamicImage::ImageRgb8(image)
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Jpeg,
+            )
             .unwrap();
         base64::engine::general_purpose::STANDARD.encode(bytes)
     }
@@ -475,7 +514,12 @@ mod tests {
 
     #[test]
     fn a_png_becomes_an_image_block_scaled_to_the_display_box() {
-        let out = blocks(&[display(json!({"image/png": png(1800, 600), "text/plain": "<Figure>"}))], &Limits::default());
+        let out = blocks(
+            &[display(
+                json!({"image/png": png(1800, 600), "text/plain": "<Figure>"}),
+            )],
+            &Limits::default(),
+        );
         let [Block::Image(image)] = out.as_slice() else {
             panic!("expected one image, got {out:?}");
         };
@@ -488,11 +532,21 @@ mod tests {
 
     #[test]
     fn a_small_image_is_not_enlarged_and_a_tall_one_fits_the_height() {
-        let out = blocks(&[display(json!({"image/png": png(40, 20)}))], &Limits::default());
-        let Block::Image(small) = &out[0] else { panic!("image") };
+        let out = blocks(
+            &[display(json!({"image/png": png(40, 20)}))],
+            &Limits::default(),
+        );
+        let Block::Image(small) = &out[0] else {
+            panic!("image")
+        };
         assert_eq!((small.width, small.height), (40.0, 20.0));
-        let out = blocks(&[display(json!({"image/png": png(100, 960)}))], &Limits::default());
-        let Block::Image(tall) = &out[0] else { panic!("image") };
+        let out = blocks(
+            &[display(json!({"image/png": png(100, 960)}))],
+            &Limits::default(),
+        );
+        let Block::Image(tall) = &out[0] else {
+            panic!("image")
+        };
         assert_eq!(tall.height, 480.0);
         assert_eq!(tall.width, 50.0);
     }
@@ -500,8 +554,15 @@ mod tests {
     #[test]
     fn jpeg_images_work_too_and_base64_may_contain_line_breaks() {
         let encoded = jpeg(30, 30);
-        let broken: String = encoded.as_bytes().chunks(20).map(|c| String::from_utf8_lossy(c).into_owned() + "\n").collect();
-        let out = blocks(&[display(json!({"image/jpeg": broken}))], &Limits::default());
+        let broken: String = encoded
+            .as_bytes()
+            .chunks(20)
+            .map(|c| String::from_utf8_lossy(c).into_owned() + "\n")
+            .collect();
+        let out = blocks(
+            &[display(json!({"image/jpeg": broken}))],
+            &Limits::default(),
+        );
         assert!(matches!(out.as_slice(), [Block::Image(_)]));
     }
 
@@ -513,7 +574,9 @@ mod tests {
             "metadata": {"image/png": {"width": 200, "height": 100}},
         });
         let out = blocks(&[output], &Limits::default());
-        let Block::Image(image) = &out[0] else { panic!("image") };
+        let Block::Image(image) = &out[0] else {
+            panic!("image")
+        };
         assert_eq!((image.width, image.height), (200.0, 100.0));
         // The pixels are kept at their own size.
         assert_eq!(image.image.width, 800);
@@ -521,44 +584,80 @@ mod tests {
 
     #[test]
     fn huge_images_are_scaled_for_the_texture_and_refused_past_the_limits() {
-        let limits = Limits { max_texture_side: 100, ..Limits::default() };
+        let limits = Limits {
+            max_texture_side: 100,
+            ..Limits::default()
+        };
         let out = blocks(&[display(json!({"image/png": png(400, 200)}))], &limits);
-        let Block::Image(image) = &out[0] else { panic!("image") };
+        let Block::Image(image) = &out[0] else {
+            panic!("image")
+        };
         assert_eq!((image.image.width, image.image.height), (100, 50));
         // The display size still follows the original.
         assert_eq!((image.width, image.height), (400.0, 200.0));
 
-        let limits = Limits { max_pixels: 1000, ..Limits::default() };
+        let limits = Limits {
+            max_pixels: 1000,
+            ..Limits::default()
+        };
         let refused = blocks(&[display(json!({"image/png": png(100, 100)}))], &limits);
         assert!(lines(&refused)[0].contains("too large"));
-        let limits = Limits { max_image_bytes: 10, ..Limits::default() };
+        let limits = Limits {
+            max_image_bytes: 10,
+            ..Limits::default()
+        };
         let refused = blocks(&[display(json!({"image/png": png(10, 10)}))], &limits);
         assert!(lines(&refused)[0].contains("too large"));
     }
 
     #[test]
     fn broken_image_data_is_reported_not_fatal() {
-        let out = blocks(&[display(json!({"image/png": "!!!not base64!!!"}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"image/png": "!!!not base64!!!"}))],
+            &Limits::default(),
+        );
         assert!(lines(&out)[0].contains("base64"));
-        let out = blocks(&[display(json!({"image/png": base64::engine::general_purpose::STANDARD.encode(b"not an image")}))], &Limits::default());
+        let out = blocks(
+            &[display(
+                json!({"image/png": base64::engine::general_purpose::STANDARD.encode(b"not an image")}),
+            )],
+            &Limits::default(),
+        );
         assert!(lines(&out)[0].starts_with("[image/png:"));
     }
 
     #[test]
     fn plain_text_wins_over_html_and_html_is_read_as_text_when_alone() {
-        let out = blocks(&[display(json!({"text/plain": "plain", "text/html": "<b>html</b>"}))], &Limits::default());
+        let out = blocks(
+            &[display(
+                json!({"text/plain": "plain", "text/html": "<b>html</b>"}),
+            )],
+            &Limits::default(),
+        );
         assert_eq!(lines(&out), ["plain"]);
-        let out = blocks(&[display(json!({"text/html": "<p>Hello <b>there</b></p>"}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"text/html": "<p>Hello <b>there</b></p>"}))],
+            &Limits::default(),
+        );
         assert_eq!(lines(&out), ["Hello there"]);
-        let out = blocks(&[display(json!({"text/markdown": "# Title"}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"text/markdown": "# Title"}))],
+            &Limits::default(),
+        );
         assert_eq!(lines(&out), ["# Title"]);
-        let out = blocks(&[display(json!({"application/json": {"a": 1}}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"application/json": {"a": 1}}))],
+            &Limits::default(),
+        );
         assert!(lines(&out).join("\n").contains("\"a\": 1"));
     }
 
     #[test]
     fn data_that_cannot_be_shown_is_named() {
-        let out = blocks(&[display(json!({"image/svg+xml": "<svg/>"}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"image/svg+xml": "<svg/>"}))],
+            &Limits::default(),
+        );
         assert_eq!(lines(&out), ["[image/svg+xml output not shown]"]);
         assert!(blocks(&[display(json!({}))], &Limits::default()).is_empty());
         assert!(blocks(&[display(json!(null))], &Limits::default()).is_empty());
@@ -569,7 +668,10 @@ mod tests {
         let html = "<table><thead><tr><th></th><th>name</th><th>n</th></tr></thead><tbody>\
             <tr><th>0</th><td>alpha</td><td>1</td></tr><tr><th>1</th><td>b</td><td>22</td></tr></tbody></table>";
         let text = html_text(html);
-        assert_eq!(text.lines().collect::<Vec<_>>(), ["   name   n", "0  alpha  1", "1  b      22"]);
+        assert_eq!(
+            text.lines().collect::<Vec<_>>(),
+            ["   name   n", "0  alpha  1", "1  b      22"]
+        );
     }
 
     #[test]
@@ -585,7 +687,16 @@ mod tests {
 
     #[test]
     fn broken_html_does_not_panic() {
-        for html in ["<", "<b", "&", "&amp", "<table><tr><td>x", "</td></tr>", "<<<>>>", "&#xZZ; &#99999999999;"] {
+        for html in [
+            "<",
+            "<b",
+            "&",
+            "&amp",
+            "<table><tr><td>x",
+            "</td></tr>",
+            "<<<>>>",
+            "&#xZZ; &#99999999999;",
+        ] {
             let _ = html_text(html);
         }
         assert_eq!(html_text("a &unknown; b"), "a &unknown; b");
@@ -593,12 +704,19 @@ mod tests {
 
     #[test]
     fn long_outputs_are_cut_with_a_note_and_long_lines_are_shortened() {
-        let limits = Limits { max_lines: 3, max_line_chars: 5, ..Limits::default() };
+        let limits = Limits {
+            max_lines: 3,
+            max_line_chars: 5,
+            ..Limits::default()
+        };
         let out = blocks(
             &[json!({"output_type": "stream", "name": "stdout", "text": "1234567\n2\n3\n4\n5\n"})],
             &limits,
         );
-        assert_eq!(lines(&out), ["12345…", "2", "3", "… 2 more line(s) not shown"]);
+        assert_eq!(
+            lines(&out),
+            ["12345…", "2", "3", "… 2 more line(s) not shown"]
+        );
         // The limit counts all outputs of the cell together; images are not lines.
         let out = blocks(
             &[
@@ -608,23 +726,37 @@ mod tests {
             ],
             &limits,
         );
-        assert_eq!(lines(&out), ["a", "b", "<image>", "c", "… 1 more line(s) not shown"]);
+        assert_eq!(
+            lines(&out),
+            ["a", "b", "<image>", "c", "… 1 more line(s) not shown"]
+        );
     }
 
     #[test]
     fn rows_count_lines_and_round_images_up() {
         let text = Block::Lines(vec!["a".into(), "b".into()]);
         assert_eq!(text.rows(20.0), 2);
-        let out = blocks(&[display(json!({"image/png": png(50, 45)}))], &Limits::default());
+        let out = blocks(
+            &[display(json!({"image/png": png(50, 45)}))],
+            &Limits::default(),
+        );
         assert_eq!(out[0].rows(20.0), 3);
         assert_eq!(out[0].rows(100.0), 1);
     }
 
     #[test]
     fn every_decoded_image_gets_its_own_id() {
-        let one = blocks(&[display(json!({"image/png": png(2, 2)}))], &Limits::default());
-        let two = blocks(&[display(json!({"image/png": png(2, 2)}))], &Limits::default());
-        let (Block::Image(a), Block::Image(b)) = (&one[0], &two[0]) else { panic!("images") };
+        let one = blocks(
+            &[display(json!({"image/png": png(2, 2)}))],
+            &Limits::default(),
+        );
+        let two = blocks(
+            &[display(json!({"image/png": png(2, 2)}))],
+            &Limits::default(),
+        );
+        let (Block::Image(a), Block::Image(b)) = (&one[0], &two[0]) else {
+            panic!("images")
+        };
         assert_ne!(a.image.id, b.image.id);
     }
 }

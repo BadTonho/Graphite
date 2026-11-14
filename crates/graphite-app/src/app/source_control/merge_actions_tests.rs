@@ -55,7 +55,10 @@ fn accept_both_orders_and_ignore_and_revert() {
     app.merge_editor.as_mut().unwrap().select(0);
     app.run_ui_command("graphite.merge.revert");
     assert!(rendered(&app).starts_with("top\n<<<<<<< HEAD\nours1\n"));
-    assert_eq!(app.merge_editor.as_ref().unwrap().state.unresolved_count(), 1);
+    assert_eq!(
+        app.merge_editor.as_ref().unwrap().state.unresolved_count(),
+        1
+    );
 }
 
 #[test]
@@ -99,7 +102,10 @@ fn comparing_with_the_base_opens_a_diff_of_the_whole_sides() {
     assert_eq!(diff.left, "top\nold1\nmid\nbottom\n");
     assert_eq!(diff.right, "top\nours1\nmid\nours2\nbottom\n");
     app.run_ui_command("mergeEditor.compareInput2WithBase");
-    assert_eq!(app.diff_view.take().unwrap().right, "top\ntheirs1\nmid\ntheirs2\nbottom\n");
+    assert_eq!(
+        app.diff_view.take().unwrap().right,
+        "top\ntheirs1\nmid\ntheirs2\nbottom\n"
+    );
     app.run_ui_command("graphite.merge.acceptCurrent");
     app.run_ui_command("merge.openBaseEditor");
     assert_eq!(

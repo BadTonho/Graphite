@@ -183,9 +183,11 @@ impl MergeState {
             return false;
         };
         let next = match existing {
-            Resolution::Taken(taken) => {
-                choice(!taken.current, taken.incoming, taken.incoming && !taken.current)
-            }
+            Resolution::Taken(taken) => choice(
+                !taken.current,
+                taken.incoming,
+                taken.incoming && !taken.current,
+            ),
             _ => choice(true, false, false),
         };
         self.set(index, next)
@@ -343,7 +345,10 @@ mod tests {
         state.accept_all_incoming();
         assert_eq!(state.complete().unwrap(), "head\ni1\nmid\ni2\ntail\n");
         state.accept_all_both();
-        assert_eq!(state.complete().unwrap(), "head\nc1\ni1\nmid\nc2\ni2\ntail\n");
+        assert_eq!(
+            state.complete().unwrap(),
+            "head\nc1\ni1\nmid\nc2\ni2\ntail\n"
+        );
     }
 
     #[test]
@@ -395,7 +400,8 @@ mod tests {
 
     #[test]
     fn crlf_and_missing_final_newline_are_preserved() {
-        let mut state = MergeState::new("a\r\n<<<<<<< x\r\nc\r\n=======\r\ni\r\n>>>>>>> y\r\nz\r\n");
+        let mut state =
+            MergeState::new("a\r\n<<<<<<< x\r\nc\r\n=======\r\ni\r\n>>>>>>> y\r\nz\r\n");
         state.accept_both(0, false);
         assert_eq!(state.render(), "a\r\nc\r\ni\r\nz\r\n");
         let mut state = MergeState::new("a\n<<<<<<< x\nc\n=======\ni\n>>>>>>> y");

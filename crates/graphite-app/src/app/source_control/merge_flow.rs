@@ -92,7 +92,11 @@ impl App {
                 placement
             };
             if editor.base != BasePlacement::Hidden
-                && !editor.state.parsed().conflicts().any(|block| block.base.is_some())
+                && !editor
+                    .state
+                    .parsed()
+                    .conflicts()
+                    .any(|block| block.base.is_some())
             {
                 self.status = self.t("merge.no_base").into();
             }
@@ -131,7 +135,12 @@ impl App {
         let window = self
             .merge_geometry(width, height, line_height)
             .map_or(1, |(_, window)| window) as isize;
-        self.merge_scroll(if forward { window } else { -window }, width, height, line_height);
+        self.merge_scroll(
+            if forward { window } else { -window },
+            width,
+            height,
+            line_height,
+        );
     }
 
     pub(crate) fn merge_handle_click(&mut self, x: f32, y: f32) {

@@ -150,15 +150,21 @@ pub(crate) fn parse(text: &str) -> Parsed {
         };
         current.block.raw.push_str(line);
         match marker {
-            Some((Marker::Base(run), label)) if run == current.run && current.part == Part::Current => {
+            Some((Marker::Base(run), label))
+                if run == current.run && current.part == Part::Current =>
+            {
                 current.block.base = Some(String::new());
                 current.block.base_label = Some(label.to_owned());
                 current.part = Part::Base;
             }
-            Some((Marker::Middle(run), _)) if run == current.run && current.part != Part::Incoming => {
+            Some((Marker::Middle(run), _))
+                if run == current.run && current.part != Part::Incoming =>
+            {
                 current.part = Part::Incoming;
             }
-            Some((Marker::End(run), label)) if run == current.run && current.part == Part::Incoming => {
+            Some((Marker::End(run), label))
+                if run == current.run && current.part == Part::Incoming =>
+            {
                 if let Some(mut finished) = open.take() {
                     finished.block.incoming_label = label.to_owned();
                     finished.block.end_eol = eol.to_owned();
@@ -218,7 +224,8 @@ mod tests {
 
     #[test]
     fn parses_base_section() {
-        let text = "<<<<<<< a\none\n||||||| merged common ancestors\nbase\n=======\ntwo\n>>>>>>> b\n";
+        let text =
+            "<<<<<<< a\none\n||||||| merged common ancestors\nbase\n=======\ntwo\n>>>>>>> b\n";
         let parsed = parse(text);
         let conflict = block(&parsed, 0);
         assert_eq!(conflict.base.as_deref(), Some("base\n"));
@@ -231,7 +238,8 @@ mod tests {
 
     #[test]
     fn several_conflicts_keep_their_order_and_the_text_between() {
-        let text = "<<<<<<< a\n1\n=======\n2\n>>>>>>> b\nmid\n<<<<<<< a\n3\n=======\n4\n>>>>>>> b\n";
+        let text =
+            "<<<<<<< a\n1\n=======\n2\n>>>>>>> b\nmid\n<<<<<<< a\n3\n=======\n4\n>>>>>>> b\n";
         let parsed = parse(text);
         assert_eq!(parsed.conflict_count(), 2);
         assert_eq!(parsed.segments[1], Segment::Text("mid\n".into()));
@@ -318,7 +326,10 @@ mod tests {
 
     #[test]
     fn text_without_conflicts_is_one_segment_and_empty_text_has_none() {
-        assert_eq!(parse("plain\n").segments, vec![Segment::Text("plain\n".into())]);
+        assert_eq!(
+            parse("plain\n").segments,
+            vec![Segment::Text("plain\n".into())]
+        );
         assert!(parse("").segments.is_empty());
     }
 }

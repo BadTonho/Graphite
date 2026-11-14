@@ -44,11 +44,9 @@ pub(crate) fn enclosing_heading(session: &Session, index: usize) -> Option<usize
     if heading_level(session, index).is_some() {
         return Some(index);
     }
-    (0..index)
-        .rev()
-        .find(|&candidate| {
-            heading_level(session, candidate).is_some() && section_end(session, candidate) > index
-        })
+    (0..index).rev().find(|&candidate| {
+        heading_level(session, candidate).is_some() && section_end(session, candidate) > index
+    })
 }
 
 /// The cells of the section of `index`, without the heading itself.

@@ -24,7 +24,8 @@ fn execute(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
 
 fn execute_selection(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     let (code, language) = app.text_to_send();
-    app.send_to_interactive(&code, language).map_err(CommandError::Failed)
+    app.send_to_interactive(&code, language)
+        .map_err(CommandError::Failed)
 }
 
 fn focus_input(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
@@ -77,9 +78,19 @@ fn scroll_to_bottom(app: &mut App, _: &CommandInvocation) -> Result<(), CommandE
 
 pub(super) fn register(registry: &mut CommandRegistry) {
     let commands: [Entry; 15] = [
-        ("interactive.open", "Open Interactive Window", "true", open_window),
+        (
+            "interactive.open",
+            "Open Interactive Window",
+            "true",
+            open_window,
+        ),
         ("graphite.repl.open", "Open REPL", "true", open_repl),
-        ("interactive.execute", "Run Input in the Interactive Window", INPUT, execute),
+        (
+            "interactive.execute",
+            "Run Input in the Interactive Window",
+            INPUT,
+            execute,
+        ),
         ("repl.execute", "Run Input in the REPL", INPUT, execute),
         (
             "graphite.interactive.executeSelection",
@@ -87,7 +98,12 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "documentAvailable",
             execute_selection,
         ),
-        ("interactive.input.focus", "Focus Interactive Input", WINDOW, focus_input),
+        (
+            "interactive.input.focus",
+            "Focus Interactive Input",
+            WINDOW,
+            focus_input,
+        ),
         ("repl.input.focus", "Focus REPL Input", WINDOW, focus_input),
         (
             "list.find.replInputFocus",
@@ -95,7 +111,12 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             WINDOW,
             focus_input,
         ),
-        ("interactive.input.clear", "Clear Interactive Input", WINDOW, clear_input),
+        (
+            "interactive.input.clear",
+            "Clear Interactive Input",
+            WINDOW,
+            clear_input,
+        ),
         (
             "interactive.history.focus",
             "Focus the Interactive History",
@@ -114,8 +135,18 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             INPUT,
             history_previous,
         ),
-        ("interactive.history.next", "Next Input in the History", INPUT, history_next),
-        ("interactive.scrollToTop", "Scroll Interactive Window to Top", WINDOW, scroll_to_top),
+        (
+            "interactive.history.next",
+            "Next Input in the History",
+            INPUT,
+            history_next,
+        ),
+        (
+            "interactive.scrollToTop",
+            "Scroll Interactive Window to Top",
+            WINDOW,
+            scroll_to_top,
+        ),
         (
             "interactive.scrollToBottom",
             "Scroll Interactive Window to Bottom",
@@ -124,6 +155,15 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, enablement, handler) in commands {
-        add(registry, id, title, "Interactive", ALL, enablement, None, handler);
+        add(
+            registry,
+            id,
+            title,
+            "Interactive",
+            ALL,
+            enablement,
+            None,
+            handler,
+        );
     }
 }

@@ -111,7 +111,8 @@ fn the_search_list_jumps_to_a_line_and_next_and_previous_follow_the_last_search(
 #[test]
 fn the_outline_of_a_notebook_lists_headings_code_cells_and_symbols() {
     let (_dir, mut app) = open();
-    let texts = |app: &App| -> Vec<String> { app.outline_rows().into_iter().map(|row| row.text).collect() };
+    let texts =
+        |app: &App| -> Vec<String> { app.outline_rows().into_iter().map(|row| row.text).collect() };
     let all = texts(&app);
     assert!(all.contains(&"# One".to_owned()));
     assert!(all.contains(&"## Inner".to_owned()));

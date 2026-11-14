@@ -130,7 +130,8 @@ mod tests {
     #[test]
     fn a_cell_is_a_header_its_input_its_outputs_and_a_gap() {
         let mut with_output = Cell::new(CellKind::Code, "a\nb");
-        with_output.outputs = vec![json!({"output_type": "stream", "name": "stdout", "text": "x\ny\nz\n"})];
+        with_output.outputs =
+            vec![json!({"output_type": "stream", "name": "stdout", "text": "x\ny\nz\n"})];
         let session = session(vec![with_output, Cell::new(CellKind::Markdown, "")]);
         let layouts = layout(&session, 10.0);
         assert_eq!(layouts[0].input_lines, 2);
@@ -158,14 +159,16 @@ mod tests {
         assert!(collapsed.height < full);
     }
 
-
     #[test]
     fn an_image_output_takes_the_rows_of_its_height() {
         use base64::Engine;
         let image = image::RgbaImage::from_pixel(40, 65, image::Rgba([1, 2, 3, 255]));
         let mut bytes = Vec::new();
         image::DynamicImage::ImageRgba8(image)
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
             .unwrap();
         let mut cell = Cell::new(CellKind::Code, "plot()");
         cell.outputs = vec![
@@ -200,7 +203,10 @@ mod tests {
 
     #[test]
     fn hit_testing_finds_the_cell_at_a_height() {
-        let session = session(vec![Cell::new(CellKind::Code, "a"), Cell::new(CellKind::Code, "b")]);
+        let session = session(vec![
+            Cell::new(CellKind::Code, "a"),
+            Cell::new(CellKind::Code, "b"),
+        ]);
         let layouts = layout(&session, 10.0);
         assert_eq!(cell_at(&layouts, 0.0), Some(0));
         assert_eq!(cell_at(&layouts, layouts[0].bottom() - 0.1), Some(0));
@@ -218,17 +224,26 @@ mod tests {
         // Already visible: unchanged.
         assert_eq!(scroll_to_show(&layouts, 1, 0.0, viewport), 0.0);
         // Below the view: its bottom lines up with the bottom of the view.
-        assert_eq!(scroll_to_show(&layouts, 5, 0.0, viewport), layouts[5].bottom() - viewport);
+        assert_eq!(
+            scroll_to_show(&layouts, 5, 0.0, viewport),
+            layouts[5].bottom() - viewport
+        );
         // Above the view: its top lines up with the top.
         assert_eq!(scroll_to_show(&layouts, 0, 50.0, viewport), 0.0);
         // Taller than the view: from its top.
-        assert_eq!(scroll_to_show(&layouts, 2, 0.0, height * 0.5), layouts[2].top);
+        assert_eq!(
+            scroll_to_show(&layouts, 2, 0.0, height * 0.5),
+            layouts[2].top
+        );
         assert_eq!(scroll_to_show(&layouts, 99, 7.0, viewport), 7.0);
     }
 
     #[test]
     fn scroll_is_clamped_to_the_notebook() {
-        let session = session(vec![Cell::new(CellKind::Code, "x"), Cell::new(CellKind::Code, "y")]);
+        let session = session(vec![
+            Cell::new(CellKind::Code, "x"),
+            Cell::new(CellKind::Code, "y"),
+        ]);
         let layouts = layout(&session, 10.0);
         let total = layouts[1].bottom();
         assert_eq!(clamp_scroll(&layouts, -5.0, 20.0), 0.0);

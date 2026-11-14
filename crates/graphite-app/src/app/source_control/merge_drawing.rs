@@ -92,7 +92,13 @@ impl App {
         let char_width = renderer.char_width();
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x616161));
-        renderer.draw_rect(0.0, 0.0, width, height, rgb(Theme::color(Theme::BG, 0xffffff)));
+        renderer.draw_rect(
+            0.0,
+            0.0,
+            width,
+            height,
+            rgb(Theme::color(Theme::BG, 0xffffff)),
+        );
         let unresolved = editor.state.unresolved_count();
         let summary = if unresolved == 0 {
             self.t("merge.all_resolved").to_owned()
@@ -109,9 +115,26 @@ impl App {
 
         let separator = tint(0x3c3c3c, 0xd0d0d0);
         for (pane, rect) in &panes {
-            renderer.draw_rect(rect.x, rect.y, rect.width, rect.height, rgb(Theme::color(Theme::BG, 0xffffff)));
-            renderer.draw_rect(rect.x, rect.y, rect.width, line_height, tint(0x2d2d30, 0xececec));
-            renderer.set_clip(Some([rect.x, rect.y, rect.x + rect.width, rect.y + rect.height]));
+            renderer.draw_rect(
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                rgb(Theme::color(Theme::BG, 0xffffff)),
+            );
+            renderer.draw_rect(
+                rect.x,
+                rect.y,
+                rect.width,
+                line_height,
+                tint(0x2d2d30, 0xececec),
+            );
+            renderer.set_clip(Some([
+                rect.x,
+                rect.y,
+                rect.x + rect.width,
+                rect.y + rect.height,
+            ]));
             renderer.draw_text(&self.merge_pane_title(*pane), rect.x + PAD, rect.y, dim);
             let window = ((rect.height - line_height) / line_height).floor().max(0.0) as usize;
             let gutter = char_width * (LINE_NUMBER_CHARS as f32 + 1.0);
@@ -143,7 +166,13 @@ impl App {
                         }
                     }
                     if row.block == editor.active {
-                        renderer.draw_rect(rect.x, y, 3.0, line_height, rgb(Theme::color(Theme::STATUS, 0x007acc)));
+                        renderer.draw_rect(
+                            rect.x,
+                            y,
+                            3.0,
+                            line_height,
+                            rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                        );
                     }
                 }
                 if let Some(cell) = row.cell(*pane) {
@@ -162,7 +191,8 @@ impl App {
                 }
                 if *pane == Pane::Result && row.first_of_block {
                     let label = self.t(self.merge_resolution_label(row.resolution));
-                    let label_x = rect.x + rect.width - (label.chars().count() as f32 + 1.0) * char_width;
+                    let label_x =
+                        rect.x + rect.width - (label.chars().count() as f32 + 1.0) * char_width;
                     renderer.draw_text(label, label_x, y, dim);
                 }
             }
@@ -173,7 +203,14 @@ impl App {
     }
 
     /// Selects the conflict under a click, if any.
-    pub(crate) fn merge_click(&mut self, x: f32, y: f32, width: f32, height: f32, line_height: f32) {
+    pub(crate) fn merge_click(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        line_height: f32,
+    ) {
         let Some((panes, _)) = self.merge_geometry(width, height, line_height) else {
             return;
         };

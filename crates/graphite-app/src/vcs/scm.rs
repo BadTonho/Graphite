@@ -856,7 +856,13 @@ fn display_error(error: impl std::fmt::Display) -> String {
 /// Puts a file of an initialised repository in the conflicted state, with base, ours and theirs
 /// stored as index stages, the way a stopped merge leaves it.
 #[cfg(test)]
-pub(crate) fn mark_conflicted_for_tests(root: &Path, name: &str, base: &str, ours: &str, theirs: &str) {
+pub(crate) fn mark_conflicted_for_tests(
+    root: &Path,
+    name: &str,
+    base: &str,
+    ours: &str,
+    theirs: &str,
+) {
     let repository = gix::discover(root).unwrap();
     let mut index = open_or_default_index(&repository).unwrap();
     index.remove_entries(|_, path, _| path == name.as_bytes().as_bstr());

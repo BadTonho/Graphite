@@ -13,6 +13,6 @@ pub(crate) mod ime;
 pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod mouse;
-pub(crate) mod window_events;
-pub(crate) mod titlebar_layout_controls;
 pub(crate) mod theme;
+pub(crate) mod titlebar_layout_controls;
+pub(crate) mod window_events;

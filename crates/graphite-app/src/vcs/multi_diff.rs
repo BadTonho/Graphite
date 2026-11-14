@@ -179,9 +179,9 @@ impl MultiDiff {
     }
 
     pub(crate) fn totals(&self) -> (usize, usize) {
-        self.files
-            .iter()
-            .fold((0, 0), |(added, removed), file| (added + file.added, removed + file.removed))
+        self.files.iter().fold((0, 0), |(added, removed), file| {
+            (added + file.added, removed + file.removed)
+        })
     }
 
     /// Recomputes rows and the list of changes after a file was collapsed or expanded.
@@ -240,7 +240,9 @@ impl MultiDiff {
     }
 
     pub(crate) fn expand_all(&mut self) {
-        self.files.iter_mut().for_each(|file| file.collapsed = false);
+        self.files
+            .iter_mut()
+            .for_each(|file| file.collapsed = false);
         self.rebuild();
     }
 
@@ -267,7 +269,9 @@ impl MultiDiff {
         if self.changes.is_empty() {
             return false;
         }
-        let next = self.current.map_or(0, |index| (index + 1) % self.changes.len());
+        let next = self
+            .current
+            .map_or(0, |index| (index + 1) % self.changes.len());
         self.show_change(next);
         true
     }
@@ -277,7 +281,9 @@ impl MultiDiff {
             return false;
         }
         let count = self.changes.len();
-        let previous = self.current.map_or(count - 1, |index| (index + count - 1) % count);
+        let previous = self
+            .current
+            .map_or(count - 1, |index| (index + count - 1) % count);
         self.show_change(previous);
         true
     }
@@ -295,10 +301,13 @@ impl MultiDiff {
         // A removal has no new line; the line after it is the closest place in the new text.
         let line = line.or_else(|| {
             change.piece.and_then(|piece| {
-                file.pieces[..piece].iter().rev().find_map(|piece| match piece {
-                    Piece::Line(line) => line.new_line,
-                    Piece::Gap(_) => None,
-                })
+                file.pieces[..piece]
+                    .iter()
+                    .rev()
+                    .find_map(|piece| match piece {
+                        Piece::Line(line) => line.new_line,
+                        Piece::Gap(_) => None,
+                    })
             })
         });
         Some((change.file, line.unwrap_or(1)))
@@ -347,7 +356,11 @@ mod tests {
 
     #[test]
     fn a_modified_file_shows_changes_with_numbers_and_counts() {
-        let file = FileDiff::build(input("a.txt", Some("one\ntwo\nthree\n"), Some("one\n2\nthree\n")));
+        let file = FileDiff::build(input(
+            "a.txt",
+            Some("one\ntwo\nthree\n"),
+            Some("one\n2\nthree\n"),
+        ));
         assert_eq!(file.status, FileStatus::Modified);
         assert_eq!((file.added, file.removed), (1, 1));
         assert_eq!(
@@ -495,7 +508,10 @@ mod tests {
         assert_eq!(diff.changes().len(), 2);
         assert!(diff.next_change() && diff.next_change());
         assert_eq!(diff.changes()[1].piece, None);
-        assert_eq!(diff.scroll, diff.row_of(RowRef::Header(1)).unwrap().saturating_sub(3));
+        assert_eq!(
+            diff.scroll,
+            diff.row_of(RowRef::Header(1)).unwrap().saturating_sub(3)
+        );
     }
 
     #[test]
@@ -518,7 +534,10 @@ mod tests {
         diff.next_change();
         assert_eq!(diff.current_location(), Some((2, 1)));
         // A pure removal points at the nearest line of the new text.
-        let mut removal = MultiDiff::new("t".into(), vec![input("r", Some("a\nb\nc\n"), Some("a\nc\n"))]);
+        let mut removal = MultiDiff::new(
+            "t".into(),
+            vec![input("r", Some("a\nb\nc\n"), Some("a\nc\n"))],
+        );
         removal.next_change();
         assert_eq!(removal.current_location(), Some((0, 2)));
         let mut deleted = MultiDiff::new("t".into(), vec![input("d", Some("a\n"), None)]);

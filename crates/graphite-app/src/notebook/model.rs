@@ -57,7 +57,9 @@ pub(crate) fn new_cell_id() -> String {
     let counter = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.subsec_nanos() as u64 ^ elapsed.as_secs());
+        .map_or(0, |elapsed| {
+            elapsed.subsec_nanos() as u64 ^ elapsed.as_secs()
+        });
     let mixed = nanos
         .wrapping_mul(0x9e37_79b9_7f4a_7c15)
         .wrapping_add(counter.wrapping_mul(0xbf58_476d_1ce4_e5b9));
@@ -163,7 +165,12 @@ impl Cell {
 /// Splits source into the array of lines Jupyter stores: every line keeps its line break and the
 /// last one has none.
 fn source_lines(source: &str) -> Value {
-    Value::Array(source.split_inclusive('\n').map(|line| json!(line)).collect())
+    Value::Array(
+        source
+            .split_inclusive('\n')
+            .map(|line| json!(line))
+            .collect(),
+    )
 }
 
 /// A notebook of format 4.
@@ -216,7 +223,10 @@ impl Notebook {
         if nbformat_minor >= 5 {
             let mut seen = std::collections::HashSet::new();
             for cell in &mut cells {
-                let keep = cell.id.as_ref().is_some_and(|id| !id.is_empty() && seen.insert(id.clone()));
+                let keep = cell
+                    .id
+                    .as_ref()
+                    .is_some_and(|id| !id.is_empty() && seen.insert(id.clone()));
                 if !keep {
                     loop {
                         let id = new_cell_id();
@@ -263,10 +273,7 @@ impl Notebook {
 
     /// Name of the kernel the notebook asks for, if any.
     pub(crate) fn kernel_name(&self) -> Option<&str> {
-        self.metadata
-            .get("kernelspec")?
-            .get("name")?
-            .as_str()
+        self.metadata.get("kernelspec")?.get("name")?.as_str()
     }
 
     /// Language of the notebook's code cells, if it says.
@@ -340,11 +347,26 @@ mod tests {
         // Same content; only the storage of source (string or lines) may differ.
         assert_eq!(written["top_level_unknown"], original["top_level_unknown"]);
         assert_eq!(written["metadata"], original["metadata"]);
-        assert_eq!(written["cells"][0]["future_field"], original["cells"][0]["future_field"]);
-        assert_eq!(written["cells"][0]["metadata"], original["cells"][0]["metadata"]);
-        assert_eq!(written["cells"][1]["outputs"], original["cells"][1]["outputs"]);
-        assert_eq!(written["cells"][1]["metadata"], original["cells"][1]["metadata"]);
-        assert_eq!(written["cells"][1]["source"], json!(["print('hi')\n", "1 + 1"]));
+        assert_eq!(
+            written["cells"][0]["future_field"],
+            original["cells"][0]["future_field"]
+        );
+        assert_eq!(
+            written["cells"][0]["metadata"],
+            original["cells"][0]["metadata"]
+        );
+        assert_eq!(
+            written["cells"][1]["outputs"],
+            original["cells"][1]["outputs"]
+        );
+        assert_eq!(
+            written["cells"][1]["metadata"],
+            original["cells"][1]["metadata"]
+        );
+        assert_eq!(
+            written["cells"][1]["source"],
+            json!(["print('hi')\n", "1 + 1"])
+        );
         assert_eq!(written["cells"][0]["source"], json!(["# Title\n", "text"]));
     }
 
@@ -363,10 +385,16 @@ mod tests {
         assert!(text.ends_with("}\n"));
         assert!(text.starts_with("{\n \"cells\": [\n  {\n   \"cell_type\": \"markdown\""));
         // Keys are sorted: cells, metadata, nbformat, nbformat_minor, top_level_unknown.
-        let positions: Vec<usize> = ["\"cells\"", "\"metadata\": {\n  \"custom\"", "\"nbformat\"", "\"nbformat_minor\"", "\"top_level_unknown\""]
-            .iter()
-            .map(|key| text.find(key).unwrap_or_else(|| panic!("{key}")))
-            .collect();
+        let positions: Vec<usize> = [
+            "\"cells\"",
+            "\"metadata\": {\n  \"custom\"",
+            "\"nbformat\"",
+            "\"nbformat_minor\"",
+            "\"top_level_unknown\"",
+        ]
+        .iter()
+        .map(|key| text.find(key).unwrap_or_else(|| panic!("{key}")))
+        .collect();
         assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
@@ -407,7 +435,11 @@ mod tests {
                 {"cell_type":"markdown","source":"","metadata":{}}]}"#,
         )
         .unwrap();
-        let ids: Vec<_> = notebook.cells.iter().map(|cell| cell.id.clone().unwrap()).collect();
+        let ids: Vec<_> = notebook
+            .cells
+            .iter()
+            .map(|cell| cell.id.clone().unwrap())
+            .collect();
         assert_eq!(ids[0], "dup");
         assert_ne!(ids[1], "dup");
         assert_ne!(ids[2], ids[1]);
@@ -424,9 +456,18 @@ mod tests {
             (r#"{"nbformat":3,"cells":[]}"#, "not supported"),
             (r#"{"nbformat":4}"#, "cells"),
             (r#"{"nbformat":4,"cells":[1]}"#, "not an object"),
-            (r#"{"nbformat":4,"cells":[{"cell_type":"video"}]}"#, "cell_type"),
-            (r#"{"nbformat":4,"cells":[{"cell_type":"code","source":5}]}"#, "not text"),
-            (r#"{"nbformat":4,"cells":[{"cell_type":"code","source":[1]}]}"#, "not a string"),
+            (
+                r#"{"nbformat":4,"cells":[{"cell_type":"video"}]}"#,
+                "cell_type",
+            ),
+            (
+                r#"{"nbformat":4,"cells":[{"cell_type":"code","source":5}]}"#,
+                "not text",
+            ),
+            (
+                r#"{"nbformat":4,"cells":[{"cell_type":"code","source":[1]}]}"#,
+                "not a string",
+            ),
         ] {
             let error = Notebook::parse(text).unwrap_err();
             assert!(error.contains(needle), "{text}: {error}");

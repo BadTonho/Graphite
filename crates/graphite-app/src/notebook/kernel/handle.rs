@@ -22,7 +22,10 @@ const KEPT_ERROR_OUTPUT: usize = 4000;
 pub(crate) type Notify = Arc<dyn Fn() + Send + Sync>;
 
 pub(crate) enum Command {
-    Send { control: bool, frames: Vec<Vec<u8>> },
+    Send {
+        control: bool,
+        frames: Vec<Vec<u8>>,
+    },
     /// End the kernel process if it is still there after the given time.
     KillAfter(Duration),
     /// Send SIGINT to the kernel process (Unix kernels that interrupt with a signal).
@@ -83,12 +86,18 @@ impl KernelHandle {
     }
 
     pub(crate) fn request_info(&self) {
-        self.send(false, Message::request("kernel_info_request", &self.session, json!({})));
+        self.send(
+            false,
+            Message::request("kernel_info_request", &self.session, json!({})),
+        );
     }
 
     /// Interrupts what is running, by message and, for kernels that ask for it, by signal.
     pub(crate) fn interrupt(&self) {
-        self.send(true, Message::request("interrupt_request", &self.session, json!({})));
+        self.send(
+            true,
+            Message::request("interrupt_request", &self.session, json!({})),
+        );
         if self.interrupt_by_signal {
             let _ = self.commands.send(Command::Signal);
         }
@@ -100,7 +109,9 @@ impl KernelHandle {
             true,
             Message::request("shutdown_request", &self.session, json!({"restart": false})),
         );
-        let _ = self.commands.send(Command::KillAfter(Duration::from_secs(3)));
+        let _ = self
+            .commands
+            .send(Command::KillAfter(Duration::from_secs(3)));
     }
 
     /// Ends the kernel process without asking.
@@ -132,9 +143,15 @@ fn keep_tail(buffer: &mut String, text: &str) {
 }
 
 /// Starts the kernel of `spec` in `directory`.
-pub(crate) fn launch(spec: &KernelSpec, directory: &Path, notify: Notify) -> Result<KernelHandle, String> {
+pub(crate) fn launch(
+    spec: &KernelSpec,
+    directory: &Path,
+    notify: Notify,
+) -> Result<KernelHandle, String> {
     let connection = Connection::allocate().map_err(|error| error.to_string())?;
-    let file = connection.write(&spec.name).map_err(|error| error.to_string())?;
+    let file = connection
+        .write(&spec.name)
+        .map_err(|error| error.to_string())?;
     let argv: Vec<String> = spec
         .argv
         .iter()
@@ -186,11 +203,16 @@ pub(crate) fn attach(
 ) -> KernelHandle {
     let (command_tx, command_rx) = channel();
     let (event_tx, event_rx) = channel();
-    let handle = KernelHandle::from_parts(command_tx, event_rx, &connection.key, interrupt.is_some());
+    let handle =
+        KernelHandle::from_parts(command_tx, event_rx, &connection.key, interrupt.is_some());
     let session = handle.session.clone();
     std::thread::Builder::new()
         .name("graphite-kernel".into())
-        .spawn(move || supervise(connection, session, command_rx, event_tx, child, interrupt, cleanup, notify))
+        .spawn(move || {
+            supervise(
+                connection, session, command_rx, event_tx, child, interrupt, cleanup, notify,
+            )
+        })
         .ok();
     handle
 }
@@ -206,8 +228,13 @@ fn connect(
         match Socket::connect(address, socket_type, identity) {
             Ok(socket) => return Ok(socket),
             Err(error) => {
-                if let Some(status) = child.as_mut().and_then(|child| child.try_wait().ok().flatten()) {
-                    return Err(format!("the kernel exited ({status}) before it could be reached"));
+                if let Some(status) = child
+                    .as_mut()
+                    .and_then(|child| child.try_wait().ok().flatten())
+                {
+                    return Err(format!(
+                        "the kernel exited ({status}) before it could be reached"
+                    ));
                 }
                 if Instant::now() > deadline {
                     return Err(format!("the kernel did not answer in time: {error}"));
@@ -219,7 +246,13 @@ fn connect(
 }
 
 /// Reads a socket until it closes, turning messages into events.
-fn read_events(mut socket: Socket, key: Vec<u8>, events: Sender<KernelEvent>, notify: Notify, forward: bool) {
+fn read_events(
+    mut socket: Socket,
+    key: Vec<u8>,
+    events: Sender<KernelEvent>,
+    notify: Notify,
+    forward: bool,
+) {
     while let Ok(frames) = socket.recv() {
         if !forward {
             continue;
@@ -306,14 +339,21 @@ fn supervise(
         Ok(sockets) => sockets,
         Err(error) => {
             let output = stderr.lock().map(|text| text.clone()).unwrap_or_default();
-            let details = if output.trim().is_empty() { error } else { format!("{error}\n{output}") };
+            let details = if output.trim().is_empty() {
+                error
+            } else {
+                format!("{error}\n{output}")
+            };
             finish(&mut child, details);
             return;
         }
     };
     let key = connection.key.as_bytes().to_vec();
     if iopub.subscribe_all().is_err() {
-        finish(&mut child, "could not subscribe to the kernel output".into());
+        finish(
+            &mut child,
+            "could not subscribe to the kernel output".into(),
+        );
         return;
     }
     let readers: Vec<(Socket, bool)> = [(&shell, true), (&iopub, true), (&control, false)]
@@ -330,7 +370,10 @@ fn supervise(
     let _ = shell.send(&encode(&key, &[], &info));
     loop {
         match commands.recv_timeout(Duration::from_millis(100)) {
-            Ok(Command::Send { control: on_control, frames }) => {
+            Ok(Command::Send {
+                control: on_control,
+                frames,
+            }) => {
                 let socket = if on_control { &mut control } else { &mut shell };
                 let _ = socket.send(&frames);
             }
@@ -355,12 +398,18 @@ fn supervise(
                     finish(&mut child, String::new());
                     return;
                 }
-                if let Some(status) = child.as_mut().and_then(|child| child.try_wait().ok().flatten()) {
+                if let Some(status) = child
+                    .as_mut()
+                    .and_then(|child| child.try_wait().ok().flatten())
+                {
                     shell.shutdown();
                     iopub.shutdown();
                     control.shutdown();
                     let output = stderr.lock().map(|text| text.clone()).unwrap_or_default();
-                    finish(&mut child, format!("the kernel exited ({status})\n{output}"));
+                    finish(
+                        &mut child,
+                        format!("the kernel exited ({status})\n{output}"),
+                    );
                     return;
                 }
             }
@@ -384,8 +433,12 @@ pub(crate) mod fake {
     /// `raise` produces an error, `sleep` waits for an interrupt, anything else prints it.
     pub(crate) fn start(connection: &Connection) -> JoinHandle<Vec<String>> {
         let key = connection.key.as_bytes().to_vec();
-        let listeners = [connection.shell_port, connection.iopub_port, connection.control_port]
-            .map(|port| TcpListener::bind(connection.address(port)).unwrap());
+        let listeners = [
+            connection.shell_port,
+            connection.iopub_port,
+            connection.control_port,
+        ]
+        .map(|port| TcpListener::bind(connection.address(port)).unwrap());
         std::thread::spawn(move || {
             let mut shell = Socket::accept(&listeners[0], "ROUTER").unwrap();
             let mut iopub = Socket::accept(&listeners[1], "PUB").unwrap();
@@ -398,13 +451,19 @@ pub(crate) mod fake {
             let control_thread = std::thread::spawn(move || {
                 let mut log = Vec::new();
                 while let Ok(frames) = control.recv() {
-                    let Ok(message) = decode(&control_key, &frames) else { continue };
+                    let Ok(message) = decode(&control_key, &frames) else {
+                        continue;
+                    };
                     log.push(message.msg_type().to_owned());
                     if message.msg_type() == "interrupt_request" {
                         flag.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
                     let kind = message.msg_type().replace("_request", "_reply");
-                    let _ = control.send(&encode(&control_key, &[], &reply(&message, &kind, json!({"status": "ok"}))));
+                    let _ = control.send(&encode(
+                        &control_key,
+                        &[],
+                        &reply(&message, &kind, json!({"status": "ok"})),
+                    ));
                     if message.msg_type() == "shutdown_request" {
                         break;
                     }
@@ -414,7 +473,9 @@ pub(crate) mod fake {
             let mut count = 0u64;
             let mut seen = Vec::new();
             while let Ok(frames) = shell.recv() {
-                let Ok(request) = decode(&key, &frames) else { continue };
+                let Ok(request) = decode(&key, &frames) else {
+                    continue;
+                };
                 seen.push(request.msg_type().to_owned());
                 let publish = |iopub: &mut Socket, msg_type: &str, content: serde_json::Value| {
                     let message = reply(&request, msg_type, content);
@@ -438,7 +499,11 @@ pub(crate) mod fake {
                         let code = request.content["code"].as_str().unwrap_or("").to_owned();
                         count += 1;
                         publish(&mut iopub, "status", json!({"execution_state": "busy"}));
-                        publish(&mut iopub, "execute_input", json!({"code": code, "execution_count": count}));
+                        publish(
+                            &mut iopub,
+                            "execute_input",
+                            json!({"code": code, "execution_count": count}),
+                        );
                         let mut ok = true;
                         match code.as_str() {
                             "raise" => {
@@ -451,7 +516,8 @@ pub(crate) mod fake {
                             }
                             "sleep" => {
                                 for _ in 0..200 {
-                                    if interrupted.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                                    if interrupted.swap(false, std::sync::atomic::Ordering::SeqCst)
+                                    {
                                         ok = false;
                                         publish(
                                             &mut iopub,
@@ -464,7 +530,11 @@ pub(crate) mod fake {
                                 }
                             }
                             other => {
-                                publish(&mut iopub, "stream", json!({"name": "stdout", "text": format!("{other}\n")}));
+                                publish(
+                                    &mut iopub,
+                                    "stream",
+                                    json!({"name": "stdout", "text": format!("{other}\n")}),
+                                );
                                 publish(
                                     &mut iopub,
                                     "execute_result",
@@ -515,7 +585,9 @@ mod tests {
     static PORTS: Mutex<()> = Mutex::new(());
 
     fn connected() -> (KernelHandle, std::thread::JoinHandle<Vec<String>>) {
-        let guard = PORTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let guard = PORTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let connection = Connection::allocate().unwrap();
         let kernel = fake::start(&connection);
         drop(guard);
@@ -546,22 +618,42 @@ mod tests {
             event,
             KernelEvent::Info { language: Some(language), .. } if language == "fake"
         )));
-        assert!(matches!(events[0], KernelEvent::Status { state: KernelState::Starting, .. }));
+        assert!(matches!(
+            events[0],
+            KernelEvent::Status {
+                state: KernelState::Starting,
+                ..
+            }
+        ));
         let mine: Vec<_> = events
             .iter()
             .filter(|event| match event {
-                KernelEvent::Output { parent, .. }
-                | KernelEvent::ExecuteInput { parent, .. }
-                => parent == &id,
+                KernelEvent::Output { parent, .. } | KernelEvent::ExecuteInput { parent, .. } => {
+                    parent == &id
+                }
                 _ => false,
             })
             .collect();
-        assert!(matches!(mine[0], KernelEvent::ExecuteInput { count: 1, .. }));
-        let KernelEvent::Output { output, .. } = mine[1] else { panic!("expected a stream") };
+        assert!(matches!(
+            mine[0],
+            KernelEvent::ExecuteInput { count: 1, .. }
+        ));
+        let KernelEvent::Output { output, .. } = mine[1] else {
+            panic!("expected a stream")
+        };
         assert_eq!(output["text"], "hello\n");
-        let KernelEvent::Output { output, .. } = mine[2] else { panic!("expected a result") };
+        let KernelEvent::Output { output, .. } = mine[2] else {
+            panic!("expected a result")
+        };
         assert_eq!(output["data"]["text/plain"], "'hello'");
-        assert!(events.iter().any(|event| matches!(event, KernelEvent::Reply { ok: true, count: Some(1), .. })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            KernelEvent::Reply {
+                ok: true,
+                count: Some(1),
+                ..
+            }
+        )));
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Status { state: KernelState::Busy, parent: Some(parent) } if parent == &id
@@ -581,7 +673,9 @@ mod tests {
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "Boom"
         )));
-        assert!(events.iter().any(|event| matches!(event, KernelEvent::Reply { ok: false, .. })));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, KernelEvent::Reply { ok: false, .. })));
     }
 
     #[test]
@@ -605,7 +699,9 @@ mod tests {
         let (handle, _kernel) = connected();
         let id = handle.execute("sleep");
         wait_for(&handle, |events| {
-            events.iter().any(|event| matches!(event, KernelEvent::ExecuteInput { .. }))
+            events
+                .iter()
+                .any(|event| matches!(event, KernelEvent::ExecuteInput { .. }))
         });
         handle.interrupt();
         let events = wait_for(&handle, |events| finished(events, &id));
@@ -633,13 +729,19 @@ mod tests {
         // Nothing listens on these ports and the process exits at once.
         let connection = Connection::allocate().unwrap();
         let child = std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
-            .args(if cfg!(windows) { ["/C", "exit 3"] } else { ["-c", "exit 3"] })
+            .args(if cfg!(windows) {
+                ["/C", "exit 3"]
+            } else {
+                ["-c", "exit 3"]
+            })
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
         let handle = attach(connection, None, Some(child), None, Arc::new(|| {}));
         let events = wait_for(&handle, |events| {
-            events.iter().any(|event| matches!(event, KernelEvent::Exited { .. }))
+            events
+                .iter()
+                .any(|event| matches!(event, KernelEvent::Exited { .. }))
         });
         let Some(KernelEvent::Exited { details }) = events.last() else {
             panic!("expected the exit event last");
@@ -653,11 +755,16 @@ mod tests {
             name: "missing".into(),
             display_name: "Missing".into(),
             language: "x".into(),
-            argv: vec!["graphite-no-such-kernel-program".into(), "{connection_file}".into()],
+            argv: vec![
+                "graphite-no-such-kernel-program".into(),
+                "{connection_file}".into(),
+            ],
             env: Default::default(),
             interrupt_mode: "signal".into(),
         };
-        let error = launch(&spec, &std::env::temp_dir(), Arc::new(|| {})).err().unwrap();
+        let error = launch(&spec, &std::env::temp_dir(), Arc::new(|| {}))
+            .err()
+            .unwrap();
         assert!(error.contains("graphite-no-such-kernel-program"));
     }
 
@@ -673,7 +780,13 @@ mod tests {
             name: "python3".into(),
             display_name: "Python 3".into(),
             language: "python".into(),
-            argv: vec![python, "-m".into(), "ipykernel_launcher".into(), "-f".into(), "{connection_file}".into()],
+            argv: vec![
+                python,
+                "-m".into(),
+                "ipykernel_launcher".into(),
+                "-f".into(),
+                "{connection_file}".into(),
+            ],
             env: Default::default(),
             interrupt_mode: "signal".into(),
         };
@@ -694,11 +807,15 @@ mod tests {
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "ZeroDivisionError"
         )));
-        let id = handle.execute("import time\nend = time.time() + 30
+        let id = handle.execute(
+            "import time\nend = time.time() + 30
 while time.time() < end:
-    pass");
+    pass",
+        );
         wait_for(&handle, |events| {
-            events.iter().any(|event| matches!(event, KernelEvent::ExecuteInput { parent, .. } if parent == &id))
+            events.iter().any(
+                |event| matches!(event, KernelEvent::ExecuteInput { parent, .. } if parent == &id),
+            )
         });
         // Give the kernel time to be inside the loop; an interrupt before that is lost. (A busy loop,
         // because on Windows Python only notices the interrupt once `time.sleep` returns.)
@@ -711,7 +828,9 @@ while time.time() < end:
         )));
         handle.shutdown();
         wait_for(&handle, |events| {
-            events.iter().any(|event| matches!(event, KernelEvent::Exited { .. }))
+            events
+                .iter()
+                .any(|event| matches!(event, KernelEvent::Exited { .. }))
         });
     }
 
@@ -732,13 +851,20 @@ while time.time() < end:
         let handle = KernelHandle::from_parts(command_tx, event_rx, "k", true);
         let id = handle.execute("1 + 1");
         handle.interrupt();
-        let Command::Send { control: false, frames } = command_rx.recv().unwrap() else {
+        let Command::Send {
+            control: false,
+            frames,
+        } = command_rx.recv().unwrap()
+        else {
             panic!("expected a shell message");
         };
         let message = decode(b"k", &frames).unwrap();
         assert_eq!(message.id(), id);
         assert_eq!(message.content["code"], "1 + 1");
-        assert!(matches!(command_rx.recv().unwrap(), Command::Send { control: true, .. }));
+        assert!(matches!(
+            command_rx.recv().unwrap(),
+            Command::Send { control: true, .. }
+        ));
         assert!(matches!(command_rx.recv().unwrap(), Command::Signal));
         drop(handle);
         assert!(matches!(command_rx.recv().unwrap(), Command::Kill));

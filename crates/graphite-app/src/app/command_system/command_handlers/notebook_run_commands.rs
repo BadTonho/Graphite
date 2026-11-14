@@ -8,7 +8,9 @@ const NOTEBOOK: &str = "notebookFocus";
 type Entry = (&'static str, &'static str, Handler);
 
 fn run(app: &mut App, target: RunTarget) -> Result<(), CommandError> {
-    let sent = app.run_notebook_cells(target).map_err(CommandError::Failed)?;
+    let sent = app
+        .run_notebook_cells(target)
+        .map_err(CommandError::Failed)?;
     app.status = app.tf("notebook.running", &[("count", &sent)]);
     Ok(())
 }
@@ -93,29 +95,51 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             execute_and_insert_below,
         ),
         ("notebook.execute", "Run All Cells", execute_all),
-        ("notebook.cell.executeCellsAbove", "Run Cells Above", execute_above),
+        (
+            "notebook.cell.executeCellsAbove",
+            "Run Cells Above",
+            execute_above,
+        ),
         (
             "notebook.cell.executeCellAndBelow",
             "Run Cell and Below",
             execute_below,
         ),
         ("notebook.cancelExecution", "Interrupt the Kernel", cancel),
-        ("notebook.cell.clearOutputs", "Clear Cell Outputs", clear_outputs),
+        (
+            "notebook.cell.clearOutputs",
+            "Clear Cell Outputs",
+            clear_outputs,
+        ),
         (
             "notebook.clearAllCellsOutputs",
             "Clear All Outputs",
             clear_all_outputs,
         ),
-        ("notebook.selectKernel", "Select Notebook Kernel", select_kernel),
-        ("graphite.notebook.restartKernel", "Restart the Kernel", restart),
+        (
+            "notebook.selectKernel",
+            "Select Notebook Kernel",
+            select_kernel,
+        ),
+        (
+            "graphite.notebook.restartKernel",
+            "Restart the Kernel",
+            restart,
+        ),
         (
             "graphite.notebook.restartKernelAndRunAll",
             "Restart the Kernel and Run All Cells",
             restart_and_run_all,
         ),
-        ("graphite.notebook.shutdownKernel", "Shut Down the Kernel", shutdown),
+        (
+            "graphite.notebook.shutdownKernel",
+            "Shut Down the Kernel",
+            shutdown,
+        ),
     ];
     for (id, title, handler) in commands {
-        add(registry, id, title, "Notebook", ALL, NOTEBOOK, None, handler);
+        add(
+            registry, id, title, "Notebook", ALL, NOTEBOOK, None, handler,
+        );
     }
 }

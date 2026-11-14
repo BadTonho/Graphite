@@ -313,7 +313,11 @@ pub(crate) fn register(registry: &mut super::command_registry::CommandRegistry) 
         ("workbench.action.debug.stepInto", "Step Into", 4),
         ("workbench.action.debug.stepOut", "Step Out", 5),
         ("workbench.action.debug.restart", "Restart Debugging", 6),
-        ("editor.debug.action.toggleBreakpoint", "Toggle Breakpoint", 7),
+        (
+            "editor.debug.action.toggleBreakpoint",
+            "Toggle Breakpoint",
+            7,
+        ),
         (
             "graphite.debug.configureBreakpoint",
             "Configure Breakpoint (JSON)",

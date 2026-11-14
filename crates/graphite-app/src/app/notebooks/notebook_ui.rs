@@ -90,7 +90,8 @@ impl App {
             .group_rectangles(width, height, lh)
             .into_iter()
             .find(|rect| rect.id == focused);
-        let body = rect.map_or(height as f32, |rect| rect.height) - self.editor_tab_strip_height(lh);
+        let body =
+            rect.map_or(height as f32, |rect| rect.height) - self.editor_tab_strip_height(lh);
         let docked = self.interactive_input_height(lh);
         ((body - lh - docked).max(lh * 3.0), lh, cw)
     }
@@ -138,7 +139,11 @@ impl App {
         // Undo and redo span text and cells in both modes.
         if ctrl && matches!(lower.as_str(), "z" | "y") {
             let redo = lower == "y" || shift;
-            self.run_ui_command(if redo { "notebook.redo" } else { "notebook.undo" });
+            self.run_ui_command(if redo {
+                "notebook.redo"
+            } else {
+                "notebook.undo"
+            });
             return;
         }
         if editing {
@@ -265,16 +270,12 @@ impl App {
             Key::Named(NamedKey::ArrowRight) => caret!(move_right),
             Key::Named(NamedKey::Home) => caret!(move_home),
             Key::Named(NamedKey::End) => caret!(move_end),
-            Key::Named(NamedKey::ArrowUp) => {
-                self.with_notebook(|session| {
-                    session.move_vertical(-1, false);
-                })
-            }
-            Key::Named(NamedKey::ArrowDown) => {
-                self.with_notebook(|session| {
-                    session.move_vertical(1, false);
-                })
-            }
+            Key::Named(NamedKey::ArrowUp) => self.with_notebook(|session| {
+                session.move_vertical(-1, false);
+            }),
+            Key::Named(NamedKey::ArrowDown) => self.with_notebook(|session| {
+                session.move_vertical(1, false);
+            }),
             _ if ctrl && lower == "a" => self.with_notebook(|session| {
                 session.edit(|editor| {
                     let end = editor.len_chars();
@@ -309,12 +310,21 @@ impl App {
 
     /// A click inside a notebook: selects the cell, and a click on its input starts editing at
     /// that place.
-    pub(crate) fn notebook_click(&mut self, mx: f32, my: f32, rect: super::editor_groups::GroupRect) {
+    pub(crate) fn notebook_click(
+        &mut self,
+        mx: f32,
+        my: f32,
+        rect: super::editor_groups::GroupRect,
+    ) {
         let document = self.active_document();
         let (_, line_height, char_width) = self.notebook_viewport();
         let top = rect.y + self.editor_tab_strip_height(line_height) + line_height;
         // In an interactive window the input box is docked under the cells.
-        if self.active_notebook().and_then(Session::interactive).is_some() {
+        if self
+            .active_notebook()
+            .and_then(Session::interactive)
+            .is_some()
+        {
             let (viewport, _, _) = self.notebook_viewport();
             let box_top = top + viewport;
             if self.interactive_click(mx, my, box_top) {
@@ -331,9 +341,17 @@ impl App {
         };
         let cell = layouts[index];
         let in_input = y >= cell.input_top(line_height) && y < cell.output_top(line_height);
-        let line = ((y - cell.input_top(line_height)) / line_height).floor().max(0.0) as usize;
-        let gutter = if session.line_numbers { char_width * 5.0 } else { 0.0 };
-        let column = (((mx - rect.x - 16.0 - gutter) / char_width).round().max(0.0)) as usize;
+        let line = ((y - cell.input_top(line_height)) / line_height)
+            .floor()
+            .max(0.0) as usize;
+        let gutter = if session.line_numbers {
+            char_width * 5.0
+        } else {
+            0.0
+        };
+        let column = (((mx - rect.x - 16.0 - gutter) / char_width)
+            .round()
+            .max(0.0)) as usize;
         self.with_notebook(|session| {
             session.set_focus(index, false);
             if in_input {

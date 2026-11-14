@@ -83,7 +83,11 @@ impl App {
             .metadata()
             .language()
             .map(str::to_owned)
-            .or_else(|| session.interactive().and_then(|state| state.language_hint.clone()));
+            .or_else(|| {
+                session
+                    .interactive()
+                    .and_then(|state| state.language_hint.clone())
+            });
         let spec = match previous {
             Some(spec) => spec,
             None => {
@@ -91,7 +95,11 @@ impl App {
                 if specs.is_empty() {
                     return Err(self.t("notebook.error.no_kernels").into());
                 }
-                match crate::notebook::kernel::pick_spec(name.as_deref(), language.as_deref(), &specs) {
+                match crate::notebook::kernel::pick_spec(
+                    name.as_deref(),
+                    language.as_deref(),
+                    &specs,
+                ) {
                     Some(index) => specs[index].clone(),
                     None => {
                         self.open_kernel_picker();
@@ -100,7 +108,8 @@ impl App {
                 }
             }
         };
-        self.start_kernel(spec).map_err(|error| self.tf("notebook.error.start", &[("error", &error)]))
+        self.start_kernel(spec)
+            .map_err(|error| self.tf("notebook.error.start", &[("error", &error)]))
     }
 
     /// Runs the cells `target` stands for.
@@ -192,7 +201,10 @@ impl App {
 
     /// Ends the kernel and starts it again from the same spec; cells that were running stop.
     pub(crate) fn restart_kernel(&mut self) -> Result<(), String> {
-        let Some(spec) = self.active_notebook().and_then(|session| session.kernel_spec().cloned()) else {
+        let Some(spec) = self
+            .active_notebook()
+            .and_then(|session| session.kernel_spec().cloned())
+        else {
             return Err(self.t("notebook.error.no_kernel").into());
         };
         self.start_kernel(spec)

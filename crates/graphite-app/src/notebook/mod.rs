@@ -6,12 +6,16 @@ mod folding;
 mod interactive;
 pub(crate) mod kernel;
 mod layout;
-pub(crate) mod sections;
 mod model;
 mod output;
 pub(crate) mod rich;
+pub(crate) mod sections;
 mod session;
 
+#[allow(unused_imports)]
+pub(crate) use execution::{KernelStatus, RunState};
+#[allow(unused_imports)]
+pub(crate) use interactive::{Interactive, InteractiveKind};
 #[allow(unused_imports)]
 pub(crate) use layout::{cell_at, clamp_scroll, layout, scroll_to_show, CellLayout};
 #[allow(unused_imports)]
@@ -20,7 +24,3 @@ pub(crate) use model::{new_cell_id, Cell, CellKind, Notebook};
 pub(crate) use output::output_lines;
 #[allow(unused_imports)]
 pub(crate) use session::{CellState, Mode, Session};
-#[allow(unused_imports)]
-pub(crate) use execution::{KernelStatus, RunState};
-#[allow(unused_imports)]
-pub(crate) use interactive::{Interactive, InteractiveKind};

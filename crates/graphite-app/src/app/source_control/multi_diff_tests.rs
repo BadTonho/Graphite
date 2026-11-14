@@ -4,7 +4,11 @@ fn repo() -> (crate::test_support::TempDir, App) {
     let dir = crate::test_support::TempDir::new();
     gix::init(dir.path()).unwrap();
     let translator = graphite_i18n::Translator::english();
-    for (name, text) in [("a.txt", "1\n2\n3\n"), ("b.txt", "x\n"), ("gone.txt", "bye\n")] {
+    for (name, text) in [
+        ("a.txt", "1\n2\n3\n"),
+        ("b.txt", "x\n"),
+        ("gone.txt", "bye\n"),
+    ] {
         std::fs::write(dir.path().join(name), text).unwrap();
         crate::scm::stage_file(dir.path(), &dir.path().join(name), &translator).unwrap();
     }
@@ -72,7 +76,9 @@ fn nothing_to_show_and_not_a_repository_are_reported() {
     let mut app = App::new_with_options(plain.path().into(), None, true);
     app.run_ui_command("graphite.scm.openAllChanges");
     assert!(app.multi_diff.is_none());
-    assert!(app.status.starts_with(app.t("multi_diff.failed").split('{').next().unwrap()));
+    assert!(app
+        .status
+        .starts_with(app.t("multi_diff.failed").split('{').next().unwrap()));
 }
 
 #[test]
@@ -123,7 +129,11 @@ fn go_to_file_opens_the_file_at_the_change_and_closes_the_view() {
     app.run_ui_command("multiDiffEditor.goToNextChange");
     app.run_ui_command("multiDiffEditor.goToFile");
     assert!(app.multi_diff.is_none());
-    let path = app.documents[app.active_document()].buffer.path().unwrap().to_path_buf();
+    let path = app.documents[app.active_document()]
+        .buffer
+        .path()
+        .unwrap()
+        .to_path_buf();
     assert!(crate::same_file_path(&path, &dir.path().join("a.txt")));
     // The change is the second line.
     assert_eq!(app.cursor_line(), 1);
@@ -134,7 +144,10 @@ fn go_to_file_refuses_a_deleted_file_and_keeps_the_view() {
     let (dir, mut app) = repo();
     change(&dir);
     app.run_ui_command("graphite.scm.openAllUnstagedChanges");
-    let position = files(&app).iter().position(|name| name == "gone.txt").unwrap();
+    let position = files(&app)
+        .iter()
+        .position(|name| name == "gone.txt")
+        .unwrap();
     app.multi_diff.as_mut().unwrap().selected_file = position;
     app.multi_diff.as_mut().unwrap().list_focus = true;
     app.run_ui_command("multiDiffEditor.goToFile");

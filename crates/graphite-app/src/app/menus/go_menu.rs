@@ -855,10 +855,10 @@ impl App {
                     return;
                 };
                 match picker.kind {
-                    GoPickerKind::HistoryRestore => self.restore_history_version(&item.path, &origin),
-                    GoPickerKind::HistoryCompare => {
-                        self.compare_history_version(item.path, origin)
+                    GoPickerKind::HistoryRestore => {
+                        self.restore_history_version(&item.path, &origin)
                     }
+                    GoPickerKind::HistoryCompare => self.compare_history_version(item.path, origin),
                     _ => self.delete_history_version(&item.path),
                 }
             }

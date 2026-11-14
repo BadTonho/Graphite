@@ -1,6 +1,9 @@
 //! The Jupyter messaging protocol: signed multipart messages and the events a kernel reports.
 
-use ring::{hmac, rand::{SecureRandom, SystemRandom}};
+use ring::{
+    hmac,
+    rand::{SecureRandom, SystemRandom},
+};
 use serde_json::{json, Value};
 
 pub(crate) const DELIMITER: &[u8] = b"<IDS|MSG>";
@@ -57,7 +60,11 @@ fn timestamp() -> String {
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month_prime = (5 * day_of_year + 2) / 153;
     let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
-    let month = if month_prime < 10 { month_prime + 3 } else { month_prime - 9 };
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    };
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     format!(
         "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
@@ -108,7 +115,9 @@ impl Message {
 
     /// Id of the request this message answers, if any.
     pub(crate) fn parent_id(&self) -> Option<&str> {
-        self.parent_header["msg_id"].as_str().filter(|id| !id.is_empty())
+        self.parent_header["msg_id"]
+            .as_str()
+            .filter(|id| !id.is_empty())
     }
 }
 
@@ -159,7 +168,8 @@ pub(crate) fn decode(key: &[u8], frames: &[Vec<u8>]) -> Result<Message, String> 
         }
     }
     let parse = |bytes: &[u8]| -> Result<Value, String> {
-        serde_json::from_slice(bytes).map_err(|error| format!("a message part is not JSON: {error}"))
+        serde_json::from_slice(bytes)
+            .map_err(|error| format!("a message part is not JSON: {error}"))
     };
     Ok(Message {
         header: parse(&body[1])?,
@@ -186,16 +196,25 @@ pub(crate) enum KernelEvent {
         parent: Option<String>,
     },
     /// The kernel started running the code of a request.
-    ExecuteInput { parent: String, count: u64 },
+    ExecuteInput {
+        parent: String,
+        count: u64,
+    },
     /// An output of the request, as stored in a notebook cell.
-    Output { parent: String, output: Value },
+    Output {
+        parent: String,
+        output: Value,
+    },
     /// An output that replaces the one with the same `display_id`.
     UpdateDisplay {
         parent: String,
         display_id: String,
         output: Value,
     },
-    ClearOutput { parent: String, wait: bool },
+    ClearOutput {
+        parent: String,
+        wait: bool,
+    },
     /// The request finished.
     Reply {
         parent: String,
@@ -203,9 +222,14 @@ pub(crate) enum KernelEvent {
         count: Option<u64>,
     },
     /// The kernel process ended (or never came up); `details` is what it printed to stderr.
-    Exited { details: String },
+    Exited {
+        details: String,
+    },
     /// The kernel answered `kernel_info_request`.
-    Info { language: Option<String>, banner: Option<String> },
+    Info {
+        language: Option<String>,
+        banner: Option<String>,
+    },
 }
 
 /// Turns a message received from the kernel into an event, if it is one we use.
@@ -213,9 +237,10 @@ pub(crate) fn event_from(message: &Message) -> Option<KernelEvent> {
     let mut event = plain_event(message)?;
     // An output that can be updated later carries its display id, which the notebook does not
     // store; whoever applies the event takes it off again.
-    if let (KernelEvent::Output { output, .. }, Some(id)) =
-        (&mut event, message.content["transient"]["display_id"].as_str())
-    {
+    if let (KernelEvent::Output { output, .. }, Some(id)) = (
+        &mut event,
+        message.content["transient"]["display_id"].as_str(),
+    ) {
         output["transient"] = json!({"display_id": id});
     }
     Some(event)
@@ -321,7 +346,15 @@ mod tests {
     #[test]
     fn the_signature_matches_a_known_hmac_sha256() {
         // HMAC-SHA256("key", "The quick brown fox jumps over the lazy dog"), split into four parts.
-        let digest = signature(b"key", [b"The quick ", b"brown fox ", b"jumps over ", b"the lazy dog"]);
+        let digest = signature(
+            b"key",
+            [
+                b"The quick ",
+                b"brown fox ",
+                b"jumps over ",
+                b"the lazy dog",
+            ],
+        );
         assert_eq!(
             digest,
             "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
@@ -332,7 +365,9 @@ mod tests {
     fn tampering_or_a_wrong_key_is_detected() {
         let message = Message::request("status", "s", json!({"execution_state": "idle"}));
         let mut frames = encode(KEY, &[], &message);
-        assert!(decode(b"another-key", &frames).unwrap_err().contains("signature"));
+        assert!(decode(b"another-key", &frames)
+            .unwrap_err()
+            .contains("signature"));
         *frames.last_mut().unwrap() = br#"{"execution_state":"busy"}"#.to_vec();
         assert!(decode(KEY, &frames).unwrap_err().contains("signature"));
     }
@@ -348,7 +383,9 @@ mod tests {
     #[test]
     fn malformed_messages_are_errors_not_panics() {
         assert!(decode(KEY, &[b"no delimiter".to_vec()]).is_err());
-        assert!(decode(KEY, &[DELIMITER.to_vec(), b"sig".to_vec()]).unwrap_err().contains("incomplete"));
+        assert!(decode(KEY, &[DELIMITER.to_vec(), b"sig".to_vec()])
+            .unwrap_err()
+            .contains("incomplete"));
         let frames = vec![
             DELIMITER.to_vec(),
             Vec::new(),
@@ -388,7 +425,10 @@ mod tests {
         else {
             panic!("expected an output");
         };
-        assert_eq!(output, json!({"output_type": "stream", "name": "stderr", "text": "warn\n"}));
+        assert_eq!(
+            output,
+            json!({"output_type": "stream", "name": "stderr", "text": "warn\n"})
+        );
         let Some(KernelEvent::Output { output, .. }) = event(
             "execute_result",
             json!({"execution_count": 3, "data": {"text/plain": "2"}, "metadata": {}}),
@@ -404,7 +444,9 @@ mod tests {
             panic!("expected an output");
         };
         assert_eq!(output["traceback"], json!(["t"]));
-        let Some(KernelEvent::Output { output, .. }) = event("display_data", json!({"data": {"image/png": "AA"}})) else {
+        let Some(KernelEvent::Output { output, .. }) =
+            event("display_data", json!({"data": {"image/png": "AA"}}))
+        else {
             panic!("expected an output");
         };
         assert_eq!(output["metadata"], json!({}));
@@ -419,7 +461,8 @@ mod tests {
             panic!("expected an output");
         };
         assert_eq!(output["transient"]["display_id"], "d9");
-        let Some(KernelEvent::Output { output, .. }) = event("display_data", json!({"data": {}})) else {
+        let Some(KernelEvent::Output { output, .. }) = event("display_data", json!({"data": {}}))
+        else {
             panic!("expected an output");
         };
         assert!(output.get("transient").is_none());
@@ -429,7 +472,10 @@ mod tests {
     fn status_replies_and_housekeeping_messages() {
         assert!(matches!(
             event("status", json!({"execution_state": "busy"})),
-            Some(KernelEvent::Status { state: KernelState::Busy, parent: Some(_) })
+            Some(KernelEvent::Status {
+                state: KernelState::Busy,
+                parent: Some(_)
+            })
         ));
         assert_eq!(event("status", json!({"execution_state": "mystery"})), None);
         assert!(matches!(
@@ -437,21 +483,37 @@ mod tests {
             Some(KernelEvent::ExecuteInput { count: 7, .. })
         ));
         assert!(matches!(
-            event("execute_reply", json!({"status": "error", "execution_count": 7})),
-            Some(KernelEvent::Reply { ok: false, count: Some(7), .. })
+            event(
+                "execute_reply",
+                json!({"status": "error", "execution_count": 7})
+            ),
+            Some(KernelEvent::Reply {
+                ok: false,
+                count: Some(7),
+                ..
+            })
         ));
         assert!(matches!(
             event("clear_output", json!({"wait": true})),
             Some(KernelEvent::ClearOutput { wait: true, .. })
         ));
         assert!(matches!(
-            event("update_display_data", json!({"data": {}, "transient": {"display_id": "d1"}})),
+            event(
+                "update_display_data",
+                json!({"data": {}, "transient": {"display_id": "d1"}})
+            ),
             Some(KernelEvent::UpdateDisplay { .. })
         ));
         assert_eq!(event("update_display_data", json!({"data": {}})), None);
         assert!(matches!(
-            event("kernel_info_reply", json!({"language_info": {"name": "python"}, "banner": "b"})),
-            Some(KernelEvent::Info { language: Some(_), .. })
+            event(
+                "kernel_info_reply",
+                json!({"language_info": {"name": "python"}, "banner": "b"})
+            ),
+            Some(KernelEvent::Info {
+                language: Some(_),
+                ..
+            })
         ));
         assert_eq!(event("comm_open", json!({})), None);
     }

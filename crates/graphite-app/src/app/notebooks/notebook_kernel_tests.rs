@@ -1,6 +1,8 @@
 use super::go_menu::GoPickerKind;
 use super::*;
-use crate::notebook::kernel::{decode_for_tests, Command, KernelEvent, KernelHandle, KernelSpec, KernelState, Notify};
+use crate::notebook::kernel::{
+    decode_for_tests, Command, KernelEvent, KernelHandle, KernelSpec, KernelState, Notify,
+};
 use crate::notebook::{KernelStatus, Mode, RunState};
 use serde_json::json;
 use std::cell::RefCell;
@@ -91,7 +93,10 @@ pub(crate) fn requests(index: usize) -> Vec<(String, String)> {
             if let Command::Send { frames, .. } = command {
                 let message = decode_for_tests(b"key", &frames);
                 if message.msg_type() == "execute_request" {
-                    found.push((message.id().to_owned(), message.content["code"].as_str().unwrap().to_owned()));
+                    found.push((
+                        message.id().to_owned(),
+                        message.content["code"].as_str().unwrap().to_owned(),
+                    ));
                 }
             }
         }
@@ -113,7 +118,10 @@ fn running_a_cell_starts_the_kernel_the_notebook_names_and_sends_the_code() {
     app.run_ui_command("notebook.focusNextEditor");
     app.run_ui_command("notebook.cell.execute");
     assert_eq!(started(), 1);
-    assert_eq!(app.status, app.tf("notebook.running", &[("count", &1usize)]));
+    assert_eq!(
+        app.status,
+        app.tf("notebook.running", &[("count", &1usize)])
+    );
     let sent = requests(0);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].1, "print('hi')");
@@ -129,8 +137,20 @@ fn kernel_events_become_outputs_and_reach_the_document_text() {
     app.run_ui_command("notebook.focusNextEditor");
     app.run_ui_command("notebook.cell.execute");
     let id = requests(0).remove(0).0;
-    send(0, KernelEvent::Status { state: KernelState::Busy, parent: Some(id.clone()) });
-    send(0, KernelEvent::ExecuteInput { parent: id.clone(), count: 7 });
+    send(
+        0,
+        KernelEvent::Status {
+            state: KernelState::Busy,
+            parent: Some(id.clone()),
+        },
+    );
+    send(
+        0,
+        KernelEvent::ExecuteInput {
+            parent: id.clone(),
+            count: 7,
+        },
+    );
     send(
         0,
         KernelEvent::Output {
@@ -138,8 +158,21 @@ fn kernel_events_become_outputs_and_reach_the_document_text() {
             output: json!({"output_type": "stream", "name": "stdout", "text": "hi there\n"}),
         },
     );
-    send(0, KernelEvent::Reply { parent: id.clone(), ok: true, count: Some(7) });
-    send(0, KernelEvent::Status { state: KernelState::Idle, parent: Some(id) });
+    send(
+        0,
+        KernelEvent::Reply {
+            parent: id.clone(),
+            ok: true,
+            count: Some(7),
+        },
+    );
+    send(
+        0,
+        KernelEvent::Status {
+            state: KernelState::Idle,
+            parent: Some(id),
+        },
+    );
     app.poll_kernels();
     let cell = &session(&app).cells[1].cell;
     assert_eq!(cell.execution_count, Some(7));
@@ -193,7 +226,10 @@ fn an_ambiguous_choice_opens_the_kernel_picker_instead_of_guessing() {
     )
     .unwrap();
     let mut app = App::new_with_options(dir.path().into(), None, true);
-    configure(&mut app, vec![spec("py-a", "python"), spec("py-b", "python")]);
+    configure(
+        &mut app,
+        vec![spec("py-a", "python"), spec("py-b", "python")],
+    );
     app.open_file(path);
     app.run_ui_command("notebook.cell.execute");
     assert_eq!(started(), 0);
@@ -323,16 +359,28 @@ fn shutting_down_stops_the_kernel_and_the_next_run_starts_a_new_one() {
         let started = started.borrow();
         let mut asked = false;
         while let Ok(command) = started[0].commands.try_recv() {
-            if let Command::Send { control: true, frames } = command {
+            if let Command::Send {
+                control: true,
+                frames,
+            } = command
+            {
                 asked |= decode_for_tests(b"key", &frames).msg_type() == "shutdown_request";
             }
         }
         asked
     });
     assert!(asked);
-    send(0, KernelEvent::Exited { details: String::new() });
+    send(
+        0,
+        KernelEvent::Exited {
+            details: String::new(),
+        },
+    );
     app.poll_kernels();
-    assert_eq!(session(&app).kernel_status(), &KernelStatus::Dead(String::new()));
+    assert_eq!(
+        session(&app).kernel_status(),
+        &KernelStatus::Dead(String::new())
+    );
     app.run_ui_command("notebook.cell.execute");
     assert_eq!(started(), 2);
     assert_eq!(requests(1).len(), 1);
@@ -348,7 +396,10 @@ fn outputs_can_be_cleared_for_the_selection_or_everywhere() {
     assert_eq!(session(&app).cells[1].cell.execution_count, None);
     assert!(!buffer_text(&app).contains("old\\n"));
     app.run_ui_command("notebook.clearAllCellsOutputs");
-    assert!(session(&app).cells.iter().all(|state| state.cell.outputs.is_empty()));
+    assert!(session(&app)
+        .cells
+        .iter()
+        .all(|state| state.cell.outputs.is_empty()));
 }
 
 #[test]
@@ -375,7 +426,13 @@ fn the_kernel_label_names_the_kernel_and_its_state() {
     assert!(label.starts_with("python3"), "{label}");
     assert!(label.contains(app.t("notebook.kernel.not_started")));
     app.run_ui_command("notebook.cell.execute");
-    send(0, KernelEvent::Status { state: KernelState::Idle, parent: None });
+    send(
+        0,
+        KernelEvent::Status {
+            state: KernelState::Idle,
+            parent: None,
+        },
+    );
     app.poll_kernels();
     let label = app.notebook_kernel_label(session(&app));
     assert!(label.starts_with("python3 display"), "{label}");

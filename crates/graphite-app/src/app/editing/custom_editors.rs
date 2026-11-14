@@ -137,7 +137,7 @@ impl App {
             ),
             encoding: crate::file_format::Encoding::Utf8,
             line_ending: crate::file_format::LineEnding::Lf,
-                    notebook: None,
+            notebook: None,
         };
         self.push_navigation_location();
         let id = self.documents.push(tab);

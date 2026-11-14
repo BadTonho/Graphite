@@ -293,7 +293,10 @@ impl super::App {
             "notebookCommandMode".into(),
             (in_notebook && !editing_notebook).to_string(),
         );
-        global.insert("multiDiffVisible".into(), self.multi_diff.is_some().to_string());
+        global.insert(
+            "multiDiffVisible".into(),
+            self.multi_diff.is_some().to_string(),
+        );
         global.insert(
             "mergeEditorVisible".into(),
             self.merge_editor.is_some().to_string(),

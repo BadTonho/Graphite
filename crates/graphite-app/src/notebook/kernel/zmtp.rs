@@ -54,7 +54,11 @@ fn protocol_error(message: &str) -> io::Error {
 }
 
 impl Socket {
-    fn handshake(mut stream: TcpStream, socket_type: &str, identity: Option<&[u8]>) -> io::Result<Self> {
+    fn handshake(
+        mut stream: TcpStream,
+        socket_type: &str,
+        identity: Option<&[u8]>,
+    ) -> io::Result<Self> {
         stream.set_nodelay(true).ok();
         stream.write_all(&greeting())?;
         stream.write_all(&ready_command(socket_type, identity))?;
@@ -73,7 +77,11 @@ impl Socket {
     }
 
     /// Connects to a listening peer as a socket of `socket_type` (`DEALER`, `SUB`, ...).
-    pub(crate) fn connect(address: &str, socket_type: &str, identity: Option<&[u8]>) -> io::Result<Self> {
+    pub(crate) fn connect(
+        address: &str,
+        socket_type: &str,
+        identity: Option<&[u8]>,
+    ) -> io::Result<Self> {
         let stream = TcpStream::connect(address)?;
         Self::handshake(stream, socket_type, identity)
     }
@@ -138,7 +146,11 @@ impl Socket {
     pub(crate) fn send(&mut self, frames: &[Vec<u8>]) -> io::Result<()> {
         let mut bytes = Vec::new();
         for (index, frame) in frames.iter().enumerate() {
-            let mut flags = if index + 1 < frames.len() { FLAG_MORE } else { 0 };
+            let mut flags = if index + 1 < frames.len() {
+                FLAG_MORE
+            } else {
+                0
+            };
             if frame.len() > 255 {
                 flags |= FLAG_LONG;
                 bytes.push(flags);
@@ -189,7 +201,9 @@ mod tests {
     fn long_frames_use_the_eight_byte_length() {
         let (mut client, mut server) = pair("DEALER", "ROUTER");
         let big = vec![7u8; 70_000];
-        client.send(&[big.clone(), vec![1; 255], vec![2; 256]]).unwrap();
+        client
+            .send(&[big.clone(), vec![1; 255], vec![2; 256]])
+            .unwrap();
         let received = server.recv().unwrap();
         assert_eq!(received[0], big);
         assert_eq!(received[1].len(), 255);
@@ -202,7 +216,9 @@ mod tests {
         subscriber.subscribe_all().unwrap();
         // The publisher sees the subscription as a message starting with 1.
         assert_eq!(publisher.recv().unwrap(), vec![vec![1u8]]);
-        publisher.send(&[b"topic".to_vec(), b"body".to_vec()]).unwrap();
+        publisher
+            .send(&[b"topic".to_vec(), b"body".to_vec()])
+            .unwrap();
         assert_eq!(
             subscriber.recv().unwrap(),
             vec![b"topic".to_vec(), b"body".to_vec()]
@@ -240,13 +256,18 @@ mod tests {
         let mut header = vec![FLAG_LONG];
         header.extend_from_slice(&(MAX_FRAME + 1).to_be_bytes());
         raw.write_all(&header).unwrap();
-        assert_eq!(client.recv().unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            client.recv().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
     }
 
     #[test]
     fn a_read_timeout_returns_instead_of_blocking() {
         let (mut client, _server) = pair("DEALER", "ROUTER");
-        client.set_read_timeout(Some(Duration::from_millis(30))).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_millis(30)))
+            .unwrap();
         let error = client.recv().unwrap_err();
         assert!(matches!(
             error.kind(),

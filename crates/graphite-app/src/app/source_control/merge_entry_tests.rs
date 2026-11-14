@@ -41,7 +41,11 @@ fn the_conflict_view_hands_over_to_the_merge_editor() {
     let (_dir, mut app, path) = conflicted_repo(MARKED);
     app.conflict_view = Some(super::scm_ui::ConflictView {
         path: path.clone(),
-        sides: [Some("base\n".into()), Some("ours\n".into()), Some("theirs\n".into())],
+        sides: [
+            Some("base\n".into()),
+            Some("ours\n".into()),
+            Some("theirs\n".into()),
+        ],
     });
     app.run_ui_command("graphite.conflict.openMergeEditor");
     assert!(app.conflict_view.is_none());

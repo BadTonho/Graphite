@@ -27,7 +27,9 @@ impl App {
                 scope: self.tf("notebook.find.cell", &[("number", &(found.cell + 1))]),
             })
             .collect();
-        let message = items.is_empty().then(|| self.t("notebook.find.empty").to_owned());
+        let message = items
+            .is_empty()
+            .then(|| self.t("notebook.find.empty").to_owned());
         self.command_palette = None;
         self.quick_open = None;
         self.local_search = None;
@@ -82,7 +84,10 @@ impl App {
         if single {
             return self.run_notebook_cells(RunTarget::Selected);
         }
-        let Some(range) = self.active_notebook().and_then(|session| session.focused_section()) else {
+        let Some(range) = self
+            .active_notebook()
+            .and_then(|session| session.focused_section())
+        else {
             return Err(self.t("notebook.section.none").into());
         };
         self.run_notebook_range(range)

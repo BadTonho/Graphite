@@ -27,17 +27,46 @@ impl App {
         let dim = rgb(Theme::color(Theme::DIM, 0x616161));
         // The strip above the cells names the kernel and what it is doing.
         let strip_top = rect.y + top;
-        r.set_clip(Some([rect.x, strip_top, rect.x + rect.width, strip_top + lh]));
-        r.draw_rect(rect.x, strip_top, rect.width, lh, rgb(Theme::color(0x2d2d30, 0xececec)));
-        r.draw_text(&self.notebook_kernel_label(session), rect.x + 16.0, strip_top, dim);
+        r.set_clip(Some([
+            rect.x,
+            strip_top,
+            rect.x + rect.width,
+            strip_top + lh,
+        ]));
+        r.draw_rect(
+            rect.x,
+            strip_top,
+            rect.width,
+            lh,
+            rgb(Theme::color(0x2d2d30, 0xececec)),
+        );
+        r.draw_text(
+            &self.notebook_kernel_label(session),
+            rect.x + 16.0,
+            strip_top,
+            dim,
+        );
         let body_top = strip_top + lh;
-        let input_height = session.interactive().map_or(0.0, |state| (state.input_lines() + 1) as f32 * lh);
+        let input_height = session
+            .interactive()
+            .map_or(0.0, |state| (state.input_lines() + 1) as f32 * lh);
         let body_height = (rect.height - top - lh - input_height).max(0.0);
         let active_group = rect.id == self.editor_groups.focused();
         let layouts = notebook::layout(session, lh);
         let hidden = session.hidden_cells();
-        r.set_clip(Some([rect.x, body_top, rect.x + rect.width, body_top + body_height]));
-        r.draw_rect(rect.x, body_top, rect.width, body_height, rgb(Theme::color(Theme::BG, 0xffffff)));
+        r.set_clip(Some([
+            rect.x,
+            body_top,
+            rect.x + rect.width,
+            body_top + body_height,
+        ]));
+        r.draw_rect(
+            rect.x,
+            body_top,
+            rect.width,
+            body_height,
+            rgb(Theme::color(Theme::BG, 0xffffff)),
+        );
         let left = rect.x + 16.0;
         let gutter = if session.line_numbers { cw * 5.0 } else { 0.0 };
         let text_left = left + gutter;
@@ -53,7 +82,13 @@ impl App {
             let selected = session.is_selected(index);
             let focused = index == session.focus;
             if selected {
-                r.draw_rect(rect.x, y, rect.width, cell.height - lh * 0.6, tint(0x2a2d33, 0xf0f6ff));
+                r.draw_rect(
+                    rect.x,
+                    y,
+                    rect.width,
+                    cell.height - lh * 0.6,
+                    tint(0x2a2d33, 0xf0f6ff),
+                );
             }
             if focused {
                 let bar = if session.mode == Mode::Edit && active_group {
@@ -70,7 +105,13 @@ impl App {
                     None => "[ ]".to_owned(),
                 },
                 CellKind::Markdown if session.is_folded(index) => {
-                    format!("markdown ▸ {}", self.tf("notebook.section.folded", &[("count", &session.folded_count(index))]))
+                    format!(
+                        "markdown ▸ {}",
+                        self.tf(
+                            "notebook.section.folded",
+                            &[("count", &session.folded_count(index))]
+                        )
+                    )
                 }
                 CellKind::Markdown => "markdown".to_owned(),
                 CellKind::Raw => "raw".to_owned(),
@@ -86,7 +127,12 @@ impl App {
                 tint(0x252526, 0xf7f7f7),
             );
             if state.input_collapsed {
-                r.draw_text(&format!("… {}", self.t("notebook.input_collapsed")), text_left, input_y, dim);
+                r.draw_text(
+                    &format!("… {}", self.t("notebook.input_collapsed")),
+                    text_left,
+                    input_y,
+                    dim,
+                );
             } else {
                 let buffer = &state.buffer;
                 let selection = buffer.view(&state.selection).selection();
@@ -100,10 +146,15 @@ impl App {
                     if session.line_numbers {
                         r.draw_text(&format!("{:>4}", line + 1), left, line_y, dim);
                     }
-                    if let (Some(selection), true) = (selection, focused && session.mode == Mode::Edit) {
+                    if let (Some(selection), true) =
+                        (selection, focused && session.mode == Mode::Edit)
+                    {
                         let start = buffer.line_start_char(line);
                         let width = content.chars().count();
-                        let (from, to) = (selection.anchor.min(selection.head), selection.anchor.max(selection.head));
+                        let (from, to) = (
+                            selection.anchor.min(selection.head),
+                            selection.anchor.max(selection.head),
+                        );
                         let low = from.max(start);
                         let high = to.min(start + width + 1);
                         if low < high {
@@ -116,7 +167,12 @@ impl App {
                             );
                         }
                     }
-                    r.draw_text(&content.chars().take(columns).collect::<String>(), text_left, line_y, text);
+                    r.draw_text(
+                        &content.chars().take(columns).collect::<String>(),
+                        text_left,
+                        line_y,
+                        text,
+                    );
                 }
                 if focused && session.mode == Mode::Edit && active_group {
                     let (line, column) = buffer.view(&state.selection).cursor_line_col();
@@ -133,7 +189,12 @@ impl App {
             if cell.output_lines > 0 {
                 let output_y = y + cell.output_top(lh) - cell.top;
                 if state.output_collapsed {
-                    r.draw_text(&format!("… {}", self.t("notebook.output_collapsed")), text_left, output_y, dim);
+                    r.draw_text(
+                        &format!("… {}", self.t("notebook.output_collapsed")),
+                        text_left,
+                        output_y,
+                        dim,
+                    );
                 } else {
                     let mut row = 0usize;
                     for block in state.blocks().iter() {
@@ -147,11 +208,22 @@ impl App {
                                     if line_y + lh < body_top || line_y > body_top + body_height {
                                         continue;
                                     }
-                                    r.draw_text(&content.chars().take(columns).collect::<String>(), text_left, line_y, dim);
+                                    r.draw_text(
+                                        &content.chars().take(columns).collect::<String>(),
+                                        text_left,
+                                        line_y,
+                                        dim,
+                                    );
                                 }
                             }
                             Block::Image(image) => {
-                                r.draw_image(&image.image, text_left, output_y + lh * row as f32, image.width, image.height);
+                                r.draw_image(
+                                    &image.image,
+                                    text_left,
+                                    output_y + lh * row as f32,
+                                    image.width,
+                                    image.height,
+                                );
                                 row += rows;
                             }
                         }
@@ -161,18 +233,36 @@ impl App {
         }
         // The heading of the section being read stays pinned at the top.
         if session.sticky_scroll {
-            if let Some(heading) = notebook::sections::sticky_heading(session, &layouts, session.scroll) {
+            if let Some(heading) =
+                notebook::sections::sticky_heading(session, &layouts, session.scroll)
+            {
                 let title = notebook::sections::heading_text(session, heading).unwrap_or_default();
                 r.draw_rect(rect.x, body_top, rect.width, lh, tint(0x2d2d30, 0xececec));
-                r.draw_text(&title.chars().take(columns).collect::<String>(), left, body_top, text);
+                r.draw_text(
+                    &title.chars().take(columns).collect::<String>(),
+                    left,
+                    body_top,
+                    text,
+                );
             }
         }
         r.set_clip(None);
         if let Some(state) = session.interactive() {
             let box_top = body_top + body_height;
             let box_height = (state.input_lines() + 1) as f32 * lh;
-            r.set_clip(Some([rect.x, box_top, rect.x + rect.width, box_top + box_height]));
-            r.draw_rect(rect.x, box_top, rect.width, box_height, tint(0x252526, 0xf3f3f3));
+            r.set_clip(Some([
+                rect.x,
+                box_top,
+                rect.x + rect.width,
+                box_top + box_height,
+            ]));
+            r.draw_rect(
+                rect.x,
+                box_top,
+                rect.width,
+                box_height,
+                tint(0x252526, 0xf3f3f3),
+            );
             r.draw_rect(rect.x, box_top, rect.width, 1.0, tint(0x3c3c3c, 0xd0d0d0));
             let hint = match state.kind {
                 notebook::InteractiveKind::Window => "notebook.interactive.hint_window",
@@ -181,10 +271,13 @@ impl App {
             r.draw_text(self.t(hint), left, box_top, dim);
             let focused = state.input_focused && active_group;
             let selection = state.input.view(&state.input_selection).selection();
-            let (cursor_line, cursor_column) = state.input.view(&state.input_selection).cursor_line_col();
+            let (cursor_line, cursor_column) =
+                state.input.view(&state.input_selection).cursor_line_col();
             // The box shows a window of its lines that always includes the caret.
             let shown = state.input_lines();
-            let first = cursor_line.saturating_sub(shown - 1).min(state.input.len_lines().saturating_sub(shown));
+            let first = cursor_line
+                .saturating_sub(shown - 1)
+                .min(state.input.len_lines().saturating_sub(shown));
             let input_left = left + cw * 2.0;
             let input_columns = (((rect.x + rect.width - input_left - PAD) / cw).max(1.0)) as usize;
             for row in 0..shown {
@@ -199,13 +292,27 @@ impl App {
                 if let (Some(selection), true) = (selection, focused) {
                     let start = state.input.line_start_char(line);
                     let width = content.chars().count();
-                    let (from, to) = (selection.anchor.min(selection.head), selection.anchor.max(selection.head));
+                    let (from, to) = (
+                        selection.anchor.min(selection.head),
+                        selection.anchor.max(selection.head),
+                    );
                     let (low, high) = (from.max(start), to.min(start + width + 1));
                     if low < high {
-                        r.draw_rect(input_left + cw * (low - start) as f32, y, cw * (high - low) as f32, lh, tint(0x264f78, 0xadd6ff));
+                        r.draw_rect(
+                            input_left + cw * (low - start) as f32,
+                            y,
+                            cw * (high - low) as f32,
+                            lh,
+                            tint(0x264f78, 0xadd6ff),
+                        );
                     }
                 }
-                r.draw_text(&content.chars().take(input_columns).collect::<String>(), input_left, y, text);
+                r.draw_text(
+                    &content.chars().take(input_columns).collect::<String>(),
+                    input_left,
+                    y,
+                    text,
+                );
             }
             if focused && cursor_line >= first && cursor_line < first + shown {
                 r.draw_rect(

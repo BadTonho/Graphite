@@ -104,7 +104,11 @@ impl App {
         } else {
             current.saturating_sub(1)
         };
-        self.sticky_focus = Some(StickyFocus { view, scroll_line, index });
+        self.sticky_focus = Some(StickyFocus {
+            view,
+            scroll_line,
+            index,
+        });
     }
 
     /// Moves the cursor to the focused header and returns focus to the text.
@@ -115,7 +119,9 @@ impl App {
             return;
         };
         self.sticky_focus = None;
-        let Some(header) = headers.get(index) else { return };
+        let Some(header) = headers.get(index) else {
+            return;
+        };
         let line = header.line;
         self.editor_mut().set_cursor_line_col(line, 0);
         self.push_navigation_location();

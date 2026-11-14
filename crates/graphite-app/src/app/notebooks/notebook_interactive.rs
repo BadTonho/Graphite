@@ -65,7 +65,11 @@ impl App {
 
     /// Runs what is in the input box. The input stays in the box when no kernel can be had.
     pub(crate) fn interactive_execute(&mut self) -> Result<(), String> {
-        if self.active_notebook().and_then(Session::interactive).is_none() {
+        if self
+            .active_notebook()
+            .and_then(Session::interactive)
+            .is_none()
+        {
             return Err(self.t("notebook.interactive.not_open").into());
         }
         let blank = self
@@ -276,7 +280,9 @@ impl App {
             .min(state.input.len_lines().saturating_sub(shown));
         let row = (((my - box_top) / line_height).floor() as isize - 1).max(0) as usize;
         let line = first + row;
-        let column = (((mx - 16.0 - char_width * 2.0) / char_width).round().max(0.0)) as usize;
+        let column = (((mx - 16.0 - char_width * 2.0) / char_width)
+            .round()
+            .max(0.0)) as usize;
         self.with_notebook(|session| {
             session.focus_input(true);
             session.edit_input(|editor| {

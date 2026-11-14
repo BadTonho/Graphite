@@ -4,7 +4,9 @@ use crate::notebook::kernel::{KernelEvent, KernelState};
 use crate::notebook::{InteractiveKind, KernelStatus, Session};
 use serde_json::json;
 
-fn app_with(specs: Vec<crate::notebook::kernel::KernelSpec>) -> (crate::test_support::TempDir, App) {
+fn app_with(
+    specs: Vec<crate::notebook::kernel::KernelSpec>,
+) -> (crate::test_support::TempDir, App) {
     let dir = crate::test_support::TempDir::new();
     let mut app = App::new_with_options(dir.path().into(), None, true);
     configure(&mut app, specs);
@@ -32,9 +34,13 @@ fn opening_gives_an_interactive_tab_that_is_never_modified() {
     let document = app.active_document();
     assert!(!app.documents[document].is_dirty());
     let label = super::group_drawing::tab_label(&app.documents[document], &app.translator);
-    assert!(label.contains(app.t("notebook.interactive.title")), "{label}");
+    assert!(
+        label.contains(app.t("notebook.interactive.title")),
+        "{label}"
+    );
     app.run_ui_command("graphite.repl.open");
-    let label = super::group_drawing::tab_label(&app.documents[app.active_document()], &app.translator);
+    let label =
+        super::group_drawing::tab_label(&app.documents[app.active_document()], &app.translator);
     assert!(label.contains(app.t("notebook.repl.title")), "{label}");
     assert_eq!(interactive(&app).kind, InteractiveKind::Repl);
 }
@@ -53,7 +59,13 @@ fn running_the_input_starts_a_kernel_adds_a_cell_and_shows_the_outputs() {
     assert_eq!(session(&app).cells.len(), 1);
     assert_eq!(session(&app).cells[0].text(), "1 + 1");
     let id = sent[0].0.clone();
-    send(0, KernelEvent::ExecuteInput { parent: id.clone(), count: 1 });
+    send(
+        0,
+        KernelEvent::ExecuteInput {
+            parent: id.clone(),
+            count: 1,
+        },
+    );
     send(
         0,
         KernelEvent::Output {
@@ -61,8 +73,21 @@ fn running_the_input_starts_a_kernel_adds_a_cell_and_shows_the_outputs() {
             output: json!({"output_type": "execute_result", "execution_count": 1, "data": {"text/plain": "2"}, "metadata": {}}),
         },
     );
-    send(0, KernelEvent::Reply { parent: id.clone(), ok: true, count: Some(1) });
-    send(0, KernelEvent::Status { state: KernelState::Idle, parent: Some(id) });
+    send(
+        0,
+        KernelEvent::Reply {
+            parent: id.clone(),
+            ok: true,
+            count: Some(1),
+        },
+    );
+    send(
+        0,
+        KernelEvent::Status {
+            state: KernelState::Idle,
+            parent: Some(id),
+        },
+    );
     app.poll_kernels();
     assert_eq!(session(&app).cells[0].cell.outputs.len(), 1);
     assert_eq!(session(&app).kernel_status(), &KernelStatus::Idle);

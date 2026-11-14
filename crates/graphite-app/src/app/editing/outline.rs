@@ -174,7 +174,10 @@ pub(crate) fn build_rows(
 impl App {
     /// The outline of a notebook: the headings of its markdown cells and, as the view is set,
     /// its code cells and what they declare. The "line" of each entry is the index of the cell.
-    fn notebook_outline_entries(&self, session: &crate::notebook::Session) -> Vec<(usize, String, usize)> {
+    fn notebook_outline_entries(
+        &self,
+        session: &crate::notebook::Session,
+    ) -> Vec<(usize, String, usize)> {
         use crate::notebook::{sections, CellKind};
         let mut entries = Vec::new();
         // Depth of what is under the heading that was seen last.
@@ -210,7 +213,11 @@ impl App {
                         .any(|keyword| trimmed.starts_with(keyword));
                     if declares {
                         let header = trimmed.trim_end_matches([':', '{', ' ']).to_owned();
-                        entries.push((index, header, depth + 1 + usize::from(self.outline.notebook_code_cells)));
+                        entries.push((
+                            index,
+                            header,
+                            depth + 1 + usize::from(self.outline.notebook_code_cells),
+                        ));
                     }
                 }
             }

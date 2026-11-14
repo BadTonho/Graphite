@@ -1,7 +1,8 @@
 use super::merge_editor::{BasePlacement, MergeLayout};
 use super::*;
 
-const CONFLICTED: &str = "top\n<<<<<<< HEAD\nours\n||||||| base\nold\n=======\ntheirs\n>>>>>>> topic\nbottom\n";
+const CONFLICTED: &str =
+    "top\n<<<<<<< HEAD\nours\n||||||| base\nold\n=======\ntheirs\n>>>>>>> topic\nbottom\n";
 
 fn app_with(text: &str) -> (crate::test_support::TempDir, App, PathBuf) {
     let dir = crate::test_support::TempDir::new();
@@ -40,9 +41,15 @@ fn merge_commands_are_disabled_until_the_editor_is_open() {
     assert!(app.status.contains("merge.columnLayout"));
     app.open_merge_editor(path).unwrap();
     app.run_ui_command("merge.columnLayout");
-    assert_eq!(app.merge_editor.as_ref().unwrap().layout, MergeLayout::Column);
+    assert_eq!(
+        app.merge_editor.as_ref().unwrap().layout,
+        MergeLayout::Column
+    );
     app.run_ui_command("merge.mixedLayout");
-    assert_eq!(app.merge_editor.as_ref().unwrap().layout, MergeLayout::Mixed);
+    assert_eq!(
+        app.merge_editor.as_ref().unwrap().layout,
+        MergeLayout::Mixed
+    );
 }
 
 #[test]

@@ -182,8 +182,18 @@ fn toggle_line_numbers(app: &mut App, _: &CommandInvocation) -> Result<(), Comma
 pub(super) fn register(registry: &mut CommandRegistry) {
     let commands: [Entry; 32] = [
         ("notebook.cell.edit", "Edit Cell", COMMAND_MODE, edit_cell),
-        ("notebook.cell.quitEdit", "Stop Editing Cell", EDITING, quit_edit),
-        ("notebook.focusNextEditor", "Focus Next Cell", NOTEBOOK, focus_next),
+        (
+            "notebook.cell.quitEdit",
+            "Stop Editing Cell",
+            EDITING,
+            quit_edit,
+        ),
+        (
+            "notebook.focusNextEditor",
+            "Focus Next Cell",
+            NOTEBOOK,
+            focus_next,
+        ),
         (
             "notebook.focusPreviousEditor",
             "Focus Previous Cell",
@@ -222,18 +232,43 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
         ("notebook.cell.delete", "Delete Cell", NOTEBOOK, delete_cell),
         ("notebook.cell.moveUp", "Move Cell Up", NOTEBOOK, move_up),
-        ("notebook.cell.moveDown", "Move Cell Down", NOTEBOOK, move_down),
+        (
+            "notebook.cell.moveDown",
+            "Move Cell Down",
+            NOTEBOOK,
+            move_down,
+        ),
         ("notebook.cell.split", "Split Cell", EDITING, split_cell),
-        ("notebook.cell.joinBelow", "Join With Next Cell", NOTEBOOK, join_below),
-        ("notebook.cell.joinAbove", "Join With Previous Cell", NOTEBOOK, join_above),
-        ("notebook.cell.changeToCode", "Change Cell to Code", NOTEBOOK, to_code),
+        (
+            "notebook.cell.joinBelow",
+            "Join With Next Cell",
+            NOTEBOOK,
+            join_below,
+        ),
+        (
+            "notebook.cell.joinAbove",
+            "Join With Previous Cell",
+            NOTEBOOK,
+            join_above,
+        ),
+        (
+            "notebook.cell.changeToCode",
+            "Change Cell to Code",
+            NOTEBOOK,
+            to_code,
+        ),
         (
             "notebook.cell.changeToMarkdown",
             "Change Cell to Markdown",
             NOTEBOOK,
             to_markdown,
         ),
-        ("notebook.cell.changeToRaw", "Change Cell to Raw", NOTEBOOK, to_raw),
+        (
+            "notebook.cell.changeToRaw",
+            "Change Cell to Raw",
+            NOTEBOOK,
+            to_raw,
+        ),
         ("notebook.cell.copy", "Copy Cell", NOTEBOOK, copy_cells),
         ("notebook.cell.cut", "Cut Cell", NOTEBOOK, cut_cells),
         ("notebook.cell.paste", "Paste Cell", NOTEBOOK, paste_cells),
@@ -295,6 +330,8 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, enablement, handler) in commands {
-        add(registry, id, title, "Notebook", ALL, enablement, None, handler);
+        add(
+            registry, id, title, "Notebook", ALL, enablement, None, handler,
+        );
     }
 }

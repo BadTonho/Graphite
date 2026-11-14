@@ -91,7 +91,11 @@ impl Session {
 
     /// Whether `index` is the unused first cell, which is neither drawn nor counted.
     pub(crate) fn is_hidden_cell(&self, index: usize) -> bool {
-        index == 0 && self.interactive.as_ref().is_some_and(|state| state.placeholder)
+        index == 0
+            && self
+                .interactive
+                .as_ref()
+                .is_some_and(|state| state.placeholder)
     }
 
     /// Runs `action` on the input box.
@@ -260,7 +264,10 @@ mod tests {
         assert_eq!(session.submit_input(), Some(1));
         assert_eq!(sources(&session), ["x = 1", "y = 2\nz = 3"]);
         assert_eq!(session.focus, 1);
-        assert_eq!(session.interactive().unwrap().history, ["x = 1", "y = 2\nz = 3"]);
+        assert_eq!(
+            session.interactive().unwrap().history,
+            ["x = 1", "y = 2\nz = 3"]
+        );
     }
 
     #[test]
@@ -343,7 +350,10 @@ mod tests {
         let mut session = window();
         assert_eq!(session.interactive().unwrap().input_lines(), 1);
         session.set_input_text(&"x\n".repeat(30));
-        assert_eq!(session.interactive().unwrap().input_lines(), MAX_INPUT_LINES);
+        assert_eq!(
+            session.interactive().unwrap().input_lines(),
+            MAX_INPUT_LINES
+        );
     }
 
     #[test]

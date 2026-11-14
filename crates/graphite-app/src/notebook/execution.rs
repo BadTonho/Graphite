@@ -262,7 +262,11 @@ impl Session {
                 self.cells[index].touch_outputs();
                 true
             }
-            KernelEvent::UpdateDisplay { display_id, mut output, .. } => {
+            KernelEvent::UpdateDisplay {
+                display_id,
+                mut output,
+                ..
+            } => {
                 let Some(&uid) = self.kernel.displays.get(&display_id) else {
                     return false;
                 };
@@ -352,11 +356,17 @@ mod tests {
 
     fn running(sources: &[&str]) -> (Session, Scripted) {
         let mut notebook = Notebook::new();
-        notebook.cells = sources.iter().map(|source| Cell::new(CellKind::Code, source)).collect();
+        notebook.cells = sources
+            .iter()
+            .map(|source| Cell::new(CellKind::Code, source))
+            .collect();
         let mut session = Session::from_notebook(notebook);
         let (command_tx, commands) = channel();
         let (events, event_rx) = channel();
-        session.attach_kernel(KernelHandle::from_parts(command_tx, event_rx, "key", true), spec());
+        session.attach_kernel(
+            KernelHandle::from_parts(command_tx, event_rx, "key", true),
+            spec(),
+        );
         (session, Scripted { commands, events })
     }
 
@@ -378,7 +388,10 @@ mod tests {
     }
 
     fn input(parent: &str, count: u64) -> KernelEvent {
-        KernelEvent::ExecuteInput { parent: parent.into(), count }
+        KernelEvent::ExecuteInput {
+            parent: parent.into(),
+            count,
+        }
     }
 
     fn stream(parent: &str, name: &str, text: &str) -> KernelEvent {
@@ -389,7 +402,11 @@ mod tests {
     }
 
     fn reply(parent: &str, ok: bool, count: u64) -> KernelEvent {
-        KernelEvent::Reply { parent: parent.into(), ok, count: Some(count) }
+        KernelEvent::Reply {
+            parent: parent.into(),
+            ok,
+            count: Some(count),
+        }
     }
 
     /// The end of a request: its reply on the shell channel and its idle status on IOPub.
@@ -398,7 +415,10 @@ mod tests {
         feed(
             session,
             scripted,
-            KernelEvent::Status { state: KernelState::Idle, parent: Some(parent.into()) },
+            KernelEvent::Status {
+                state: KernelState::Idle,
+                parent: Some(parent.into()),
+            },
         );
     }
 
@@ -429,14 +449,25 @@ mod tests {
         let (mut session, scripted) = running(&["print('hi')"]);
         session.run_cells(&[0]).unwrap();
         let id = sent_ids(&scripted).remove(0);
-        session.cells[0].cell.outputs = vec![json!({"output_type": "stream", "name": "stdout", "text": "old\n"})];
-        feed(&mut session, &scripted, KernelEvent::Status { state: KernelState::Busy, parent: Some(id.clone()) });
+        session.cells[0].cell.outputs =
+            vec![json!({"output_type": "stream", "name": "stdout", "text": "old\n"})];
+        feed(
+            &mut session,
+            &scripted,
+            KernelEvent::Status {
+                state: KernelState::Busy,
+                parent: Some(id.clone()),
+            },
+        );
         assert_eq!(session.kernel_status(), &KernelStatus::Busy);
         feed(&mut session, &scripted, input(&id, 4));
         // The old outputs go when the run starts, not when it was queued.
         assert!(session.cells[0].cell.outputs.is_empty());
         assert_eq!(session.cells[0].cell.execution_count, Some(4));
-        assert_eq!(session.run_state(session.cells[0].uid), Some(RunState::Running));
+        assert_eq!(
+            session.run_state(session.cells[0].uid),
+            Some(RunState::Running)
+        );
         feed(&mut session, &scripted, stream(&id, "stdout", "hi\n"));
         feed(&mut session, &scripted, stream(&id, "stdout", "there\n"));
         feed(&mut session, &scripted, stream(&id, "stderr", "warn\n"));
@@ -448,7 +479,14 @@ mod tests {
                 output: json!({"output_type": "execute_result", "execution_count": 4, "data": {"text/plain": "1"}, "metadata": {}}),
             },
         );
-        feed(&mut session, &scripted, KernelEvent::Status { state: KernelState::Idle, parent: Some(id.clone()) });
+        feed(
+            &mut session,
+            &scripted,
+            KernelEvent::Status {
+                state: KernelState::Idle,
+                parent: Some(id.clone()),
+            },
+        );
         // Still running until the reply arrives.
         assert_eq!(session.kernel_status(), &KernelStatus::Busy);
         finish_run(&mut session, &scripted, &id, true, 4);
@@ -461,7 +499,6 @@ mod tests {
         assert_eq!(outputs[1]["name"], "stderr");
         assert_eq!(outputs[2]["output_type"], "execute_result");
     }
-
 
     #[test]
     fn outputs_that_trail_the_reply_are_kept_until_the_idle_status() {
@@ -477,7 +514,10 @@ mod tests {
         feed(
             &mut session,
             &scripted,
-            KernelEvent::Status { state: KernelState::Idle, parent: Some(id.clone()) },
+            KernelEvent::Status {
+                state: KernelState::Idle,
+                parent: Some(id.clone()),
+            },
         );
         assert!(!session.is_running());
         assert_eq!(session.kernel_status(), &KernelStatus::Idle);
@@ -492,7 +532,10 @@ mod tests {
         let ids = sent_ids(&scripted);
         feed(&mut session, &scripted, input(&ids[0], 1));
         // The second cell is still queued while the first runs.
-        assert_eq!(session.run_state(session.cells[1].uid), Some(RunState::Queued));
+        assert_eq!(
+            session.run_state(session.cells[1].uid),
+            Some(RunState::Queued)
+        );
         feed(&mut session, &scripted, stream(&ids[0], "stdout", "1\n"));
         finish_run(&mut session, &scripted, &ids[0], true, 1);
         feed(&mut session, &scripted, input(&ids[1], 2));
@@ -521,7 +564,10 @@ mod tests {
         // The kernel aborts what was queued behind the failure and says so.
         finish_run(&mut session, &scripted, &ids[1], false, 2);
         assert!(!session.is_running());
-        assert_eq!(session.cells[0].cell.outputs[0]["ename"], "ZeroDivisionError");
+        assert_eq!(
+            session.cells[0].cell.outputs[0]["ename"],
+            "ZeroDivisionError"
+        );
         assert!(session.cells[1].cell.outputs.is_empty());
     }
 
@@ -532,12 +578,26 @@ mod tests {
         let id = sent_ids(&scripted).remove(0);
         feed(&mut session, &scripted, input(&id, 1));
         feed(&mut session, &scripted, stream(&id, "stdout", "10%\n"));
-        feed(&mut session, &scripted, KernelEvent::ClearOutput { parent: id.clone(), wait: true });
+        feed(
+            &mut session,
+            &scripted,
+            KernelEvent::ClearOutput {
+                parent: id.clone(),
+                wait: true,
+            },
+        );
         assert_eq!(session.cells[0].cell.outputs.len(), 1);
         feed(&mut session, &scripted, stream(&id, "stdout", "20%\n"));
         assert_eq!(session.cells[0].cell.outputs.len(), 1);
         assert_eq!(session.cells[0].cell.outputs[0]["text"], "20%\n");
-        feed(&mut session, &scripted, KernelEvent::ClearOutput { parent: id, wait: false });
+        feed(
+            &mut session,
+            &scripted,
+            KernelEvent::ClearOutput {
+                parent: id,
+                wait: false,
+            },
+        );
         assert!(session.cells[0].cell.outputs.is_empty());
     }
 
@@ -567,12 +627,19 @@ mod tests {
             },
         );
         assert_eq!(session.cells[0].cell.outputs.len(), 1);
-        assert_eq!(session.cells[0].cell.outputs[0]["data"]["text/plain"], "100%");
+        assert_eq!(
+            session.cells[0].cell.outputs[0]["data"]["text/plain"],
+            "100%"
+        );
         // An unknown id changes nothing.
         feed(
             &mut session,
             &scripted,
-            KernelEvent::UpdateDisplay { parent: id, display_id: "other".into(), output: json!({}) },
+            KernelEvent::UpdateDisplay {
+                parent: id,
+                display_id: "other".into(),
+                output: json!({}),
+            },
         );
         assert_eq!(session.cells[0].cell.outputs.len(), 1);
     }
@@ -586,7 +653,11 @@ mod tests {
         session.delete_selected();
         feed(&mut session, &scripted, input(&id, 1));
         feed(&mut session, &scripted, stream(&id, "stdout", "lost\n"));
-        feed(&mut session, &scripted, stream("unknown", "stdout", "lost\n"));
+        feed(
+            &mut session,
+            &scripted,
+            stream("unknown", "stdout", "lost\n"),
+        );
         assert!(session.cells[0].cell.outputs.is_empty());
         finish_run(&mut session, &scripted, &id, true, 1);
         assert!(!session.is_running());
@@ -596,7 +667,13 @@ mod tests {
     fn the_kernel_ending_clears_the_runs_and_remembers_why() {
         let (mut session, scripted) = running(&["a"]);
         session.run_cells(&[0]).unwrap();
-        feed(&mut session, &scripted, KernelEvent::Exited { details: " died\n".into() });
+        feed(
+            &mut session,
+            &scripted,
+            KernelEvent::Exited {
+                details: " died\n".into(),
+            },
+        );
         assert_eq!(session.kernel_status(), &KernelStatus::Dead("died".into()));
         assert!(!session.is_running());
         assert!(session.run_cells(&[0]).is_err());
@@ -636,7 +713,10 @@ mod tests {
         session.run_cells(&[0]).unwrap();
         let (command_tx, new_commands) = channel();
         let (_events, event_rx) = channel();
-        session.attach_kernel(KernelHandle::from_parts(command_tx, event_rx, "key", false), spec());
+        session.attach_kernel(
+            KernelHandle::from_parts(command_tx, event_rx, "key", false),
+            spec(),
+        );
         assert!(!session.is_running());
         // The old handle was dropped, which asks its kernel to end.
         let mut ended = false;
@@ -648,7 +728,6 @@ mod tests {
         assert_eq!(session.kernel_status(), &KernelStatus::None);
         assert!(matches!(new_commands.recv().unwrap(), Command::Kill));
     }
-
 
     #[test]
     fn the_drawn_outputs_are_built_once_and_rebuilt_when_they_change() {
@@ -670,7 +749,8 @@ mod tests {
         // Clearing and changing the kind rebuild it too.
         session.clear_outputs(&[0]);
         assert!(session.cells[0].blocks().is_empty());
-        session.cells[0].cell.outputs = vec![json!({"output_type": "stream", "name": "stdout", "text": "x\n"})];
+        session.cells[0].cell.outputs =
+            vec![json!({"output_type": "stream", "name": "stdout", "text": "x\n"})];
         assert_eq!(session.cells[0].blocks().len(), 1);
         session.set_kind(CellKind::Markdown);
         assert!(session.cells[0].blocks().is_empty());
@@ -682,7 +762,10 @@ mod tests {
         let (mut session, scripted) = running(&["a"]);
         scripted
             .events
-            .send(KernelEvent::Info { language: Some("python".into()), banner: None })
+            .send(KernelEvent::Info {
+                language: Some("python".into()),
+                banner: None,
+            })
             .unwrap();
         assert!(!session.poll_kernel());
         assert_eq!(session.kernel.language.as_deref(), Some("python"));

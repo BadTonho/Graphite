@@ -23,7 +23,9 @@ impl Interrupt {
         };
         // SAFETY: the attributes live for the call and the name is null (an unnamed event).
         let event = unsafe { CreateEventW(&attributes, 0, 0, std::ptr::null()) };
-        (!event.is_null()).then_some(Self { event: event as usize })
+        (!event.is_null()).then_some(Self {
+            event: event as usize,
+        })
     }
 
     /// The value for `JPY_INTERRUPT_EVENT`.

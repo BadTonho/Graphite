@@ -39,7 +39,10 @@ fn completing_is_refused_while_conflicts_are_unresolved_and_the_file_is_untouche
 fn accept_all_then_complete_writes_the_result_and_closes_the_editor() {
     for (command, expected) in [
         ("merge.acceptAllInput1", "top\nours1\nmid\nours2\nbottom\n"),
-        ("merge.acceptAllInput2", "top\ntheirs1\nmid\ntheirs2\nbottom\n"),
+        (
+            "merge.acceptAllInput2",
+            "top\ntheirs1\nmid\ntheirs2\nbottom\n",
+        ),
         (
             "mergeEditor.acceptAllCombination",
             "top\nours1\ntheirs1\nmid\nours2\ntheirs2\nbottom\n",
@@ -50,7 +53,11 @@ fn accept_all_then_complete_writes_the_result_and_closes_the_editor() {
         assert!(app.merge_editor.as_ref().unwrap().state.is_complete());
         complete(&mut app).unwrap();
         assert!(app.merge_editor.is_none());
-        assert_eq!(std::fs::read_to_string(path).unwrap(), expected, "{command}");
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            expected,
+            "{command}"
+        );
     }
 }
 
@@ -76,7 +83,10 @@ fn closing_with_decisions_warns_once_and_decisions_reset_the_warning() {
     app.run_ui_command("graphite.merge.acceptCurrent");
     app.run_ui_command("graphite.merge.close");
     assert!(app.merge_editor.is_some());
-    assert_eq!(app.status, app.tf("merge.close_warning", &[("count", &1usize)]));
+    assert_eq!(
+        app.status,
+        app.tf("merge.close_warning", &[("count", &1usize)])
+    );
     // A new decision, or resetting the warning, arms it again.
     app.run_ui_command("mergeEditor.resetCloseWithConflictsChoice");
     app.run_ui_command("graphite.merge.close");
@@ -105,7 +115,9 @@ fn the_file_keeps_its_line_endings_and_encoding() {
     app.open_merge_editor(path.clone()).unwrap();
     app.run_ui_command("merge.acceptAllInput1");
     complete(&mut app).unwrap();
-    assert!(std::fs::read(path).unwrap().starts_with(b"\xef\xbb\xbftop\n"));
+    assert!(std::fs::read(path)
+        .unwrap()
+        .starts_with(b"\xef\xbb\xbftop\n"));
 }
 
 #[test]

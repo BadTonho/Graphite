@@ -71,7 +71,11 @@ fn open_result(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
 
 pub(super) fn register(registry: &mut CommandRegistry) {
     let commands: [(&'static str, &'static str, Handler); 13] = [
-        ("graphite.merge.acceptCurrent", "Accept Current", accept_current),
+        (
+            "graphite.merge.acceptCurrent",
+            "Accept Current",
+            accept_current,
+        ),
         (
             "graphite.merge.acceptIncoming",
             "Accept Incoming",

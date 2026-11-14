@@ -753,12 +753,10 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         focus_below_group,
     );
-    for (id, title) in [
-        (
-            "workbench.action.navigateToLastEditLocation",
-            "Last Edit Location",
-        ),
-    ] {
+    for (id, title) in [(
+        "workbench.action.navigateToLastEditLocation",
+        "Last Edit Location",
+    )] {
         add(
             registry,
             id,

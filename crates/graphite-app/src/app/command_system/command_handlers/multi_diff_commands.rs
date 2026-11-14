@@ -75,7 +75,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, handler) in openers {
-        add(registry, id, title, "Multi-Diff", ALL, "true", None, handler);
+        add(
+            registry,
+            id,
+            title,
+            "Multi-Diff",
+            ALL,
+            "true",
+            None,
+            handler,
+        );
     }
     let commands: [(&'static str, &'static str, Handler); 8] = [
         ("graphite.multiDiff.close", "Close Multi-File Diff", close),

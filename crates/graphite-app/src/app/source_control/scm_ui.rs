@@ -1368,7 +1368,11 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }
-            let first_row = if self.outline.filter_on_type { 2.5 } else { 1.5 };
+            let first_row = if self.outline.filter_on_type {
+                2.5
+            } else {
+                1.5
+            };
             let chars = ((outline_width - PAD * 2.0) / char_width.max(1.0)) as usize;
             for (i, row) in self.outline_rows().iter().enumerate() {
                 let y = line_height * (i as f32 + first_row);
@@ -1574,7 +1578,10 @@ impl App {
             );
             // Show the 12 entries around the selection, so a long list can be scrolled with the
             // arrow keys.
-            let first = self.branch_selected.saturating_sub(11).min(entries.len().saturating_sub(12));
+            let first = self
+                .branch_selected
+                .saturating_sub(11)
+                .min(entries.len().saturating_sub(12));
             for (index, branch) in entries.iter().enumerate().skip(first).take(12) {
                 let row_y = y + line_height * ((index - first) as f32 + 1.2);
                 if index == self.branch_selected {
