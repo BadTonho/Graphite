@@ -236,6 +236,9 @@ fn native_registration_cannot_escape_manifest_or_shadow_builtins() {
         activation_events: vec![],
         keybindings: vec![],
         menus: Default::default(),
+        themes: vec![],
+        snippets: vec![],
+        languages: vec![],
     });
     for id in ["undo", "other.plugin.command", "local.test.undeclared"] {
         let metadata = CommandMetadata {
@@ -969,6 +972,9 @@ fn native_dev_plugin_captures_console_logs_and_hot_reloads_on_entry_change() {
             activation_events: Vec::new(),
             keybindings: Vec::new(),
             menus: Default::default(),
+            themes: Vec::new(),
+            snippets: Vec::new(),
+            languages: Vec::new(),
         })
         .unwrap(),
     )
@@ -1363,4 +1369,283 @@ export async function activate(_context, g) {
         std::thread::sleep(Duration::from_millis(5));
     };
     assert_eq!(lazy_reply, json!("lazy-pong"));
+}
+
+#[test]
+fn native_plugins_support_editor_languages_diagnostics_snippets_and_themes() {
+    graphite_plugins::sdk::check_node(Path::new("node"))
+        .expect("Plugin integration tests require Node.js 24+");
+    let temp = crate::test_support::TempDir::new();
+    let workspace = temp.path().join("workspace");
+    let store_root = temp.path().join("plugins");
+    let dev_dir = temp.path().join("dsl-plugin");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::create_dir_all(dev_dir.join("dist")).unwrap();
+    std::fs::create_dir_all(dev_dir.join("themes")).unwrap();
+    std::fs::create_dir_all(dev_dir.join("snippets")).unwrap();
+
+    let dsl_file = workspace.join("sample.dsl");
+    std::fs::write(&dsl_file, "fn main() {}\nlet value = 1;").unwrap();
+
+    std::fs::write(
+        dev_dir.join("themes/neon.json"),
+        r##"{"name": "Native Neon", "colors": {"editor.background": "#123456"}}"##,
+    )
+    .unwrap();
+    std::fs::write(
+        dev_dir.join("snippets/dsl.json"),
+        r#"{"Define fn": {"prefix": "dslfn", "body": ["fn ${1:name}() {}"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dev_dir.join("graphite-plugin.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "id": "local.dsl",
+            "version": "0.1.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "Editor, language, snippet and theme test",
+            "commands": [
+                { "id": "local.dsl.inspect", "title": "Inspect Active" },
+                { "id": "local.dsl.clear", "title": "Clear State" }
+            ],
+            "activationEvents": ["*"],
+            "themes": [{ "id": "native-neon", "label": "Native Neon", "uiTheme": "vs-dark", "path": "./themes/neon.json" }],
+            "snippets": [{ "language": "dsl", "path": "./snippets/dsl.json" }],
+            "languages": [{ "id": "dsl", "extensions": [".dsl"], "lineComment": "///" }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        dev_dir.join("dist/index.js"),
+        r#"
+let activeDecor = null;
+let lastUri = null;
+export async function activate(context, g) {
+  activeDecor = await g.editor.createDecorationType({ backgroundColor: '#ff0000' });
+  await g.languages.registerCompletionProvider('*', {
+    provideCompletions() {
+      return [{ label: 'dslKeyword', detail: 'DSL keyword', insertText: 'dslKeyword()', documentation: 'Custom native completion' }];
+    }
+  });
+  await g.languages.registerHoverProvider('*', {
+    provideHover(_uri, pos) {
+      return `Hover at ${pos.line}:${pos.character}`;
+    }
+  });
+  await g.languages.registerFormattingProvider('*', {
+    provideDocumentFormatting() {
+      return [{ start: { line: 0, character: 0 }, end: { line: 0, character: 2 }, text: 'FUNC' }];
+    }
+  });
+  context.subscriptions.push(await g.commands.registerCommand('local.dsl.inspect', async () => {
+    const active = await g.editor.active();
+    lastUri = active.document.uri;
+    await g.editor.setSelections([{ anchor: { line: 1, character: 4 }, active: { line: 1, character: 9 } }]);
+    await g.editor.setDecorations(activeDecor, active.document.uri, [{ start: { line: 0, character: 0 }, end: { line: 0, character: 2 } }]);
+    await g.languages.setDiagnostics('dsl-lint', active.document.uri, [{
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 2 },
+      message: 'Sample DSL warning',
+      severity: 'warning',
+      code: 'DSL001'
+    }]);
+    return active;
+  }));
+  context.subscriptions.push(await g.commands.registerCommand('local.dsl.clear', async () => {
+    if (activeDecor) await activeDecor.dispose();
+    if (lastUri) await g.languages.clearDiagnostics('dsl-lint', lastUri);
+    return 'cleared';
+  }));
+}
+"#,
+    )
+    .unwrap();
+
+    let store = Store::new(store_root);
+    store.link_dev(&dev_dir).unwrap();
+    store.enable("local.dsl", true).unwrap();
+
+    let mut app = App::new_with_options(workspace.clone(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap();
+    trust.trust(&workspace).unwrap();
+    app.workspace_trust = Some(trust);
+    std::fs::write(
+        app.profile_root.join("settings.json"),
+        serde_json::json!({
+            "workbench.colorTheme": "Native Neon"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    app.plugins.installed = store.list().unwrap();
+    app.plugins.store = Some(store);
+    app.open_file(dsl_file);
+
+    // Declarative languages (lineComment: "///"), snippets, and themes
+    app.sync_plugin_keybindings();
+    app.reload_extension_snippets();
+    app.sync_extension_themes();
+    assert!(app.extension_snippets.iter().any(|s| s.prefix == "dslfn"));
+    let resolved_theme =
+        config::imported_theme_colors_in(&app.profile_root, &workspace, &app.translator);
+    assert!(
+        resolved_theme.is_ok(),
+        "native plugin theme should resolve by label"
+    );
+    app.toggle_line_comment();
+    assert!(app.documents[app.active_document()]
+        .buffer
+        .text()
+        .starts_with("/// fn main()"));
+    app.toggle_line_comment();
+    assert!(app.documents[app.active_document()]
+        .buffer
+        .text()
+        .starts_with("fn main()"));
+
+    // Start plugin and wait for activation + 3 language providers
+    app.queue_plugin_start("local.dsl".into());
+    app.poll_plugins();
+    let deadline = Instant::now() + Duration::from_secs(6);
+    while !app
+        .plugins
+        .hosts
+        .get("local.dsl")
+        .is_some_and(|h| h.native_active && h.language_providers.len() == 3)
+    {
+        app.poll_plugins();
+        assert!(
+            Instant::now() < deadline,
+            "native editor/language plugin did not activate"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Active editor snapshot, setSelections, setDecorations, setDiagnostics
+    let inspect_ticket = app.execute_command(CommandRequest {
+        id: "local.dsl.inspect".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let active_snapshot = loop {
+        app.poll_plugins();
+        if let Some(res) = inspect_ticket.try_result() {
+            break res.unwrap();
+        }
+        assert!(Instant::now() < deadline, "inspect command timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let uri = active_snapshot["document"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(!app.editor().selections().is_empty());
+    let sel = app.editor().selections()[0];
+    let text = app.documents[app.active_document()].buffer.text();
+    let anchor_pos = graphite_core_api::char_to_position(&text, sel.anchor);
+    let active_pos = graphite_core_api::char_to_position(&text, sel.head);
+    assert_eq!((anchor_pos.line, anchor_pos.character), (1, 4));
+    assert_eq!((active_pos.line, active_pos.character), (1, 9));
+
+    let marks = app.vsix_line_decorations(&uri, 0, true);
+    assert!(!marks.is_empty(), "decoration mark expected on line 0");
+    let diags = app.diagnostic_entries();
+    assert!(
+        diags
+            .iter()
+            .any(|(_, d)| d.message == "Sample DSL warning"
+                && d.source.as_deref() == Some("dsl-lint")),
+        "diagnostic expected from native plugin"
+    );
+
+    // Completion, Hover, Formatting providers
+    let active_target = CommandTarget::View(app.editor_groups.active_view().id.0);
+    let suggest_res = app
+        .execute_command(CommandRequest {
+            id: "editor.action.triggerSuggest".into(),
+            arguments: Value::Null,
+            target: active_target.clone(),
+        })
+        .try_result();
+    assert!(
+        suggest_res.as_ref().is_none_or(|r| r.is_ok()),
+        "triggerSuggest dispatch failed: {:?}",
+        suggest_res
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.completion_items.is_empty() {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "completion provider timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.completion_items[0].label, "dslKeyword");
+
+    let hover_res = app
+        .execute_command(CommandRequest {
+            id: "editor.action.showHover".into(),
+            arguments: Value::Null,
+            target: active_target.clone(),
+        })
+        .try_result();
+    assert!(
+        hover_res.as_ref().is_none_or(|r| r.is_ok()),
+        "showHover dispatch failed: {:?}",
+        hover_res
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.hover_text.is_none() {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "hover provider timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app
+        .hover_text
+        .as_deref()
+        .is_some_and(|t| t.starts_with("Hover at ")));
+
+    let format_res = app
+        .execute_command(CommandRequest {
+            id: "editor.action.formatDocument".into(),
+            arguments: Value::Null,
+            target: active_target,
+        })
+        .try_result();
+    assert!(
+        format_res.as_ref().is_none_or(|r| r.is_ok()),
+        "formatDocument dispatch failed: {:?}",
+        format_res
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app.documents[app.active_document()]
+        .buffer
+        .text()
+        .starts_with("FUNC main()")
+    {
+        app.poll_plugins();
+        assert!(Instant::now() < deadline, "formatting provider timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Disposing decoration & clearing diagnostics removes them
+    let clear_ticket = app.execute_command(CommandRequest {
+        id: "local.dsl.clear".into(),
+        arguments: Value::Null,
+        target: CommandTarget::Global,
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_plugins();
+        if let Some(res) = clear_ticket.try_result() {
+            assert_eq!(res.unwrap(), json!("cleared"));
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.vsix_line_decorations(&uri, 0, true).is_empty());
+    assert!(app.diagnostic_entries().is_empty());
 }

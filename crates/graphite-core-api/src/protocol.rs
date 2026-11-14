@@ -1,5 +1,8 @@
 //! Versioned simulation protocol. This is not the Code OSS wire protocol.
-use crate::{CommandMetadata, DocumentEvent, ServiceError, ServiceRequest, ServiceResult};
+use crate::{
+    CommandMetadata, DocumentEvent, DocumentUri, Position, ServiceError, ServiceRequest,
+    ServiceResult,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Read, Write};
@@ -37,6 +40,27 @@ pub enum RpcRequest {
     DeliverWebviewMessage {
         handle: String,
         message: Value,
+    },
+    ProvideCompletions {
+        #[serde(rename = "providerId", alias = "provider_id")]
+        provider_id: String,
+        uri: DocumentUri,
+        position: Position,
+    },
+    ProvideHover {
+        #[serde(rename = "providerId", alias = "provider_id")]
+        provider_id: String,
+        uri: DocumentUri,
+        position: Position,
+    },
+    ProvideDocumentFormatting {
+        #[serde(rename = "providerId", alias = "provider_id")]
+        provider_id: String,
+        uri: DocumentUri,
+        #[serde(rename = "tabSize", alias = "tab_size")]
+        tab_size: u32,
+        #[serde(rename = "insertSpaces", alias = "insert_spaces")]
+        insert_spaces: bool,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

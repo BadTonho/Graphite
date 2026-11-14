@@ -76,3 +76,20 @@ pub fn position_to_char(text: &str, position: Position) -> Option<usize> {
     }
     (utf16 == position.character).then_some(offset)
 }
+
+/// Convert a character index in `text` to a UTF-16 `Position`.
+pub fn char_to_position(text: &str, char_offset: usize) -> Position {
+    let mut position = Position {
+        line: 0,
+        character: 0,
+    };
+    for ch in text.chars().take(char_offset) {
+        if ch == '\n' {
+            position.line += 1;
+            position.character = 0;
+        } else {
+            position.character += ch.len_utf16() as u32;
+        }
+    }
+    position
+}

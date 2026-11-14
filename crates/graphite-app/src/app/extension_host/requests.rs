@@ -38,6 +38,7 @@ impl App {
         let callback_parent = parent.is_some_and(|id| {
             self.extension_host.tree_replies.contains_key(&id)
                 || self.extension_host.webview_deliveries.contains(&id)
+                || self.extension_host.language_replies.contains_key(&id)
         });
         if save_parent
             && !matches!(
@@ -340,6 +341,20 @@ impl App {
             | ServiceRequest::DisposeWebviewPanel { .. }) => self
                 .handle_native_ui_service(request)
                 .unwrap_or_else(|| Err(ServiceError::Failed("Unhandled UI request".into()))),
+            request @ (ServiceRequest::ActiveEditor
+            | ServiceRequest::SetEditorSelection { .. }
+            | ServiceRequest::RegisterDecorationType { .. }
+            | ServiceRequest::SetDecorations { .. }
+            | ServiceRequest::DisposeDecorationType { .. }
+            | ServiceRequest::SetDiagnostics { .. }
+            | ServiceRequest::RegisterLanguageProvider { .. }
+            | ServiceRequest::DisposeLanguageProvider { .. }) => self
+                .handle_native_editor_lang_service(request)
+                .unwrap_or_else(|| {
+                    Err(ServiceError::Failed(
+                        "Unhandled editor/language request".into(),
+                    ))
+                }),
             ServiceRequest::Execute(_)
             | ServiceRequest::Save(_)
             | ServiceRequest::PromptInput { .. }

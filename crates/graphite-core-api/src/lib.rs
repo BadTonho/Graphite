@@ -5,6 +5,8 @@ mod saving;
 mod ui;
 pub use saving::*;
 pub use ui::*;
+pub mod editor_lang;
+pub use editor_lang::*;
 pub mod protocol;
 mod uri;
 pub use commands::*;
@@ -186,5 +188,39 @@ pub enum ServiceRequest {
     },
     DisposeWebviewPanel {
         handle: String,
+    },
+    ActiveEditor,
+    SetEditorSelection {
+        selections: Vec<EditorSelection>,
+    },
+    RegisterDecorationType {
+        key: String,
+        options: Value,
+    },
+    SetDecorations {
+        #[serde(rename = "decorationType", alias = "decoration_type")]
+        decoration_type: String,
+        uri: DocumentUri,
+        ranges: Vec<DecorationRange>,
+    },
+    DisposeDecorationType {
+        #[serde(rename = "decorationType", alias = "decoration_type")]
+        decoration_type: String,
+    },
+    SetDiagnostics {
+        owner: String,
+        uri: DocumentUri,
+        diagnostics: Vec<DiagnosticEntry>,
+    },
+    RegisterLanguageProvider {
+        #[serde(rename = "providerId", alias = "provider_id")]
+        provider_id: String,
+        kind: LanguageProviderKind,
+        #[serde(default)]
+        languages: Vec<String>,
+    },
+    DisposeLanguageProvider {
+        #[serde(rename = "providerId", alias = "provider_id")]
+        provider_id: String,
     },
 }

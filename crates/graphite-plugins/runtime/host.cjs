@@ -14,7 +14,7 @@ const context = new AsyncLocalStorage();
 const root = path.resolve(process.argv[2]);
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'graphite-plugin.json'), 'utf8'));
 const handlers = new Map(), listeners = new Map(), saveParticipants = new Map(), pending = new Map(), incoming = new Map();
-const treeProviders = new Map(), webviewPanels = new Map();
+const treeProviders = new Map(), webviewPanels = new Map(), languageProviders = new Map();
 const subscriptions = [];
 let session, next = 0, buffer = Buffer.alloc(0), activated = false, plugin, shuttingDown = false;
 const MAX_FRAME = 16 * 1024 * 1024, MAX_PENDING = 128;
@@ -44,7 +44,24 @@ function disposable(resource, cleanup) {
   subscriptions.push(value);
   return value;
 }
-let statusCounter = 0, webviewCounter = 0;
+let statusCounter = 0, webviewCounter = 0, decorationCounter = 0, languageProviderCounter = 0;
+async function registerLanguageProvider(kind, languages, provider) {
+  const normalized = typeof languages === 'string' ? [languages] : (Array.isArray(languages) ? languages.map(String) : []);
+  const providerId = `lang-${++languageProviderCounter}`;
+  languageProviders.set(providerId, { kind, provider });
+  await service('registerLanguageProvider', { providerId, kind, languages: normalized });
+  let disposed = false;
+  const disposable = {
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      languageProviders.delete(providerId);
+      await service('disposeLanguageProvider', { providerId }).catch(() => {});
+    },
+  };
+  subscriptions.push(disposable);
+  return disposable;
+}
 const storageArea = scope => ({
   get: key => service('storageGet', key === undefined ? { scope } : { scope, key }),
   set: (key, value) => service('storageSet', { scope, key, value }),
@@ -215,6 +232,45 @@ const graphite = {
     global: storageArea('global'),
     workspace: storageArea('workspace'),
   },
+  editor: {
+    active: () => service('activeEditor'),
+    setSelections: selections => service('setEditorSelection', { selections }),
+    async createDecorationType(options = {}) {
+      const key = `decor-${++decorationCounter}`;
+      await service('registerDecorationType', { key, options: options ?? {} });
+      let disposed = false;
+      const decorationType = {
+        key,
+        async dispose() {
+          if (disposed) return;
+          disposed = true;
+          await service('disposeDecorationType', { decorationType: key }).catch(() => {});
+        },
+      };
+      subscriptions.push(decorationType);
+      return decorationType;
+    },
+    setDecorations: (decorationType, uri, ranges) => service('setDecorations', {
+      decorationType: typeof decorationType === 'string' ? decorationType : decorationType?.key,
+      uri,
+      ranges: Array.isArray(ranges) ? ranges : [],
+    }),
+  },
+  languages: {
+    setDiagnostics: (owner, uri, diagnostics) => service('setDiagnostics', {
+      owner: String(owner),
+      uri,
+      diagnostics: Array.isArray(diagnostics) ? diagnostics : [],
+    }),
+    clearDiagnostics: (owner, uri) => service('setDiagnostics', {
+      owner: String(owner),
+      uri,
+      diagnostics: [],
+    }),
+    registerCompletionProvider: (languages, provider) => registerLanguageProvider('completion', languages, provider),
+    registerHoverProvider: (languages, provider) => registerLanguageProvider('hover', languages, provider),
+    registerFormattingProvider: (languages, provider) => registerLanguageProvider('formatter', languages, provider),
+  },
 };
 async function shutdown() {
   if (shuttingDown) return;
@@ -311,6 +367,42 @@ async function receive(message) {
           }
         }
         value = null;
+      } else if (data.request.ProvideCompletions) {
+        const { providerId, uri, position } = data.request.ProvideCompletions;
+        const entry = languageProviders.get(providerId);
+        if (!entry || typeof entry.provider?.provideCompletions !== 'function') {
+          throw new Error(`Completion provider is unavailable for ${providerId}`);
+        }
+        const items = await context.run({ id: data.id }, () => entry.provider.provideCompletions(uri, position, abort.signal));
+        value = Array.isArray(items) ? items : [];
+      } else if (data.request.ProvideHover) {
+        const { providerId, uri, position } = data.request.ProvideHover;
+        const entry = languageProviders.get(providerId);
+        if (!entry || typeof entry.provider?.provideHover !== 'function') {
+          throw new Error(`Hover provider is unavailable for ${providerId}`);
+        }
+        const hover = await context.run({ id: data.id }, () => entry.provider.provideHover(uri, position, abort.signal));
+        if (hover == null) {
+          value = null;
+        } else if (typeof hover === 'string') {
+          value = hover;
+        } else if (typeof hover?.value === 'string') {
+          value = hover.value;
+        } else if (typeof hover?.contents === 'string') {
+          value = hover.contents;
+        } else {
+          value = String(hover);
+        }
+      } else if (data.request.ProvideDocumentFormatting) {
+        const { providerId, uri, tabSize, insertSpaces } = data.request.ProvideDocumentFormatting;
+        const entry = languageProviders.get(providerId);
+        if (!entry || typeof entry.provider?.provideDocumentFormatting !== 'function') {
+          throw new Error(`Formatting provider is unavailable for ${providerId}`);
+        }
+        const edits = await context.run({ id: data.id }, () =>
+          entry.provider.provideDocumentFormatting(uri, { tabSize, insertSpaces }, abort.signal)
+        );
+        value = Array.isArray(edits) ? edits : [];
       } else {
         throw new Error('Unsupported host request');
       }

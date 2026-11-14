@@ -20,6 +20,28 @@ pub struct Manifest {
     pub keybindings: Vec<Keybinding>,
     #[serde(default, skip_serializing_if = "Menus::is_empty")]
     pub menus: Menus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub themes: Vec<ThemeContribution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snippets: Vec<SnippetContribution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<LanguageComments>,
+}
+
+/// A color theme contributed by a native Graphite plugin.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThemeContribution {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub label: String,
+    #[serde(default = "default_ui_theme")]
+    pub ui_theme: String,
+    pub path: String,
+}
+
+fn default_ui_theme() -> String {
+    "vs-dark".into()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +199,23 @@ impl Manifest {
         {
             if !item.command.starts_with(&prefix) {
                 return Err("Plugin menu items need a plugin-prefixed command".into());
+            }
+        }
+        for theme in &self.themes {
+            let path = theme.path.strip_prefix("./").unwrap_or(&theme.path);
+            if theme.label.trim().is_empty() || !crate::package::safe_path(path) {
+                return Err("Plugin themes need a non-empty label and safe relative path".into());
+            }
+        }
+        for snippet in &self.snippets {
+            let path = snippet.path.strip_prefix("./").unwrap_or(&snippet.path);
+            if snippet.language.trim().is_empty() || !crate::package::safe_path(path) {
+                return Err("Plugin snippets need a language id and safe relative path".into());
+            }
+        }
+        for language in &self.languages {
+            if language.id.trim().is_empty() {
+                return Err("Plugin language declarations need a non-empty id".into());
             }
         }
         Ok(())
@@ -705,5 +744,33 @@ mod activity_bar_tests {
         let mut bad_menu = valid;
         bad_menu.menus.editor_context[0].command = "other.plugin.cmd".into();
         assert!(bad_menu.validate().is_err());
+    }
+
+    #[test]
+    fn native_manifest_validates_themes_snippets_and_languages() {
+        let valid: Manifest = serde_json::from_value(serde_json::json!({
+            "id": "local.dsl",
+            "version": "1.0.0",
+            "apiVersion": 1,
+            "main": "dist/index.js",
+            "description": "Language, snippet and theme plugin",
+            "themes": [{ "id": "neon", "label": "Native Neon", "uiTheme": "vs-dark", "path": "./themes/neon.json" }],
+            "snippets": [{ "language": "dsl", "path": "./snippets/dsl.json" }],
+            "languages": [{ "id": "dsl", "extensions": [".dsl"], "lineComment": "///", "blockComment": ["/*", "*/"] }]
+        }))
+        .unwrap();
+        valid.validate().unwrap();
+
+        let mut bad_theme_path = valid.clone();
+        bad_theme_path.themes[0].path = "../escape.json".into();
+        assert!(bad_theme_path.validate().is_err());
+
+        let mut bad_snippet = valid.clone();
+        bad_snippet.snippets[0].path = "../snippets.json".into();
+        assert!(bad_snippet.validate().is_err());
+
+        let mut bad_lang = valid;
+        bad_lang.languages[0].id = "   ".into();
+        assert!(bad_lang.validate().is_err());
     }
 }

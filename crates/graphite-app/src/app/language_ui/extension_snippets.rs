@@ -24,14 +24,18 @@ impl App {
             .iter()
             .filter(|record| record.enabled)
         {
-            let Metadata::Vsix(vsix) = &record.metadata else {
-                continue;
+            let (base_dir, contributions): (
+                std::path::PathBuf,
+                &[graphite_plugins::manifest::SnippetContribution],
+            ) = match &record.metadata {
+                Metadata::Vsix(vsix) => (
+                    root.join(&record.directory).join("extension"),
+                    &vsix.snippets,
+                ),
+                Metadata::Native(native) => (record.install_dir(&root), &native.snippets),
             };
-            for contribution in &vsix.snippets {
-                let path = root
-                    .join(&record.directory)
-                    .join("extension")
-                    .join(&contribution.path);
+            for contribution in contributions {
+                let path = base_dir.join(&contribution.path);
                 let (found, _warnings) = config::parse_snippet_file(&path, &translator);
                 snippets.extend(found.into_iter().map(|mut snippet| {
                     // A snippet file without its own scope applies to the contributing language.

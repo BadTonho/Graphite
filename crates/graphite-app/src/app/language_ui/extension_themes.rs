@@ -38,22 +38,50 @@ impl App {
             .iter()
             .filter(|record| record.enabled)
         {
-            let Metadata::Vsix(vsix) = &record.metadata else {
-                continue;
+            let (name, is_native) = match &record.metadata {
+                Metadata::Vsix(vsix) if vsix.contributions.iter().any(|kind| kind == "themes") => {
+                    (directory_name(&vsix.id), false)
+                }
+                Metadata::Native(native) if !native.themes.is_empty() => {
+                    (format!("native-{}", directory_name(&native.id)), true)
+                }
+                _ => continue,
             };
-            if !vsix.contributions.iter().any(|kind| kind == "themes") {
-                continue;
-            }
-            let name = directory_name(&vsix.id);
             let destination = target.join(&name);
             let marker = destination.join(".graphite-extension-version");
             wanted.insert(name);
-            if std::fs::read_to_string(&marker).is_ok_and(|version| version == record.directory) {
+            if record.dev_path.is_none()
+                && std::fs::read_to_string(&marker).is_ok_and(|version| version == record.directory)
+            {
                 continue;
             }
             let _ = std::fs::remove_dir_all(&destination);
-            let package = root.join(&record.directory).join("extension");
-            let report = config::import_extension_themes(&package, &destination, &self.translator);
+            let report = if is_native {
+                let Metadata::Native(native) = &record.metadata else {
+                    continue;
+                };
+                let package = record.install_dir(&root);
+                let entries = native
+                    .themes
+                    .iter()
+                    .map(|theme| {
+                        (
+                            theme.id.as_deref(),
+                            Some(theme.label.as_str()),
+                            theme.path.as_str(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                config::import_native_plugin_themes(
+                    &package,
+                    &destination,
+                    &entries,
+                    &self.translator,
+                )
+            } else {
+                let package = root.join(&record.directory).join("extension");
+                config::import_extension_themes(&package, &destination, &self.translator)
+            };
             if let Some(warning) = report.warnings.first() {
                 self.status = warning.clone();
             }

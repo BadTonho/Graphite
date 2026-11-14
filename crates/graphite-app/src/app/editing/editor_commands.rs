@@ -79,6 +79,7 @@ impl App {
             })
             .collect::<Vec<_>>();
         entries.extend(self.vsix_diagnostics());
+        entries.extend(self.native_diagnostics());
         for task_diagnostic in &self.task_diagnostics {
             let candidate = PathBuf::from(&task_diagnostic.file);
             let path = if candidate.is_absolute() {

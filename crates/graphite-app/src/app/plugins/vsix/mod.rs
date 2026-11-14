@@ -8,7 +8,7 @@ use std::{collections::BTreeSet, time::Duration};
 mod code_lens;
 mod colors;
 mod debug;
-mod decorations;
+pub(crate) mod decorations;
 mod documents;
 mod file_events;
 mod hierarchy;

@@ -123,4 +123,75 @@ export interface Graphite {
     global: StorageArea;
     workspace: StorageArea;
   };
+  editor: {
+    active(): Promise<ActiveEditorSnapshot | null>;
+    setSelections(selections: EditorSelection[]): Promise<void>;
+    createDecorationType(options?: DecorationRenderOptions): Promise<DecorationType>;
+    setDecorations(decorationType: DecorationType | string, uri: string, ranges: DecorationRange[]): Promise<void>;
+  };
+  languages: {
+    setDiagnostics(owner: string, uri: string, diagnostics: DiagnosticEntry[]): Promise<void>;
+    clearDiagnostics(owner: string, uri: string): Promise<void>;
+    registerCompletionProvider(languages: string | string[], provider: CompletionItemProvider): Promise<Disposable>;
+    registerHoverProvider(languages: string | string[], provider: HoverProvider): Promise<Disposable>;
+    registerFormattingProvider(languages: string | string[], provider: FormattingProvider): Promise<Disposable>;
+  };
+}
+export interface EditorSelection {
+  anchor: Position;
+  active: Position;
+}
+export interface ActiveEditorSnapshot {
+  document: DocumentSnapshot;
+  selections: EditorSelection[];
+}
+export interface DecorationThemeOptions {
+  backgroundColor?: string;
+  border?: string;
+  borderColor?: string;
+  outline?: string;
+  outlineColor?: string;
+  after?: { contentText: string; color?: string };
+}
+export interface DecorationRenderOptions extends DecorationThemeOptions {
+  isWholeLine?: boolean;
+  dark?: DecorationThemeOptions;
+  light?: DecorationThemeOptions;
+}
+export interface DecorationRange {
+  start: Position;
+  end: Position;
+  hoverMessage?: string;
+}
+export interface DecorationType extends Disposable {
+  readonly key: string;
+}
+export type DiagnosticSeverity = 'error' | 'warning' | 'information' | 'hint';
+export interface DiagnosticEntry {
+  start: Position;
+  end: Position;
+  message: string;
+  severity?: DiagnosticSeverity;
+  source?: string;
+  code?: string;
+}
+export interface CompletionEntry {
+  label: string;
+  detail?: string;
+  insertText?: string;
+  documentation?: string;
+  kind?: string;
+}
+export interface CompletionItemProvider {
+  provideCompletions(uri: string, position: Position, signal?: AbortSignal): Promise<CompletionEntry[] | null | undefined> | CompletionEntry[] | null | undefined;
+}
+export interface HoverProvider {
+  provideHover(uri: string, position: Position, signal?: AbortSignal): Promise<string | { value: string } | null | undefined> | string | { value: string } | null | undefined;
+}
+export interface FormattingOptions {
+  tabSize: number;
+  insertSpaces: boolean;
+}
+export interface FormattingProvider {
+  provideDocumentFormatting(uri: string, options: FormattingOptions, signal?: AbortSignal): Promise<TextEdit[] | null | undefined> | TextEdit[] | null | undefined;
 }

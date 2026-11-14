@@ -43,10 +43,16 @@ impl App {
             })
             .filter_map(|record| match &record.metadata {
                 Metadata::Vsix(vsix) => Some(vsix.language_comments.iter()),
-                Metadata::Native(_) => None,
+                Metadata::Native(native) => Some(native.languages.iter()),
             })
             .flatten()
-            .filter(|comments| comments.extensions.iter().any(|ext| ext == &extension))
+            .filter(|comments| {
+                comments.extensions.iter().any(|ext| {
+                    ext.strip_prefix('.')
+                        .unwrap_or(ext)
+                        .eq_ignore_ascii_case(&extension)
+                })
+            })
             .collect::<Vec<_>>();
         if matches.len() != 1 {
             return None;

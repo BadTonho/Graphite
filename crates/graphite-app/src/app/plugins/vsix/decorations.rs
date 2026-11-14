@@ -65,7 +65,7 @@ pub(crate) struct LineMark {
 }
 
 #[derive(Default)]
-pub(super) struct Decorations {
+pub(crate) struct Decorations {
     styles: BTreeMap<String, Style>,
     /// Marks by editor (the document URI) and decoration type key.
     marks: BTreeMap<String, BTreeMap<String, Vec<Mark>>>,
@@ -335,7 +335,37 @@ impl Decorations {
         self.colors.remove(editor);
     }
 
-    pub(super) fn is_empty(&self) -> bool {
+    pub(crate) fn set_style(&mut self, key: String, options: &Value) {
+        self.styles.insert(key, style(options));
+    }
+
+    pub(crate) fn remove_style(&mut self, key: &str) {
+        self.styles.remove(key);
+        for by_key in self.marks.values_mut() {
+            by_key.remove(key);
+        }
+        self.marks.retain(|_, by_key| !by_key.is_empty());
+    }
+
+    pub(crate) fn set_mark_ranges(
+        &mut self,
+        editor: &str,
+        key: &str,
+        ranges: Vec<((u32, u32), (u32, u32))>,
+    ) {
+        let marks = ranges
+            .into_iter()
+            .take(MARK_LIMIT)
+            .map(|(start, end)| Mark {
+                start,
+                end,
+                after: None,
+            })
+            .collect();
+        self.set(editor, key, marks);
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
         self.marks.values().all(BTreeMap::is_empty) && self.colors.values().all(Vec::is_empty)
     }
 
@@ -477,12 +507,22 @@ impl App {
         line: usize,
         dark: bool,
     ) -> Vec<LineMark> {
-        self.plugins
+        let mut marks = self
+            .plugins
             .vsix
             .as_ref()
             .filter(|runtime| !runtime.decorations.is_empty())
             .map(|runtime| runtime.decorations.on_line(uri, line, dark))
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !self.extension_host.decorations.is_empty() {
+            marks.extend(self.extension_host.decorations.on_line(uri, line, dark));
+        }
+        for host in self.plugins.hosts.values() {
+            if !host.decorations.is_empty() {
+                marks.extend(host.decorations.on_line(uri, line, dark));
+            }
+        }
+        marks
     }
 }
 

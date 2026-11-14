@@ -7,9 +7,11 @@ use std::{
     time::{Duration, Instant},
 };
 mod lifecycle;
+mod native_editor_lang;
 mod native_services;
 mod native_ui;
 mod requests;
+use native_editor_lang::{NativeLanguageProvider, PendingLanguageRequest};
 pub(crate) use native_services::{NativePrompt, NativeStatusItem};
 #[cfg_attr(not(test), allow(unused_imports))]
 pub(crate) use native_ui::{
@@ -38,6 +40,13 @@ pub(crate) struct ExtensionRuntime {
     pub save_replies: HashMap<u64, std::sync::mpsc::Sender<ServiceResult<serde_json::Value>>>,
     pub tree_replies: HashMap<u64, (String, Option<String>)>,
     pub webview_deliveries: HashSet<u64>,
+    pub decorations: crate::app::plugins::vsix::decorations::Decorations,
+    pub diagnostics: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, Vec<lsp_types::Diagnostic>>,
+    >,
+    pub language_providers: std::collections::BTreeMap<String, NativeLanguageProvider>,
+    pub language_replies: HashMap<u64, PendingLanguageRequest>,
     pub subscriptions: HashMap<u64, DocumentSubscription>,
     pub outbound: HashMap<u64, u64>,
     pub incoming: HashMap<u64, Incoming>,

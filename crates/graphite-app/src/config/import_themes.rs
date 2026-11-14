@@ -81,7 +81,7 @@ pub(super) fn import_extension(
     else {
         return;
     };
-    let mut catalog = Map::new();
+    let mut specs = Vec::new();
     for entry in entries {
         let Some(relative) = entry.get("path").and_then(Value::as_str) else {
             report.warnings.push(translator.format(
@@ -90,20 +90,69 @@ pub(super) fn import_extension(
             ));
             continue;
         };
+        specs.push((
+            entry.get("id").and_then(Value::as_str),
+            entry.get("label").and_then(Value::as_str),
+            relative,
+        ));
+    }
+    import_entries(
+        &root,
+        &manifest_path,
+        destination,
+        &specs,
+        report,
+        translator,
+    );
+}
+
+/// Import themes declared explicitly by a native plugin manifest (`graphite-plugin.json`).
+pub(super) fn import_native(
+    package: &Path,
+    destination: &Path,
+    entries: &[(Option<&str>, Option<&str>, &str)],
+    report: &mut ImportReport,
+    translator: &Translator,
+) {
+    let Ok(root) = fs::canonicalize(package) else {
+        return;
+    };
+    let manifest_path = root.join("graphite-plugin.json");
+    import_entries(
+        &root,
+        &manifest_path,
+        destination,
+        entries,
+        report,
+        translator,
+    );
+}
+
+fn import_entries(
+    root: &Path,
+    manifest_path: &Path,
+    destination: &Path,
+    entries: &[(Option<&str>, Option<&str>, &str)],
+    report: &mut ImportReport,
+    translator: &Translator,
+) {
+    let mut seen = HashSet::new();
+    let mut catalog = Map::new();
+    for (id, label, relative) in entries {
         let source = root.join(relative);
         let path = match fs::canonicalize(&source) {
-            Ok(path) if path.starts_with(&root) => path,
+            Ok(path) if path.starts_with(root) => path,
             _ => {
                 report.warnings.push(translator.format(
                     "config.theme.invalid_path_relative",
-                    &[("path", &manifest_path.display()), ("relative", &relative)],
+                    &[("path", &manifest_path.display()), ("relative", relative)],
                 ));
                 continue;
             }
         };
         copy_with_dependencies(
             &path,
-            &root,
+            root,
             destination,
             &mut seen,
             &mut HashSet::new(),
@@ -111,14 +160,12 @@ pub(super) fn import_extension(
             translator,
         );
         let relative = path
-            .strip_prefix(&root)
+            .strip_prefix(root)
             .expect("theme path verified inside root")
             .to_string_lossy()
             .replace('\\', "/");
-        for key in ["id", "label"] {
-            if let Some(name) = entry.get(key).and_then(Value::as_str) {
-                catalog.insert(name.to_owned(), Value::String(relative.clone()));
-            }
+        for name in [id, label].into_iter().flatten() {
+            catalog.insert((*name).to_owned(), Value::String(relative.clone()));
         }
     }
     if !catalog.is_empty() {

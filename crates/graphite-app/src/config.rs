@@ -47,6 +47,18 @@ pub(crate) fn import_extension_themes(
     import_themes::import_extension(package, destination, &mut report, translator);
     report
 }
+
+/// Imports themes declared by an enabled native Graphite plugin into `destination`.
+pub(crate) fn import_native_plugin_themes(
+    package: &Path,
+    destination: &Path,
+    entries: &[(Option<&str>, Option<&str>, &str)],
+    translator: &Translator,
+) -> ImportReport {
+    let mut report = ImportReport::default();
+    import_themes::import_native(package, destination, entries, &mut report, translator);
+    report
+}
 #[cfg(test)]
 use themes::theme_colors_from;
 pub use themes::{

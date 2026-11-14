@@ -938,7 +938,9 @@ pub(super) fn editor_action_trigger_suggest(
 ) -> Result<(), CommandError> {
     {
         app.completion_items.clear();
-        if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Completion) {
+        if !app.request_native_language(graphite_core_api::LanguageProviderKind::Completion)
+            && !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Completion)
+        {
             app.request_lsp("completion");
         }
     };
@@ -990,14 +992,19 @@ pub(super) fn editor_action_show_hover(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    if !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Hover) {
+    if !app.request_native_language(graphite_core_api::LanguageProviderKind::Hover)
+        && !app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Hover)
+    {
         app.request_lsp("hover");
     }
     Ok(())
 }
 
-/// Prefers an active VSIX formatter and falls back to the language server.
+/// Prefers an active native/VSIX formatter and falls back to the language server.
 fn format_document(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.request_native_language(graphite_core_api::LanguageProviderKind::Formatter) {
+        return Ok(());
+    }
     if app.request_vsix_language(crate::app::plugins::VsixLanguageFeature::Format) {
         return Ok(());
     }

@@ -52,6 +52,10 @@ impl App {
         self.extension_host.save_replies.clear();
         self.extension_host.tree_replies.clear();
         self.extension_host.webview_deliveries.clear();
+        self.extension_host.decorations = Default::default();
+        self.extension_host.diagnostics.clear();
+        self.extension_host.language_providers.clear();
+        self.extension_host.language_replies.clear();
         self.extension_host.subscriptions.clear();
         self.extension_host.prompt = None;
         self.extension_host.status_items.clear();
@@ -139,6 +143,10 @@ impl App {
                         continue;
                     }
                     if self.extension_host.webview_deliveries.remove(&id) {
+                        continue;
+                    }
+                    if let Some(pending) = self.extension_host.language_replies.remove(&id) {
+                        self.apply_native_language_reply(pending, result);
                         continue;
                     }
                     if let Some(execution) = self.extension_host.outbound.remove(&id) {

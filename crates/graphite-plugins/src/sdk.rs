@@ -28,6 +28,9 @@ pub fn create(destination: &Path) -> Result<()> {
         activation_events: Vec::new(),
         keybindings: Vec::new(),
         menus: Default::default(),
+        themes: Vec::new(),
+        snippets: Vec::new(),
+        languages: Vec::new(),
     };
     m.validate()?;
     fs::create_dir_all(destination.join("src")).map_err(|e| e.to_string())?;
