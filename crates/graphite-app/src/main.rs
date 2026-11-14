@@ -330,6 +330,8 @@ struct App {
     chat: app::chat::ChatState,
     sync: app::user_data_sync::SyncState,
     remote: app::remote::RemoteState,
+    updates: app::updates::UpdateState,
+    troubleshooting: app::issue_reporter::TroubleshootingSession,
 }
 
 impl App {
@@ -559,6 +561,11 @@ impl App {
             app::remote::RemoteState::isolated()
         } else {
             app::remote::RemoteState::load(&profile_root)
+        };
+        let updates = if isolated {
+            app::updates::UpdateState::isolated()
+        } else {
+            app::updates::UpdateState::load(&profile_root)
         };
         let initial_document_id = next_document_id();
         Self {
@@ -831,6 +838,8 @@ impl App {
             chat,
             sync,
             remote,
+            updates,
+            troubleshooting: app::issue_reporter::TroubleshootingSession::default(),
         }
     }
 }

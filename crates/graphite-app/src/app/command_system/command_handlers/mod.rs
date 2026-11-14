@@ -38,6 +38,7 @@ mod sync_commands;
 mod task_commands;
 mod timeline_commands;
 mod ui;
+mod updates_issue_commands;
 mod widget_controls;
 mod widgets;
 mod workbench;
@@ -200,6 +201,7 @@ pub(crate) fn register(registry: &mut CommandRegistry) {
     chat_commands::register(registry);
     sync_commands::register(registry);
     remote_commands::register(registry);
+    updates_issue_commands::register(registry);
     for (id, title, arguments, handler) in [
         (
             "type",

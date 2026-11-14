@@ -297,9 +297,13 @@ impl ApplicationHandler<UserEvent> for App {
                 if !phase6_hit && self.modifiers.control_key() && !self.modifiers.alt_key() {
                     let in_editor = self.gpu.as_ref().is_some_and(|gpu| {
                         let (width, height) = gpu.renderer.size();
-                        let rect = self.focused_group_rect(width, height, gpu.renderer.line_height());
+                        let rect =
+                            self.focused_group_rect(width, height, gpu.renderer.line_height());
                         let (x, y) = (self.mouse.x as f32, self.mouse.y as f32);
-                        x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+                        x >= rect.x
+                            && x < rect.x + rect.width
+                            && y >= rect.y
+                            && y < rect.y + rect.height
                     });
                     // Ctrl+click follows a link an extension reported under the cursor.
                     if in_editor {
@@ -643,6 +647,7 @@ impl App {
             UserEvent::GitHubAuth(event) => self.handle_github_auth_event(event),
             UserEvent::Chat(event) => self.handle_chat_ui_event(event),
             UserEvent::Sync(event) => self.handle_sync_event(event),
+            UserEvent::Update(event) => self.handle_update_event(event),
             UserEvent::ScmSnapshot(snapshot) => {
                 self.accept_scm_snapshot(snapshot);
                 if let Some(gpu) = &self.gpu {

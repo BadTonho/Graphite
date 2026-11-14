@@ -39,8 +39,10 @@ mod utilities;
 pub(crate) use utilities::{phase4_tools, phase5, phase6_drawing};
 
 pub(crate) mod chat;
+pub(crate) mod issue_reporter;
 pub(crate) mod plugins;
 pub(crate) mod remote;
+pub(crate) mod updates;
 pub(crate) mod user_data_sync;
 
 pub(crate) mod extension_host;

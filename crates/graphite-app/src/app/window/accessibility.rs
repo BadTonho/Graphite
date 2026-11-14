@@ -342,6 +342,8 @@ pub(crate) enum UserEvent {
     Chat(crate::app::chat::ChatUiEvent),
     /// User Data Sync completion / reset notifications.
     Sync(crate::app::user_data_sync::SyncUiEvent),
+    /// Application update check and download notifications.
+    Update(crate::app::updates::UpdateUiEvent),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
     /// A notebook kernel has events to collect.

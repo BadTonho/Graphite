@@ -1,0 +1,431 @@
+//! Application update manager backed by GitHub Releases.
+
+pub(crate) mod state;
+pub(crate) mod transport;
+
+use crate::{App, UserEvent};
+use state::{verify_sha256, ReleaseInfo, UpdateChannel, UpdateConfig, UpdateStatus};
+use std::path::PathBuf;
+use transport::{GitHubReleasesTransport, UpdateTransport};
+
+#[derive(Debug, Clone)]
+pub(crate) enum UpdateUiEvent {
+    CheckCompleted(Result<Option<ReleaseInfo>, String>),
+    DownloadCompleted {
+        release: ReleaseInfo,
+        result: Result<Vec<u8>, String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UpdateState {
+    pub config: UpdateConfig,
+    pub current_version: String,
+    pub status: UpdateStatus,
+    pub latest_release: Option<ReleaseInfo>,
+    pub staged_update_path: Option<PathBuf>,
+    pub cancelled: bool,
+}
+
+impl UpdateState {
+    pub(crate) fn isolated() -> Self {
+        Self {
+            config: UpdateConfig::default(),
+            current_version: env!("CARGO_PKG_VERSION").to_owned(),
+            status: UpdateStatus::Idle,
+            latest_release: None,
+            staged_update_path: None,
+            cancelled: false,
+        }
+    }
+
+    pub(crate) fn load(profile_root: &std::path::Path) -> Self {
+        Self {
+            config: UpdateConfig::load_or_default(profile_root),
+            current_version: env!("CARGO_PKG_VERSION").to_owned(),
+            status: UpdateStatus::Idle,
+            latest_release: None,
+            staged_update_path: None,
+            cancelled: false,
+        }
+    }
+}
+
+impl App {
+    pub(crate) fn check_for_updates_with(&mut self, transport: &dyn UpdateTransport) {
+        self.updates.cancelled = false;
+        self.updates.status = UpdateStatus::Checking;
+        self.status = format!(
+            "Checking {} updates for {}...",
+            self.updates.config.channel.label(),
+            self.updates.config.repo
+        );
+        let outcome = transport
+            .fetch_latest_release(&self.updates.config.repo, self.updates.config.channel)
+            .map(|release| {
+                if release.is_newer_than(&self.updates.current_version) {
+                    Some(release)
+                } else {
+                    None
+                }
+            });
+        self.handle_update_event(UpdateUiEvent::CheckCompleted(outcome));
+    }
+
+    pub(crate) fn check_for_updates(&mut self) {
+        self.updates.cancelled = false;
+        self.updates.status = UpdateStatus::Checking;
+        self.status = "Checking for updates...".into();
+        let Some(proxy) = self.event_proxy.clone() else {
+            self.updates.status = UpdateStatus::UpToDate {
+                checked_version: self.updates.current_version.clone(),
+            };
+            self.status = format!("Graphite v{} is up to date", self.updates.current_version);
+            return;
+        };
+        let repo = self.updates.config.repo.clone();
+        let channel = self.updates.config.channel;
+        let current = self.updates.current_version.clone();
+        std::thread::spawn(move || {
+            let outcome = GitHubReleasesTransport::new().and_then(|transport| {
+                transport.fetch_latest_release(&repo, channel).map(|rel| {
+                    if rel.is_newer_than(&current) {
+                        Some(rel)
+                    } else {
+                        None
+                    }
+                })
+            });
+            let _ = proxy.send_event(UserEvent::Update(UpdateUiEvent::CheckCompleted(outcome)));
+        });
+    }
+
+    pub(crate) fn download_update_with(&mut self, transport: &dyn UpdateTransport) {
+        let Some(release) = self.updates.latest_release.clone() else {
+            self.status = "No available update to download".into();
+            return;
+        };
+        let Some(asset) = release.asset.clone() else {
+            self.updates.status = UpdateStatus::Error("Release has no downloadable asset".into());
+            self.status = "Release has no downloadable asset".into();
+            return;
+        };
+        self.updates.cancelled = false;
+        self.updates.status = UpdateStatus::Downloading {
+            tag: release.tag_name.clone(),
+            progress_pct: 10,
+        };
+        let result = transport.download_asset(&asset.download_url);
+        self.handle_update_event(UpdateUiEvent::DownloadCompleted { release, result });
+    }
+
+    pub(crate) fn download_update(&mut self) {
+        let Some(release) = self.updates.latest_release.clone() else {
+            self.status = "No available update to download".into();
+            return;
+        };
+        let Some(asset) = release.asset.clone() else {
+            self.updates.status = UpdateStatus::Error("Release has no downloadable asset".into());
+            self.status = "Release has no downloadable asset".into();
+            return;
+        };
+        let Some(proxy) = self.event_proxy.clone() else {
+            return;
+        };
+        self.updates.cancelled = false;
+        self.updates.status = UpdateStatus::Downloading {
+            tag: release.tag_name.clone(),
+            progress_pct: 5,
+        };
+        self.status = format!("Downloading update {}...", release.tag_name);
+        std::thread::spawn(move || {
+            let result = GitHubReleasesTransport::new()
+                .and_then(|transport| transport.download_asset(&asset.download_url));
+            let _ = proxy.send_event(UserEvent::Update(UpdateUiEvent::DownloadCompleted {
+                release,
+                result,
+            }));
+        });
+    }
+
+    pub(crate) fn cancel_update(&mut self) {
+        self.updates.cancelled = true;
+        self.updates.status = UpdateStatus::Cancelling;
+        self.status = "Cancelling update operation".into();
+        self.updates.status = UpdateStatus::Idle;
+    }
+
+    pub(crate) fn install_update(&mut self) {
+        match &self.updates.status {
+            UpdateStatus::ReadyToRestart {
+                release,
+                staged_path,
+            } => {
+                self.status = format!(
+                    "Update {} verified and staged at {}",
+                    release.tag_name,
+                    staged_path.display()
+                );
+            }
+            UpdateStatus::Available(_) => {
+                self.download_update();
+            }
+            _ => {
+                self.status = format!(
+                    "No downloaded update staged (current v{})",
+                    self.updates.current_version
+                );
+            }
+        }
+    }
+
+    pub(crate) fn restart_to_update(&mut self) {
+        let Some(staged_path) = self.updates.staged_update_path.clone() else {
+            self.status = "No staged update ready for restart".into();
+            return;
+        };
+        let tag = self
+            .updates
+            .latest_release
+            .as_ref()
+            .map(|r| r.tag_name.clone())
+            .unwrap_or_else(|| "staged".into());
+        let marker_dir = self.profile_root.join("updates");
+        let _ = std::fs::create_dir_all(&marker_dir);
+        let marker = serde_json::json!({
+            "tag": tag,
+            "staged_path": staged_path,
+        });
+        let _ = std::fs::write(
+            marker_dir.join("pending-install.json"),
+            serde_json::to_string_pretty(&marker).unwrap_or_default(),
+        );
+        self.status = format!("Update {tag} scheduled to apply on next restart");
+    }
+
+    pub(crate) fn show_update_info(&mut self) {
+        self.new_untitled_document();
+        let status_line = match &self.updates.status {
+            UpdateStatus::Idle => "Idle".to_owned(),
+            UpdateStatus::Checking => "Checking...".to_owned(),
+            UpdateStatus::Available(r) => format!("Available: {}", r.tag_name),
+            UpdateStatus::Downloading { tag, progress_pct } => {
+                format!("Downloading {tag} ({progress_pct}%)")
+            }
+            UpdateStatus::ReadyToRestart {
+                release,
+                staged_path,
+            } => format!(
+                "Ready to restart into {} (staged at `{}`)",
+                release.tag_name,
+                staged_path.display()
+            ),
+            UpdateStatus::Cancelling => "Cancelling".to_owned(),
+            UpdateStatus::UpToDate { checked_version } => {
+                format!("Up to date (v{checked_version})")
+            }
+            UpdateStatus::Error(err) => format!("Error: {err}"),
+        };
+        let text = format!(
+            "# Graphite Update Info\n\n- Current version: `v{}`\n- Channel: `{}`\n- GitHub repository: `{}`\n- Status: {}\n",
+            self.updates.current_version,
+            self.updates.config.channel.label(),
+            self.updates.config.repo,
+            status_line
+        );
+        self.editor_mut().insert(&text);
+        self.status = status_line;
+    }
+
+    pub(crate) fn show_update_release_notes(&mut self) {
+        self.new_untitled_document();
+        let text = if let Some(rel) = &self.updates.latest_release {
+            format!(
+                "# Release Notes — {}\n\n{}\n\nURL: {}\n",
+                rel.tag_name,
+                if rel.notes.trim().is_empty() {
+                    "No release notes provided."
+                } else {
+                    rel.notes.as_str()
+                },
+                rel.html_url
+            )
+        } else {
+            format!(
+                "# Release Notes — Graphite v{}\n\nRunning on channel `{}`.\n",
+                self.updates.current_version,
+                self.updates.config.channel.label()
+            )
+        };
+        self.editor_mut().insert(&text);
+        self.status = "Opened release notes".into();
+    }
+
+    pub(crate) fn set_update_channel(&mut self, channel: UpdateChannel) {
+        self.updates.config.channel = channel;
+        self.updates.config.save(&self.profile_root);
+        self.status = format!("Switched update channel to {}", channel.label());
+    }
+
+    pub(crate) fn handle_update_event(&mut self, event: UpdateUiEvent) {
+        if self.updates.cancelled {
+            self.updates.status = UpdateStatus::Idle;
+            self.status = "Update cancelled".into();
+            return;
+        }
+        match event {
+            UpdateUiEvent::CheckCompleted(Ok(Some(release))) => {
+                self.status = format!("Update available: {}", release.tag_name);
+                self.updates.latest_release = Some(release.clone());
+                self.updates.status = UpdateStatus::Available(release);
+            }
+            UpdateUiEvent::CheckCompleted(Ok(None)) => {
+                self.updates.latest_release = None;
+                self.updates.status = UpdateStatus::UpToDate {
+                    checked_version: self.updates.current_version.clone(),
+                };
+                self.status = format!("Graphite v{} is up to date", self.updates.current_version);
+            }
+            UpdateUiEvent::CheckCompleted(Err(err)) => {
+                self.updates.status = UpdateStatus::Error(err.clone());
+                self.status = format!("Update check failed: {err}");
+            }
+            UpdateUiEvent::DownloadCompleted { release, result } => match result {
+                Ok(bytes) => {
+                    if bytes.is_empty() {
+                        let msg = "Downloaded update package is empty".to_owned();
+                        self.updates.status = UpdateStatus::Error(msg.clone());
+                        self.status = msg;
+                        return;
+                    }
+                    if let Some(expected_sha) =
+                        release.asset.as_ref().and_then(|a| a.sha256.as_ref())
+                    {
+                        if let Err(err) = verify_sha256(&bytes, expected_sha) {
+                            self.updates.status = UpdateStatus::Error(err.clone());
+                            self.status = err;
+                            return;
+                        }
+                    }
+                    let asset_name = release
+                        .asset
+                        .as_ref()
+                        .map(|a| a.name.as_str())
+                        .unwrap_or("update-package.bin")
+                        .replace(['/', '\\', ':'], "_");
+                    let stage_dir = self
+                        .profile_root
+                        .join("updates")
+                        .join(release.tag_name.replace(['/', '\\', ':'], "_"));
+                    if let Err(err) = std::fs::create_dir_all(&stage_dir) {
+                        let msg = format!("Failed creating staging directory: {err}");
+                        self.updates.status = UpdateStatus::Error(msg.clone());
+                        self.status = msg;
+                        return;
+                    }
+                    let staged_path = stage_dir.join(asset_name);
+                    if let Err(err) = std::fs::write(&staged_path, &bytes) {
+                        let msg = format!("Failed staging update artifact: {err}");
+                        self.updates.status = UpdateStatus::Error(msg.clone());
+                        self.status = msg;
+                        return;
+                    }
+                    self.updates.staged_update_path = Some(staged_path.clone());
+                    self.updates.latest_release = Some(release.clone());
+                    self.status = format!(
+                        "Update {} downloaded and verified; restart to apply",
+                        release.tag_name
+                    );
+                    self.updates.status = UpdateStatus::ReadyToRestart {
+                        release,
+                        staged_path,
+                    };
+                }
+                Err(err) => {
+                    self.updates.status = UpdateStatus::Error(err.clone());
+                    self.status = format!("Update download failed: {err}");
+                }
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::state::{sha256_hex, ReleaseAsset};
+    use super::*;
+
+    struct MockUpdateTransport {
+        release: ReleaseInfo,
+        bytes: Vec<u8>,
+    }
+
+    impl UpdateTransport for MockUpdateTransport {
+        fn fetch_latest_release(
+            &self,
+            _repo: &str,
+            _channel: UpdateChannel,
+        ) -> Result<ReleaseInfo, String> {
+            Ok(self.release.clone())
+        }
+
+        fn download_asset(&self, _url: &str) -> Result<Vec<u8>, String> {
+            Ok(self.bytes.clone())
+        }
+    }
+
+    #[test]
+    fn mock_update_check_download_sha256_and_tamper_rejection_work() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        let good_bytes = b"verified-release-archive".to_vec();
+        let good_sha = sha256_hex(&good_bytes);
+
+        let transport = MockUpdateTransport {
+            release: ReleaseInfo {
+                tag_name: "v9.9.9".into(),
+                version: "9.9.9".into(),
+                prerelease: false,
+                notes: "Bug fixes and improvements".into(),
+                html_url: "https://github.com/graphite-editor/graphite/releases/tag/v9.9.9".into(),
+                asset: Some(ReleaseAsset {
+                    name: "graphite-9.9.9.zip".into(),
+                    download_url: "https://example.invalid/graphite-9.9.9.zip".into(),
+                    sha256: Some(good_sha.clone()),
+                }),
+            },
+            bytes: good_bytes,
+        };
+
+        app.check_for_updates_with(&transport);
+        assert!(matches!(app.updates.status, UpdateStatus::Available(_)));
+
+        app.download_update_with(&transport);
+        assert!(matches!(
+            app.updates.status,
+            UpdateStatus::ReadyToRestart { .. }
+        ));
+        assert!(app
+            .updates
+            .staged_update_path
+            .as_ref()
+            .is_some_and(|p| p.exists()));
+
+        app.restart_to_update();
+        assert!(app
+            .profile_root
+            .join("updates")
+            .join("pending-install.json")
+            .exists());
+
+        // Tampered payload must be rejected cleanly
+        let tampered = MockUpdateTransport {
+            release: transport.release,
+            bytes: b"corrupted-archive".to_vec(),
+        };
+        app.check_for_updates_with(&tampered);
+        app.download_update_with(&tampered);
+        assert!(matches!(app.updates.status, UpdateStatus::Error(_)));
+        assert!(app.status.contains("SHA-256 verification failed"));
+    }
+}
