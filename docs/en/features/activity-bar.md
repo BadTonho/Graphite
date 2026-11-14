@@ -56,9 +56,10 @@ VSIX packages can declare activity containers in
 Graphite native plugin manifests use the equivalent `activity_bar` array, with
 container IDs, titles, optional icons and `tree` or `webview` view kinds. Only
 enabled and workspace-trusted extension records are listed. Selecting a
-contribution currently opens its information panel and activates a trusted
-native plugin. Extension-provided tree data and interactive Webview rendering
-are not yet connected to the panel.
+contribution activates the owning extension. Tree views show their data under
+the container title, and views declared with `"type": "webview"` host the page
+the extension provides in an overlay below the view header (see
+[Extension API](extension-api.md)).
 
 ## Accessibility and verification
 

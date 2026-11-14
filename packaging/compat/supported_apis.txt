@@ -40,6 +40,7 @@ window.activeTerminal
 window.onDidCloseTerminal
 window.onDidOpenTerminal
 window.createWebviewPanel
+window.registerWebviewViewProvider
 languages.registerHoverProvider
 languages.registerCompletionItemProvider
 languages.registerDocumentFormattingEditProvider

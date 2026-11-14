@@ -826,6 +826,87 @@ fn vsix_tree_view_registers_fetches_expands_refreshes_and_disposes() {
 }
 
 #[test]
+fn vsix_webview_views_resolve_update_their_header_and_are_disposed_with_the_provider() {
+    let dir = TempDir::new();
+    let ext_root = dir.path().join("extension");
+    std::fs::create_dir_all(&ext_root).unwrap();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    let ext_uri = graphite_core_api::DocumentUri::from_path(&ext_root).unwrap();
+    let mut call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
+        app.handle_vsix_request(
+            runtime,
+            &json!({"id": 1, "actor": "MainThreadWebviewViews", "method": method, "args": args}),
+        )
+    };
+
+    call(
+        &mut app,
+        &mut runtime,
+        "$registerWebviewViewProvider",
+        json!([{ "location": { "$graphiteUri": ext_uri.as_str() } }, "sample.notes", { "retainContextWhenHidden": true }]),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+    assert!(runtime.webview_views.has_provider("sample.notes"));
+    assert!(runtime.webview_views.retains_context("sample.notes"));
+
+    app.resolve_webview_view(&mut runtime, "sample.notes", "Notes");
+    let resolve = host.next_sent().expect("resolve call");
+    assert_eq!(resolve["actor"], "ExtHostWebviewViews");
+    assert_eq!(resolve["method"], "$resolveWebviewView");
+    assert_eq!(resolve["args"][1], "sample.notes");
+    assert_eq!(resolve["args"][2], "Notes");
+    assert_eq!(resolve["cancellable"], true);
+    let handle = resolve["args"][0].as_str().unwrap().to_owned();
+    let panel = runtime.webviews.panels.get(&handle).expect("view page");
+    assert!(!panel.enable_scripts);
+
+    // The page content arrives over the shared webview bridge.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 2, "actor": "MainThreadWebviews", "method": "$setHtml", "args": [handle, "<p>hi</p>"]}),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+    assert_eq!(runtime.webviews.panels[&handle].html, "<p>hi</p>");
+
+    call(&mut app, &mut runtime, "$setWebviewViewTitle", json!([handle, "Open notes"])).unwrap();
+    call(&mut app, &mut runtime, "$setWebviewViewDescription", json!([handle, "2 pending"])).unwrap();
+    call(&mut app, &mut runtime, "$setWebviewViewBadge", json!([handle, { "value": 2, "tooltip": "two" }])).unwrap();
+    let state = runtime.webview_views.view("sample.notes").unwrap();
+    assert_eq!(state.title.as_deref(), Some("Open notes"));
+    assert_eq!(state.description.as_deref(), Some("2 pending"));
+    assert_eq!(state.badge, Some((2, Some("two".into()))));
+    call(&mut app, &mut runtime, "$setWebviewViewBadge", json!([handle, null])).unwrap();
+    assert!(runtime.webview_views.view("sample.notes").unwrap().badge.is_none());
+
+    call(&mut app, &mut runtime, "$show", json!([handle, false])).unwrap();
+    assert_eq!(runtime.webview_views.pending_show.as_deref(), Some("sample.notes"));
+
+    // A failed resolution is reported and not retried.
+    app.finish_vsix_webview_view(&mut runtime, &json!({"id": resolve["id"], "error": "boom"}));
+    assert_eq!(app.status, "boom");
+    assert!(runtime.webview_views.view("sample.notes").unwrap().failed);
+
+    call(&mut app, &mut runtime, "$unregisterWebviewViewProvider", json!(["sample.notes"])).unwrap();
+    // Earlier replies are still queued; the dispose call is the one naming its method.
+    let dispose = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$disposeWebviewView")
+        .expect("dispose call");
+    assert_eq!(dispose["args"][0], json!(handle));
+    assert!(!runtime.webviews.panels.contains_key(&handle));
+    assert!(runtime.webview_views.view("sample.notes").is_none());
+    // Unknown methods are answered with an error rather than silently accepted.
+    while host.next_sent().is_some() {}
+    call(&mut app, &mut runtime, "$nonexistent", json!([])).unwrap();
+    let refusal = host.next_sent().expect("error reply");
+    assert!(refusal["error"].is_string(), "{refusal}");
+}
+
+#[test]
 fn vsix_webview_enforces_local_resource_roots_and_handles_bidirectional_messages() {
     let dir = TempDir::new();
     let ext_root = dir.path().join("extension");

@@ -178,6 +178,9 @@ impl App {
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
+            ("MainThreadWebviewViews", _) => {
+                self.handle_vsix_webview_view_request(runtime, method, args)
+            }
             ("MainThreadWebviews", _) => self.handle_vsix_webview_request(runtime, method, args),
             ("MainThreadProgress", "$startProgress") => {
                 if let Some(title) = arg(1)?["title"].as_str() {

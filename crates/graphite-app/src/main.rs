@@ -317,6 +317,8 @@ struct App {
     webview: Option<webview::WebviewHost>,
     webview_html: String,
     webview_handle: Option<String>,
+    /// Pages of extension webview views hosted over the side bar, by webview handle.
+    sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
     graphite_detail_webview: Option<webview::WebviewHost>,
     graphite_detail_webview_target: Option<(u64, String)>,
     graphite_detail_webview_html: Option<String>,
@@ -822,6 +824,7 @@ impl App {
             webview: None,
             webview_html: String::new(),
             webview_handle: None,
+            sidebar_webviews: std::collections::BTreeMap::new(),
             graphite_detail_webview: None,
             graphite_detail_webview_target: None,
             graphite_detail_webview_html: None,

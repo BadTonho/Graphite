@@ -58,9 +58,10 @@ Pacotes VSIX podem declarar contêineres em
 Manifestos de plugins nativos Graphite usam a lista equivalente `activity_bar`,
 com IDs, títulos, ícones opcionais e tipos `tree` ou `webview`. Só são listados
 registros habilitados e confiáveis no workspace. Selecionar uma contribuição
-abre atualmente seu painel informativo e ativa plugins nativos confiáveis. Os
-provedores de dados de árvore e a renderização interativa de Webviews ainda não
-estão conectados ao painel.
+ativa a extensão dona. Views de árvore mostram seus dados sob o título do
+contêiner, e views declaradas com `"type": "webview"` hospedam a página fornecida
+pela extensão em uma sobreposição abaixo do cabeçalho da view (veja
+[API de extensões](extension-api.md)).
 
 ## Acessibilidade e verificação
 

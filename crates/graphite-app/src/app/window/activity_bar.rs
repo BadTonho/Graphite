@@ -775,8 +775,9 @@ impl App {
             line_height * 2.8,
             rgb(Theme::color(Theme::DIM, 0x858585)),
         );
+        let chars_per_row = ((width - PAD * 2.0) / cell_width.max(1.0)).max(1.0) as usize;
         let mut row = 0usize;
-        for view in &entry.views {
+        for view in entry.views.iter().filter(|view| view.kind != "webview") {
             let y = line_height * (4.0 + row as f32);
             if y + line_height >= height {
                 break;
@@ -829,6 +830,23 @@ impl App {
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
                 row += 1;
+            }
+        }
+        if let Some(lh) = self.gpu.as_ref().map(|gpu| gpu.renderer.line_height()) {
+            for slot in self.webview_slots_for(&entry, height, lh) {
+                let fallback = entry
+                    .views
+                    .iter()
+                    .find(|view| view.id == slot.view_id)
+                    .map(|view| view.title.as_str())
+                    .unwrap_or_default();
+                let header = self.webview_view_header(&slot.view_id, fallback);
+                renderer.draw_text(
+                    &header.chars().take(chars_per_row).collect::<String>(),
+                    ACTIVITY_BAR_WIDTH + PAD,
+                    slot.header_y,
+                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                );
             }
         }
         if entry.views.is_empty() {

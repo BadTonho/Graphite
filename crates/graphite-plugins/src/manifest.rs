@@ -615,7 +615,10 @@ pub(crate) fn vsix_activity_bar(manifest: &Value) -> Vec<ActivityBarContainer> {
                     (!view_id.is_empty() && !view_title.is_empty()).then(|| ActivityBarView {
                         id: view_id.into(),
                         title: view_title.into(),
-                        kind: "tree".into(),
+                        kind: match view.get("type").and_then(Value::as_str) {
+                            Some("webview") => "webview".into(),
+                            _ => "tree".into(),
+                        },
                     })
                 })
                 .collect();
@@ -792,6 +795,28 @@ mod activity_bar_tests {
         assert_eq!(containers[0].icon.as_deref(), Some("media/tools.svg"));
         assert_eq!(containers[0].views.len(), 1);
         assert_eq!(containers[0].views[0].id, "sample.tree");
+    }
+
+    #[test]
+    fn vsix_views_read_their_declared_type() {
+        let manifest = serde_json::json!({
+            "contributes": {
+                "viewsContainers": {"activitybar": [{"id":"sample.tools","title":"Tools"}]},
+                "views": {"sample.tools": [
+                    {"id":"sample.panel","name":"Panel","type":"webview"},
+                    {"id":"sample.tree","name":"Tree","type":"tree"},
+                    {"id":"sample.default","name":"Default"},
+                    {"id":"sample.other","name":"Other","type":"unknown"}
+                ]}
+            }
+        });
+        let containers = vsix_activity_bar(&manifest);
+        let kinds: Vec<_> = containers[0]
+            .views
+            .iter()
+            .map(|view| view.kind.as_str())
+            .collect();
+        assert_eq!(kinds, ["webview", "tree", "tree", "tree"]);
     }
 
     #[test]

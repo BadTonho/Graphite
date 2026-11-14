@@ -33,6 +33,8 @@ mod testing;
 mod tests;
 mod text_search;
 mod tree_views;
+mod webview_views;
+pub(crate) use webview_views::SidebarWebview;
 mod webviews;
 mod workbench;
 
@@ -67,6 +69,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Sidebar webview views registered via `MainThreadWebviewViews`.
+    webview_views: webview_views::WebviewViews,
     /// Task providers and executions registered via `MainThreadTask`.
     tasks: tasks::Tasks,
     /// Language model tools registered via `MainThreadLanguageModelTools`.
@@ -93,6 +97,7 @@ impl Runtime {
             || self.lenses.busy()
             || self.colors.busy()
             || self.tree_views.busy()
+            || self.webview_views.busy()
             || self.tasks.busy()
             || self.lm_tools.busy()
     }
@@ -125,6 +130,7 @@ impl Runtime {
             colors: Default::default(),
             tree_views: Default::default(),
             webviews: Default::default(),
+            webview_views: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
             activated_events: BTreeSet::new(),
@@ -303,6 +309,7 @@ impl App {
             colors: Default::default(),
             tree_views: Default::default(),
             webviews: Default::default(),
+            webview_views: Default::default(),
             tasks: Default::default(),
             lm_tools: Default::default(),
             activated_events: BTreeSet::new(),
@@ -321,6 +328,7 @@ impl App {
             self.hover_text = None;
             self.completion_items.clear();
             self.clear_vsix_tree_views();
+            self.stop_sidebar_webviews();
         }
     }
 
@@ -388,6 +396,11 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"]
+                        .as_u64()
+                        .is_some_and(webview_views::is_view_reply)
+                    {
+                        self.finish_vsix_webview_view(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tasks::is_task_reply) {
                         self.finish_vsix_task(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(env_lm::is_lm_tool_reply) {

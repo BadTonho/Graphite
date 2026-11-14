@@ -8,7 +8,7 @@ use super::*;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
 
-const DEFAULT_HTML: &str =
+pub(super) const DEFAULT_HTML: &str =
     "<!doctype html><html><head><title>Graphite Webview</title></head><body></body></html>";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,7 +64,7 @@ fn canonicalize_or_normalize(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
-fn uri_value_to_path(value: &Value) -> Option<PathBuf> {
+pub(super) fn uri_value_to_path(value: &Value) -> Option<PathBuf> {
     if let Some(raw) = value
         .as_str()
         .or_else(|| value["$graphiteUri"].as_str())
@@ -237,7 +237,7 @@ pub(super) fn sanitize_webview_html(html: &str, allowed_roots: &[PathBuf]) -> St
     output
 }
 
-fn parse_webview_options(
+pub(super) fn parse_webview_options(
     options: &Value,
     extension_root: Option<&Path>,
     workspace_root: &Path,
@@ -321,6 +321,7 @@ impl App {
                     .and_then(Value::as_str)
                     .ok_or("Missing webview handle")?;
                 runtime.webviews.panels.remove(handle);
+                runtime.webview_views.forget_handle(handle);
                 if runtime.webviews.active.as_deref() == Some(handle) {
                     runtime.webviews.active = runtime.webviews.panels.keys().next().cloned();
                 }
@@ -433,14 +434,17 @@ impl App {
                 if let Some(panel) = runtime.webviews.panels.get_mut(handle) {
                     panel.outbound_messages.push(parsed.clone());
                 }
+                let encoded = serde_json::to_string(&parsed).map_err(|e| e.to_string())?;
+                let script = format!(
+                    "window.postMessage(JSON.parse({}), '*')",
+                    serde_json::to_string(&encoded).unwrap_or_default()
+                );
                 if self.webview_handle.as_deref() == Some(handle) {
-                    let encoded = serde_json::to_string(&parsed).map_err(|e| e.to_string())?;
                     if let Some(webview) = &self.webview {
-                        webview.evaluate_script(&format!(
-                            "window.postMessage(JSON.parse({}), '*')",
-                            serde_json::to_string(&encoded).unwrap_or_default()
-                        ))?;
+                        webview.evaluate_script(&script)?;
                     }
+                } else if let Some(sidebar) = self.sidebar_webviews.get(handle) {
+                    sidebar.host.evaluate_script(&script)?;
                 }
                 Ok(json!(true))
             }
@@ -455,6 +459,18 @@ impl App {
     }
 
     pub(super) fn sync_vsix_webview_host(&mut self, runtime: &mut Runtime) -> Result<()> {
+        for (handle, sidebar) in &self.sidebar_webviews {
+            for message in sidebar.host.take_messages() {
+                let value =
+                    serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
+                runtime.session.send(json!({
+                    "type": "call",
+                    "actor": "ExtHostWebviews",
+                    "method": "$onMessage",
+                    "args": [handle, value],
+                }))?;
+            }
+        }
         let Some(handle) = self.webview_handle.as_deref() else {
             return Ok(());
         };

@@ -24,6 +24,7 @@ VSIX extensions run in the official Code OSS 1.145.2 extension host, in a separa
 | Text decorations | `window.createTextEditorDecorationType` and `TextEditor.setDecorations` draw background colors, borders (`border`, `outline`), whole-line marks and `after` text at the end of a line, with `dark` and `light` variants. Colors can be hex, `rgb()`/`rgba()` or common theme colors. Fonts, gutter icons, overview ruler marks, `before` text and hover messages are ignored, and decorations are not drawn in word-wrap mode yet. Ranges are not adjusted while the document is edited; the extension normally sets them again. |
 | Debug adapters | An extension that registers a `DebugAdapterDescriptorFactory` can supply the adapter for its debug type: executable and local TCP server descriptors work. Configuration providers, named pipes and inline implementations are not supported yet. See [Debug panel](debug-panel.md). |
 | Webview | Several webview panels, HTML content, messages both ways; resource URIs are confined to `localResourceRoots` (or the extension and workspace roots). |
+| Webview views | A `contributes.views` entry with `"type": "webview"` is served by `window.registerWebviewViewProvider`. Graphite calls `resolveWebviewView` the first time the view is shown, hosts its page in an overlay over the side bar under a header row, and reports visibility changes (`onDidChangeVisibility`). Scripts run only when `enableScripts` is set, and a restrictive Content Security Policy always applies. Views and `postMessage` work both ways, and `title`, `description` and `badge` update the header. A hidden view drops its page and rebuilds it from the last HTML, unless the provider sets `retainContextWhenHidden`. Several webview views in one container share the height; next to tree views they take the lower half. `WebviewView.show()` reveals the container. |
 
 ## Declarative contributions
 
@@ -45,7 +46,6 @@ Keybindings are bound into the active keymap when the extension is approved and 
 
 - Language providers beyond the list above (none left that Graphite knows of; the color picker and color presentations are not supported). Code actions that only run an extension command, and file operations inside a rename, are not applied.
 - Source control and virtual file systems (`registerFileSystemProvider`).
-- Webview views in the sidebar.
 - Custom editors and notebook kernels.
 
 Requests outside this list get the error `Graphite does not support <actor>.<method>`, and the extension sees that error. Registrations of capabilities that are not implemented (`$register*`, `$unregister*`, `$emit*`) are accepted without an error so they do not clutter the status bar. Every unsupported call is recorded once per session in `<profile>/code-oss/unsupported-api.log`, which shows what an extension needs that Graphite does not provide yet.

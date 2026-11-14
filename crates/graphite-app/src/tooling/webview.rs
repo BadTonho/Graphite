@@ -105,8 +105,46 @@ impl WebviewHost {
         bounds: [f64; 4],
     ) -> Result<Self, String> {
         let messages = Arc::new(Mutex::new(Vec::new()));
+        Self::build_overlay(
+            parent,
+            WebViewBuilder::new().with_html(html.to_owned()),
+            messages,
+            bounds,
+            "Graphite README",
+        )
+    }
+
+    /// Open an extension-provided webview over `bounds` (a sidebar view). The content is wrapped in
+    /// the enforced policy (scripts only when `enable_scripts`), gets the `acquireVsCodeApi` shim,
+    /// and its `postMessage` calls are queued for [`Self::take_messages`].
+    pub(crate) fn open_extension_overlay(
+        parent: &winit::window::Window,
+        html: &str,
+        bounds: [f64; 4],
+        enable_scripts: bool,
+    ) -> Result<Self, String> {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let sink = messages.clone();
         let builder = WebViewBuilder::new()
-            .with_html(html.to_owned())
+            .with_html(enforce_csp_with(html, enable_scripts))
+            .with_ipc_handler(move |request: Request<String>| {
+                if request.body().len() <= 64 * 1024 {
+                    if let Ok(mut queue) = sink.lock() {
+                        queue.push(request.body().clone());
+                    }
+                }
+            });
+        Self::build_overlay(parent, builder, messages, bounds, "Graphite View")
+    }
+
+    fn build_overlay(
+        parent: &winit::window::Window,
+        builder: WebViewBuilder<'_>,
+        messages: Arc<Mutex<Vec<String>>>,
+        bounds: [f64; 4],
+        title: &str,
+    ) -> Result<Self, String> {
+        let builder = builder
             .with_background_color((13, 17, 23, 255))
             .with_navigation_handler(|url| {
                 if url == "about:blank" {
@@ -130,7 +168,7 @@ impl WebviewHost {
             use wry::WebViewBuilderExtUnix;
             gtk::init().map_err(|error| error.to_string())?;
             let window = gtk::Window::new(gtk::WindowType::Toplevel);
-            window.set_title("Graphite README");
+            window.set_title(title);
             window.set_decorated(false);
             window.set_resizable(false);
             let container = gtk::Fixed::new();
@@ -144,6 +182,7 @@ impl WebviewHost {
         let view = builder
             .build_as_child(parent)
             .map_err(|error| error.to_string())?;
+        let _ = title;
 
         #[cfg(windows)]
         let host = Self { view, messages };
@@ -161,6 +200,22 @@ impl WebviewHost {
             window.show_all();
         }
         Ok(host)
+    }
+
+    /// Shows or hides the surface without destroying its page state.
+    pub(crate) fn set_visible(&self, visible: bool) -> Result<(), String> {
+        self.view
+            .set_visible(visible)
+            .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "linux")]
+        if let Some(window) = self.overlay_window() {
+            if visible {
+                window.show_all();
+            } else {
+                window.hide();
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn take_messages(&self) -> Vec<String> {
@@ -289,13 +344,21 @@ fn external_https_url(target: &str) -> Option<String> {
 }
 
 fn enforce_csp(html: &str) -> String {
-    const CSP: &str = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; media-src data: file:; style-src 'unsafe-inline' file:; script-src 'unsafe-inline' file:; font-src data: file:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri file:\">";
+    enforce_csp_with(html, true)
+}
+
+fn enforce_csp_with(html: &str, enable_scripts: bool) -> String {
+    let csp = if enable_scripts {
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; media-src data: file:; style-src 'unsafe-inline' file:; script-src 'unsafe-inline' file:; font-src data: file:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri file:\">"
+    } else {
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; media-src data: file:; style-src 'unsafe-inline' file:; script-src 'none'; font-src data: file:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri file:\">"
+    };
     const API: &str = "<script>(()=>{let state;window.acquireVsCodeApi=()=>({postMessage:m=>window.ipc.postMessage(JSON.stringify(m)),getState:()=>state,setState:s=>(state=s)});})();</script>";
     if let Some(index) = html.to_ascii_lowercase().find("<head>") {
         let split = index + "<head>".len();
-        format!("{}{}{}{}", &html[..split], CSP, API, &html[split..])
+        format!("{}{}{}{}", &html[..split], csp, API, &html[split..])
     } else {
-        format!("<html><head>{CSP}{API}</head><body>{html}</body></html>")
+        format!("<html><head>{csp}{API}</head><body>{html}</body></html>")
     }
 }
 
@@ -309,6 +372,15 @@ mod tests {
         assert!(html.contains("default-src 'none'"));
         assert!(html.contains("connect-src 'none'"));
         assert!(html.contains("<title>ok</title>"));
+    }
+
+    #[test]
+    fn scripts_are_blocked_unless_the_view_enables_them() {
+        let html = "<html><head></head><body></body></html>";
+        assert!(enforce_csp_with(html, false).contains("script-src 'none'"));
+        assert!(!enforce_csp_with(html, false).contains("script-src 'unsafe-inline'"));
+        assert!(enforce_csp_with(html, true).contains("script-src 'unsafe-inline'"));
+        assert!(enforce_csp_with("<p>x</p>", false).contains("script-src 'none'"));
     }
 
     #[test]

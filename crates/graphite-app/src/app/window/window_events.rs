@@ -14,6 +14,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.poll_extension_host(std::time::Instant::now());
         self.poll_plugins();
         self.sync_graphite_detail_webview();
+        self.sync_sidebar_webviews();
         if let (Some(view), Some(gpu)) = (&self.webview, &self.gpu) {
             view.pump();
             let _ = view.set_bounds(&gpu.window);
