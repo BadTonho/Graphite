@@ -23,15 +23,7 @@ pub(in crate::app) fn snapshot_document(
     })
 }
 fn language(language: Option<Language>) -> Option<String> {
-    language.map(|lang| {
-        match lang {
-            Language::Rust => "rust",
-            Language::Python => "python",
-            Language::JavaScript => "javascript",
-            Language::Json => "json",
-        }
-        .into()
-    })
+    language.map(|lang| lang.name().into())
 }
 impl App {
     pub(crate) fn service_document_id(&self, uri: &DocumentUri) -> Option<DocumentId> {

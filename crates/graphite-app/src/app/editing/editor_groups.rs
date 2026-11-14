@@ -796,15 +796,7 @@ impl App {
         }
         EditorSession {
             document,
-            language: tab.language.map(|l| {
-                match l {
-                    graphite_syntax::Language::Rust => "rust",
-                    graphite_syntax::Language::Python => "python",
-                    graphite_syntax::Language::JavaScript => "javascript",
-                    graphite_syntax::Language::Json => "json",
-                }
-                .to_owned()
-            }),
+            language: tab.language.map(|l| l.name().to_owned()),
             format_dirty: tab.saved_format != (tab.encoding, tab.line_ending),
             events: &mut self.document_events,
             editor: tab.buffer.edit(&mut view.selection_state, active),

@@ -56,6 +56,21 @@ const CAPTURES: &[(&str, Class)] = &[
     ("variable.builtin", Class::Constant),
     ("variable.parameter", Class::Variable),
     ("module", Class::Type),
+    ("tag", Class::Type),
+    ("punctuation.special", Class::Punctuation),
+    ("keyword.directive", Class::Keyword),
+    ("string.special.key", Class::Property),
+    ("markup.heading", Class::Keyword),
+    ("markup.heading.1", Class::Keyword),
+    ("markup.heading.2", Class::Keyword),
+    ("markup.heading.3", Class::Keyword),
+    ("markup.bold", Class::Constant),
+    ("markup.strong", Class::Constant),
+    ("markup.italic", Class::String),
+    ("markup.raw", Class::String),
+    ("markup.link", Class::Function),
+    ("markup.list", Class::Operator),
+    ("embedded", Class::Default),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,15 +79,37 @@ pub enum Language {
     Python,
     JavaScript,
     Json,
+    TypeScript,
+    Tsx,
+    Html,
+    Css,
+    C,
+    Cpp,
+    Go,
+    Toml,
+    Yaml,
+    Bash,
+    Markdown,
 }
 
 impl Language {
     pub fn from_path(path: &Path) -> Option<Self> {
         match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
             "rs" => Some(Self::Rust),
-            "py" => Some(Self::Python),
+            "py" | "pyi" => Some(Self::Python),
             "js" | "mjs" | "cjs" | "jsx" => Some(Self::JavaScript),
             "json" | "jsonc" => Some(Self::Json),
+            "ts" | "mts" | "cts" => Some(Self::TypeScript),
+            "tsx" => Some(Self::Tsx),
+            "html" | "htm" => Some(Self::Html),
+            "css" => Some(Self::Css),
+            "c" | "h" => Some(Self::C),
+            "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
+            "go" => Some(Self::Go),
+            "toml" => Some(Self::Toml),
+            "yml" | "yaml" => Some(Self::Yaml),
+            "sh" | "bash" | "zsh" => Some(Self::Bash),
+            "md" | "markdown" => Some(Self::Markdown),
             _ => None,
         }
     }
@@ -81,12 +118,63 @@ impl Language {
         self as usize
     }
 
+    /// Every built-in syntax language in declaration order (matches `index`).
+    pub const ALL: &'static [Self] = &[
+        Self::Rust,
+        Self::Python,
+        Self::JavaScript,
+        Self::Json,
+        Self::TypeScript,
+        Self::Tsx,
+        Self::Html,
+        Self::Css,
+        Self::C,
+        Self::Cpp,
+        Self::Go,
+        Self::Toml,
+        Self::Yaml,
+        Self::Bash,
+        Self::Markdown,
+    ];
+
+    /// Canonical lowercase identifier for this language.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::Python => "python",
+            Self::JavaScript => "javascript",
+            Self::Json => "json",
+            Self::TypeScript => "typescript",
+            Self::Tsx => "tsx",
+            Self::Html => "html",
+            Self::Css => "css",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Go => "go",
+            Self::Toml => "toml",
+            Self::Yaml => "yaml",
+            Self::Bash => "bash",
+            Self::Markdown => "markdown",
+        }
+    }
+
     pub(crate) fn ts_language(self) -> tree_sitter::Language {
         match self {
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
             Self::Python => tree_sitter_python::LANGUAGE.into(),
             Self::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Self::Json => tree_sitter_json::LANGUAGE.into(),
+            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Self::Html => tree_sitter_html::LANGUAGE.into(),
+            Self::Css => tree_sitter_css::LANGUAGE.into(),
+            Self::C => tree_sitter_c::LANGUAGE.into(),
+            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Self::Go => tree_sitter_go::LANGUAGE.into(),
+            Self::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
+            Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+            Self::Bash => tree_sitter_bash::LANGUAGE.into(),
+            Self::Markdown => tree_sitter_md::LANGUAGE.into(),
         }
     }
     pub(crate) fn highlight_query(self) -> &'static str {
@@ -95,6 +183,17 @@ impl Language {
             Self::Python => tree_sitter_python::HIGHLIGHTS_QUERY,
             Self::JavaScript => tree_sitter_javascript::HIGHLIGHT_QUERY,
             Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY,
+            Self::TypeScript => tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            Self::Tsx => tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            Self::Html => tree_sitter_html::HIGHLIGHTS_QUERY,
+            Self::Css => tree_sitter_css::HIGHLIGHTS_QUERY,
+            Self::C => tree_sitter_c::HIGHLIGHT_QUERY,
+            Self::Cpp => tree_sitter_cpp::HIGHLIGHT_QUERY,
+            Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY,
+            Self::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY,
+            Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY,
+            Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY,
+            Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
         }
     }
 }
@@ -173,6 +272,35 @@ pub fn enclosing_scope_headers(language: Language, source: &str, line: usize) ->
         .collect()
 }
 
+fn is_scope_node_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "function_item"
+            | "function_definition"
+            | "function_declaration"
+            | "method_definition"
+            | "method_declaration"
+            | "class_definition"
+            | "class_declaration"
+            | "class_specifier"
+            | "interface_declaration"
+            | "type_alias_declaration"
+            | "type_declaration"
+            | "enum_declaration"
+            | "enum_specifier"
+            | "struct_specifier"
+            | "namespace_definition"
+            | "struct_item"
+            | "enum_item"
+            | "impl_item"
+            | "trait_item"
+            | "mod_item"
+            | "table"
+            | "table_array_element"
+            | "atx_heading"
+    )
+}
+
 fn collect_scope_nodes<'tree>(
     node: tree_sitter::Node<'tree>,
     line: usize,
@@ -181,20 +309,7 @@ fn collect_scope_nodes<'tree>(
     if node.start_position().row > line || node.end_position().row < line {
         return;
     }
-    if matches!(
-        node.kind(),
-        "function_item"
-            | "function_definition"
-            | "function_declaration"
-            | "method_definition"
-            | "class_definition"
-            | "class_declaration"
-            | "struct_item"
-            | "enum_item"
-            | "impl_item"
-            | "trait_item"
-            | "mod_item"
-    ) {
+    if is_scope_node_kind(node.kind()) {
         output.push(node);
     }
     let mut cursor = node.walk();
@@ -207,20 +322,7 @@ fn collect_all_scope_nodes<'tree>(
     node: tree_sitter::Node<'tree>,
     output: &mut Vec<tree_sitter::Node<'tree>>,
 ) {
-    if matches!(
-        node.kind(),
-        "function_item"
-            | "function_definition"
-            | "function_declaration"
-            | "method_definition"
-            | "class_definition"
-            | "class_declaration"
-            | "struct_item"
-            | "enum_item"
-            | "impl_item"
-            | "trait_item"
-            | "mod_item"
-    ) {
+    if is_scope_node_kind(node.kind()) {
         output.push(node);
     }
     let mut cursor = node.walk();
@@ -401,5 +503,115 @@ mod tests {
         );
         let mut fresh = IncrementalHighlighter::new();
         assert_eq!(actual, fresh.highlight(Language::Rust, &new, None));
+    }
+
+    #[test]
+    fn detects_all_expanded_extensions() {
+        let cases = [
+            ("src/main.rs", Language::Rust),
+            ("script.pyi", Language::Python),
+            ("index.mjs", Language::JavaScript),
+            ("settings.jsonc", Language::Json),
+            ("app.ts", Language::TypeScript),
+            ("Button.tsx", Language::Tsx),
+            ("index.html", Language::Html),
+            ("styles.css", Language::Css),
+            ("kernel.c", Language::C),
+            ("header.hpp", Language::Cpp),
+            ("server.go", Language::Go),
+            ("Cargo.toml", Language::Toml),
+            ("ci.yml", Language::Yaml),
+            ("build.sh", Language::Bash),
+            ("README.md", Language::Markdown),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                Language::from_path(Path::new(path)),
+                Some(expected),
+                "path {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_languages_highlight_consistently_between_full_and_incremental() {
+        let samples = [
+            (Language::Rust, "fn main() { let x = \"hi\"; }\n"),
+            (Language::Python, "def greet(name):\n    return \"hi\"\n"),
+            (Language::JavaScript, "const x = () => 'hello';\n"),
+            (Language::Json, "{\"key\": [1, true, null]}\n"),
+            (
+                Language::TypeScript,
+                "interface User { name: string }\nconst u: User = { name: 'a' };\n",
+            ),
+            (
+                Language::Tsx,
+                "export function App() { return <div className=\"box\">hi</div>; }\n",
+            ),
+            (
+                Language::Html,
+                "<!DOCTYPE html><html><body><p>Hello</p></body></html>\n",
+            ),
+            (Language::Css, "body { color: #ff00aa; margin: 0px; }\n"),
+            (
+                Language::C,
+                "#include <stdio.h>\nint add(int a, int b) { return a + b; }\n",
+            ),
+            (
+                Language::Cpp,
+                "class Box { public: int width() const { return 1; } };\n",
+            ),
+            (
+                Language::Go,
+                "package main\nfunc main() { msg := \"ok\"; _ = msg }\n",
+            ),
+            (
+                Language::Toml,
+                "[package]\nname = \"graphite\"\nversion = \"0.1.0\"\n",
+            ),
+            (
+                Language::Yaml,
+                "services:\n  api:\n    ports: [8080]\n    enabled: true\n",
+            ),
+            (
+                Language::Bash,
+                "#!/usr/bin/env bash\nfunction hi() { echo \"ok\"; }\n",
+            ),
+            (Language::Markdown, "# Heading\n\n- item one\n"),
+        ];
+
+        let mut full = Highlighter::new();
+        for (lang, src) in samples {
+            let mut inc = IncrementalHighlighter::new();
+            let f_spans = full.highlight(lang, src);
+            let i_spans = inc.highlight(lang, src, None);
+            assert!(
+                f_spans.iter().any(|line| !line.is_empty()),
+                "expected full highlighter tokens for {:?}",
+                lang
+            );
+            assert!(
+                i_spans.iter().any(|line| !line.is_empty()),
+                "expected incremental highlighter tokens for {:?}",
+                lang
+            );
+            let mut fresh = IncrementalHighlighter::new();
+            assert_eq!(i_spans, fresh.highlight(lang, src, None));
+        }
+    }
+
+    #[test]
+    fn outline_and_sticky_scroll_work_for_expanded_languages() {
+        let ts = "interface Config {\n  port: number;\n}\nfunction boot() {\n  const x = 1;\n}\n";
+        let ts_headers = declaration_headers(Language::TypeScript, ts);
+        assert_eq!(ts_headers.len(), 2);
+
+        let go = "package main\ntype Server struct {}\nfunc (s *Server) Start() {\n\tprintln(\"hi\")\n}\n";
+        let go_sticky = enclosing_scope_headers(Language::Go, go, 3);
+        assert!(go_sticky.iter().any(|h| h.text.contains("Start")));
+
+        let md = "# Title\n\n## Section\n\nParagraph\n";
+        let md_headers = declaration_headers(Language::Markdown, md);
+        assert!(md_headers.iter().any(|h| h.text.contains("# Title")));
     }
 }

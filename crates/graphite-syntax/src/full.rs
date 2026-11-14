@@ -21,29 +21,11 @@ impl Highlighter {
             cfg.configure(&names);
             cfg
         };
-        // Order must match `Language::index` (declaration order of the enum).
-        let configs = vec![
-            make(
-                tree_sitter_rust::LANGUAGE.into(),
-                "rust",
-                tree_sitter_rust::HIGHLIGHTS_QUERY,
-            ),
-            make(
-                tree_sitter_python::LANGUAGE.into(),
-                "python",
-                tree_sitter_python::HIGHLIGHTS_QUERY,
-            ),
-            make(
-                tree_sitter_javascript::LANGUAGE.into(),
-                "javascript",
-                tree_sitter_javascript::HIGHLIGHT_QUERY,
-            ),
-            make(
-                tree_sitter_json::LANGUAGE.into(),
-                "json",
-                tree_sitter_json::HIGHLIGHTS_QUERY,
-            ),
-        ];
+        // Order matches `Language::ALL` / `Language::index`.
+        let configs = Language::ALL
+            .iter()
+            .map(|&lang| make(lang.ts_language(), lang.name(), lang.highlight_query()))
+            .collect();
         Self {
             inner: TsHighlighter::new(),
             configs,

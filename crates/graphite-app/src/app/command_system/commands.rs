@@ -6,13 +6,10 @@ impl App {
         let Some(scopes) = &snippet.scope else {
             return true;
         };
-        let language = match self.documents[self.command_document()].language {
-            Some(Language::Rust) => "rust",
-            Some(Language::Python) => "python",
-            Some(Language::JavaScript) => "javascript",
-            Some(Language::Json) => "json",
-            None => return false,
+        let Some(lang) = self.documents[self.command_document()].language else {
+            return false;
         };
+        let language = lang.name();
         scopes.iter().any(|scope| scope == language)
     }
 
