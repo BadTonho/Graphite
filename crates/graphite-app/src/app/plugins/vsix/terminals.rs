@@ -17,6 +17,10 @@ struct Item {
     extension_id: String,
     /// Stable `TerminalSession` identity (tab indexes shift as terminals close).
     session: u64,
+    /// User keyboard bytes forwarded back to an extension-owned pseudoterminal.
+    input_rx: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
+    /// Whether this terminal is backed by an extension-owned `Pseudoterminal`.
+    is_custom_pty: bool,
 }
 
 #[derive(Default)]
@@ -118,9 +122,48 @@ pub(super) fn dispatch(
             closed(runtime, item.id, None, EXIT_EXTENSION)?;
             Ok(Value::Null)
         }),
-        "$sendProcessData" | "$sendProcessReady" | "$sendProcessProperty" | "$sendProcessExit" => {
-            Err("Graphite does not support extension-owned pseudoterminals".into())
-        }
+        "$sendProcessData" => terminal_index(app, runtime, &first).and_then(|index| {
+            let data = args
+                .get(1)
+                .and_then(Value::as_str)
+                .ok_or("Invalid process data")?;
+            app.terminals[index].push_output(data.as_bytes().to_vec());
+            Ok(Value::Null)
+        }),
+        "$sendProcessTitle" => terminal_index(app, runtime, &first).map(|index| {
+            if let Some(title) = args.get(1).and_then(Value::as_str) {
+                if let Some(slot) = app.terminal_names.get_mut(index) {
+                    *slot = title.to_owned();
+                }
+            }
+            Value::Null
+        }),
+        "$sendProcessProperty" => terminal_index(app, runtime, &first).map(|index| {
+            if let Some(prop) = args.get(1) {
+                let kind = prop["type"].as_str();
+                if matches!(kind, Some("title" | "Title")) {
+                    if let Some(title) = prop["value"].as_str() {
+                        if let Some(slot) = app.terminal_names.get_mut(index) {
+                            *slot = title.to_owned();
+                        }
+                    }
+                }
+            }
+            Value::Null
+        }),
+        "$sendProcessReady" => Ok(Value::Null),
+        "$sendProcessExit" => terminal_index(app, runtime, &first).and_then(|index| {
+            let exit_code = args
+                .get(1)
+                .and_then(|v| v.as_u64())
+                .and_then(|code| u32::try_from(code).ok());
+            app.terminals[index].mark_exit(exit_code.unwrap_or(0));
+            if let Some(position) = runtime.terminals.position(&first) {
+                let item = runtime.terminals.items.remove(position);
+                closed(runtime, item.id, exit_code, EXIT_PROCESS)?;
+            }
+            Ok(Value::Null)
+        }),
         // Toggles for optional events and registrations that have nothing to wire yet.
         _ => Ok(Value::Null),
     })
@@ -145,31 +188,35 @@ fn create(app: &mut App, runtime: &mut Runtime, args: &[Value]) -> Result<Value>
         .ok_or("Invalid terminal identifier")?
         .to_owned();
     let config = args.get(1).unwrap_or(&Value::Null);
-    if config["isExtensionCustomPtyTerminal"].as_bool() == Some(true) {
-        return Err("Graphite does not support extension-owned pseudoterminals".into());
-    }
-    let default = app
-        .terminal_profiles
-        .get(app.selected_terminal_profile)
-        .cloned();
+    let is_custom_pty = config["isExtensionCustomPtyTerminal"].as_bool() == Some(true);
     let name = config["name"].as_str().unwrap_or("Extension terminal");
-    let profile = match config["shellPath"].as_str().filter(|path| !path.is_empty()) {
-        Some(path) => TerminalProfile {
-            name: name.to_owned(),
-            path: path.to_owned(),
-            args: shell_args(&config["shellArgs"]).unwrap_or_default(),
-        },
-        None => {
-            let mut profile = default.ok_or("No terminal profile is available")?;
-            profile.name = name.to_owned();
-            if let Some(args) = shell_args(&config["shellArgs"]) {
-                profile.args = args;
+    let (index, input_rx) = if is_custom_pty {
+        let (index, rx) = app.spawn_virtual_terminal(name)?;
+        (index, Some(rx))
+    } else {
+        let default = app
+            .terminal_profiles
+            .get(app.selected_terminal_profile)
+            .cloned();
+        let profile = match config["shellPath"].as_str().filter(|path| !path.is_empty()) {
+            Some(path) => TerminalProfile {
+                name: name.to_owned(),
+                path: path.to_owned(),
+                args: shell_args(&config["shellArgs"]).unwrap_or_default(),
+            },
+            None => {
+                let mut profile = default.ok_or("No terminal profile is available")?;
+                profile.name = name.to_owned();
+                if let Some(args) = shell_args(&config["shellArgs"]) {
+                    profile.args = args;
+                }
+                profile
             }
-            profile
-        }
+        };
+        let directory = directory(&config["cwd"]);
+        let index = app.spawn_terminal_profile(&profile, directory.as_deref(), Some(name))?;
+        (index, None)
     };
-    let directory = directory(&config["cwd"]);
-    let index = app.spawn_terminal_profile(&profile, directory.as_deref(), Some(name))?;
     // Extension terminals appear as tabs; the panel opens only when the extension shows one.
     let session = app.terminals[index].id();
     runtime.terminals.next += 1;
@@ -178,11 +225,21 @@ fn create(app: &mut App, runtime: &mut Runtime, args: &[Value]) -> Result<Value>
         id,
         extension_id: extension_id.clone(),
         session,
+        input_rx,
+        is_custom_pty,
     });
     runtime.session.send(json!({
         "type": "call", "actor": "ExtHostTerminalService", "method": "$acceptTerminalOpened",
         "args": [id, extension_id, name, {"name": name}],
     }))?;
+    if is_custom_pty {
+        runtime.session.send(json!({
+            "type": "call",
+            "actor": "ExtHostTerminalService",
+            "method": "$startExtensionTerminal",
+            "args": [id, {"rows": 24, "columns": 80}],
+        }))?;
+    }
     Ok(Value::Null)
 }
 
@@ -198,6 +255,20 @@ impl App {
     pub(super) fn sync_vsix_terminals(&self, runtime: &mut Runtime) -> Result<()> {
         let mut index = 0;
         while index < runtime.terminals.items.len() {
+            if runtime.terminals.items[index].is_custom_pty {
+                if let Some(rx) = runtime.terminals.items[index].input_rx.as_ref() {
+                    let term_id = runtime.terminals.items[index].id;
+                    while let Ok(bytes) = rx.try_recv() {
+                        let text = String::from_utf8_lossy(&bytes).into_owned();
+                        runtime.session.send(json!({
+                            "type": "call",
+                            "actor": "ExtHostTerminalService",
+                            "method": "$acceptTerminalProcessInput",
+                            "args": [term_id, text],
+                        }))?;
+                    }
+                }
+            }
             let session = runtime.terminals.items[index].session;
             let outcome = match self.terminals.iter().find(|tab| tab.id() == session) {
                 None => Some((None, EXIT_USER)),
@@ -252,11 +323,15 @@ mod tests {
                     id: 1,
                     extension_id: "a".into(),
                     session: 10,
+                    input_rx: None,
+                    is_custom_pty: false,
                 },
                 Item {
                     id: 2,
                     extension_id: "b".into(),
                     session: 11,
+                    input_rx: None,
+                    is_custom_pty: false,
                 },
             ],
             next: 2,

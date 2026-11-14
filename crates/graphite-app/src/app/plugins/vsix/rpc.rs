@@ -172,6 +172,7 @@ impl App {
             }
             ("MainThreadLanguageModelTools", "$getTools") => Ok(json!([])),
             ("MainThreadTreeViews", _) => self.handle_vsix_tree_request(runtime, method, args),
+            ("MainThreadTask", _) => self.handle_vsix_task_request(runtime, method, args),
             ("MainThreadWebviewPanels", _) => {
                 self.handle_vsix_webview_panel_request(runtime, method, args)
             }
@@ -205,7 +206,6 @@ impl App {
             | ("MainThreadConsole", "$logExtensionHostMessage")
             | ("MainThreadFileSystem", "$ensureActivation")
             | ("MainThreadDebugService", "$registerDebugTypes")
-            | ("MainThreadTask", "$registerSupportedExecutions" | "$registerTaskSystem")
             | ("MainThreadLogger", "$registerLogger" | "$deregisterLogger")
             | ("MainThreadProgress", "$progressEnd")
             | ("MainThreadTelemetry", "$publicLog" | "$publicLog2") => Ok(Value::Null),

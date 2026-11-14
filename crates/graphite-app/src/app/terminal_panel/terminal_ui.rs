@@ -77,6 +77,33 @@ impl App {
         Ok(index)
     }
 
+    /// Starts a virtual terminal tab whose bytes are pushed from an extension pseudoterminal.
+    pub(crate) fn spawn_virtual_terminal(
+        &mut self,
+        title: &str,
+    ) -> Result<(usize, std::sync::mpsc::Receiver<Vec<u8>>), String> {
+        let wake: Arc<dyn Fn() + Send + Sync> = match self.event_proxy.clone() {
+            Some(proxy) => Arc::new(move || {
+                let _ = proxy.send_event(UserEvent::TerminalWake);
+            }),
+            #[cfg(test)]
+            None => Arc::new(|| {}),
+            #[cfg(not(test))]
+            None => return Err(self.t("terminal.unavailable").to_owned()),
+        };
+        let (session, input_rx) = TerminalSession::start_virtual(wake)?;
+        self.terminal_names.push(title.to_owned());
+        self.terminals.push(session);
+        self.terminal_sizes.push((0, 0));
+        let index = self.terminals.len() - 1;
+        self.active_terminal = index;
+        self.focused_terminal = index;
+        self.terminal_tab_offset = index;
+        self.terminal_status = None;
+        self.resize_terminal();
+        Ok((index, input_rx))
+    }
+
     pub(crate) fn create_terminal_tab(&mut self) {
         match self.spawn_terminal_session() {
             Ok(index) => {

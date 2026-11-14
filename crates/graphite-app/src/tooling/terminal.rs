@@ -55,6 +55,7 @@ enum WorkerMessage {
     },
     Scroll(i32),
     ScrollToRow(i64),
+    Exit(u32),
     Stop,
     PtyWrite(String),
 }
@@ -237,6 +238,47 @@ impl TerminalSession {
         self.id
     }
 
+    /// Starts an in-memory virtual terminal backed by extension-provided output bytes instead of
+    /// an OS shell process, returning the session and a receiver of user keyboard input bytes.
+    pub fn start_virtual(
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Result<(Self, Receiver<Vec<u8>>), String> {
+        let snapshot = Arc::new(Mutex::new(TerminalSnapshot::default()));
+        let snapshot_worker = snapshot.clone();
+        let (sender, receiver) = mpsc::channel();
+        let worker_sender = sender.clone();
+        let (input_tx, input_rx) = mpsc::channel();
+        let worker = thread::Builder::new()
+            .name("graphite-virtual-terminal".into())
+            .spawn(move || {
+                run_virtual_terminal_worker(
+                    receiver,
+                    worker_sender,
+                    snapshot_worker,
+                    wake,
+                    input_tx,
+                );
+            })
+            .map_err(|e| e.to_string())?;
+        Ok((
+            Self {
+                id: NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                sender,
+                snapshot,
+                worker: Some(worker),
+            },
+            input_rx,
+        ))
+    }
+
+    pub fn push_output(&self, bytes: Vec<u8>) {
+        let _ = self.sender.send(WorkerMessage::Output(bytes));
+    }
+
+    pub fn mark_exit(&self, code: u32) {
+        let _ = self.sender.send(WorkerMessage::Exit(code));
+    }
+
     pub fn snapshot(&self) -> TerminalSnapshot {
         self.snapshot.lock().map(|s| s.clone()).unwrap_or_default()
     }
@@ -355,6 +397,13 @@ fn run_terminal_worker(
             Ok(WorkerMessage::PtyWrite(text)) => {
                 let _ = writer.write_all(text.as_bytes());
             }
+            Ok(WorkerMessage::Exit(code)) => {
+                if let Ok(mut state) = snapshot.lock() {
+                    state.exit_code = Some(code);
+                }
+                wake();
+                exited = true;
+            }
             Ok(WorkerMessage::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -365,6 +414,72 @@ fn run_terminal_worker(
                     break;
                 }
             }
+        }
+    }
+}
+
+fn run_virtual_terminal_worker(
+    receiver: Receiver<WorkerMessage>,
+    sender: Sender<WorkerMessage>,
+    snapshot: Arc<Mutex<TerminalSnapshot>>,
+    wake: Arc<dyn Fn() + Send + Sync>,
+    input_tx: Sender<Vec<u8>>,
+) {
+    let mut term = Term::new(
+        Config::default(),
+        &TerminalSize {
+            rows: 24,
+            columns: 80,
+        },
+        TerminalEvents(sender),
+    );
+    let mut parser: Processor = Processor::new();
+    let mut scanner = ShellScanner::default();
+    loop {
+        match receiver.recv_timeout(std::time::Duration::from_millis(30)) {
+            Ok(WorkerMessage::Input(bytes)) => {
+                let _ = input_tx.send(bytes);
+            }
+            Ok(WorkerMessage::PtyWrite(text)) => {
+                let _ = input_tx.send(text.into_bytes());
+            }
+            Ok(WorkerMessage::Output(bytes)) => {
+                let mut done = 0;
+                for (offset, event) in scanner.feed(&bytes) {
+                    parser.advance(&mut term, &bytes[done..offset]);
+                    done = offset;
+                    record_shell_event(&term, event, &snapshot);
+                }
+                parser.advance(&mut term, &bytes[done..]);
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::ScrollToRow(row)) => {
+                scroll_to_row_in(&mut term, row);
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::Resize { rows, columns, .. }) => {
+                term.resize(TerminalSize {
+                    rows: rows as usize,
+                    columns: columns as usize,
+                });
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::Scroll(delta)) => {
+                term.scroll_display(Scroll::Delta(-delta));
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::Exit(code)) => {
+                if let Ok(mut state) = snapshot.lock() {
+                    state.exit_code = Some(code);
+                }
+                wake();
+            }
+            Ok(WorkerMessage::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
     }
 }

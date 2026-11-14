@@ -25,6 +25,7 @@ mod rpc;
 mod selection_ranges;
 mod semantic;
 mod storage;
+mod tasks;
 mod terminals;
 mod testing;
 #[cfg(test)]
@@ -65,6 +66,8 @@ pub(crate) struct Runtime {
     tree_views: tree_views::TreeViews,
     /// Webview panels registered via `MainThreadWebviewPanels` / `MainThreadWebviews`.
     webviews: webviews::Webviews,
+    /// Task providers and executions registered via `MainThreadTask`.
+    tasks: tasks::Tasks,
     /// Unsupported `actor.method` calls already logged this session.
     unsupported: BTreeSet<String>,
     /// Commands extensions asked for that Graphite does not have.
@@ -83,6 +86,7 @@ impl Runtime {
             || self.lenses.busy()
             || self.colors.busy()
             || self.tree_views.busy()
+            || self.tasks.busy()
     }
 }
 
@@ -113,6 +117,7 @@ impl Runtime {
             colors: Default::default(),
             tree_views: Default::default(),
             webviews: Default::default(),
+            tasks: Default::default(),
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         }
@@ -287,6 +292,7 @@ impl App {
             colors: Default::default(),
             tree_views: Default::default(),
             webviews: Default::default(),
+            tasks: Default::default(),
             unsupported: BTreeSet::new(),
             requested: Default::default(),
         });
@@ -368,6 +374,8 @@ impl App {
                         self.finish_vsix_passive(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(tree_views::is_tree_reply) {
                         self.finish_vsix_tree(runtime, &event);
+                    } else if event["id"].as_u64().is_some_and(tasks::is_task_reply) {
+                        self.finish_vsix_task(runtime, &event);
                     } else if event["id"].as_u64() == Some(1) {
                         runtime.command = None;
                         if let Some(error) = event["error"].as_str() {
@@ -417,6 +425,7 @@ impl App {
             self.drive_vsix_code_lens(runtime)?;
             self.drive_vsix_colors(runtime)?;
             self.expire_vsix_trees(runtime);
+            self.poll_vsix_tasks(runtime);
             self.refresh_vsix_outputs(runtime);
             self.sync_vsix_terminals(runtime)?;
             self.sync_vsix_webview_host(runtime)?;

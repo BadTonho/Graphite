@@ -982,3 +982,252 @@ fn vsix_webview_enforces_local_resource_roots_and_handles_bidirectional_messages
     assert_eq!(disposed["method"], "$onDidDisposeWebviewPanel");
     assert!(app.vsix_webview().is_none());
 }
+
+#[test]
+fn vsix_custom_pty_terminal_bridges_output_title_input_and_exit() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.profile_root = dir.path().join("profile");
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 20,
+            "actor": "MainThreadTerminalService",
+            "method": "$createTerminal",
+            "args": ["ext-pty-1", { "name": "Ext PTY", "isExtensionCustomPtyTerminal": true }]
+        }),
+    )
+    .unwrap();
+
+    let opened = host.next_sent().expect("$acceptTerminalOpened");
+    assert_eq!(opened["actor"], "ExtHostTerminalService");
+    assert_eq!(opened["method"], "$acceptTerminalOpened");
+    let term_id = opened["args"][0].as_u64().unwrap();
+
+    let start_pty = host.next_sent().expect("$startExtensionTerminal");
+    assert_eq!(start_pty["actor"], "ExtHostTerminalService");
+    assert_eq!(start_pty["method"], "$startExtensionTerminal");
+    assert_eq!(start_pty["args"][0], term_id);
+
+    let _create_reply = host.next_sent().expect("create reply");
+
+    // Rename & stream output from extension pseudoterminal.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 21,
+            "actor": "MainThreadTerminalService",
+            "method": "$sendProcessTitle",
+            "args": ["ext-pty-1", "Build PTY"]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+    assert_eq!(app.terminal_names[0], "Build PTY");
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 22,
+            "actor": "MainThreadTerminalService",
+            "method": "$sendProcessData",
+            "args": ["ext-pty-1", "hello pty\r\n"]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        let text: String = app.terminals[0]
+            .snapshot()
+            .rows
+            .iter()
+            .map(|row| row.iter().map(|c| c.character).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if text.contains("hello pty") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let rendered: String = app.terminals[0]
+        .snapshot()
+        .rows
+        .iter()
+        .map(|row| row.iter().map(|c| c.character).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("hello pty"), "screen was: {rendered}");
+
+    // Keyboard input in terminal forwards to $acceptTerminalProcessInput.
+    app.terminals[0].input(b"status\r".to_vec());
+    app.plugins.vsix = Some(runtime);
+    let mut forwarded = None;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        app.poll_plugins();
+        while let Some(msg) = host.next_sent() {
+            if msg["method"] == "$acceptTerminalProcessInput" {
+                forwarded = Some(msg);
+                break;
+            }
+        }
+        if forwarded.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let forwarded = forwarded.expect("expected forwarded PTY input");
+    assert_eq!(forwarded["args"], json!([term_id, "status\r"]));
+
+    // Extension closes the pseudoterminal with exit code 0.
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 23,
+            "actor": "MainThreadTerminalService",
+            "method": "$sendProcessExit",
+            "args": ["ext-pty-1", 0]
+        }),
+    )
+    .unwrap();
+    let closed_evt = host.next_sent().expect("$acceptTerminalClosed");
+    assert_eq!(closed_evt["method"], "$acceptTerminalClosed");
+    assert_eq!(closed_evt["args"][0], term_id);
+    assert_eq!(closed_evt["args"][1], 0);
+}
+
+#[test]
+fn vsix_tasks_provider_custom_execution_and_cwd_confinement() {
+    let dir = TempDir::new();
+    let work = dir.path().join("work");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+
+    let mut app = App::new_with_options(work.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+
+    // Untrusted workspace must refuse $executeTask.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 30,
+            "actor": "MainThreadTask",
+            "method": "$executeTask",
+            "args": [{ "type": "shell", "name": "blocked", "command": { "runtime": "shell", "commandLine": "echo no" } }]
+        }),
+    )
+    .unwrap();
+    let refused = host.next_sent().expect("untrusted error reply");
+    assert!(refused["error"].as_str().unwrap().contains("restricted"));
+
+    app.workspace_trust =
+        Some(crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap());
+    app.run_ui_command("graphite.security.trustWorkspace");
+
+    // Register task provider & fetch tasks.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 31,
+            "actor": "MainThreadTask",
+            "method": "$registerTaskProvider",
+            "args": [7, "cargo-ext"]
+        }),
+    )
+    .unwrap();
+    let _ = host.next_sent();
+
+    app.plugins.vsix = Some(runtime);
+    app.request_vsix_tasks().unwrap();
+    let provide_call = host.next_sent().expect("$provideTasks");
+    assert_eq!(provide_call["actor"], "ExtHostTask");
+    assert_eq!(provide_call["method"], "$provideTasks");
+    let provide_id = provide_call["id"].as_u64().unwrap();
+
+    host.emit(json!({
+        "type": "result",
+        "id": provide_id,
+        "result": {
+            "tasks": [{ "type": "cargo-ext", "name": "Clippy Check", "isCustomExecution": true }]
+        }
+    }));
+    app.poll_plugins();
+
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    assert_eq!(runtime.tasks.discovered.len(), 1);
+    assert_eq!(runtime.tasks.discovered[0].name, "Clippy Check");
+
+    // Escaping workspace via cwd must be rejected cleanly.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 32,
+            "actor": "MainThreadTask",
+            "method": "$executeTask",
+            "args": [{
+                "type": "shell",
+                "name": "escape",
+                "command": {
+                    "runtime": "shell",
+                    "commandLine": "echo hi",
+                    "options": { "cwd": outside.display().to_string() }
+                }
+            }]
+        }),
+    )
+    .unwrap();
+    let mut escape_reply = None;
+    while let Some(msg) = host.next_sent() {
+        if msg["type"] == "reply" && msg["id"] == 32 {
+            escape_reply = Some(msg);
+            break;
+        }
+    }
+    let escape_reply = escape_reply.expect("cwd confinement error");
+    assert!(escape_reply["error"].as_str().unwrap().contains("escapes"));
+
+    // CustomExecution starts and completes cleanly.
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 33,
+            "actor": "MainThreadTask",
+            "method": "$executeTask",
+            "args": [{ "type": "cargo-ext", "name": "Custom Build", "isCustomExecution": true }]
+        }),
+    )
+    .unwrap();
+    let started_evt = host.next_sent().expect("$onDidStartTask");
+    assert_eq!(started_evt["method"], "$onDidStartTask");
+    let reply = host.next_sent().expect("$executeTask reply");
+    let exec_id = reply["result"]["id"].as_str().unwrap().to_owned();
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 34,
+            "actor": "MainThreadTask",
+            "method": "$customExecutionComplete",
+            "args": [exec_id, 0]
+        }),
+    )
+    .unwrap();
+    let ended_proc = host.next_sent().expect("$onDidEndTaskProcess");
+    assert_eq!(ended_proc["method"], "$onDidEndTaskProcess");
+    assert_eq!(ended_proc["args"][1], 0);
+    let ended_evt = host.next_sent().expect("$onDidEndTask");
+    assert_eq!(ended_evt["method"], "$onDidEndTask");
+    let _complete_reply = host.next_sent();
+}
