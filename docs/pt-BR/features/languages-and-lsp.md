@@ -23,6 +23,18 @@ Cada linguagem embutida conta com destaque de sintaxe completo e incremental, de
 | YAML | `.yml`, `.yaml` | `yaml-language-server --stdio` |
 | Bash / Shell | `.sh`, `.bash`, `.zsh` | `bash-language-server start` |
 | Markdown | `.md`, `.markdown` | `marksman server` |
+| Java | `.java` | `jdtls` |
+| C# | `.cs` | `csharp-ls`, `OmniSharp -lsp`, `omnisharp -lsp` |
+| PHP | `.php`, `.phtml` | `intelephense --stdio`, `phpactor language-server` |
+| Kotlin | `.kt`, `.kts` | `kotlin-language-server` |
+| Scala | `.scala`, `.sc` | `metals` |
+| Ruby | `.rb`, `.rake`, `.gemspec` | `ruby-lsp`, `solargraph stdio` |
+| SQL | `.sql` | `sql-language-server up --method stdio`, `sqls` |
+| PowerShell | `.ps1`, `.psm1`, `.psd1` | `powershell-editor-services` |
+| Lua | `.lua` | `lua-language-server` |
+| Zig | `.zig` | `zls` |
+| Elixir | `.ex`, `.exs` | `elixir-ls` |
+| SCSS | `.scss` | `vscode-css-language-server --stdio`, `css-languageserver --stdio` |
 
 ## Precedência de Configuração (`crates/graphite-app/src/language/lsp/defaults.rs`)
 
