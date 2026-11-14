@@ -170,6 +170,10 @@ impl App {
 
     /// Detach closed documents only after their pending operations release them.
     pub(crate) fn collect_closed_documents(&mut self) {
+        if let Some(engine) = self.textmate.as_mut() {
+            let open: std::collections::HashSet<DocumentId> = self.documents.ids().collect();
+            engine.retain_documents(|id| open.contains(&id));
+        }
         self.closed_tabs.retain(|closed| {
             closed.document.is_some() || self.editor_groups.view_count(closed.id) == 0
         });

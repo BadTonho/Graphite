@@ -44,9 +44,10 @@ Um VSIX sem ponto de entrada Node.js (temas, snippets, pacotes de idioma) não e
 | `snippets` | Os arquivos de snippets são carregados para extensões habilitadas, com escopo na linguagem contribuinte. Um snippet do usuário ou do projeto com o mesmo prefixo e escopo os substitui. |
 
 | `themes` | Os temas de cores são importados para o perfil e selecionados com `workbench.colorTheme`, por rótulo ou id. Desabilitar a extensão os remove. |
+| `languages` e `grammars` | Arquivos de uma linguagem contribuída são realçados com a gramática TextMate dela quando o tree-sitter não tem uma. Veja [Gramáticas TextMate](textmate-grammars.md). |
 | `iconThemes` | Os temas de ícones de arquivo são selecionados com **Tema de Ícones de Arquivo** ou `workbench.iconTheme`, e desenhados no Explorer, no Quick Open, nas abas e no Controle de Versão. Veja [Ícones de arquivos](file-icons.md#temas-de-ícones-de-extensões). |
 
-Atalhos de teclado são vinculados ao keymap ativo quando a extensão é aprovada e o workspace é confiável. Gramáticas constam no pacote, mas ainda não são aplicadas.
+Atalhos de teclado são vinculados ao keymap ativo quando a extensão é aprovada e o workspace é confiável. As `grammars` colorem arquivos que o tree-sitter não conhece; veja [Gramáticas TextMate](textmate-grammars.md).
 
 ## Ainda não
 

@@ -321,6 +321,8 @@ struct App {
     webview_handle: Option<String>,
     /// Pages of extension webview views hosted over the side bar, by webview handle.
     sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
+    /// Grammars contributed by extensions, for the files tree-sitter does not cover.
+    textmate: Option<app::textmate::TextMate>,
     /// Pages of extension custom editors hosted over editor groups, by webview handle.
     custom_editor_webviews: std::collections::BTreeMap<String, app::plugins::vsix::EditorOverlay>,
     /// Files the user chose to open as text although a custom editor offers to open them.
@@ -833,6 +835,7 @@ impl App {
             webview_html: String::new(),
             webview_handle: None,
             sidebar_webviews: std::collections::BTreeMap::new(),
+            textmate: None,
             custom_editor_webviews: std::collections::BTreeMap::new(),
             custom_editor_text_paths: std::collections::BTreeSet::new(),
             graphite_detail_webview: None,

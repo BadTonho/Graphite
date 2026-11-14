@@ -346,6 +346,33 @@ pub struct Vsix {
     /// Notebook types contributed via `contributes.notebooks`, served by a notebook serializer.
     #[serde(default)]
     pub notebooks: Vec<CustomEditorContribution>,
+    /// Languages contributed via `contributes.languages`, with the files they are for.
+    #[serde(default)]
+    pub languages: Vec<LanguageContribution>,
+    /// TextMate grammars contributed via `contributes.grammars`.
+    #[serde(default)]
+    pub grammars: Vec<GrammarContribution>,
+}
+
+/// A language an extension contributes and the files it applies to.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanguageContribution {
+    pub id: String,
+    /// File name endings such as `.toy`.
+    pub extensions: Vec<String>,
+    /// Whole file names such as `Makefile`.
+    pub filenames: Vec<String>,
+}
+
+/// A TextMate grammar an extension contributes.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrammarContribution {
+    /// The language it highlights; a grammar without one is only included by other grammars.
+    pub language: Option<String>,
+    pub scope_name: String,
+    /// The grammar file, relative to the extension.
+    pub path: String,
 }
 
 /// A custom editor an extension offers for some files (`contributes.customEditors`).
@@ -754,6 +781,54 @@ pub(crate) fn vsix_activation_events(manifest: &Value) -> Vec<String> {
         implicit(format!("onAuthenticationRequest:{id}"));
     }
     events
+}
+
+fn strings_of(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+pub(crate) fn vsix_languages(manifest: &Value) -> Vec<LanguageContribution> {
+    manifest
+        .pointer("/contributes/languages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.trim();
+            (!id.is_empty()).then(|| LanguageContribution {
+                id: id.to_owned(),
+                extensions: strings_of(entry.get("extensions")),
+                filenames: strings_of(entry.get("filenames")),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn vsix_grammars(manifest: &Value) -> Vec<GrammarContribution> {
+    manifest
+        .pointer("/contributes/grammars")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let scope_name = entry.get("scopeName")?.as_str()?.trim();
+            let path = entry.get("path")?.as_str()?.trim();
+            (!scope_name.is_empty() && !path.is_empty()).then(|| GrammarContribution {
+                language: entry
+                    .get("language")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                scope_name: scope_name.to_owned(),
+                path: path.to_owned(),
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn vsix_custom_editors(manifest: &Value) -> Vec<CustomEditorContribution> {
@@ -1250,6 +1325,29 @@ mod activity_bar_tests {
         assert!(paint.matches(std::path::Path::new("/work/icons/a.svg")));
         assert!(!paint.matches(std::path::Path::new("/work/other/a.svg")));
         assert!(!paint.matches(std::path::Path::new("/work/pic.jpg")));
+    }
+
+    #[test]
+    fn languages_and_grammars_are_parsed() {
+        let manifest = serde_json::json!({"contributes": {
+            "languages": [
+                {"id": "toy", "extensions": [".toy", ".t"], "filenames": ["Toyfile"], "aliases": ["Toy"]},
+                {"id": "", "extensions": [".x"]}
+            ],
+            "grammars": [
+                {"language": "toy", "scopeName": "source.toy", "path": "./syntaxes/toy.tmLanguage.json"},
+                {"scopeName": "text.inject", "path": "inject.json"},
+                {"language": "bad", "scopeName": "", "path": "x.json"}
+            ]
+        }});
+        let languages = vsix_languages(&manifest);
+        assert_eq!(languages.len(), 1);
+        assert_eq!(languages[0].extensions, [".toy", ".t"]);
+        assert_eq!(languages[0].filenames, ["Toyfile"]);
+        let grammars = vsix_grammars(&manifest);
+        assert_eq!(grammars.len(), 2);
+        assert_eq!(grammars[0].language.as_deref(), Some("toy"));
+        assert_eq!(grammars[1].language, None);
     }
 
     #[test]

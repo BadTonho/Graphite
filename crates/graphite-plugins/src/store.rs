@@ -108,6 +108,23 @@ impl Store {
                             }
                         }
                     }
+                    if vsix.grammars.is_empty()
+                        && vsix.contributions.iter().any(|name| name == "grammars")
+                    {
+                        let path = self
+                            .root
+                            .join(&record.directory)
+                            .join("extension/package.json");
+                        if let Ok(file) = fs::File::open(path) {
+                            use std::io::Read;
+                            if let Ok(manifest) =
+                                serde_json::from_reader(file.take(1024 * 1024 + 1))
+                            {
+                                vsix.grammars = crate::manifest::vsix_grammars(&manifest);
+                                vsix.languages = crate::manifest::vsix_languages(&manifest);
+                            }
+                        }
+                    }
                     if vsix.notebooks.is_empty()
                         && vsix.contributions.iter().any(|name| name == "notebooks")
                     {

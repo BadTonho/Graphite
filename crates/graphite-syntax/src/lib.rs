@@ -4,6 +4,7 @@ use std::{ops::Range, path::Path};
 
 mod full;
 mod incremental;
+pub mod textmate;
 pub use full::Highlighter;
 pub use incremental::IncrementalHighlighter;
 

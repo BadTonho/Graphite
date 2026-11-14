@@ -44,9 +44,10 @@ A VSIX without a Node.js entry point (themes, snippets, language packs) runs no 
 | `snippets` | Snippet files are loaded for enabled extensions, scoped to the contributing language. A user or project snippet with the same prefix and scope overrides them. |
 
 | `themes` | Color themes are imported into the profile and selected with `workbench.colorTheme`, by label or id. Disabling the extension removes them. |
+| `languages` and `grammars` | Files of a contributed language are highlighted with its TextMate grammar when tree-sitter has none. See [TextMate grammars](textmate-grammars.md). |
 | `iconThemes` | File icon themes are selected with **File Icon Theme** or `workbench.iconTheme`, and drawn in the Explorer, Quick Open, tabs and Source Control. See [File icons](file-icons.md#icon-themes-from-extensions). |
 
-Keybindings are bound into the active keymap when the extension is approved and the workspace is trusted. Grammars are listed in the package but not applied yet.
+Keybindings are bound into the active keymap when the extension is approved and the workspace is trusted. `grammars` color files that tree-sitter does not know; see [TextMate grammars](textmate-grammars.md).
 
 ## Not yet
 

@@ -9,7 +9,8 @@ impl App {
     pub(crate) fn refresh_document_highlights(&mut self, document: DocumentId) {
         let tab = &mut self.documents[document];
         let Some(lang) = tab.language else {
-            tab.highlights = None;
+            // Not a language tree-sitter knows: an extension may contribute a grammar for it.
+            self.refresh_textmate_highlights(document);
             return;
         };
         let revision = tab.buffer.revision();
