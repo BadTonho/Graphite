@@ -89,6 +89,14 @@ pub(crate) fn changes_header_buttons(action: ScmRect, cell_width: f32) -> (ScmRe
     (history, stash)
 }
 
+/// The discard button of a file row, left of its stage button.
+pub(crate) fn discard_button(action: ScmRect, cell_width: f32) -> ScmRect {
+    ScmRect {
+        x: action.x - cell_width * 0.5 - action.width,
+        ..action
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn scm_panel_layout(
     snapshot: &crate::scm::Snapshot,
@@ -834,10 +842,6 @@ impl App {
     /// What the big button under the commit message does right now.
     pub(crate) fn scm_primary_action(&self) -> ScmPrimaryAction {
         scm_primary_action_for(&self.scm_snapshot)
-    }
-
-    pub(crate) fn scm_shows_publish_button(&self) -> bool {
-        self.scm_primary_action() == ScmPrimaryAction::PublishRepository
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
@@ -1633,23 +1637,14 @@ impl App {
                         .filter(|p| !p.as_os_str().is_empty())
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    let status = if item.conflicted {
-                        "!"
-                    } else if item.untracked {
-                        "U"
-                    } else if staged {
-                        "M"
-                    } else {
-                        "M"
-                    };
-                    let status_color = if status == "U" {
-                        0xff73c991
-                    } else if status == "!" {
-                        0xfff14c4c
-                    } else {
-                        0xffcca700
-                    };
-                    let reserved = cell_width * (status.chars().count() as f32 + 3.0);
+                    let kind = item.kind(staged);
+                    let status = kind.letter();
+                    let status_color = kind.color();
+                    let discardable = !staged && !item.conflicted;
+                    let reserved = cell_width
+                        * (status.chars().count() as f32
+                            + 3.0
+                            + if discardable { 2.5 } else { 0.0 });
                     let file_x = scm_file_label_x(icon_x, icon_size, cell_width * 0.65);
                     let max = ((right - file_x - reserved) / cell_width).max(1.0) as usize;
                     let name = name.chars().take(max).collect::<String>();
@@ -1679,6 +1674,17 @@ impl App {
                         row.action,
                         scm_button_color(action_hovered),
                     );
+                    if discardable {
+                        let discard = discard_button(row.action, cell_width);
+                        let hovered = discard.contains(self.mouse.x as f32, self.mouse.y as f32);
+                        draw_scm_control_slot(renderer, discard, hovered);
+                        draw_scm_icon(
+                            renderer,
+                            ScmIcon::Discard,
+                            discard,
+                            scm_button_color(hovered),
+                        );
+                    }
                 }
             }
         }

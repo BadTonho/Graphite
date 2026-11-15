@@ -19,6 +19,8 @@ pub(crate) enum RemoteOp {
     /// Remove the last commit and keep its changes staged.
     UndoLastCommit,
     RenameBranch(String),
+    /// Throw away the working tree changes of these files.
+    Discard(Vec<crate::scm_discard::DiscardTarget>),
     /// Amend the last commit, with a new message when one is given.
     Amend(Option<String>),
     CreateBranch(String),
@@ -52,6 +54,7 @@ impl RemoteOp {
             RemoteOp::StashApplyLatest => crate::scm_stash::apply_latest(root),
             RemoteOp::StashPopLatest => crate::scm_stash::pop_latest(root),
             RemoteOp::UndoLastCommit => branches::undo_last_commit(root),
+            RemoteOp::Discard(targets) => crate::scm_discard::discard(root, targets),
             RemoteOp::RenameBranch(name) => branches::rename_branch(root, name),
             RemoteOp::Push => scm_remote::push(root),
             RemoteOp::Fetch => scm_remote::fetch(root),
@@ -84,6 +87,7 @@ impl RemoteOp {
                 | RemoteOp::Rebase(_)
                 | RemoteOp::ContinueOperation
                 | RemoteOp::PullRebase
+                | RemoteOp::Discard(_)
                 | RemoteOp::StashApplyLatest
                 | RemoteOp::StashPopLatest
                 | RemoteOp::CheckoutCommit(_)

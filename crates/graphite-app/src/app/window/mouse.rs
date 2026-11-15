@@ -75,6 +75,9 @@ impl App {
         }
         self.column_selection_anchor = None;
 
+        if self.click_scm_confirm(mx, my, window_width as f32, window_height as f32) {
+            return;
+        }
         if self.click_scm_publish_modal(mx, my, window_width as f32, window_height as f32) {
             return;
         }
@@ -350,7 +353,14 @@ impl App {
                         }
                         ScmListRowKind::File { index, staged } => {
                             self.scm_selected = index;
-                            if row.action.contains(mx, my) {
+                            if !staged
+                                && super::scm_ui::discard_button(row.action, cw)
+                                    .contains(local_x, local_y)
+                            {
+                                if let Some(target) = self.discard_target_at(index) {
+                                    self.confirm_discard(vec![target]);
+                                }
+                            } else if row.action.contains(mx, my) {
                                 self.perform_scm_action(if staged {
                                     ScmAction::Unstage
                                 } else {

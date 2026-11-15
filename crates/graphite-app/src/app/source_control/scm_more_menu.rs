@@ -30,6 +30,7 @@ pub(crate) enum MoreCommand {
     AbortOperation,
     StageAll,
     UnstageAll,
+    DiscardAll,
     Merge,
     Rebase,
     CreateBranch,
@@ -110,6 +111,8 @@ pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
             vec![
                 N::leaf("scm.more.stage_all", C::StageAll),
                 N::leaf("scm.more.unstage_all", C::UnstageAll),
+                N::Separator,
+                N::leaf("scm.more.discard_all", C::DiscardAll),
             ],
         ),
         N::submenu(
@@ -531,6 +534,7 @@ impl App {
             C::AbortOperation => self.abort_git_operation(),
             C::StageAll => self.perform_scm_action(ScmAction::StageAll),
             C::UnstageAll => self.perform_scm_action(ScmAction::UnstageAll),
+            C::DiscardAll => self.confirm_discard(self.discard_all_targets()),
             C::Merge => self.open_branch_picker_for(BranchPickerAction::Merge),
             C::Rebase => self.open_branch_picker_for(BranchPickerAction::Rebase),
             C::CreateBranch => self.open_create_branch_prompt(),

@@ -23,6 +23,7 @@ pub(crate) mod merge_resolution_tests;
 pub(crate) mod multi_diff_tests;
 pub(crate) mod multi_diff_ui;
 pub(crate) mod scm_branch_ui;
+pub(crate) mod scm_confirm;
 pub(crate) mod scm_graph_menu;
 pub(crate) mod scm_graph_ui;
 pub(crate) mod scm_more_menu;

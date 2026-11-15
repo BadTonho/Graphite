@@ -23,6 +23,7 @@ pub(super) enum ScmIcon {
     Fetch,
     Pull,
     Push,
+    Discard,
 }
 
 fn plot(map: &mut Bitmap, x: f32, y: f32) {
@@ -183,6 +184,11 @@ fn bitmap(icon: ScmIcon) -> Bitmap {
             line(&mut map, (11.5, 7.5), (8.5, 10.5));
             fill(&mut map, 4, 12, 8, 2);
         }
+        ScmIcon::Discard => {
+            // An arrow curving back, like undo.
+            arc(&mut map, 170.0, 220.0);
+            arrow_head(&mut map, point_on_arc(170.0), counter_clockwise(170.0));
+        }
         ScmIcon::Push => {
             // Up arrow from base line.
             fill(&mut map, 7, 4, 2, 7);
@@ -230,7 +236,7 @@ pub(super) fn draw_scm_icon(
 mod tests {
     use super::*;
 
-    const ICONS: [ScmIcon; 12] = [
+    const ICONS: [ScmIcon; 13] = [
         ScmIcon::Sync,
         ScmIcon::Refresh,
         ScmIcon::PullRequest,
@@ -243,6 +249,7 @@ mod tests {
         ScmIcon::Fetch,
         ScmIcon::Pull,
         ScmIcon::Push,
+        ScmIcon::Discard,
     ];
 
     fn count(map: &Bitmap) -> usize {

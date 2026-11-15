@@ -33,6 +33,46 @@ fn is_relevant_watch_path(path: &Path) -> bool {
     !names.iter().any(|name| *name == "target")
 }
 
+/// How a file differs from the commit or the index it is compared with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ChangeKind {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Copied,
+    TypeChange,
+    /// A new file that git does not track yet.
+    Untracked,
+    Conflict,
+}
+
+impl ChangeKind {
+    /// The letter shown at the end of the row.
+    pub(crate) fn letter(self) -> &'static str {
+        match self {
+            Self::Modified | Self::TypeChange => "M",
+            Self::Added => "A",
+            Self::Deleted => "D",
+            Self::Renamed => "R",
+            Self::Copied => "C",
+            Self::Untracked => "U",
+            Self::Conflict => "!",
+        }
+    }
+
+    /// The color of the letter, as `0xAARRGGBB`.
+    pub(crate) fn color(self) -> u32 {
+        match self {
+            Self::Modified | Self::TypeChange => 0xffe2c08d,
+            Self::Added => 0xff81b88b,
+            Self::Untracked | Self::Renamed | Self::Copied => 0xff73c991,
+            Self::Deleted => 0xffc74e39,
+            Self::Conflict => 0xffe4676b,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct FileStatus {
     pub path: PathBuf,
@@ -40,6 +80,29 @@ pub(crate) struct FileStatus {
     pub unstaged: bool,
     pub untracked: bool,
     pub conflicted: bool,
+    /// How the staged side differs from HEAD; `None` when nothing is staged.
+    pub staged_kind: Option<ChangeKind>,
+    /// How the working tree differs from the index; `None` when it does not.
+    pub worktree_kind: Option<ChangeKind>,
+}
+
+impl FileStatus {
+    /// The change shown for this file in the staged or the unstaged list.
+    pub(crate) fn kind(&self, staged: bool) -> ChangeKind {
+        if self.conflicted {
+            return ChangeKind::Conflict;
+        }
+        let kind = if staged {
+            self.staged_kind
+        } else {
+            self.worktree_kind
+        };
+        kind.unwrap_or(if self.untracked && !staged {
+            ChangeKind::Untracked
+        } else {
+            ChangeKind::Modified
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,13 +180,32 @@ fn snapshot_inner(root: &Path) -> Result<Snapshot, String> {
             ..FileStatus::default()
         });
         match item {
-            StatusItem::TreeIndex(_) => change.staged = true,
+            StatusItem::TreeIndex(tree_change) => {
+                change.staged = true;
+                change.staged_kind = Some(match tree_change {
+                    gix::diff::index::Change::Addition { .. } => ChangeKind::Added,
+                    gix::diff::index::Change::Deletion { .. } => ChangeKind::Deleted,
+                    gix::diff::index::Change::Modification { .. } => ChangeKind::Modified,
+                    gix::diff::index::Change::Rewrite { copy: true, .. } => ChangeKind::Copied,
+                    gix::diff::index::Change::Rewrite { .. } => ChangeKind::Renamed,
+                });
+            }
             StatusItem::IndexWorktree(item) => {
                 change.unstaged = true;
                 if let Some(summary) = item.summary() {
                     let summary = format!("{summary:?}");
                     change.untracked |= summary == "Added";
                     change.conflicted |= summary == "Conflict";
+                    change.worktree_kind = Some(match summary.as_str() {
+                        "Removed" => ChangeKind::Deleted,
+                        "Added" => ChangeKind::Untracked,
+                        "IntentToAdd" => ChangeKind::Added,
+                        "Renamed" => ChangeKind::Renamed,
+                        "Copied" => ChangeKind::Copied,
+                        "TypeChange" => ChangeKind::TypeChange,
+                        "Conflict" => ChangeKind::Conflict,
+                        _ => ChangeKind::Modified,
+                    });
                 }
             }
         }
@@ -940,6 +1022,43 @@ mod tests {
             .files
             .iter()
             .any(|item| item.staged && !item.unstaged));
+    }
+
+    #[test]
+    fn each_list_shows_how_the_file_changed_on_its_own_side() {
+        let (dir, file) = repo();
+        let find = |snapshot: &Snapshot| {
+            snapshot
+                .files
+                .iter()
+                .find(|item| item.path == PathBuf::from("note.txt"))
+                .cloned()
+                .unwrap()
+        };
+        // A new file is untracked, then added once staged.
+        let new = find(&snapshot(dir.path()));
+        assert_eq!(new.kind(false), ChangeKind::Untracked);
+        assert_eq!(new.kind(false).letter(), "U");
+        stage_file(dir.path(), &file, &translator()).unwrap();
+        let staged = find(&snapshot(dir.path()));
+        assert_eq!(staged.staged_kind, Some(ChangeKind::Added));
+        assert_eq!(staged.kind(true).letter(), "A");
+
+        // After committing, an edit is a modification in the working tree only.
+        commit(dir.path(), "first", &translator()).unwrap();
+        std::fs::write(&file, "changed\n").unwrap();
+        let edited = find(&snapshot(dir.path()));
+        assert_eq!(edited.kind(false), ChangeKind::Modified);
+        assert_eq!(edited.staged_kind, None);
+
+        // Staging a deletion and deleting in the working tree are both deletions.
+        std::fs::remove_file(&file).unwrap();
+        let removed = find(&snapshot(dir.path()));
+        assert_eq!(removed.kind(false), ChangeKind::Deleted);
+        stage_file(dir.path(), &file, &translator()).unwrap();
+        let removed = find(&snapshot(dir.path()));
+        assert_eq!(removed.kind(true), ChangeKind::Deleted);
+        assert_eq!(removed.kind(true).letter(), "D");
     }
 
     #[test]

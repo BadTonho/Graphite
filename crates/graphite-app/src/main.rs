@@ -17,7 +17,7 @@ use documents::{document, document_store, file_format};
 mod explorer;
 use explorer::{file_icons, file_nesting, icon_theme, tree};
 mod vcs;
-use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_remote, scm_stash};
+use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_discard, scm_remote, scm_stash};
 mod language;
 use language::{json_schema, lsp, semantic_tokens};
 mod tooling;
@@ -145,6 +145,7 @@ struct App {
     explorer_context_menu: Option<app::explorer_context_menu::ExplorerContextMenu>,
     scm_graph_menu: Option<app::scm_graph_menu::GraphContextMenu>,
     scm_more_menu: Option<app::scm_more_menu::MoreMenu>,
+    scm_confirm: Option<app::scm_confirm::ScmConfirm>,
     view_preferences: config::ViewLayoutPreferences,
     view_menu: Option<app::view_menu::ViewMenuState>,
     workbench_menu: Option<app::menu_bar::WorkbenchMenu>,
@@ -685,6 +686,7 @@ impl App {
             explorer_context_menu: None,
             scm_graph_menu: None,
             scm_more_menu: None,
+            scm_confirm: None,
             view_preferences,
             view_menu: None,
             workbench_menu: None,

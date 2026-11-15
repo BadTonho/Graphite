@@ -12,6 +12,9 @@ impl App {
         if self.handle_github_dialog_key(&event.logical_key) {
             return;
         }
+        if self.handle_scm_confirm_key(&event.logical_key) {
+            return;
+        }
         if self.handle_branch_name_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())
