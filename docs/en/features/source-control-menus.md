@@ -1,0 +1,62 @@
+# Source Control menus, commit flow and Graph
+
+## The main button
+
+The wide button under the commit message changes with the state of the branch:
+
+| State | Button |
+|---|---|
+| There are changes, or nothing to sync | **Commit** (with an arrow, see below) |
+| No changes and the branch is ahead of or behind its upstream | **Sync Changes** with the counts, such as `1↓ 2↑`: pulls, then pushes |
+| A remote exists but the branch tracks nothing yet | **Publish Branch**: pushes and sets the upstream |
+| There is no remote | **Publish Branch**: opens the GitHub publish dialog |
+
+The ahead and behind counts and the upstream come from `git for-each-ref`, so they follow the last fetch. Press **Fetch** to refresh them.
+
+## Commit
+
+Commits run through `git commit`, so hooks (`pre-commit`, `commit-msg`), signing and the identity from the git configuration apply exactly as in the terminal. A hook that fails stops the commit, and the message stays in the box.
+
+The arrow at the right end of the button opens: **Commit**, **Commit & Push** and **Commit & Sync**. The push or sync only runs when the commit worked.
+
+The **⋯ → Commit** submenu has every variant:
+
+| Entry | What it does |
+|---|---|
+| Commit | Commits what is staged; when nothing is staged, stages and commits everything. |
+| Commit Staged | Only what is staged. Refused when nothing is staged. |
+| Commit All | Stages every change (new files included), then commits. |
+| ... (Amend) | The same three, replacing the last commit. A blank message keeps the old one. |
+| ... (Signed Off) | The same three, adding a `Signed-off-by` line. |
+| Undo Last Commit | Removes the last commit and keeps its changes staged. The first commit cannot be undone. |
+| Abort Merge or Rebase | Abandons a merge, rebase, cherry-pick or revert that stopped on conflicts. |
+
+## The ⋯ menu
+
+The button opens a menu with submenus that open on hover or with the right arrow key. Arrow keys move, Enter chooses, Left closes a submenu and Escape closes the menu.
+
+- **Pull**, **Push**, **Checkout to...**, **Fetch**
+- **Commit** (above)
+- **Changes**: Stage All, Unstage All, **Discard All Changes** (asks first)
+- **Pull, Push**: Sync, Pull, Pull (Rebase), Push, Fetch
+- **Branch**: Merge, Rebase, Create, **Rename**, Delete, Delete (Force)
+- **Stash**: Stash, Stash (Include Untracked), Stash Staged, Apply Latest Stash, Pop Latest Stash
+- **Tags**: Create Tag (on HEAD)
+
+The `Git:` commands are still listed in the command palette.
+
+## Changes list
+
+- The letter at the end of each row says how the file differs on that side: `M` modified, `A` added, `D` deleted, `U` untracked, `R` renamed, `C` copied, `!` conflict. A file with staged and unstaged edits shows its own letter in each list.
+- Unstaged rows have a **Discard Changes** button (the arrow) beside the stage button. Discarding a tracked file restores it to the staged content; discarding an untracked file deletes it. Both ask for confirmation, and staged changes are never touched. Conflicted files are not discarded: resolve them instead.
+- Right-click a file for: Open File, Stage or Unstage Changes, Discard Changes, **Add to .gitignore** (an anchored entry such as `/src/a.rs`, added once) and Copy Path / Copy Relative Path.
+
+## Graph
+
+Right-click a commit for: **Checkout (Detached)**, **Create Branch...**, **Create Tag...** (both at that commit), **Cherry Pick**, **Revert Commit**, **Copy Commit ID** and **Copy Commit Message**. Checkout and Cherry Pick are disabled on the commit that is already checked out. A cherry-pick or revert that stops on conflicts can be finished or aborted with **Git: Continue Merge or Rebase** and **Abort Merge or Rebase**.
+
+Commit ids passed to git are checked to be hexadecimal, and branch and tag names are validated before git runs, so nothing the user types can be read as a git option.
+
+## Limits
+
+No tooltips yet; the list is not shown as a tree; **Clone**, remotes management and applying a chosen (not the latest) stash are not available yet.

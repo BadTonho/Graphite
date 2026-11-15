@@ -6,16 +6,16 @@ A visão de Controle de Versão tem as mesmas ações principais do VS Code:
 |---|---|---|
 | Linha do repositório | ⇅ | **Sincronizar**: faz pull e depois push. Uma branch sem upstream é publicada no `origin`. |
 | Linha do repositório | ⇄ | **Criar pull request**: abre a página de comparação do GitHub para a branch atual. Precisa de um remoto `origin` no GitHub. |
-| Linha do repositório | ⋯ | **Mais ações**: abre a paleta de comandos filtrada pelos comandos `Git:`. |
+| Linha do repositório | ⋯ | **Mais ações**: abre um menu com submenus, veja [Menus do Controle de Versão](source-control-menus.md). |
 | Cabeçalho de alterações | ↺ | **Ver histórico**: mostra os últimos 300 commits em grafo, numa view somente leitura. |
 | Cabeçalho de alterações | ▤ | **Stash**: guarda todas as alterações, inclusive arquivos novos. |
 | Cabeçalho de alterações | + | Preparar tudo (já existia). |
 
-Os comandos `Git:` estão na paleta de comandos (e listados pelo botão ⋯): Pull, Push, Fetch, Sincronizar, Stash, Ver histórico, Criar pull request, Mais ações e os comandos de branch abaixo.
+Os comandos `Git:` estão na paleta de comandos (e os mesmos comandos estão agrupados no menu ⋯): Pull, Push, Fetch, Sincronizar, Stash, Ver histórico, Criar pull request, Mais ações e os comandos de branch abaixo.
 
 O Git roda em segundo plano, então a janela continua respondendo durante um pull ou push. Erros do Git (por exemplo, um remoto inacessível) aparecem na barra de status.
 
-Os botões são pequenos ícones desenhados, sem moldura; o que está sob o mouse ganha destaque, e o botão Commit mostra um visto ao lado do texto. A caixa de commit sugere o atalho e a branch em que o commit será feito. Limites: o botão ⋯ abre a paleta, e não um menu suspenso, e passar o mouse sobre um botão ainda não mostra dica.
+Os botões são pequenos ícones desenhados, sem moldura; o que está sob o mouse ganha destaque, e o botão Commit mostra um visto ao lado do texto. A caixa de commit sugere o atalho e a branch em que o commit será feito. Limite: passar o mouse sobre um botão ainda não mostra dica.
 
 ## Branches, amend, merge e rebase
 

@@ -6,16 +6,16 @@ The Source Control view has the same main actions as VS Code's:
 |---|---|---|
 | Repository row | ⇅ | **Sync**: pulls, then pushes. A branch with no upstream is published to `origin`. |
 | Repository row | ⇄ | **Create Pull Request**: opens GitHub's compare page for the current branch. Needs an `origin` remote on GitHub. |
-| Repository row | ⋯ | **More actions**: opens the command palette filtered to the `Git:` commands. |
+| Repository row | ⋯ | **More actions**: opens a menu of submenus, see [Source Control menus](source-control-menus.md). |
 | Changes header | ↺ | **View History**: shows the last 300 commits as a graph in a read-only view. |
 | Changes header | ▤ | **Stash**: stashes all changes, including new files. |
 | Changes header | + | Stage all (existing). |
 
-The `Git:` commands are in the command palette (and listed by the ⋯ button): Pull, Push, Fetch, Sync, Stash, View History, Create Pull Request, More Actions, and the branch commands below.
+The `Git:` commands are in the command palette (and the same commands are grouped in the ⋯ menu): Pull, Push, Fetch, Sync, Stash, View History, Create Pull Request, More Actions, and the branch commands below.
 
 Git runs in the background, so the window stays responsive during a pull or push. Errors from git (for example, an unreachable remote) appear in the status bar.
 
-The buttons are small drawn icons with no frame; the one under the pointer gets a highlight, and the Commit button shows a check mark next to its label. The commit box suggests the shortcut and the branch it commits on. Limits: the ⋯ button opens the palette, not a dropdown, and hovering a button does not show a tooltip yet.
+The buttons are small drawn icons with no frame; the one under the pointer gets a highlight, and the Commit button shows a check mark next to its label. The commit box suggests the shortcut and the branch it commits on. Limit: hovering a button does not show a tooltip yet.
 
 ## Branches, amend, merge and rebase
 
