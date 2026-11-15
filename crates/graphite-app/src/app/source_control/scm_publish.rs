@@ -11,7 +11,11 @@ pub(crate) struct ScmPublishModal {
 
 impl App {
     pub(crate) fn open_publish_repo_modal(&mut self) {
-        if self.github_session.is_none() {
+        let has_repo_scope = self
+            .github_session
+            .as_ref()
+            .is_some_and(|s| s.scope.split_whitespace().any(|scope| scope == "repo"));
+        if !has_repo_scope {
             self.status = self.t("scm.publish.sign_in_required").into();
             self.start_github_sign_in_with_scope("repo");
             return;

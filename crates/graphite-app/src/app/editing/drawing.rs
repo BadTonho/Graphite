@@ -213,23 +213,6 @@ impl App {
         let (cur_line, cur_col) = self.editor().cursor_line_col();
         // Status bar
         r.set_clip(None);
-        if self.view_preferences.status_bar_visible && !self.zen_mode {
-            r.draw_rect(
-                0.0,
-                h - lh,
-                w,
-                lh,
-                rgb(Theme::color(Theme::STATUS, 0x005a9e)),
-            );
-            let prefix = self.status_bar_prefix();
-            r.draw_text(&prefix, 0.0, h - lh, rgb(0xffffff));
-            let mut status_x = prefix.chars().count() as f32 * cw;
-            for (_, label) in self.status_bar_segments() {
-                status_x += cw * 3.0;
-                r.draw_text(&label, status_x, h - lh, rgb(0xffffff));
-                status_x += label.chars().count() as f32 * cw;
-            }
-        }
         if let Some(quick) = &self.quick_open {
             let count = quick.paths.len().min(8);
             let height = lh * (count as f32 + 1.5);
@@ -845,6 +828,24 @@ impl App {
 
         if !self.zen_mode {
             self.draw_activity_bar(r, h);
+        }
+
+        if self.view_preferences.status_bar_visible && !self.zen_mode {
+            r.draw_rect(
+                0.0,
+                h - lh,
+                w,
+                lh,
+                rgb(Theme::color(Theme::STATUS, 0x005a9e)),
+            );
+            let prefix = self.status_bar_prefix();
+            r.draw_text(&prefix, 0.0, h - lh, rgb(0xffffff));
+            let mut status_x = prefix.chars().count() as f32 * cw;
+            for (_, label) in self.status_bar_segments() {
+                status_x += cw * 3.0;
+                r.draw_text(&label, status_x, h - lh, rgb(0xffffff));
+                status_x += label.chars().count() as f32 * cw;
+            }
         }
 
         self.draw_terminal_toolbar_menu(r);
