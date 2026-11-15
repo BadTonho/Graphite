@@ -55,6 +55,10 @@ pub(crate) enum NameTarget {
     BranchAt(String),
     /// A new tag on the commit with this id.
     TagAt(String),
+    /// A new tag on HEAD.
+    TagHead,
+    /// The new name of the checked out branch.
+    RenameBranch,
 }
 
 /// The branch or tag name being typed.
@@ -253,6 +257,8 @@ impl App {
                         NameTarget::Branch => RemoteOp::CreateBranch(name),
                         NameTarget::BranchAt(hash) => RemoteOp::CreateBranchAt(name, hash),
                         NameTarget::TagAt(hash) => RemoteOp::CreateTag(name, hash),
+                        NameTarget::TagHead => RemoteOp::CreateTag(name, "HEAD".into()),
+                        NameTarget::RenameBranch => RemoteOp::RenameBranch(name),
                     });
                 }
             }
@@ -316,7 +322,8 @@ impl App {
             bg,
         );
         let title = match prompt.target {
-            NameTarget::TagAt(_) => "scm.prompt.new_tag",
+            NameTarget::TagAt(_) | NameTarget::TagHead => "scm.prompt.new_tag",
+            NameTarget::RenameBranch => "scm.prompt.rename_branch",
             _ => "scm.prompt.new_branch",
         };
         renderer.draw_text(self.t(title), x + 16.0, y + 18.0, text);
@@ -480,7 +487,7 @@ mod tests {
             );
         }
         // The SCM view's "…" button filters the palette by this prefix.
-        app.open_scm_more_menu();
+        app.open_scm_git_commands();
         assert_eq!(app.command_palette.as_ref().unwrap().query, "Git: ");
     }
 

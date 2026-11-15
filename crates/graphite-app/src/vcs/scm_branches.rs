@@ -142,9 +142,40 @@ pub(crate) fn create_branch_at(root: &Path, name: &str, hash: &str) -> Result<St
     Ok(format!("Switched to new branch '{name}'"))
 }
 
-/// Creates the tag `name` on the commit `hash`.
+/// Renames the checked out branch.
+pub(crate) fn rename_branch(root: &Path, name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if !plain_ref(name) {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    let check = git(root, &["check-ref-format", "--branch", name], false)?;
+    if !check.success {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    run(root, &["branch", "-m", name], false)?;
+    Ok(format!("Renamed the branch to '{name}'"))
+}
+
+/// Removes the last commit and keeps its changes staged.
+pub(crate) fn undo_last_commit(root: &Path) -> Result<String, String> {
+    let parents = git(root, &["rev-list", "--parents", "-n", "1", "HEAD"], false)?;
+    if !parents.success {
+        return Err("There is no commit to undo".into());
+    }
+    if parents.stdout.split_whitespace().count() < 2 {
+        return Err("The first commit cannot be undone".into());
+    }
+    run(root, &["reset", "--soft", "HEAD~1"], false)?;
+    Ok("Undid the last commit".into())
+}
+
+/// Creates the tag `name` on the commit `hash`, or on HEAD when `hash` is `HEAD`.
 pub(crate) fn create_tag(root: &Path, name: &str, hash: &str) -> Result<String, String> {
-    let hash = checked_commit_id(hash)?;
+    let hash = if hash == "HEAD" {
+        hash
+    } else {
+        checked_commit_id(hash)?
+    };
     let name = name.trim();
     if !plain_ref(name) {
         return Err(format!("'{name}' is not a valid tag name"));
@@ -521,6 +552,34 @@ mod tests {
         revert_commit(root, &sh(root, &["rev-parse", "HEAD"])).unwrap();
         assert!(head_message(root).starts_with("Revert"));
         assert!(!root.join("extra.txt").exists());
+    }
+
+    #[test]
+    fn renaming_and_tagging_head_and_undoing_the_last_commit() {
+        let dir = repository();
+        let root = dir.path();
+        rename_branch(root, "trunk").unwrap();
+        assert_eq!(current_branch(root), "trunk");
+        assert!(rename_branch(root, "bad name").is_err());
+        assert!(rename_branch(root, "-x").is_err());
+
+        create_tag(root, "release", "HEAD").unwrap();
+        assert_eq!(
+            sh(root, &["rev-parse", "release"]),
+            sh(root, &["rev-parse", "HEAD"])
+        );
+
+        // The first commit has nothing before it to go back to.
+        assert!(undo_last_commit(root).is_err());
+        write(root, "second.txt", "two\n");
+        commit(root, "second");
+        undo_last_commit(root).unwrap();
+        assert_eq!(head_message(root), "base");
+        assert_eq!(
+            sh(root, &["diff", "--cached", "--name-only"]),
+            "second.txt",
+            "the undone changes stay staged"
+        );
     }
 
     #[test]

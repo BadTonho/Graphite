@@ -8,10 +8,17 @@ use crate::scm_remote;
 pub(crate) enum RemoteOp {
     Init,
     Pull,
+    PullRebase,
     Push,
     Fetch,
     Sync,
     Stash,
+    StashWith(crate::scm_stash::StashMode),
+    StashApplyLatest,
+    StashPopLatest,
+    /// Remove the last commit and keep its changes staged.
+    UndoLastCommit,
+    RenameBranch(String),
     /// Amend the last commit, with a new message when one is given.
     Amend(Option<String>),
     CreateBranch(String),
@@ -40,6 +47,12 @@ impl RemoteOp {
         match self {
             RemoteOp::Init => scm_remote::init_repository(root),
             RemoteOp::Pull => scm_remote::pull(root),
+            RemoteOp::PullRebase => scm_remote::pull_rebase(root),
+            RemoteOp::StashWith(mode) => crate::scm_stash::push(root, *mode),
+            RemoteOp::StashApplyLatest => crate::scm_stash::apply_latest(root),
+            RemoteOp::StashPopLatest => crate::scm_stash::pop_latest(root),
+            RemoteOp::UndoLastCommit => branches::undo_last_commit(root),
+            RemoteOp::RenameBranch(name) => branches::rename_branch(root, name),
             RemoteOp::Push => scm_remote::push(root),
             RemoteOp::Fetch => scm_remote::fetch(root),
             RemoteOp::Sync => scm_remote::sync(root),
@@ -70,6 +83,9 @@ impl RemoteOp {
             RemoteOp::Merge(_)
                 | RemoteOp::Rebase(_)
                 | RemoteOp::ContinueOperation
+                | RemoteOp::PullRebase
+                | RemoteOp::StashApplyLatest
+                | RemoteOp::StashPopLatest
                 | RemoteOp::CheckoutCommit(_)
                 | RemoteOp::CherryPick(_)
                 | RemoteOp::RevertCommit(_)
@@ -149,13 +165,6 @@ impl App {
         }
     }
 
-    /// The "…" button: lists the Git commands, filtered to the Git group.
-    pub(crate) fn open_scm_more_menu(&mut self) {
-        self.open_command_palette();
-        if let Some(palette) = self.command_palette.as_mut() {
-            palette.query = "Git: ".into();
-        }
-    }
 }
 
 #[cfg(test)]

@@ -125,6 +125,11 @@ pub(crate) fn pull(root: &Path) -> Result<String, String> {
     run_git(root, &["pull", "--no-rebase"])
 }
 
+/// Pulls and replays the local commits on top of what came in.
+pub(crate) fn pull_rebase(root: &Path) -> Result<String, String> {
+    run_git(root, &["pull", "--rebase"])
+}
+
 /// Pushes the current branch. A branch with no upstream yet is published to `origin`, as the
 /// VS Code Publish action does.
 pub(crate) fn push(root: &Path) -> Result<String, String> {

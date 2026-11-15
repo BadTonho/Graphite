@@ -73,6 +73,9 @@ impl App {
         if self.scm_graph_menu_key(&event.logical_key) {
             return;
         }
+        if self.scm_more_menu_key(&event.logical_key) {
+            return;
+        }
         if self.settings_menu_key(&event.logical_key) {
             return;
         }
