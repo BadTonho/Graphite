@@ -9,6 +9,10 @@ pub(crate) enum RemoteOp {
     Init,
     Pull,
     PullRebase,
+    /// Pull this remote branch (`origin/main`) into the current branch.
+    PullFrom(String),
+    /// Push the current branch to this remote and track it there.
+    PushTo(String),
     Push,
     Fetch,
     Sync,
@@ -61,6 +65,8 @@ impl RemoteOp {
             RemoteOp::Init => scm_remote::init_repository(root),
             RemoteOp::Pull => scm_remote::pull(root),
             RemoteOp::PullRebase => scm_remote::pull_rebase(root),
+            RemoteOp::PullFrom(remote_branch) => scm_remote::pull_from(root, remote_branch),
+            RemoteOp::PushTo(remote) => scm_remote::push_to(root, remote),
             RemoteOp::StashWith(mode) => crate::scm_stash::push(root, *mode),
             RemoteOp::StashApplyLatest => crate::scm_stash::apply_latest(root),
             RemoteOp::StashPopLatest => crate::scm_stash::pop_latest(root),
@@ -111,6 +117,7 @@ impl RemoteOp {
                 | RemoteOp::Rebase(_)
                 | RemoteOp::ContinueOperation
                 | RemoteOp::PullRebase
+                | RemoteOp::PullFrom(_)
                 | RemoteOp::Discard(_)
                 | RemoteOp::StashApply(_)
                 | RemoteOp::StashPop(_)

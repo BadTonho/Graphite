@@ -141,6 +141,37 @@ pub(crate) fn push(root: &Path) -> Result<String, String> {
     }
 }
 
+/// Splits `origin/feature` into the remote and the branch, refusing anything that git could read
+/// as an option.
+fn split_remote_branch(remote_branch: &str) -> Result<(&str, &str), String> {
+    let plain = |part: &str| {
+        !part.is_empty()
+            && !part.starts_with('-')
+            && !part.chars().any(|c| c.is_control() || c.is_whitespace())
+    };
+    remote_branch
+        .split_once('/')
+        .filter(|(remote, branch)| plain(remote) && plain(branch))
+        .ok_or_else(|| format!("'{remote_branch}' is not a remote branch"))
+}
+
+/// Pulls `remote_branch` (such as `origin/main`) into the current branch.
+pub(crate) fn pull_from(root: &Path, remote_branch: &str) -> Result<String, String> {
+    let (remote, branch) = split_remote_branch(remote_branch)?;
+    run_git(root, &["pull", "--no-rebase", remote, branch])
+}
+
+/// Pushes the current branch to `remote` and makes it track the branch there.
+pub(crate) fn push_to(root: &Path, remote: &str) -> Result<String, String> {
+    if remote.is_empty()
+        || remote.starts_with('-')
+        || remote.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(format!("'{remote}' is not a valid remote name"));
+    }
+    run_git(root, &["push", "--set-upstream", remote, "HEAD"])
+}
+
 pub(crate) fn fetch(root: &Path) -> Result<String, String> {
     run_git(root, &["fetch", "--prune"])
 }
@@ -281,6 +312,49 @@ mod tests {
         git(&work, &["commit", "-am", "second"]);
         let ahead = upstream_status(&work, "main");
         assert_eq!((ahead.ahead, ahead.behind), (1, 0));
+    }
+
+    #[test]
+    fn pulling_from_and_pushing_to_a_chosen_remote() {
+        let dir = crate::test_support::TempDir::new();
+        let main_remote = dir.path().join("main.git");
+        let other_remote = dir.path().join("other.git");
+        let work = dir.path().join("work");
+        let second = dir.path().join("second");
+        fs::create_dir_all(&work).unwrap();
+        for bare in [&main_remote, &other_remote] {
+            git(dir.path(), &["init", "--bare", "-b", "main", bare.to_str().unwrap()]);
+        }
+        git(&work, &["init", "-b", "main"]);
+        git(&work, &["remote", "add", "origin", main_remote.to_str().unwrap()]);
+        git(&work, &["remote", "add", "other", other_remote.to_str().unwrap()]);
+        fs::write(work.join("a.txt"), "one").unwrap();
+        git(&work, &["add", "a.txt"]);
+        git(&work, &["commit", "-m", "first"]);
+
+        // Push to a remote that is not `origin`; the branch then tracks it.
+        push_to(&work, "other").unwrap();
+        assert_eq!(
+            run_git(&work, &["rev-parse", "--abbrev-ref", "main@{upstream}"]).unwrap(),
+            "other/main"
+        );
+        assert!(push_to(&work, "--all").is_err());
+        assert!(push_to(&work, "").is_err());
+        assert!(push_to(&work, "no such").is_err());
+
+        // A second clone adds a commit to `other`; pull it by naming the remote branch.
+        git(dir.path(), &["clone", other_remote.to_str().unwrap(), second.to_str().unwrap()]);
+        fs::write(second.join("b.txt"), "two").unwrap();
+        git(&second, &["add", "b.txt"]);
+        git(&second, &["commit", "-m", "second"]);
+        git(&second, &["push", "origin", "main"]);
+        pull_from(&work, "other/main").unwrap();
+        assert!(work.join("b.txt").exists());
+
+        assert!(pull_from(&work, "main").is_err(), "not a remote branch");
+        assert!(pull_from(&work, "other/--all").is_err());
+        assert!(pull_from(&work, "--all/main").is_err());
+        assert!(pull_from(&work, "other/missing").is_err());
     }
 
     #[test]

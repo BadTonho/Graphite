@@ -38,7 +38,7 @@ The button opens a menu with submenus that open on hover or with the right arrow
 - **Pull**, **Push**, **Checkout to...**, **Fetch**
 - **Commit** (above)
 - **Changes**: Stage All, Unstage All, **Discard All Changes** (asks first)
-- **Pull, Push**: Sync, Pull, Pull (Rebase), Push, Fetch
+- **Pull, Push**: Sync, Pull, Pull (Rebase), **Pull from...** (choose a remote branch), Push, **Push to...** (choose a remote; the branch then tracks it there), Fetch
 - **Branch**: Merge, Rebase, Create, **Create From...**, **Rename**, Delete, Delete (Force), **Delete Remote Branch...**
 - **Stash**: Stash, Stash (Include Untracked), Stash Staged, Apply Latest Stash, Pop Latest Stash, **Apply Stash...**, **Pop Stash...**, **Drop Stash...** and **Drop All Stashes** (asks first)
 - **Tags**: Create Tag (on HEAD), **Delete Tag...**

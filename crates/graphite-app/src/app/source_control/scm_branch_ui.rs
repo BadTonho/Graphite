@@ -35,6 +35,10 @@ pub(crate) enum BranchPickerAction {
     StashDrop,
     /// Remove a remote.
     RemoveRemote,
+    /// Pull a remote branch into the current branch.
+    PullFrom,
+    /// Push the current branch to a remote.
+    PushTo,
 }
 
 impl BranchPickerAction {
@@ -54,6 +58,8 @@ impl BranchPickerAction {
             Self::StashPop => "scm.branch.prompt_stash_pop",
             Self::StashDrop => "scm.branch.prompt_stash_drop",
             Self::RemoveRemote => "scm.branch.prompt_remove_remote",
+            Self::PullFrom => "scm.branch.prompt_pull_from",
+            Self::PushTo => "scm.branch.prompt_push_to",
         }
     }
 }
@@ -124,7 +130,9 @@ impl App {
                 entries.extend(snapshot.remote_branches.iter().cloned());
                 entries
             }
-            BranchPickerAction::DeleteRemoteBranch => snapshot.remote_branches.clone(),
+            BranchPickerAction::DeleteRemoteBranch | BranchPickerAction::PullFrom => {
+                snapshot.remote_branches.clone()
+            }
             BranchPickerAction::CreateBranchFrom => {
                 let mut entries = snapshot.branches.clone();
                 entries.extend(snapshot.remote_branches.iter().cloned());
@@ -135,7 +143,8 @@ impl App {
             | BranchPickerAction::StashApply
             | BranchPickerAction::StashPop
             | BranchPickerAction::StashDrop
-            | BranchPickerAction::RemoveRemote => self.branch_picker_items.clone(),
+            | BranchPickerAction::RemoveRemote
+            | BranchPickerAction::PushTo => self.branch_picker_items.clone(),
         }
     }
 
@@ -150,7 +159,9 @@ impl App {
             BranchPickerAction::StashApply
             | BranchPickerAction::StashPop
             | BranchPickerAction::StashDrop => crate::scm_refs::stashes(&root),
-            BranchPickerAction::RemoveRemote => crate::scm_refs::remotes(&root),
+            BranchPickerAction::RemoveRemote | BranchPickerAction::PushTo => {
+                crate::scm_refs::remotes(&root)
+            }
             _ => Vec::new(),
         };
         self.open_branch_picker();
@@ -209,6 +220,8 @@ impl App {
                         RemoteOp::StashDrop(crate::scm_refs::stash_ref(&entry).to_owned())
                     }
                     BranchPickerAction::RemoveRemote => RemoteOp::RemoveRemote(entry),
+                    BranchPickerAction::PullFrom => RemoteOp::PullFrom(entry),
+                    BranchPickerAction::PushTo => RemoteOp::PushTo(entry),
                     BranchPickerAction::CreateBranchFrom => {
                         self.open_name_prompt(NameTarget::BranchFrom(entry));
                         return;
@@ -740,10 +753,36 @@ mod tests {
             BranchPickerAction::StashPop,
             BranchPickerAction::StashDrop,
             BranchPickerAction::RemoveRemote,
+            BranchPickerAction::PullFrom,
+            BranchPickerAction::PushTo,
         ] {
             assert!(english.has(action.prompt_key()), "{action:?}");
             assert!(pt.get(action.prompt_key()).is_some(), "{action:?} in pt-BR");
         }
+    }
+
+    #[test]
+    fn pull_from_lists_remote_branches_and_push_to_lists_remotes() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.branch_picker_action = BranchPickerAction::PullFrom;
+        assert_eq!(app.branch_picker_entries(), ["origin/main", "origin/topic"]);
+        app.branch_picker_items = vec!["origin".into(), "backup".into()];
+        app.branch_picker_action = BranchPickerAction::PushTo;
+        assert_eq!(app.branch_picker_entries(), ["origin", "backup"]);
+
+        for (action, selected) in [(BranchPickerAction::PullFrom, 1), (BranchPickerAction::PushTo, 0)]
+        {
+            app.branch_picker = true;
+            app.branch_picker_action = action;
+            app.branch_selected = selected;
+            app.branch_picker_items = vec!["origin".into(), "backup".into()];
+            app.status.clear();
+            app.confirm_branch_picker();
+            assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{action:?}");
+        }
+        assert!(RemoteOp::PullFrom("origin/main".into()).needs_saved_documents());
+        assert!(!RemoteOp::PushTo("origin".into()).needs_saved_documents());
     }
 
     #[test]
