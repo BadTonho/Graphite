@@ -426,10 +426,21 @@ impl App {
                 SettingsMenuRow::Separator => None,
             })
             .fold(MIN_WIDTH, f32::max);
+        let status_height = self
+            .gpu
+            .as_ref()
+            .map_or(20.0, |gpu| gpu.renderer.line_height());
+        let width_needed = width_needed.min(width);
+        let (x, y) = super::popup_placement::beside_button(
+            button,
+            (width_needed, menu_height),
+            (width, height),
+            status_height,
+        );
         self.settings_menu = Some(SettingsMenu {
-            x: (button.0 + button.2 - 16.0).clamp(0.0, (width - width_needed).max(0.0)),
-            y: (button.1 + button.3 - menu_height).clamp(0.0, (height - menu_height).max(0.0)),
-            width: width_needed.min(width),
+            x,
+            y,
+            width: width_needed,
             selected: 0,
             submenu: None,
             submenu_selected: 0,
@@ -800,7 +811,7 @@ impl App {
         }
     }
 
-    fn execute_settings_subcommand(&mut self, command: SettingsSubcommand) {
+    pub(crate) fn execute_settings_subcommand(&mut self, command: SettingsSubcommand) {
         self.settings_menu = None;
         match command {
             SettingsSubcommand::Profile(name) => {

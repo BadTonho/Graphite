@@ -864,6 +864,13 @@ impl App {
                 .clamp(0.0, (width - popup_width).max(0.0));
             let (submenu_x, nested_x, submenu_width) =
                 Self::file_panel_xs(popup_x, popup_width, width);
+            if let Some((command, enabled)) = self.file_nested_command_at(x, y, nested_x, height) {
+                if enabled {
+                    self.execute_settings_subcommand(command);
+                    self.close_workbench_menu();
+                }
+                return true;
+            }
             if let Some((command, submenu, enabled)) =
                 self.file_menu_command_at(x, y, popup_x, submenu_x, nested_x, height)
             {
@@ -878,12 +885,7 @@ impl App {
                 }
             } else {
                 let inside_panel = |app: &Self, open: Option<_>, left: f32, top: f32| {
-                    let panel_height = app
-                        .file_menu_rows(open)
-                        .iter()
-                        .map(|row| Self::file_menu_row_height(*row))
-                        .sum::<f32>()
-                        + 8.0;
+                    let panel_height = open.map_or(0.0, |open| app.file_panel_height(open));
                     open.is_some()
                         && x >= left
                         && x < left + submenu_width
@@ -1313,6 +1315,14 @@ impl App {
                     Key::Named(NamedKey::ArrowLeft) => {
                         if !self.close_file_submenu() {
                             self.workbench_menu = Some(WorkbenchMenu::Help);
+                        }
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space)
+                        if self.file_menu_nested.is_some() =>
+                    {
+                        if let Some((command, true)) = self.file_nested_selected() {
+                            self.execute_settings_subcommand(command);
+                            self.close_workbench_menu();
                         }
                     }
                     Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
@@ -2324,7 +2334,7 @@ impl App {
                 Some(nested_row.unwrap_or(self.file_menu_selection)),
             );
             if let Some(nested) = self.file_menu_nested {
-                self.draw_file_panel(
+                self.draw_file_nested_panel(
                     renderer,
                     nested,
                     nested_x,
@@ -2433,6 +2443,62 @@ impl App {
                         renderer.draw_text("›", x + width - 18.0, y + 4.0, dim);
                     }
                     submenu_item_index += 1;
+                    y += 26.0;
+                }
+            }
+        }
+    }
+
+    /// Draws the nested Profiles or Themes panel, which shows the same rows as the settings
+    /// gear menu, with its top-left corner at `(x, top)`.
+    fn draw_file_nested_panel(
+        &self,
+        renderer: &mut Renderer,
+        open: super::file_menu::FileMenuSubmenu,
+        x: f32,
+        top: f32,
+        width: f32,
+        selected_index: Option<usize>,
+    ) {
+        use super::settings_menu::SettingsSubmenuRow;
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let highlight = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        let height = self.file_panel_height(open);
+        renderer.draw_rect(x, top, width, height, border);
+        renderer.draw_rect(x + 1.0, top + 1.0, width - 2.0, height - 2.0, background);
+        let mut y = top + 4.0;
+        let mut index = 0;
+        for row in self.file_nested_rows(open) {
+            match row {
+                SettingsSubmenuRow::Separator => {
+                    renderer.draw_rect(x + 8.0, y + 4.0, width - 16.0, 1.0, border);
+                    y += 9.0;
+                }
+                SettingsSubmenuRow::Item {
+                    label,
+                    enabled,
+                    checked,
+                    ..
+                } => {
+                    if Some(index) == selected_index {
+                        renderer.draw_rect(x + 2.0, y, width - 4.0, 26.0, highlight);
+                    }
+                    if checked {
+                        renderer.draw_text("✓", x + 9.0, y + 5.0, foreground);
+                    }
+                    let max_chars = ((width - 50.0 - 12.0) / renderer.char_width())
+                        .floor()
+                        .max(1.0) as usize;
+                    renderer.draw_text(
+                        &fit_file_menu_label(self.t(&label).to_owned(), max_chars),
+                        x + 30.0,
+                        y + 5.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    index += 1;
                     y += 26.0;
                 }
             }

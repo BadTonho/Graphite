@@ -8,6 +8,7 @@ pub(crate) mod file_menu;
 pub(crate) mod go_menu;
 pub(crate) mod help_menu;
 pub(crate) mod menu_bar;
+pub(crate) mod popup_placement;
 pub(crate) mod profile_menu;
 pub(crate) mod run_menu;
 pub(crate) mod selection_menu;

@@ -1,3 +1,4 @@
+use super::settings_menu::{SettingsSubcommand, SettingsSubmenu, SettingsSubmenuRow};
 use super::*;
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -434,11 +435,18 @@ impl App {
 
     pub(crate) fn file_menu_move_selection(&mut self, direction: isize) {
         let (panel, selected) = self.file_menu_focus();
-        let count = self
-            .file_menu_rows(panel)
-            .iter()
-            .filter(|row| matches!(row, FileMenuRow::Item { .. }))
-            .count();
+        let count = match self.file_menu_nested {
+            Some(nested) => self
+                .file_nested_rows(nested)
+                .iter()
+                .filter(|row| matches!(row, SettingsSubmenuRow::Item { .. }))
+                .count(),
+            None => self
+                .file_menu_rows(panel)
+                .iter()
+                .filter(|row| matches!(row, FileMenuRow::Item { .. }))
+                .count(),
+        };
         if count > 0 {
             let next = if direction < 0 {
                 (selected + count - 1) % count
@@ -456,8 +464,7 @@ impl App {
     pub(crate) fn file_menu_selected(
         &self,
     ) -> Option<(FileMenuCommand, Option<FileMenuSubmenu>, bool)> {
-        let (panel, selected) = self.file_menu_focus();
-        self.file_menu_rows(panel)
+        self.file_menu_rows(self.file_menu_submenu)
             .into_iter()
             .filter_map(|row| match row {
                 FileMenuRow::Item {
@@ -468,7 +475,84 @@ impl App {
                 } => Some((command, submenu, enabled)),
                 FileMenuRow::Separator => None,
             })
-            .nth(selected)
+            .nth(self.file_menu_selection)
+    }
+
+    /// Rows of a nested panel (Profiles or Themes): the same rows the settings gear menu shows,
+    /// so both menus always offer the same profiles and themes.
+    pub(crate) fn file_nested_rows(&self, open: FileMenuSubmenu) -> Vec<SettingsSubmenuRow> {
+        let submenu = match open {
+            FileMenuSubmenu::Profiles => SettingsSubmenu::Profiles,
+            FileMenuSubmenu::Themes => SettingsSubmenu::Themes,
+            _ => return Vec::new(),
+        };
+        self.settings_submenu_rows(submenu, &self.user_profiles().unwrap_or_default())
+    }
+
+    fn file_nested_row_height(row: &SettingsSubmenuRow) -> f32 {
+        if matches!(row, SettingsSubmenuRow::Separator) {
+            SEPARATOR_HEIGHT
+        } else {
+            ROW_HEIGHT
+        }
+    }
+
+    /// Height of the panel that shows `open`, borders included.
+    pub(crate) fn file_panel_height(&self, open: FileMenuSubmenu) -> f32 {
+        let rows: f32 = if open.parent().is_some() {
+            self.file_nested_rows(open)
+                .iter()
+                .map(Self::file_nested_row_height)
+                .sum()
+        } else {
+            self.file_menu_rows(Some(open))
+                .iter()
+                .map(|row| Self::file_menu_row_height(*row))
+                .sum()
+        };
+        rows + 8.0
+    }
+
+    /// The highlighted row of the nested panel and whether it can be chosen.
+    pub(crate) fn file_nested_selected(&self) -> Option<(SettingsSubcommand, bool)> {
+        let nested = self.file_menu_nested?;
+        self.file_nested_rows(nested)
+            .into_iter()
+            .filter_map(|row| match row {
+                SettingsSubmenuRow::Item {
+                    command, enabled, ..
+                } => Some((command, enabled)),
+                SettingsSubmenuRow::Separator => None,
+            })
+            .nth(self.file_menu_nested_selection)
+    }
+
+    /// The row of the nested panel at the point and whether it can be chosen.
+    pub(crate) fn file_nested_command_at(
+        &self,
+        x: f32,
+        y: f32,
+        nested_x: f32,
+        window_height: f32,
+    ) -> Option<(SettingsSubcommand, bool)> {
+        let nested = self.file_menu_nested?;
+        if x < nested_x || x >= nested_x + FILE_SUBMENU_WIDTH {
+            return None;
+        }
+        let mut current = self.file_nested_top(window_height) + 4.0;
+        for row in self.file_nested_rows(nested) {
+            let height = Self::file_nested_row_height(&row);
+            if y >= current && y < current + height {
+                return match row {
+                    SettingsSubmenuRow::Item {
+                        command, enabled, ..
+                    } => Some((command, enabled)),
+                    SettingsSubmenuRow::Separator => None,
+                };
+            }
+            current += height;
+        }
+        None
     }
 
     /// Top edge of a submenu: level with the row of `parent` that opens it and kept inside the
@@ -489,12 +573,7 @@ impl App {
             }
             row_top += Self::file_menu_row_height(row);
         }
-        let height = self
-            .file_menu_rows(Some(open))
-            .iter()
-            .map(|row| Self::file_menu_row_height(*row))
-            .sum::<f32>()
-            + 8.0;
+        let height = self.file_panel_height(open);
         anchor
             .min(window_height - height)
             .max(self.top_menu_height())
@@ -542,6 +621,19 @@ impl App {
     ) -> Option<usize> {
         let mut current = self.file_panel_top(submenu, window_height) + 4.0;
         let mut selected = 0;
+        if let Some(nested) = submenu.filter(|open| open.parent().is_some()) {
+            for row in self.file_nested_rows(nested) {
+                let height = Self::file_nested_row_height(&row);
+                if y >= current && y < current + height {
+                    return matches!(row, SettingsSubmenuRow::Item { .. }).then_some(selected);
+                }
+                if matches!(row, SettingsSubmenuRow::Item { .. }) {
+                    selected += 1;
+                }
+                current += height;
+            }
+            return None;
+        }
         for row in self.file_menu_rows(submenu) {
             let height = Self::file_menu_row_height(row);
             if y >= current && y < current + height {
@@ -581,11 +673,11 @@ impl App {
         window_height: f32,
     ) -> Option<(FileMenuCommand, Option<FileMenuSubmenu>, bool)> {
         let inside = |left: f32, width: f32| x >= left && x < left + width;
-        let (panel, left, width) = if self.file_menu_nested.is_some()
-            && inside(nested_x, FILE_SUBMENU_WIDTH)
-        {
-            (self.file_menu_nested, nested_x, FILE_SUBMENU_WIDTH)
-        } else if self.file_menu_submenu.is_some() && inside(submenu_x, FILE_SUBMENU_WIDTH) {
+        if self.file_menu_nested.is_some() && inside(nested_x, FILE_SUBMENU_WIDTH) {
+            // The nested panel has its own rows; see `file_nested_command_at`.
+            return None;
+        }
+        let (panel, left, width) = if self.file_menu_submenu.is_some() && inside(submenu_x, FILE_SUBMENU_WIDTH) {
             (self.file_menu_submenu, submenu_x, FILE_SUBMENU_WIDTH)
         } else {
             (None, popup_x, FILE_MENU_WIDTH)
@@ -686,6 +778,23 @@ impl App {
     }
 
     pub(crate) fn activate_file_menu_accessibility_item(&mut self, index: usize) {
+        if let Some(nested) = self.file_menu_nested {
+            let chosen = self
+                .file_nested_rows(nested)
+                .into_iter()
+                .filter_map(|row| match row {
+                    SettingsSubmenuRow::Item {
+                        command, enabled, ..
+                    } => Some((command, enabled)),
+                    SettingsSubmenuRow::Separator => None,
+                })
+                .nth(index);
+            if let Some((command, true)) = chosen {
+                self.execute_settings_subcommand(command);
+                self.dismiss_workbench_menu();
+            }
+            return;
+        }
         if let Some((command, submenu, enabled)) = self
             .file_menu_rows(self.file_menu_innermost())
             .into_iter()
@@ -1213,10 +1322,15 @@ mod tests {
         assert_eq!(app.file_menu_submenu, Some(FileMenuSubmenu::Preferences));
         assert_eq!(app.file_menu_nested, Some(FileMenuSubmenu::Themes));
         assert_eq!(app.file_menu_innermost(), Some(FileMenuSubmenu::Themes));
-        let first = app.file_menu_selected().unwrap().0;
-        assert_eq!(first, FileMenuCommand::DarkTheme);
+        assert_eq!(
+            app.file_nested_selected(),
+            Some((SettingsSubcommand::DarkTheme, true))
+        );
         app.file_menu_move_selection(1);
-        assert_eq!(app.file_menu_selected().unwrap().0, FileMenuCommand::LightTheme);
+        assert_eq!(
+            app.file_nested_selected(),
+            Some((SettingsSubcommand::LightTheme, true))
+        );
         // Back goes one level at a time.
         assert!(app.close_file_submenu());
         assert_eq!(app.file_menu_nested, None);
@@ -1250,13 +1364,58 @@ mod tests {
         let nested_top = app.file_nested_top(window.1);
         assert!(nested_top > app.file_submenu_top(window.1));
         let first_row = nested_top + 4.0 + 5.0;
-        let hit = app.file_menu_command_at(nested_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1);
-        assert_eq!(hit.map(|hit| hit.0), Some(FileMenuCommand::DarkTheme));
+        let hit = app.file_nested_command_at(nested_x + 10.0, first_row, nested_x, window.1);
+        assert_eq!(hit, Some((SettingsSubcommand::DarkTheme, true)));
+        // The first-level lookup leaves the nested panel to `file_nested_command_at`.
+        assert!(app
+            .file_menu_command_at(nested_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1)
+            .is_none());
         // The same point over the first-level panel hits a Preferences row instead.
         let hit = app.file_menu_command_at(submenu_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1);
         assert_ne!(hit.map(|hit| hit.0), Some(FileMenuCommand::DarkTheme));
         // With no room on the right, both submenus open to the left of their parents.
         let (left_x, left_nested, _) = App::file_panel_xs(900.0, FILE_MENU_WIDTH, 1400.0);
         assert!(left_x < 900.0 && left_nested < left_x);
+    }
+
+    #[test]
+    fn nested_profiles_and_themes_are_the_same_rows_as_the_settings_gear_menu() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
+        crate::config::install_bundled_themes(&app.profile_root);
+        let profiles = app.user_profiles().unwrap_or_default();
+        for (nested, gear) in [
+            (FileMenuSubmenu::Themes, SettingsSubmenu::Themes),
+            (FileMenuSubmenu::Profiles, SettingsSubmenu::Profiles),
+        ] {
+            assert_eq!(
+                app.file_nested_rows(nested),
+                app.settings_submenu_rows(gear, &profiles)
+            );
+        }
+        // The bundled theme is offered, and choosing it from the File menu applies it.
+        let simple = SettingsSubcommand::ColorTheme("Graphite Simple".into());
+        assert!(app
+            .file_nested_rows(FileMenuSubmenu::Themes)
+            .iter()
+            .any(|row| matches!(row, SettingsSubmenuRow::Item { command, .. } if *command == simple)));
+        app.open_file_submenu(FileMenuSubmenu::Preferences);
+        app.open_file_submenu(FileMenuSubmenu::Themes);
+        let index = app
+            .file_nested_rows(FileMenuSubmenu::Themes)
+            .into_iter()
+            .filter(|row| matches!(row, SettingsSubmenuRow::Item { .. }))
+            .position(|row| matches!(row, SettingsSubmenuRow::Item { command, .. } if command == simple))
+            .unwrap();
+        app.file_menu_nested_selection = index;
+        let (command, enabled) = app.file_nested_selected().unwrap();
+        assert!(enabled);
+        app.execute_settings_subcommand(command);
+        assert!(std::fs::read_to_string(app.profile_root.join("settings.json"))
+            .unwrap()
+            .contains("Graphite Simple"));
+        // The panel is as tall as its rows, so it is positioned like any other submenu.
+        assert!(app.file_panel_height(FileMenuSubmenu::Themes) > 8.0);
     }
 }

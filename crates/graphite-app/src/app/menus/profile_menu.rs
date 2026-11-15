@@ -138,13 +138,16 @@ impl App {
             .position(|row| matches!(row, ProfileMenuRow::Profile { active: true, .. }))
             .unwrap_or(0);
         let height = menu_height(&rows);
-        let above = button.1 - height;
-        let y = if above >= 0.0 {
-            above
-        } else {
-            (button.1 + button.3 - 1.0).min((window_height - height).max(0.0))
-        };
-        let x = (button.0 + button.2 - 12.0).clamp(0.0, (window_width - width).max(0.0));
+        let status_height = self
+            .gpu
+            .as_ref()
+            .map_or(20.0, |gpu| gpu.renderer.line_height());
+        let (x, y) = super::popup_placement::beside_button(
+            button,
+            (width, height),
+            (window_width, window_height),
+            status_height,
+        );
         self.profile_menu = Some(ProfileMenu {
             x,
             y,

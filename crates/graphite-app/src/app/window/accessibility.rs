@@ -642,24 +642,56 @@ impl App {
         }
         if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::File) {
             use super::file_menu::FileMenuRow;
-            let rows = self.file_menu_rows(self.file_menu_innermost());
+            use super::settings_menu::SettingsSubmenuRow;
+            // (label, shortcut, enabled, checked) of every selectable row of the innermost panel.
+            let entries: Vec<(String, String, bool, bool)> = match self.file_menu_nested {
+                Some(nested) => self
+                    .file_nested_rows(nested)
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        SettingsSubmenuRow::Item {
+                            label,
+                            shortcut,
+                            enabled,
+                            checked,
+                            ..
+                        } => Some((self.t(&label).to_owned(), shortcut, enabled, checked)),
+                        SettingsSubmenuRow::Separator => None,
+                    })
+                    .collect(),
+                None => self
+                    .file_menu_rows(self.file_menu_submenu)
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        FileMenuRow::Item {
+                            command,
+                            label,
+                            shortcut,
+                            enabled,
+                            checked,
+                            ..
+                        } => Some((
+                            self.file_menu_label(label, command),
+                            shortcut.to_owned(),
+                            enabled,
+                            checked,
+                        )),
+                        FileMenuRow::Separator => None,
+                    })
+                    .collect(),
+            };
+            let selected_row = match self.file_menu_nested {
+                Some(_) => self.file_menu_nested_selection,
+                None => self.file_menu_selection,
+            };
             let mut menu = Node::new(Role::Menu);
             menu.set_label(self.t("menubar.file"));
             let mut item_children = Vec::new();
-            let mut item_index = 0;
-            for row in rows {
-                if let FileMenuRow::Item {
-                    command,
-                    label,
-                    shortcut,
-                    enabled,
-                    checked,
-                    ..
-                } = row
+            for (item_index, (label, shortcut, enabled, checked)) in entries.into_iter().enumerate() {
                 {
                     let id = file_menu_item_node(item_index);
                     let mut item = Node::new(Role::MenuItem);
-                    let mut accessible_label = self.file_menu_label(label, command);
+                    let mut accessible_label = label;
                     if !shortcut.is_empty() {
                         accessible_label.push_str(&format!(", {shortcut}"));
                     }
@@ -671,11 +703,10 @@ impl App {
                             .push_str(&format!(", {}", self.t("accessibility.unavailable")));
                     }
                     item.set_label(accessible_label);
-                    item.set_selected(item_index == self.file_menu_selection);
+                    item.set_selected(item_index == selected_row);
                     item.add_action(Action::Click);
                     nodes.push((id, item));
                     item_children.push(id);
-                    item_index += 1;
                 }
             }
             menu.set_children(item_children);
