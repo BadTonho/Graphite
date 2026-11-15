@@ -69,14 +69,13 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Foco de teclado para a barra de atividades, a barra de status, o banner e as vistas do próprio painel.
 - Mover e redimensionar vistas, e a posição das notificações.
 - Breadcrumbs navegáveis (focar, percorrer, escolher itens).
-- Distribuir larguras e maximizar um grupo: os grupos ainda não têm proporções.
 - Comandos de lista para resultados de busca, a lista do controle de código-fonte e as outras listas; busca por digitação; seleção múltipla.
 
 **Ferramentas do dia a dia**
-- Canais de saída, logs compostos.
+- Canais de saída, logs compostos (`workbench.output.action.clearOutput` já está implementado).
 - Comandos de gerar e pré-visualizar temas.
 - Comandos de teste que existem para extensões.
-- Controle de código-fonte: foco da entrada e dos grupos de recursos, o gráfico do Git, commit seguinte e anterior.
+- Controle de código-fonte: foco da entrada e dos grupos de recursos, commit seguinte e anterior (`git.viewHistory` com grafo Git já está implementado).
 - Depuração: testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, pontos de interrupção de dados (`setDataBreakpoints`), decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
 - Extensões: atualizar todas, verificar atualizações, ativar só no espaço de trabalho, recomendações, lista de embutidas, abrir a pasta de extensões.
 

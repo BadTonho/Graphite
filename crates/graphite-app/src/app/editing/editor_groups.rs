@@ -82,6 +82,7 @@ pub(crate) struct EditorGroups {
     layout: Layout,
     focused: u64,
     next_id: u64,
+    maximized_group: Option<u64>,
 }
 
 impl EditorGroups {
@@ -111,6 +112,7 @@ impl EditorGroups {
             layout: Layout::Leaf(0),
             focused: 0,
             next_id: 1,
+            maximized_group: None,
         }
     }
 
@@ -469,9 +471,30 @@ impl EditorGroups {
         }
     }
     pub(crate) fn rectangles(&self, bounds: GroupRect) -> Vec<GroupRect> {
+        if let Some(id) = self.maximized_group {
+            if self.groups.iter().any(|g| g.id == id) {
+                return vec![GroupRect { id, ..bounds }];
+            }
+        }
         let mut out = Vec::new();
         self.layout.rectangles(bounds, &mut out);
         out
+    }
+
+    /// Toggles maximizing the currently focused editor group.
+    pub(crate) fn toggle_maximize_group(&mut self) -> bool {
+        if self.maximized_group == Some(self.focused) {
+            self.maximized_group = None;
+            false
+        } else {
+            self.maximized_group = Some(self.focused);
+            true
+        }
+    }
+
+    /// Restores equal group sizes and exits maximized group mode.
+    pub(crate) fn even_group_widths(&mut self) {
+        self.maximized_group = None;
     }
 }
 
@@ -928,6 +951,29 @@ mod tests {
                 assert!(rect.y + rect.height <= bounds.y + bounds.height + 0.01);
             }
         }
+        groups.toggle_maximize_group();
+        let max_rects = groups.rectangles(GroupRect {
+            id: 0,
+            x: 0.0,
+            y: 0.0,
+            width: 1200.0,
+            height: 800.0,
+        });
+        assert_eq!(max_rects.len(), 1);
+        assert_eq!(max_rects[0].width, 1200.0);
+        groups.even_group_widths();
+        assert_eq!(
+            groups
+                .rectangles(GroupRect {
+                    id: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1200.0,
+                    height: 800.0,
+                })
+                .len(),
+            4
+        );
     }
 
     #[test]

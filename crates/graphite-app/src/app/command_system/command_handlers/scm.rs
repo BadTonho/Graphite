@@ -194,7 +194,7 @@ fn scm_continue_operation(app: &mut App, _: &CommandInvocation) -> Result<(), Co
 
 /// The `Git:` commands of the palette (and of the SCM view's "…" button).
 pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 19] = [
+    let commands: [(&'static str, &'static str, Handler); 20] = [
         ("graphite.scm.pull", "Git: Pull", scm_pull),
         ("graphite.scm.push", "Git: Push", scm_push),
         ("graphite.scm.fetch", "Git: Fetch", scm_fetch),
@@ -262,10 +262,28 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
             "Git: Continue Merge or Rebase",
             scm_continue_operation,
         ),
+        ("git.viewHistory", "Git: View History (Graph)", git_view_history),
     ];
     for (id, title, handler) in commands {
         add(registry, id, title, "Scm", ALL, "true", None, handler);
     }
+}
+
+fn git_view_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let root = app.scm_workspace_root();
+    let output = std::process::Command::new("git")
+        .args(["log", "--oneline", "--graph", "--decorate", "-n", "100"])
+        .current_dir(&root)
+        .output()
+        .map_err(|e| CommandError::Failed(e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(CommandError::Failed(stderr));
+    }
+    let graph = String::from_utf8_lossy(&output.stdout).into_owned();
+    app.new_untitled_document();
+    app.editor_mut().insert(&graph);
+    Ok(())
 }
 
 fn scm_delete_branch(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

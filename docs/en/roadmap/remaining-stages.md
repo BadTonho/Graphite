@@ -69,14 +69,13 @@ Items that were left out because they depend on something the application does n
 - Keyboard focus for the activity bar, the status bar, the banner and the panel's own views.
 - Moving and resizing views, and the notifications position.
 - Navigable breadcrumbs (focus, step through, pick items).
-- Even editor widths and maximizing a group: groups have no proportions yet.
 - List commands for search results, the source control list and other lists; type to find; multi-selection.
 
 **Daily tools**
-- Output channels, compound logs.
+- Output channels, compound logs (`workbench.output.action.clearOutput` is implemented).
 - Theme generation and preview commands.
 - Testing commands that exist for extensions.
-- Source control: input and resource group focus, the Git graph, next and previous commit.
+- Source control: input and resource group focus, next and previous commit (`git.viewHistory` graph view is implemented).
 - Debug: tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, data breakpoints (`setDataBreakpoints`), Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
 - Extensions: update all, check for updates, workspace-only enable, recommendations, built-in list, open the extensions folder.
 

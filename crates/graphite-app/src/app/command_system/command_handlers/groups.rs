@@ -250,8 +250,28 @@ handler!(focus_active_group, |app| {
 handler!(focus_first_group, |app| focus_group(app, Target::First));
 handler!(focus_last_group, |app| focus_group(app, Target::Last));
 
+fn toggle_maximize_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.editor_groups.toggle_maximize_group();
+    Ok(())
+}
+
+fn even_editor_widths(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.editor_groups.even_group_widths();
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 31] = [
+    let commands: [(&'static str, &'static str, Handler); 33] = [
+        (
+            "workbench.action.toggleMaximizeEditorGroup",
+            "Toggle Maximize Editor Group",
+            toggle_maximize_group,
+        ),
+        (
+            "workbench.action.evenEditorWidths",
+            "Reset Editor Group Sizes",
+            even_editor_widths,
+        ),
         (
             "workbench.action.moveEditorToNextGroup",
             "Move editor into next group",
