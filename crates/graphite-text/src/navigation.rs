@@ -60,6 +60,59 @@ impl Editor<'_> {
         self.replace(start, end, text);
     }
 
+    /// Inserts typed `text` in overtype (overwrite) mode: replaces any active selection,
+    /// or overwrites up to `text.chars().count()` characters on the current line before
+    /// the line terminator for each caret.
+    pub fn insert_overtype(&mut self, text: &str) {
+        if self.read_only {
+            return;
+        }
+        let count = text.chars().count();
+        if count == 0 {
+            return;
+        }
+        let selections = self.selections();
+        let len = self.len_chars();
+        let mut ranges: Vec<std::ops::Range<usize>> = selections
+            .into_iter()
+            .map(|s| {
+                let start = s.anchor.min(s.head);
+                let mut end = s.anchor.max(s.head);
+                if start == end {
+                    let mut remaining = count;
+                    while remaining > 0 && end < len {
+                        let ch = self.rope.char(end);
+                        if ch == '\n' || ch == '\r' {
+                            break;
+                        }
+                        end += 1;
+                        remaining -= 1;
+                    }
+                }
+                start..end
+            })
+            .collect();
+        ranges.sort_by_key(|r| (r.start, r.end));
+        let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+        for range in ranges {
+            if let Some(last) = merged.last_mut() {
+                if range.start < last.end || (range.start == last.start && range.end == last.end) {
+                    last.end = last.end.max(range.end);
+                    continue;
+                }
+            }
+            merged.push(range);
+        }
+        let edits: Vec<_> = merged
+            .into_iter()
+            .map(|range| TextReplacement {
+                range,
+                text: text.into(),
+            })
+            .collect();
+        self.apply_cursor_replacements(&edits);
+    }
+
     /// Deletes the character before the cursor.
     pub fn backspace(&mut self) {
         if !self.state.extra_selections.is_empty() {

@@ -343,6 +343,7 @@ impl App {
                         (text_x, y, cw, lh, right),
                     );
                 }
+                self.draw_debug_and_test_gutter(r, buffer.path(), line, rect.x, y, lh);
                 for selection in &view.selection_state.selections() {
                     let start = selection.anchor.min(selection.head).max(line_start);
                     let end = selection.anchor.max(selection.head).min(line_end);

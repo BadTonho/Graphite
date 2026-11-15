@@ -480,10 +480,22 @@ impl App {
             // The text behind an extension's editor is not typed into.
             return;
         }
+        if !ctrl
+            && !self.modifiers.alt_key()
+            && !self.modifiers.shift_key()
+            && matches!(event.logical_key, Key::Named(NamedKey::Insert))
+        {
+            self.overtype_mode = !self.overtype_mode;
+            return;
+        }
         if !ctrl && !self.editor_groups.active_view_mut().ime_composing {
             if let Some(text) = &event.text {
                 if !text.chars().any(char::is_control) {
-                    self.editor_mut().insert(text);
+                    if self.overtype_mode {
+                        self.editor_mut().insert_overtype(text);
+                    } else {
+                        self.editor_mut().insert(text);
+                    }
                     self.format_on_type(text);
                 }
             }

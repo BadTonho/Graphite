@@ -62,9 +62,6 @@ Exclusões intencionais e verificações não executadas:
 Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não tem. Cada um pode ser retomado quando o pré-requisito existir.
 
 **Núcleo do editor**
-- Reindentar linhas: precisa de regras de recuo por linguagem.
-- Modo sobrescrever: o texto digitado e o colado passam pelo mesmo caminho; o modo precisa valer só para a digitação.
-- Peek de declaração, de definição de tipo e de implementação.
 - Comandos do editor de diff: precisam da interface do editor de diff.
 - Comandos de acessibilidade e de inspeção do editor.
 
@@ -73,9 +70,7 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Mover e redimensionar vistas, e a posição das notificações.
 - Breadcrumbs navegáveis (focar, percorrer, escolher itens).
 - Distribuir larguras e maximizar um grupo: os grupos ainda não têm proporções.
-- Abrir arquivo, pasta ou espaço de trabalho em nova janela.
 - Comandos de lista para resultados de busca, a lista do controle de código-fonte e as outras listas; busca por digitação; seleção múltipla.
-- Recortar e colar no explorador.
 
 **Ferramentas do dia a dia**
 - Canais de saída, logs compostos.
@@ -83,7 +78,7 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Editor de busca.
 - Comandos de teste que existem para extensões.
 - Controle de código-fonte: foco da entrada e dos grupos de recursos, o gráfico do Git, commit seguinte e anterior.
-- Depuração: pontos de interrupção de dados, um popup de hover sobre o código, uma marca do ponto de interrupção na margem, e testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado).
+- Depuração: pontos de interrupção de dados e testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
 - Extensões: atualizar todas, verificar atualizações, ativar só no espaço de trabalho, recomendações, lista de embutidas, abrir a pasta de extensões.
 
 **Editores de merge e de diff**

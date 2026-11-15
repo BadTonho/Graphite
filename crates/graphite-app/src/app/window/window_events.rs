@@ -60,6 +60,9 @@ impl ApplicationHandler<UserEvent> for App {
         }
         let debug_pending = self.debug.session.is_some();
         if debug_pending && self.debug.poll(self.tree.root()).unwrap_or(false) {
+            if let Some(hover) = self.debug.last_hover_result.take() {
+                self.hover_text = Some(hover);
+            }
             if let Some(gpu) = &self.gpu {
                 gpu.window.request_redraw();
             }

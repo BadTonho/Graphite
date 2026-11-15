@@ -124,6 +124,27 @@ impl App {
         self.request_lsp("definition");
     }
 
+    pub(crate) fn lsp_peek_declaration(&mut self) {
+        self.lsp_peek_request = Some(self.lsp_request_id.wrapping_add(1));
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::Declaration) {
+            return;
+        }
+        self.lsp_send_at_caret("declaration", "textDocument/declaration", None);
+    }
+
+    pub(crate) fn lsp_peek_type_definition(&mut self) {
+        self.lsp_peek_request = Some(self.lsp_request_id.wrapping_add(1));
+        if self.request_vsix_language(super::plugins::VsixLanguageFeature::TypeDefinition) {
+            return;
+        }
+        self.lsp_send_at_caret("typeDefinition", "textDocument/typeDefinition", None);
+    }
+
+    pub(crate) fn lsp_peek_implementation(&mut self) {
+        self.lsp_peek_request = Some(self.lsp_request_id.wrapping_add(1));
+        self.lsp_implementations();
+    }
+
     /// Opens the rename prompt, pre-filled with the identifier under the caret.
     pub(crate) fn lsp_rename(&mut self) {
         let Some((path, position)) = self.active_lsp_position() else {
@@ -195,7 +216,14 @@ impl App {
     pub(crate) fn handle_lsp_query(&mut self, kind: &str, result: Value) {
         match kind {
             "references" => self.show_lsp_locations(&result, "lsp.references.none"),
-            "implementation" => self.show_lsp_locations(&result, "lsp.implementation.none"),
+            "implementation" | "declaration" | "typeDefinition" => {
+                if self.lsp_peek_request.take().is_some() {
+                    let first = first_lsp_location(&result);
+                    self.show_lsp_peek(first);
+                } else {
+                    self.show_lsp_locations(&result, "lsp.implementation.none");
+                }
+            }
             "signatureHelp" => match signature_label(&result) {
                 Some(label) => self.hover_text = Some(label),
                 None => self.status = self.t("lsp.signature.none").into(),
@@ -442,6 +470,23 @@ impl App {
             snippet.join("\n")
         ));
     }
+}
+
+/// Extracts the first `Location` from an LSP `Location | Location[] | LocationLink[]` response.
+fn first_lsp_location(result: &Value) -> Option<lsp_types::Location> {
+    if let Ok(loc) = serde_json::from_value::<lsp_types::Location>(result.clone()) {
+        return Some(loc);
+    }
+    if let Ok(locs) = serde_json::from_value::<Vec<lsp_types::Location>>(result.clone()) {
+        return locs.into_iter().next();
+    }
+    if let Ok(links) = serde_json::from_value::<Vec<lsp_types::LocationLink>>(result.clone()) {
+        return links.into_iter().next().map(|link| lsp_types::Location {
+            uri: link.target_uri,
+            range: link.target_selection_range,
+        });
+    }
+    None
 }
 
 /// Identifier characters for the word under the caret.

@@ -646,9 +646,27 @@ impl App {
                 self.lsp_manager
                     .request_definition(&path, position, self.lsp_request_id)
             }
-            "hover" => self
-                .lsp_manager
-                .request_hover(&path, position, self.lsp_request_id),
+            "hover" => {
+                if matches!(self.debug.state, crate::debugger::DebugState::Paused { .. }) {
+                    let (line, col) = self.editor().cursor_line_col();
+                    let line_chars: Vec<char> = self.editor().line(line).chars().collect();
+                    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+                    let mut start = col.min(line_chars.len());
+                    while start > 0 && line_chars.get(start - 1).copied().is_some_and(is_ident) {
+                        start -= 1;
+                    }
+                    let mut end = col.min(line_chars.len());
+                    while line_chars.get(end).copied().is_some_and(is_ident) {
+                        end += 1;
+                    }
+                    let expr: String = line_chars[start..end].iter().collect();
+                    if !expr.is_empty() && self.debug.evaluate_hover(&expr).is_ok() {
+                        return;
+                    }
+                }
+                self.lsp_manager
+                    .request_hover(&path, position, self.lsp_request_id)
+            }
             _ => false,
         };
         if !sent {

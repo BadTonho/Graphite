@@ -790,6 +790,67 @@ pub(super) fn editor_action_peek_definition(
     Ok(())
 }
 
+pub(super) fn editor_action_peek_declaration(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_peek_declaration();
+    Ok(())
+}
+
+pub(super) fn editor_action_peek_type_definition(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_peek_type_definition();
+    Ok(())
+}
+
+pub(super) fn editor_action_peek_implementation(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.lsp_peek_implementation();
+    Ok(())
+}
+
+pub(super) fn editor_action_toggle_overtype_insert_mode(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.overtype_mode = !app.overtype_mode;
+    Ok(())
+}
+
+fn colon_indents_for_active_document(app: &App) -> bool {
+    matches!(
+        app.documents[app.command_document()].language,
+        Some(graphite_syntax::Language::Python | graphite_syntax::Language::Yaml)
+    )
+}
+
+pub(super) fn editor_action_reindent_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let style = app.documents[app.command_document()].indentation;
+    let colon_indents = colon_indents_for_active_document(app);
+    let _ = app.editor_mut().reindent_lines(style, colon_indents);
+    Ok(())
+}
+
+pub(super) fn editor_action_reindent_selected_lines(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let style = app.documents[app.command_document()].indentation;
+    let colon_indents = colon_indents_for_active_document(app);
+    let _ = app
+        .editor_mut()
+        .reindent_selected_lines(style, colon_indents);
+    Ok(())
+}
+
 pub(super) fn editor_action_rename(
     app: &mut App,
     _invocation: &CommandInvocation,
@@ -1595,6 +1656,66 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         "true",
         None,
         editor_action_peek_definition,
+    );
+    add(
+        registry,
+        "editor.action.peekDeclaration",
+        "Peek Declaration",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        editor_action_peek_declaration,
+    );
+    add(
+        registry,
+        "editor.action.peekTypeDefinition",
+        "Peek Type Definition",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        editor_action_peek_type_definition,
+    );
+    add(
+        registry,
+        "editor.action.peekImplementation",
+        "Peek Implementation",
+        "Go",
+        VIEW,
+        "true",
+        None,
+        editor_action_peek_implementation,
+    );
+    add(
+        registry,
+        "editor.action.toggleOvertypeInsertMode",
+        "Toggle Overtype/Insert Mode",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_toggle_overtype_insert_mode,
+    );
+    add(
+        registry,
+        "editor.action.reindentlines",
+        "Reindent Lines",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_reindent_lines,
+    );
+    add(
+        registry,
+        "editor.action.reindentselectedlines",
+        "Reindent Selected Lines",
+        "Editor",
+        VIEW,
+        "editorWritable",
+        None,
+        editor_action_reindent_selected_lines,
     );
     add(
         registry,

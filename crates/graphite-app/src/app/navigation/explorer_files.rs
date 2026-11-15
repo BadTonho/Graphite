@@ -49,6 +49,54 @@ pub(crate) fn remove_entry(path: &Path) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+fn unique_copy_destination(desired: &Path) -> PathBuf {
+    if fs::symlink_metadata(desired).is_err() {
+        return desired.to_path_buf();
+    }
+    let parent = desired.parent().unwrap_or_else(|| Path::new(""));
+    let stem = desired
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("copy");
+    let ext = desired.extension().and_then(|s| s.to_str());
+    for index in 1..1000 {
+        let suffix = if index == 1 {
+            " copy".to_string()
+        } else {
+            format!(" copy {index}")
+        };
+        let candidate_name = match ext {
+            Some(ext) if !desired.is_dir() => format!("{stem}{suffix}.{ext}"),
+            _ => format!("{stem}{suffix}"),
+        };
+        let candidate = parent.join(candidate_name);
+        if fs::symlink_metadata(&candidate).is_err() {
+            return candidate;
+        }
+    }
+    desired.to_path_buf()
+}
+
+fn copy_entry_recursive(from: &Path, to: &Path) -> Result<(), String> {
+    if to.starts_with(from) && from.is_dir() {
+        return Err("a folder cannot be copied into itself".into());
+    }
+    let meta = fs::symlink_metadata(from).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        fs::create_dir_all(to).map_err(|e| e.to_string())?;
+        for entry in fs::read_dir(from).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            copy_entry_recursive(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    } else {
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::copy(from, to).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 impl App {
     pub(crate) fn explorer_select(&mut self, path: PathBuf) {
         self.explorer_selected = Some(path);
@@ -57,6 +105,72 @@ impl App {
 
     pub(crate) fn explorer_has_selection(&self) -> bool {
         self.explorer_focused && self.explorer_selected.is_some()
+    }
+
+    /// Marks the selected explorer entry to be moved on the next paste.
+    pub(crate) fn explorer_cut(&mut self) {
+        if let Some(path) = self.explorer_selected.clone() {
+            self.explorer_clipboard = Some((path, true));
+        }
+    }
+
+    /// Marks the selected explorer entry to be copied on the next paste.
+    pub(crate) fn explorer_copy_entry(&mut self) {
+        if let Some(path) = self.explorer_selected.clone() {
+            self.explorer_clipboard = Some((path, false));
+        }
+    }
+
+    /// Pastes the staged explorer entry into the selected folder (or parent folder of a selected file).
+    pub(crate) fn explorer_paste(&mut self) -> Result<(), String> {
+        let Some((source, is_cut)) = self.explorer_clipboard.clone() else {
+            return Ok(());
+        };
+        if !source.exists() {
+            self.explorer_clipboard = None;
+            return Err("source entry no longer exists".into());
+        }
+        let target_dir = match self.explorer_selected.as_deref() {
+            Some(sel) if sel.is_dir() => sel.to_path_buf(),
+            Some(sel) => sel
+                .parent()
+                .unwrap_or_else(|| self.tree.root())
+                .to_path_buf(),
+            None => self.tree.root().to_path_buf(),
+        };
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| "cannot paste root entry".to_owned())?;
+        let raw_dest = target_dir.join(file_name);
+        if is_cut {
+            if raw_dest == source {
+                self.explorer_clipboard = None;
+                return Ok(());
+            }
+            move_entry(&source, &raw_dest)?;
+            self.explorer_clipboard = None;
+            self.explorer_selected = Some(raw_dest);
+        } else {
+            let dest = unique_copy_destination(&raw_dest);
+            copy_entry_recursive(&source, &dest)?;
+            self.explorer_selected = Some(dest);
+        }
+        self.tree.refresh();
+        Ok(())
+    }
+
+    /// Opens the selected explorer entry (or workspace root) in a new detached Graphite window.
+    pub(crate) fn explorer_open_in_new_window(&mut self) -> Result<(), String> {
+        let target = self
+            .explorer_selected
+            .clone()
+            .unwrap_or_else(|| self.tree.root().to_path_buf());
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        std::process::Command::new(exe)
+            .arg(target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Opens the rename prompt for the selected explorer entry.
@@ -472,5 +586,27 @@ mod tests {
         app.documents[id].buffer.mark_saved_snapshot(&text);
         app.remove_explorer_entry(&b).unwrap();
         assert!(!b.exists());
+    }
+
+    #[test]
+    fn cut_copy_and_paste_entries_preserve_and_move_files() {
+        let (dir, mut app) = app_with_files();
+        let a = dir.path().join("a.txt");
+        let src = dir.path().join("src");
+
+        // Copy + paste in same directory creates "a copy.txt".
+        app.explorer_select(a.clone());
+        app.explorer_copy_entry();
+        app.explorer_paste().unwrap();
+        assert!(a.exists());
+        assert!(dir.path().join("a copy.txt").exists());
+
+        // Cut + paste into `src/` moves the file.
+        app.explorer_select(dir.path().join("a copy.txt"));
+        app.explorer_cut();
+        app.explorer_select(src.clone());
+        app.explorer_paste().unwrap();
+        assert!(!dir.path().join("a copy.txt").exists());
+        assert!(src.join("a copy.txt").exists());
     }
 }

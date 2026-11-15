@@ -192,6 +192,54 @@ impl App {
         }
     }
 
+    /// Draws breakpoint markers, the active paused debug line, and Test Explorer status
+    /// decorators in the editor gutter for `path` at 0-based `line`.
+    pub(crate) fn draw_debug_and_test_gutter(
+        &self,
+        r: &mut Renderer,
+        path: Option<&std::path::Path>,
+        line: usize,
+        x: f32,
+        y: f32,
+        lh: f32,
+    ) {
+        let Some(path) = path else {
+            return;
+        };
+        if let Some(color) = breakpoint_gutter_color(
+            self.debug.breakpoints.get(path).map(Vec::as_slice),
+            line,
+            self.debug.breakpoints_disabled,
+        ) {
+            let size = (lh * 0.45).clamp(6.0, 9.0);
+            r.draw_rect(
+                x + 3.0,
+                y + (lh - size) * 0.5,
+                size,
+                size,
+                rgb(color),
+            );
+        }
+        if matches!(self.debug.state, crate::debugger::DebugState::Paused { .. }) {
+            let active_frame = self.debug.frames.get(self.debug.selected_frame);
+            if active_frame.is_some_and(|frame| {
+                frame.source.as_deref() == Some(path) && frame.line as usize == line
+            }) {
+                r.draw_rect(x + 1.0, y + 2.0, 4.0, (lh - 4.0).max(4.0), rgb(0xfacc15));
+            }
+        }
+        if let Some(color) = test_gutter_color(&self.test_explorer, path, line) {
+            let size = (lh * 0.42).clamp(5.0, 8.0);
+            r.draw_rect(
+                x + 11.0,
+                y + (lh - size) * 0.5,
+                size,
+                size,
+                rgb(color),
+            );
+        }
+    }
+
     /// Draws the overview ruler: a strip at the right edge of the editor with a mark for each
     /// decoration that asks for one, placed by its line within the whole document.
     pub(crate) fn draw_overview_ruler(&self, r: &mut Renderer, uri: &str, total_lines: usize, right: f32, top: f32, height: f32) {
@@ -217,6 +265,66 @@ impl App {
         let found = self.vsix_decoration_hover(&uri, line as u32, utf16 as u32);
         (!found.is_empty()).then(|| found.join("\n\n"))
     }
+}
+
+/// Selects the gutter color for a breakpoint on 0-based `line`, if any exists.
+pub(crate) fn breakpoint_gutter_color(
+    points: Option<&[serde_json::Value]>,
+    line: usize,
+    all_disabled: bool,
+) -> Option<u32> {
+    let target_line = line as u64 + 1;
+    let point = points?.iter().find(|p| p["line"].as_u64() == Some(target_line))?;
+    let enabled = point["enabled"].as_bool().unwrap_or(true) && !all_disabled;
+    if !enabled {
+        return Some(0x6b7280);
+    }
+    if point["logMessage"].as_str().is_some_and(|s| !s.is_empty()) {
+        return Some(0xa855f7);
+    }
+    if point["condition"].as_str().is_some_and(|s| !s.is_empty())
+        || point["hitCondition"].as_str().is_some_and(|s| !s.is_empty())
+    {
+        return Some(0xd97706);
+    }
+    Some(0xe51400)
+}
+
+/// Selects the gutter color for the highest-priority Test Explorer item at `path` and 0-based `line`.
+pub(crate) fn test_gutter_color(
+    explorer: &crate::test_explorer::TestExplorer,
+    path: &std::path::Path,
+    line: usize,
+) -> Option<u32> {
+    fn visit(
+        items: &[crate::test_explorer::TestItem],
+        path: &std::path::Path,
+        line: u32,
+        best: &mut Option<(u8, u32)>,
+    ) {
+        use crate::test_explorer::TestState;
+        for item in items {
+            if item.uri.as_deref() == Some(path) && item.line == Some(line) {
+                let ranked = match &item.state {
+                    TestState::Failed { .. } | TestState::Errored(_) => (6, 0xef4444),
+                    TestState::Running => (5, 0x3b82f6),
+                    TestState::Queued => (4, 0xf59e0b),
+                    TestState::Passed => (3, 0x22c55e),
+                    TestState::Skipped => (2, 0x6b7280),
+                    TestState::Discovered => (1, 0x9ca3af),
+                };
+                if best.is_none_or(|(rank, _)| ranked.0 > rank) {
+                    *best = Some(ranked);
+                }
+            }
+            visit(&item.children, path, line, best);
+        }
+    }
+    let mut best = None;
+    for controller in explorer.controllers.values() {
+        visit(&controller.roots, path, line as u32, &mut best);
+    }
+    best.map(|(_, color)| color)
 }
 
 #[cfg(test)]
@@ -298,5 +406,54 @@ mod tests {
             span(&mark(Some(0), Some(1), false), "\tx", 4, 0.0, 10.0, 500.0),
             Some((0.0, 40.0))
         );
+    }
+
+    #[test]
+    fn breakpoint_and_test_gutter_colors_reflect_state() {
+        let points = vec![
+            serde_json::json!({ "line": 2 }),
+            serde_json::json!({ "line": 4, "condition": "x > 1" }),
+            serde_json::json!({ "line": 6, "logMessage": "hit" }),
+            serde_json::json!({ "line": 8, "enabled": false }),
+        ];
+        assert_eq!(breakpoint_gutter_color(Some(&points), 1, false), Some(0xe51400));
+        assert_eq!(breakpoint_gutter_color(Some(&points), 3, false), Some(0xd97706));
+        assert_eq!(breakpoint_gutter_color(Some(&points), 5, false), Some(0xa855f7));
+        assert_eq!(breakpoint_gutter_color(Some(&points), 7, false), Some(0x6b7280));
+        assert_eq!(breakpoint_gutter_color(Some(&points), 1, true), Some(0x6b7280));
+        assert_eq!(breakpoint_gutter_color(Some(&points), 0, false), None);
+
+        let mut explorer = crate::test_explorer::TestExplorer::default();
+        explorer.register_controller("c".into(), "Tests".into()).unwrap();
+        let file = std::path::PathBuf::from("src/lib.rs");
+        explorer
+            .replace_roots(
+                "c",
+                vec![crate::test_explorer::TestItem {
+                    id: "t1".into(),
+                    label: "t1".into(),
+                    uri: Some(file.clone()),
+                    line: Some(10),
+                    state: crate::test_explorer::TestState::Passed,
+                    output: Vec::new(),
+                    children: vec![crate::test_explorer::TestItem {
+                        id: "t2".into(),
+                        label: "t2".into(),
+                        uri: Some(file.clone()),
+                        line: Some(10),
+                        state: crate::test_explorer::TestState::Failed {
+                            message: "boom".into(),
+                            expected: None,
+                            actual: None,
+                        },
+                        output: Vec::new(),
+                        children: Vec::new(),
+                    }],
+                }],
+            )
+            .unwrap();
+        // Failed takes precedence over Passed on the same line.
+        assert_eq!(test_gutter_color(&explorer, &file, 10), Some(0xef4444));
+        assert_eq!(test_gutter_color(&explorer, &file, 11), None);
     }
 }

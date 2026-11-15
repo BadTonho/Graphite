@@ -230,3 +230,63 @@ fn read_only_editors_ignore_line_and_case_commands() {
     editor.transform_case(CaseTransform::Upper);
     assert_eq!(editor.text(), "b\na");
 }
+
+#[test]
+fn overtype_overwrites_until_line_end_and_preserves_paste_insert() {
+    with_editor("hello\r\nworld", |e| {
+        e.set_cursor_line_col(0, 1);
+        e.insert_overtype("a");
+        e.insert_overtype("x");
+        assert_eq!(e.text(), "haxlo\r\nworld");
+
+        // At line end before CRLF, overtype inserts without eating \r\n.
+        e.set_cursor_line_col(0, 5);
+        e.insert_overtype("!");
+        assert_eq!(e.text(), "haxlo!\r\nworld");
+
+        // Selection is replaced normally even in overtype mode.
+        e.set_selection(0, 3);
+        e.insert_overtype("Z");
+        assert_eq!(e.text(), "Zlo!\r\nworld");
+
+        // Multi-cursor overtype works across cursors.
+        e.set_selections(vec![
+            Selection { anchor: 0, head: 0 },
+            Selection { anchor: 6, head: 6 },
+        ]);
+        e.insert_overtype("X");
+        assert_eq!(e.text(), "Xlo!\r\nXorld");
+    });
+}
+
+#[test]
+fn reindent_lines_and_selected_lines_follow_brackets_and_undo_together() {
+    with_editor("fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n", |e| {
+        let changed = e.reindent_lines(spaces(4), false).unwrap();
+        assert!(changed > 0);
+        assert_eq!(
+            e.text(),
+            "fn main() {\n    let x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
+        );
+        e.undo();
+        assert_eq!(
+            e.text(),
+            "fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n"
+        );
+
+        // Reindent only lines 2..=3 while still respecting outer depth from line 0.
+        let start = e.rope().line_to_char(2);
+        let end = e.rope().line_to_char(4);
+        e.set_selection(start, end);
+        e.reindent_selected_lines(spaces(4), false).unwrap();
+        assert_eq!(
+            e.text(),
+            "fn main() {\nlet x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
+        );
+    });
+
+    with_editor("def f():\nx = 1\n", |e| {
+        e.reindent_lines(spaces(4), true).unwrap();
+        assert_eq!(e.text(), "def f():\n    x = 1\n");
+    });
+}

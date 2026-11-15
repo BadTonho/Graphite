@@ -252,6 +252,8 @@ pub struct DebugRuntime {
     pub function_breakpoints: Vec<String>,
     /// Only console lines that contain this text are shown (empty shows everything).
     pub console_filter: String,
+    /// Most recent `evaluate(..., "hover")` result ready to show in the editor hover popup.
+    pub last_hover_result: Option<String>,
     /// `setVariable` requests in flight: the variable's parent reference and its name.
     pending_set_variables: BTreeMap<i64, (i64, String)>,
     /// `postDebugTask` of the running session, held until the session ends.
@@ -1045,7 +1047,11 @@ impl DebugRuntime {
                     }
                 }
                 PendingEvaluation::Hover(expression) => match outcome {
-                    Ok(result) => self.push_output("console", format!("{expression} = {result}")),
+                    Ok(result) => {
+                        let formatted = format!("{expression} = {result}");
+                        self.last_hover_result = Some(formatted.clone());
+                        self.push_output("console", formatted);
+                    }
                     Err(error) => self.push_output("stderr", error),
                 },
                 PendingEvaluation::Repl => match outcome {

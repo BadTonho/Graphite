@@ -299,6 +299,39 @@ impl Editor<'_> {
     pub fn convert_indentation(&mut self, target: Indentation) -> Result<usize, TransactionError> {
         self.document_operation(|buffer| buffer.convert_indentation(target))
     }
+    pub fn reindent_lines(
+        &mut self,
+        style: Indentation,
+        colon_indents: bool,
+    ) -> Result<usize, TransactionError> {
+        self.document_operation(|buffer| buffer.reindent_lines(style, None, colon_indents))
+    }
+    pub fn reindent_selected_lines(
+        &mut self,
+        style: Indentation,
+        colon_indents: bool,
+    ) -> Result<usize, TransactionError> {
+        let selections = self.state.selections();
+        let mut min_line = usize::MAX;
+        let mut max_line = 0usize;
+        for selection in selections {
+            let start = selection.anchor.min(selection.head).min(self.len_chars());
+            let end = selection.anchor.max(selection.head).min(self.len_chars());
+            let start_line = self.rope.char_to_line(start);
+            let mut end_line = self.rope.char_to_line(end);
+            if end > start && end_line > start_line && end == self.rope.line_to_char(end_line) {
+                end_line -= 1;
+            }
+            min_line = min_line.min(start_line);
+            max_line = max_line.max(end_line);
+        }
+        if min_line == usize::MAX {
+            return Ok(0);
+        }
+        self.document_operation(|buffer| {
+            buffer.reindent_lines(style, Some(min_line..=max_line), colon_indents)
+        })
+    }
     pub fn trim_trailing_whitespace(&mut self) -> Result<usize, TransactionError> {
         self.document_operation(Buffer::trim_trailing_whitespace)
     }

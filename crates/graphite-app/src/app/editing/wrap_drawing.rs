@@ -108,6 +108,7 @@ impl App {
                 }
             }
             if row.subrow == 0 {
+                self.draw_debug_and_test_gutter(r, buffer.path(), row.line, rect.x, y, lh);
                 if tab
                     .diagnostics
                     .iter()

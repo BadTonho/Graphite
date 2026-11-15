@@ -62,9 +62,6 @@ Intentional exclusions and unverified checks:
 Items that were left out because they depend on something the application does not have yet. Each can be picked up once its prerequisite exists.
 
 **Editor core**
-- Reindent lines: needs per-language indent rules.
-- Overtype mode: typed text and pasted text share one path; the mode needs to apply only to typing.
-- Peek declaration, peek type definition, peek implementation.
 - Diff editor commands: need the diff editor interface.
 - Editor accessibility commands and inspection commands.
 
@@ -73,9 +70,7 @@ Items that were left out because they depend on something the application does n
 - Moving and resizing views, and the notifications position.
 - Navigable breadcrumbs (focus, step through, pick items).
 - Even editor widths and maximizing a group: groups have no proportions yet.
-- Opening a file, folder or workspace in a new window.
 - List commands for search results, the source control list and other lists; type to find; multi-selection.
-- Cut and paste in the explorer.
 
 **Daily tools**
 - Output channels, compound logs.
@@ -83,7 +78,7 @@ Items that were left out because they depend on something the application does n
 - Search editor.
 - Testing commands that exist for extensions.
 - Source control: input and resource group focus, the Git graph, next and previous commit.
-- Debug: data breakpoints, a hover popup over the code, a breakpoint marker in the gutter, checked against a real debug adapter (the client is only tested against a simulated one).
+- Debug: data breakpoints, and tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
 - Extensions: update all, check for updates, workspace-only enable, recommendations, built-in list, open the extensions folder.
 
 **Merge and diff editors**

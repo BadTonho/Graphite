@@ -109,6 +109,8 @@ struct App {
     sidebar_resize_dragging: bool,
     /// Explorer entry selected by the last click; target of F2 and Delete.
     explorer_selected: Option<PathBuf>,
+    /// Staged explorer entry for Cut/Copy/Paste: `(source_path, is_cut)`.
+    explorer_clipboard: Option<(PathBuf, bool)>,
     /// Whether the explorer, rather than the editor, has keyboard focus.
     explorer_focused: bool,
     /// First explorer row shown in the side bar.
@@ -211,6 +213,7 @@ struct App {
     lsp_format_revision: Option<u64>,
     rulers: Vec<usize>,
     word_wrap: bool,
+    overtype_mode: bool,
     wrapping_indent: config::WrapIndent,
     read_only_patterns: Vec<String>,
     event_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
@@ -626,6 +629,7 @@ impl App {
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
             explorer_selected: None,
+            explorer_clipboard: None,
             explorer_focused: false,
             explorer_scroll: 0,
             explorer_drag: None,
@@ -733,6 +737,7 @@ impl App {
             lsp_format_revision: None,
             rulers: prefs.rulers,
             word_wrap: prefs.word_wrap,
+            overtype_mode: false,
             wrapping_indent: prefs.wrapping_indent,
             read_only_patterns: prefs.read_only_patterns,
             event_proxy,

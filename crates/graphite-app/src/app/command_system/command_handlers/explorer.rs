@@ -22,6 +22,46 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         explorer_delete,
     );
+    add(
+        registry,
+        "filesExplorer.cut",
+        "Cut",
+        "Explorer",
+        VIEW,
+        "explorerHasSelection",
+        None,
+        files_explorer_cut,
+    );
+    add(
+        registry,
+        "filesExplorer.copy",
+        "Copy",
+        "Explorer",
+        VIEW,
+        "explorerHasSelection",
+        None,
+        files_explorer_copy,
+    );
+    add(
+        registry,
+        "filesExplorer.paste",
+        "Paste",
+        "Explorer",
+        VIEW,
+        "explorerFocused",
+        None,
+        files_explorer_paste,
+    );
+    add(
+        registry,
+        "explorer.openInNewWindow",
+        "Open in New Window",
+        "Explorer",
+        VIEW,
+        "true",
+        None,
+        explorer_open_in_new_window,
+    );
 }
 
 pub(super) fn register_history(registry: &mut CommandRegistry) {
@@ -50,4 +90,26 @@ fn explorer_rename(app: &mut App, _invocation: &CommandInvocation) -> Result<(),
 fn explorer_delete(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
     app.explorer_delete();
     Ok(())
+}
+
+fn files_explorer_cut(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_cut();
+    Ok(())
+}
+
+fn files_explorer_copy(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_copy_entry();
+    Ok(())
+}
+
+fn files_explorer_paste(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_paste().map_err(CommandError::Failed)
+}
+
+fn explorer_open_in_new_window(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.explorer_open_in_new_window()
+        .map_err(CommandError::Failed)
 }

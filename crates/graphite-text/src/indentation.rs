@@ -134,4 +134,143 @@ impl Buffer {
         }
         edits
     }
+
+    /// Reindents either `lines` (`start..=end`, 0-based) or the entire buffer using `style`
+    /// and bracket/colon indentation rules, grouping all changes into one undo step.
+    pub fn reindent_lines(
+        &mut self,
+        style: Indentation,
+        lines: Option<std::ops::RangeInclusive<usize>>,
+        colon_indents: bool,
+    ) -> Result<usize, TransactionError> {
+        if self.is_read_only() {
+            return Err(TransactionError::ReadOnly);
+        }
+        let total_lines = self.rope.len_lines();
+        if total_lines == 0 {
+            return Ok(0);
+        }
+        let target_range = match lines {
+            Some(range) => {
+                let start = (*range.start()).min(total_lines - 1);
+                let end = (*range.end()).min(total_lines - 1);
+                start..=end
+            }
+            None => 0..=(total_lines - 1),
+        };
+        let unit = if style.insert_spaces {
+            " ".repeat(style.tab_size.clamp(1, 16))
+        } else {
+            "\t".to_string()
+        };
+
+        let mut depth = 0usize;
+        let mut edits = Vec::new();
+        for index in 0..=*target_range.end() {
+            let line_slice = self.rope.line(index);
+            let raw = line_slice.to_string();
+            let content = raw.trim_end_matches(['\r', '\n']);
+            let ws_chars = content
+                .chars()
+                .take_while(|c| matches!(c, ' ' | '\t'))
+                .count();
+            let trimmed: String = content.chars().skip(ws_chars).collect();
+
+            if trimmed.is_empty() {
+                if target_range.contains(&index) && ws_chars > 0 {
+                    let base = self.rope.line_to_char(index);
+                    edits.push(TextReplacement {
+                        range: base..base + ws_chars,
+                        text: String::new(),
+                    });
+                }
+                continue;
+            }
+
+            let (leading_closers, net_delta, ends_with_colon) =
+                scan_indent_tokens(&trimmed, colon_indents);
+            let line_depth = depth.saturating_sub(leading_closers);
+
+            if target_range.contains(&index) {
+                let desired = unit.repeat(line_depth);
+                let current: String = content.chars().take(ws_chars).collect();
+                if current != desired {
+                    let base = self.rope.line_to_char(index);
+                    edits.push(TextReplacement {
+                        range: base..base + ws_chars,
+                        text: desired,
+                    });
+                }
+            }
+
+            let next_depth = (depth as isize + net_delta).max(0) as usize;
+            depth = if ends_with_colon && net_delta == 0 {
+                next_depth + 1
+            } else {
+                next_depth
+            };
+        }
+
+        let count = edits.len();
+        self.apply_transaction(&edits)?;
+        Ok(count)
+    }
+}
+
+/// Counts leading closing brackets, net bracket delta, and trailing `:` outside strings/comments.
+fn scan_indent_tokens(trimmed: &str, colon_indents: bool) -> (usize, isize, bool) {
+    let mut leading_closers = 0usize;
+    let mut seen_non_closer = false;
+    let mut net_delta = 0isize;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+    let mut last_code_char = None;
+    let mut chars = trimmed.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+        if ch == '/' && chars.peek() == Some(&'/') {
+            break;
+        }
+        if ch == '#' && colon_indents {
+            break;
+        }
+        if ch == '"' || ch == '\'' {
+            seen_non_closer = true;
+            in_string = Some(ch);
+            last_code_char = Some(ch);
+            continue;
+        }
+        if !ch.is_whitespace() {
+            last_code_char = Some(ch);
+        }
+        match ch {
+            '{' | '(' | '[' => {
+                seen_non_closer = true;
+                net_delta += 1;
+            }
+            '}' | ')' | ']' => {
+                if !seen_non_closer {
+                    leading_closers += 1;
+                }
+                net_delta -= 1;
+            }
+            _ => {
+                if !ch.is_whitespace() {
+                    seen_non_closer = true;
+                }
+            }
+        }
+    }
+
+    (leading_closers, net_delta, colon_indents && last_code_char == Some(':'))
 }
