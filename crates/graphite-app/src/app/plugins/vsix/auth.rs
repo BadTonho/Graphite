@@ -76,7 +76,13 @@ pub(crate) fn scopes_cover(granted: &[String], requested: &[String]) -> bool {
         ("user", &["read:user", "user:email", "user:follow"]),
         (
             "repo",
-            &["repo:status", "repo_deployment", "public_repo", "repo:invite", "security_events"],
+            &[
+                "repo:status",
+                "repo_deployment",
+                "public_repo",
+                "repo:invite",
+                "security_events",
+            ],
         ),
         ("admin:org", &["write:org", "read:org"]),
         ("write:org", &["read:org"]),
@@ -232,7 +238,8 @@ impl Auth {
     }
 
     fn access(&mut self, profile: &Path) -> &mut AccessStore {
-        self.access.get_or_insert_with(|| AccessStore::load(profile))
+        self.access
+            .get_or_insert_with(|| AccessStore::load(profile))
     }
 }
 
@@ -284,7 +291,10 @@ impl App {
                     .filter(|request| request.provider == provider)
                     .cloned()
                     .collect();
-                runtime.auth.waiting.retain(|request| request.provider != provider);
+                runtime
+                    .auth
+                    .waiting
+                    .retain(|request| request.provider != provider);
                 for request in waiting {
                     self.start_auth_lookup(runtime, request);
                 }
@@ -293,13 +303,19 @@ impl App {
             "$unregisterAuthenticationProvider" => {
                 if let Some(provider) = text(0) {
                     runtime.auth.providers.remove(provider);
-                    runtime.auth.consents.retain(|consent| consent.request().provider != provider);
+                    runtime
+                        .auth
+                        .consents
+                        .retain(|consent| consent.request().provider != provider);
                 }
                 Ok(Some(Value::Null))
             }
             "$ensureProvider" => {
                 if let Some(provider) = text(0) {
-                    self.activate_vsix_event(runtime, &format!("onAuthenticationRequest:{provider}"));
+                    self.activate_vsix_event(
+                        runtime,
+                        &format!("onAuthenticationRequest:{provider}"),
+                    );
                 }
                 Ok(Some(Value::Null))
             }
@@ -344,13 +360,21 @@ impl App {
                 let provider = text(0).ok_or("Invalid authentication provider")?;
                 let session = text(1).ok_or("Invalid session")?;
                 if provider == GITHUB {
-                    let account = self.github_session.as_ref().map(|session| session.login.clone());
-                    if account.as_deref().map(|login| format!("github-{login}")) == Some(session.to_owned()) {
+                    let account = self
+                        .github_session
+                        .as_ref()
+                        .map(|session| session.login.clone());
+                    if account.as_deref().map(|login| format!("github-{login}"))
+                        == Some(session.to_owned())
+                    {
                         runtime
                             .auth
                             .access(&self.profile_root)
                             .revoke_account(GITHUB, account.as_deref().unwrap_or_default());
-                        let _ = runtime.auth.access(&self.profile_root).save(&self.profile_root);
+                        let _ = runtime
+                            .auth
+                            .access(&self.profile_root)
+                            .save(&self.profile_root);
                         self.sign_out_github();
                     }
                     return Ok(Some(Value::Null));
@@ -366,7 +390,9 @@ impl App {
             }
             _ => {
                 self.record_unsupported_vsix_call(runtime, "MainThreadAuthentication", method);
-                Err(format!("Graphite does not support MainThreadAuthentication.{method}"))
+                Err(format!(
+                    "Graphite does not support MainThreadAuthentication.{method}"
+                ))
             }
         }
     }
@@ -462,20 +488,28 @@ impl App {
     /// Releases `session` to the extension, asking the user first when it was not allowed yet.
     fn grant_or_ask(&mut self, runtime: &mut Runtime, request: Request, session: Value) {
         let Some((account, _)) = session_account(&session) else {
-            Self::reply_auth(runtime, request.reply, Err("The provider returned an invalid session".into()));
+            Self::reply_auth(
+                runtime,
+                request.reply,
+                Err("The provider returned an invalid session".into()),
+            );
             return;
         };
-        let allowed = runtime
-            .auth
-            .access(&self.profile_root)
-            .is_allowed(&request.provider, &account, &request.extension_id);
+        let allowed = runtime.auth.access(&self.profile_root).is_allowed(
+            &request.provider,
+            &account,
+            &request.extension_id,
+        );
         if allowed {
             Self::reply_auth(runtime, request.reply, Ok(session));
         } else if request.silent {
             // A silent request never asks; the extension has no access yet.
             Self::reply_auth(runtime, request.reply, Ok(Value::Null));
         } else {
-            runtime.auth.consents.push_back(Consent::Access { request, session });
+            runtime
+                .auth
+                .consents
+                .push_back(Consent::Access { request, session });
         }
     }
 
@@ -505,7 +539,10 @@ impl App {
             .unwrap_or_default();
         let session = self.github_session.clone().filter(|session| {
             !request.force_new
-                && request.account.as_ref().is_none_or(|account| *account == session.login)
+                && request
+                    .account
+                    .as_ref()
+                    .is_none_or(|account| *account == session.login)
                 && scopes_cover(&granted, &request.scopes)
         });
         match session {
@@ -520,7 +557,10 @@ impl App {
     /// Opens the next consent prompt when none is open.
     pub(super) fn drive_vsix_auth(&mut self, runtime: &mut Runtime) {
         let now = Instant::now();
-        runtime.auth.pending.retain(|_, (_, deadline)| *deadline > now);
+        runtime
+            .auth
+            .pending
+            .retain(|_, (_, deadline)| *deadline > now);
         let expired: Vec<Request> = runtime
             .auth
             .waiting
@@ -528,7 +568,10 @@ impl App {
             .filter(|request| request.deadline <= now)
             .cloned()
             .collect();
-        runtime.auth.waiting.retain(|request| request.deadline > now);
+        runtime
+            .auth
+            .waiting
+            .retain(|request| request.deadline > now);
         for request in expired {
             let message = format!(
                 "No authentication provider '{}' is currently registered.",
@@ -543,23 +586,30 @@ impl App {
             return;
         };
         let request = consent.request();
-        let provider = runtime
-            .auth
-            .providers
-            .get(&request.provider)
-            .map_or_else(|| GITHUB_LABEL.to_owned(), |provider| provider.label.clone());
+        let provider = runtime.auth.providers.get(&request.provider).map_or_else(
+            || GITHUB_LABEL.to_owned(),
+            |provider| provider.label.clone(),
+        );
         let message = match &consent {
             Consent::Access { session, .. } => self.tf(
                 "auth.consent.access",
                 &[
                     ("extension", &request.extension_name),
                     ("provider", &provider),
-                    ("account", &session_account(session).map(|(_, label)| label).unwrap_or_default()),
+                    (
+                        "account",
+                        &session_account(session)
+                            .map(|(_, label)| label)
+                            .unwrap_or_default(),
+                    ),
                 ],
             ),
             Consent::SignIn { .. } => self.tf(
                 "auth.consent.signin",
-                &[("extension", &request.extension_name), ("provider", &provider)],
+                &[
+                    ("extension", &request.extension_name),
+                    ("provider", &provider),
+                ],
             ),
         };
         runtime.auth.active = Some(consent);
@@ -574,7 +624,11 @@ impl App {
         if let Some(consent) = runtime.auth.active.take() {
             let request = consent.request().clone();
             if !allowed {
-                Self::reply_auth(&mut runtime, request.reply, Err("User did not consent to login.".into()));
+                Self::reply_auth(
+                    &mut runtime,
+                    request.reply,
+                    Err("User did not consent to login.".into()),
+                );
             } else {
                 match consent {
                     Consent::Access { request, session } => {
@@ -645,7 +699,9 @@ impl App {
         let error = event["error"].as_str().map(str::to_owned);
         let result = &event["result"];
         match op {
-            Op::Done { reply } => Self::reply_auth(runtime, reply, error.map_or(Ok(Value::Null), Err)),
+            Op::Done { reply } => {
+                Self::reply_auth(runtime, reply, error.map_or(Ok(Value::Null), Err))
+            }
             Op::Accounts { reply } => {
                 let mut accounts: Vec<Value> = Vec::new();
                 for session in result.as_array().into_iter().flatten() {
@@ -681,13 +737,22 @@ impl App {
             Op::Create(request) => match error {
                 Some(error) => Self::reply_auth(runtime, request.reply, Err(error)),
                 None if result.is_object() => self.grant_created(runtime, request, result.clone()),
-                None => Self::reply_auth(runtime, request.reply, Err("The provider created no session".into())),
+                None => Self::reply_auth(
+                    runtime,
+                    request.reply,
+                    Err("The provider created no session".into()),
+                ),
             },
         }
     }
 
     /// Tells the extensions that the sessions of a provider changed.
-    pub(super) fn notify_auth_sessions_changed(&mut self, runtime: &mut Runtime, provider: &str, label: &str) {
+    pub(super) fn notify_auth_sessions_changed(
+        &mut self,
+        runtime: &mut Runtime,
+        provider: &str,
+        label: &str,
+    ) {
         let _ = runtime.session.send(json!({
             "type": "call",
             "actor": "ExtHostAuthentication",
@@ -713,7 +778,11 @@ impl App {
                     let json = github_session_json(&session, &scopes);
                     self.grant_created(&mut runtime, request, json);
                 }
-                None => Self::reply_auth(&mut runtime, request.reply, Err("GitHub sign-in did not complete".into())),
+                None => Self::reply_auth(
+                    &mut runtime,
+                    request.reply,
+                    Err("GitHub sign-in did not complete".into()),
+                ),
             }
         }
         self.notify_auth_sessions_changed(&mut runtime, GITHUB, GITHUB_LABEL);
@@ -740,9 +809,18 @@ mod tests {
     #[test]
     fn broader_scopes_cover_the_narrower_ones_they_contain() {
         assert!(scopes_cover(&scopes("read:user"), &scopes("read:user")));
-        assert!(scopes_cover(&scopes("user"), &scopes("read:user user:email")));
-        assert!(scopes_cover(&scopes("repo read:org"), &scopes("public_repo read:org")));
-        assert!(!scopes_cover(&scopes("read:user"), &scopes("read:user gist")));
+        assert!(scopes_cover(
+            &scopes("user"),
+            &scopes("read:user user:email")
+        ));
+        assert!(scopes_cover(
+            &scopes("repo read:org"),
+            &scopes("public_repo read:org")
+        ));
+        assert!(!scopes_cover(
+            &scopes("read:user"),
+            &scopes("read:user gist")
+        ));
         assert!(!scopes_cover(&scopes("read:user"), &scopes("user")));
         assert!(!scopes_cover(&[], &scopes("gist")));
         assert!(scopes_cover(&[], &[]));
@@ -783,7 +861,13 @@ mod tests {
         assert!(request.create_if_none && !request.silent && !request.force_new);
         assert_eq!(request.account.as_deref(), Some("u1"));
         assert_eq!(request.extension_name, "Sample Ext");
-        let challenge = vec![json!("sample"), json!({"wwwAuthenticate": "Bearer"}), json!("e"), json!("E"), json!({})];
+        let challenge = vec![
+            json!("sample"),
+            json!({"wwwAuthenticate": "Bearer"}),
+            json!("e"),
+            json!("E"),
+            json!({}),
+        ];
         assert!(Request::parse(5, &challenge).is_err());
     }
 
@@ -797,7 +881,13 @@ mod tests {
         };
         let json = github_session_json(&session, &scopes("read:user"));
         assert_eq!(json["accessToken"], "gho_x");
-        assert_eq!(json["account"], json!({"id": "octocat", "label": "octocat"}));
-        assert_eq!(session_account(&json), Some(("octocat".into(), "octocat".into())));
+        assert_eq!(
+            json["account"],
+            json!({"id": "octocat", "label": "octocat"})
+        );
+        assert_eq!(
+            session_account(&json),
+            Some(("octocat".into(), "octocat".into()))
+        );
     }
 }

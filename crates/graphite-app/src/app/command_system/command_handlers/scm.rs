@@ -262,7 +262,11 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
             "Git: Continue Merge or Rebase",
             scm_continue_operation,
         ),
-        ("git.viewHistory", "Git: View History (Graph)", git_view_history),
+        (
+            "git.viewHistory",
+            "Git: View History (Graph)",
+            git_view_history,
+        ),
     ];
     for (id, title, handler) in commands {
         add(registry, id, title, "Scm", ALL, "true", None, handler);

@@ -245,8 +245,12 @@ impl App {
                 Ok(Value::Null)
             }
             "$onDidEdit" => {
-                let (resource, view_type) = (text(0).unwrap_or_default(), text(1).unwrap_or_default());
-                let id = args.get(2).and_then(Value::as_u64).ok_or("Invalid edit id")?;
+                let (resource, view_type) =
+                    (text(0).unwrap_or_default(), text(1).unwrap_or_default());
+                let id = args
+                    .get(2)
+                    .and_then(Value::as_u64)
+                    .ok_or("Invalid edit id")?;
                 if let Some(path) = runtime.editors.path_for_resource(resource, view_type) {
                     let discarded = runtime
                         .editors
@@ -308,14 +312,20 @@ impl App {
     /// and gives up on a provider that never answers.
     pub(super) fn drive_vsix_custom_editors(&mut self, runtime: &mut Runtime) {
         let now = Instant::now();
-        runtime.editors.pending.retain(|_, (_, deadline)| *deadline > now);
+        runtime
+            .editors
+            .pending
+            .retain(|_, (_, deadline)| *deadline > now);
         let paths: Vec<PathBuf> = runtime.editors.instances.keys().cloned().collect();
         for path in paths {
             let Some(instance) = runtime.editors.instances.get(&path).cloned() else {
                 continue;
             };
             if instance.phase != Phase::Ready && instance.deadline <= now {
-                self.status = format!("{}: the extension did not open the editor", instance.view_type);
+                self.status = format!(
+                    "{}: the extension did not open the editor",
+                    instance.view_type
+                );
                 self.release_custom_editor(runtime, &path);
                 continue;
             }
@@ -342,7 +352,12 @@ impl App {
                 self.editor_call(
                     runtime,
                     "$createCustomDocument",
-                    vec![resource, json!(instance.view_type), Value::Null, Value::Null],
+                    vec![
+                        resource,
+                        json!(instance.view_type),
+                        Value::Null,
+                        Value::Null,
+                    ],
                     true,
                     Op::Create(path.clone()),
                 )
@@ -487,7 +502,9 @@ impl App {
         if let Some(id) = self.documents.id_for_path(path) {
             self.documents[id].custom_dirty = false;
             if instance.kind == Kind::Custom && instance.phase != Phase::Pending {
-                self.documents[id].buffer.set_read_only(instance.was_read_only);
+                self.documents[id]
+                    .buffer
+                    .set_read_only(instance.was_read_only);
             }
         }
     }
@@ -615,7 +632,10 @@ impl App {
             self.t("custom_editor.text_editor").to_owned(),
         )];
         items.extend(self.custom_editor_choices(&path).into_iter().map(|choice| {
-            item(format!("graphite.openWith:{}", choice.view_type), choice.display_name)
+            item(
+                format!("graphite.openWith:{}", choice.view_type),
+                choice.display_name,
+            )
         }));
         self.open_command_palette();
         self.command_palette = Some(crate::app::command_palette::CommandPalette {
@@ -728,7 +748,12 @@ impl App {
         }
         let Some((window, width, height, lh)) = self.gpu.as_ref().map(|gpu| {
             let (width, height) = gpu.renderer.size();
-            (gpu.window.clone(), width, height, gpu.renderer.line_height())
+            (
+                gpu.window.clone(),
+                width,
+                height,
+                gpu.renderer.line_height(),
+            )
         }) else {
             return;
         };
@@ -802,7 +827,8 @@ impl App {
             .values()
             .map(|instance| instance.handle.clone())
             .collect();
-        self.custom_editor_webviews.retain(|handle, _| live.contains(handle));
+        self.custom_editor_webviews
+            .retain(|handle, _| live.contains(handle));
     }
 }
 
@@ -858,7 +884,11 @@ mod tests {
         // Undoing past the save point and then editing makes the saved state unreachable.
         editor.undo();
         editor.undo();
-        assert_eq!(editor.record_edit(3), vec![1, 2], "the old redo edits are discarded");
+        assert_eq!(
+            editor.record_edit(3),
+            vec![1, 2],
+            "the old redo edits are discarded"
+        );
         assert!(editor.is_dirty());
         editor.undo();
         assert!(editor.is_dirty(), "the saved state cannot be reached again");

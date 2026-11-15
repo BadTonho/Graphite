@@ -167,10 +167,7 @@ fn reset_view_locations(app: &mut App, _: &CommandInvocation) -> Result<(), Comm
     Ok(())
 }
 
-fn toggle_notifications_position(
-    app: &mut App,
-    _: &CommandInvocation,
-) -> Result<(), CommandError> {
+fn toggle_notifications_position(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     use crate::config::NotificationPosition;
     app.view_preferences.notifications_position = match app.view_preferences.notifications_position
     {

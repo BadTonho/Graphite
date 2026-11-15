@@ -299,7 +299,10 @@ impl App {
                     super::lens_rows::BodyRow::Lens(line) => {
                         // The lenses of the next row's line, in the line's indentation.
                         let text = buffer.line(line);
-                        let indent = text.chars().take_while(|c| c.is_whitespace() && *c != '\n').count();
+                        let indent = text
+                            .chars()
+                            .take_while(|c| c.is_whitespace() && *c != '\n')
+                            .count();
                         if let Some(lens) = decoration_uri
                             .as_deref()
                             .and_then(|uri| self.lens_text_above(uri, line))

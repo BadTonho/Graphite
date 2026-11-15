@@ -98,7 +98,9 @@ impl TextMate {
         let language = self.filenames.get(&name).or_else(|| {
             self.extensions
                 .iter()
-                .find(|(extension, _)| name.ends_with(extension.as_str()) && name.len() > extension.len())
+                .find(|(extension, _)| {
+                    name.ends_with(extension.as_str()) && name.len() > extension.len()
+                })
                 .map(|(_, language)| language)
         })?;
         self.scopes.get(language).map(String::as_str)
@@ -126,7 +128,11 @@ impl TextMate {
 impl App {
     /// The grammars of the enabled extensions, rebuilt when the set of extensions changes.
     fn textmate_engine(&mut self) -> Option<&mut TextMate> {
-        let store_root = self.plugins.store.as_ref().map(|store| store.root.clone())?;
+        let store_root = self
+            .plugins
+            .store
+            .as_ref()
+            .map(|store| store.root.clone())?;
         let mut sources = Vec::new();
         let mut signature = String::new();
         for record in &self.plugins.installed {
@@ -147,7 +153,11 @@ impl App {
             self.textmate = None;
             return None;
         }
-        if self.textmate.as_ref().is_none_or(|engine| engine.signature != signature) {
+        if self
+            .textmate
+            .as_ref()
+            .is_none_or(|engine| engine.signature != signature)
+        {
             self.textmate = Some(TextMate::new(signature, &sources));
             // Documents highlighted by an earlier engine are highlighted again.
             for id in self.documents.ids().collect::<Vec<_>>() {
@@ -162,7 +172,11 @@ impl App {
     /// Highlights `document` with a contributed grammar when tree-sitter does not know the file.
     pub(crate) fn refresh_textmate_highlights(&mut self, document: DocumentId) {
         let revision = self.documents[document].buffer.revision();
-        let Some(path) = self.documents[document].buffer.path().map(Path::to_path_buf) else {
+        let Some(path) = self.documents[document]
+            .buffer
+            .path()
+            .map(Path::to_path_buf)
+        else {
             self.documents[document].highlights = None;
             return;
         };
@@ -217,11 +231,25 @@ mod tests {
         let dir = TempDir::new();
         let engine = TextMate::new("sig".into(), &[source(dir.path())]);
         assert_eq!(engine.scope_for(Path::new("/w/a.toy")), Some("source.toy"));
-        assert_eq!(engine.scope_for(Path::new("/w/A.TOY")), Some("source.toy"), "case does not matter");
-        assert_eq!(engine.scope_for(Path::new("/w/x.d.toy")), Some("source.toy"));
-        assert_eq!(engine.scope_for(Path::new("/w/Toyfile")), Some("source.toy"));
+        assert_eq!(
+            engine.scope_for(Path::new("/w/A.TOY")),
+            Some("source.toy"),
+            "case does not matter"
+        );
+        assert_eq!(
+            engine.scope_for(Path::new("/w/x.d.toy")),
+            Some("source.toy")
+        );
+        assert_eq!(
+            engine.scope_for(Path::new("/w/Toyfile")),
+            Some("source.toy")
+        );
         assert_eq!(engine.scope_for(Path::new("/w/a.txt")), None);
-        assert_eq!(engine.scope_for(Path::new("/w/.toy")), None, "a bare extension is not a file of it");
+        assert_eq!(
+            engine.scope_for(Path::new("/w/.toy")),
+            None,
+            "a bare extension is not a file of it"
+        );
     }
 
     #[test]
@@ -229,13 +257,29 @@ mod tests {
         let dir = TempDir::new();
         let mut engine = TextMate::new("sig".into(), &[source(dir.path())]);
         let text = "fn 12 // c";
-        let spans = engine.highlight(DocumentId(1), Path::new("/w/a.toy"), text).unwrap();
-        let found: Vec<(&str, Class)> = spans[0].iter().map(|s| (&text[s.range.clone()], s.class)).collect();
-        assert_eq!(found, [("fn", Class::Keyword), ("12", Class::Number), ("// c", Class::Comment)]);
-        assert!(engine.highlight(DocumentId(1), Path::new("/w/a.txt"), text).is_none());
+        let spans = engine
+            .highlight(DocumentId(1), Path::new("/w/a.toy"), text)
+            .unwrap();
+        let found: Vec<(&str, Class)> = spans[0]
+            .iter()
+            .map(|s| (&text[s.range.clone()], s.class))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("fn", Class::Keyword),
+                ("12", Class::Number),
+                ("// c", Class::Comment)
+            ]
+        );
+        assert!(engine
+            .highlight(DocumentId(1), Path::new("/w/a.txt"), text)
+            .is_none());
         // An edit is highlighted incrementally and gives what a fresh run gives.
         let edited = "fn 12 // c\nfn";
-        let again = engine.highlight(DocumentId(1), Path::new("/w/a.toy"), edited).unwrap();
+        let again = engine
+            .highlight(DocumentId(1), Path::new("/w/a.toy"), edited)
+            .unwrap();
         let fresh = TextMate::new("sig".into(), &[source(dir.path())])
             .highlight(DocumentId(9), Path::new("/w/a.toy"), edited)
             .unwrap();
@@ -261,23 +305,32 @@ mod tests {
         app.open_file(toy.clone());
         let id = app.documents.id_for_path(&toy).unwrap();
         app.refresh_document_highlights(id);
-        assert!(app.documents[id].highlights.is_none(), "no extension contributes a grammar yet");
+        assert!(
+            app.documents[id].highlights.is_none(),
+            "no extension contributes a grammar yet"
+        );
 
-        app.plugins.installed_plugins_mut().push(graphite_plugins::store::Installed {
-            metadata: Metadata::Vsix(Vsix {
-                id: "test.toy".into(),
-                version: "1.0.0".into(),
-                languages: extension_source.languages.clone(),
-                grammars: extension_source.grammars.clone(),
-                ..Default::default()
-            }),
-            enabled: true,
-            trusted_version: Some("1.0.0".into()),
-            directory: directory.into(),
-            dev_path: None,
-        });
+        app.plugins
+            .installed_plugins_mut()
+            .push(graphite_plugins::store::Installed {
+                metadata: Metadata::Vsix(Vsix {
+                    id: "test.toy".into(),
+                    version: "1.0.0".into(),
+                    languages: extension_source.languages.clone(),
+                    grammars: extension_source.grammars.clone(),
+                    ..Default::default()
+                }),
+                enabled: true,
+                trusted_version: Some("1.0.0".into()),
+                directory: directory.into(),
+                dev_path: None,
+            });
         app.refresh_document_highlights(id);
-        let lines = &app.documents[id].highlights.as_ref().expect("highlighted by the grammar").lines;
+        let lines = &app.documents[id]
+            .highlights
+            .as_ref()
+            .expect("highlighted by the grammar")
+            .lines;
         assert_eq!(
             lines[0].iter().map(|span| span.class).collect::<Vec<_>>(),
             [Class::Keyword, Class::Number, Class::Comment]

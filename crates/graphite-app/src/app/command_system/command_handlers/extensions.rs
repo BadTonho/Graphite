@@ -49,7 +49,9 @@ fn ext_show_builtin(app: &mut App, _: &CommandInvocation) -> Result<(), CommandE
 
 fn ext_open_folder(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     let Some(root) = app.plugins.store.as_ref().map(|store| store.root.clone()) else {
-        return Err(CommandError::Disabled("No extensions folder configured".into()));
+        return Err(CommandError::Disabled(
+            "No extensions folder configured".into(),
+        ));
     };
     let _ = std::fs::create_dir_all(&root);
     #[cfg(target_os = "windows")]
@@ -71,10 +73,7 @@ fn ext_check_updates(app: &mut App, _: &CommandInvocation) -> Result<(), Command
 
 fn ext_update_all(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.plugins_show_installed();
-    app.status = format!(
-        "{} extension(s) up to date",
-        app.plugins.installed.len()
-    );
+    app.status = format!("{} extension(s) up to date", app.plugins.installed.len());
     Ok(())
 }
 

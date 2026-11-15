@@ -56,9 +56,7 @@ impl App {
         let editor = self.default_custom_editor(&path);
         self.open_file_as_text(path.clone());
         if let Some(editor) = editor {
-            if self.documents.id_for_path(&path).is_some()
-                && !self.custom_editor_is_bound(&path)
-            {
+            if self.documents.id_for_path(&path).is_some() && !self.custom_editor_is_bound(&path) {
                 self.bind_custom_editor(&path, &editor.view_type);
             }
         }

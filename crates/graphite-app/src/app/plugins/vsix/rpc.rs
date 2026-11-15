@@ -209,16 +209,19 @@ impl App {
                 self.handle_vsix_custom_editor_request(runtime, method, args)
             }
             ("MainThreadFileSystem", "$ensureActivation") => Ok(Value::Null),
-            ("MainThreadFileSystem", _) => self.handle_vsix_virtual_fs_request(runtime, method, args),
+            ("MainThreadFileSystem", _) => {
+                self.handle_vsix_virtual_fs_request(runtime, method, args)
+            }
             (
                 "MainThreadDebugService",
                 "$registerDebugConfigurationProvider" | "$unregisterDebugConfigurationProvider",
             ) => self
                 .handle_vsix_debug_config_provider(runtime, method, args)
                 .unwrap_or(Ok(Value::Null)),
-            ("MainThreadDebugService", "$acceptDAMessage" | "$acceptDAError" | "$acceptDAExit") => self
-                .handle_vsix_debug_adapter_message(runtime, method, args)
-                .unwrap_or(Ok(Value::Null)),
+            ("MainThreadDebugService", "$acceptDAMessage" | "$acceptDAError" | "$acceptDAExit") => {
+                self.handle_vsix_debug_adapter_message(runtime, method, args)
+                    .unwrap_or(Ok(Value::Null))
+            }
             ("MainThreadSCM", _) => self.handle_vsix_scm_request(runtime, method, args),
             ("MainThreadWebviewViews", _) => {
                 self.handle_vsix_webview_view_request(runtime, method, args)

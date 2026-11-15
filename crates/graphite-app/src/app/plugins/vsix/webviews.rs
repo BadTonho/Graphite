@@ -461,7 +461,10 @@ impl App {
     }
 
     pub(super) fn sync_vsix_webview_host(&mut self, runtime: &mut Runtime) -> Result<()> {
-        let editors = self.custom_editor_webviews.iter().map(|(h, o)| (h, &o.host));
+        let editors = self
+            .custom_editor_webviews
+            .iter()
+            .map(|(h, o)| (h, &o.host));
         let sidebars = self.sidebar_webviews.iter().map(|(h, s)| (h, &s.host));
         for (handle, host) in sidebars.chain(editors) {
             for message in host.take_messages() {

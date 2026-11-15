@@ -12,7 +12,9 @@
 
 use super::notebook_data::{notebook_from_dto, notebook_to_dto, output_from_dto, output_to_dto};
 use super::*;
-use crate::notebook::kernel::{decode, Command, KernelEvent, KernelHandle, KernelSpec, KernelState};
+use crate::notebook::kernel::{
+    decode, Command, KernelEvent, KernelHandle, KernelSpec, KernelState,
+};
 use base64::Engine;
 use serde_json::{json, Value};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
@@ -49,7 +51,11 @@ impl Controller {
             self.detail = data["detail"].as_str().map(str::to_owned);
         }
         if let Some(languages) = data["supportedLanguages"].as_array() {
-            self.languages = languages.iter().filter_map(Value::as_str).map(str::to_owned).collect();
+            self.languages = languages
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect();
         }
     }
 
@@ -102,11 +108,19 @@ impl Adapter {
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
     /// `$executeCells` for a request of an adapter.
-    Execute { adapter: u64, request: String },
+    Execute {
+        adapter: u64,
+        request: String,
+    },
     /// `$dataToNotebook`: the file at `path` is being read.
-    Read { path: PathBuf, view_type: String },
+    Read {
+        path: PathBuf,
+        view_type: String,
+    },
     /// `$notebookToData`: the mirror's notebook is being written to `original`.
-    Write { original: PathBuf },
+    Write {
+        original: PathBuf,
+    },
     Other(&'static str),
 }
 
@@ -159,7 +173,11 @@ fn uri_argument(uri: &str) -> Value {
 }
 
 fn updates_of(data: &Value) -> Vec<Value> {
-    let list = if data["value"].is_array() { &data["value"] } else { data };
+    let list = if data["value"].is_array() {
+        &data["value"]
+    } else {
+        data
+    };
     list.as_array().cloned().unwrap_or_default()
 }
 
@@ -224,7 +242,9 @@ impl App {
                 Ok(Value::Null)
             }
             ("MainThreadNotebookKernels", "$updateKernel") => {
-                if let Some(controller) = handle.and_then(|h| runtime.notebooks.controllers.get_mut(&h)) {
+                if let Some(controller) =
+                    handle.and_then(|h| runtime.notebooks.controllers.get_mut(&h))
+                {
                     controller.update(args.get(1).unwrap_or(&Value::Null));
                 }
                 self.kernel_specs = None;
@@ -271,7 +291,10 @@ impl App {
                             run.execution = Some(execution);
                             run.count = count;
                         }
-                        adapter.emit(KernelEvent::ExecuteInput { parent: request, count });
+                        adapter.emit(KernelEvent::ExecuteInput {
+                            parent: request,
+                            count,
+                        });
                     }
                 }
                 Ok(Value::Null)
@@ -286,7 +309,11 @@ impl App {
             ("MainThreadNotebookKernels", "$completeExecution") => {
                 let execution = handle.ok_or("Invalid execution handle")?;
                 let data = args.get(1).unwrap_or(&Value::Null);
-                let data = if data["value"].is_object() { &data["value"] } else { data };
+                let data = if data["value"].is_object() {
+                    &data["value"]
+                } else {
+                    data
+                };
                 let ok = data["lastRunSuccess"].as_bool().unwrap_or(true);
                 for adapter in &mut runtime.notebooks.adapters {
                     let request = adapter
@@ -370,13 +397,18 @@ impl App {
         runtime
             .notebooks
             .controllers()
-            .filter(|controller| controller.notebook_type == notebook_type || controller.notebook_type == "*")
+            .filter(|controller| {
+                controller.notebook_type == notebook_type || controller.notebook_type == "*"
+            })
             .map(Controller::spec)
             .collect()
     }
 
     /// Gives the active notebook a kernel that is the controller `spec` stands for.
-    pub(crate) fn start_extension_kernel(&mut self, spec: KernelSpec) -> std::result::Result<(), String> {
+    pub(crate) fn start_extension_kernel(
+        &mut self,
+        spec: KernelSpec,
+    ) -> std::result::Result<(), String> {
         let handle: u64 = spec
             .name
             .strip_prefix(SPEC_PREFIX)
@@ -411,7 +443,10 @@ impl App {
             runs: BTreeMap::new(),
             counter: 0,
         };
-        adapter.emit(KernelEvent::Status { state: KernelState::Idle, parent: None });
+        adapter.emit(KernelEvent::Status {
+            state: KernelState::Idle,
+            parent: None,
+        });
         runtime.notebooks.adapters.push(adapter);
         let Some(session) = self.documents[document].notebook.as_deref_mut() else {
             return Ok(());
@@ -424,7 +459,10 @@ impl App {
     /// on and drops the kernels whose notebook let go of them.
     pub(super) fn drive_vsix_notebooks(&mut self, runtime: &mut Runtime) {
         let now = Instant::now();
-        runtime.notebooks.pending.retain(|_, (_, deadline)| *deadline > now);
+        runtime
+            .notebooks
+            .pending
+            .retain(|_, (_, deadline)| *deadline > now);
         let mut changed = false;
         let mut index = 0;
         while index < runtime.notebooks.adapters.len() {
@@ -474,7 +512,9 @@ impl App {
     ) -> bool {
         match message.msg_type() {
             "execute_request" => {
-                runtime.notebooks.adapters[index].waiting.push(message.id().to_owned());
+                runtime.notebooks.adapters[index]
+                    .waiting
+                    .push(message.id().to_owned());
                 true
             }
             "interrupt_request" => {
@@ -497,7 +537,10 @@ impl App {
                     .controllers
                     .get(&runtime.notebooks.adapters[index].controller)
                     .and_then(|controller| controller.languages.first().cloned());
-                runtime.notebooks.adapters[index].emit(KernelEvent::Info { language, banner: None });
+                runtime.notebooks.adapters[index].emit(KernelEvent::Info {
+                    language,
+                    banner: None,
+                });
                 true
             }
             _ => false,
@@ -522,17 +565,29 @@ impl App {
             let adapter = &mut runtime.notebooks.adapters[index];
             adapter.runs.insert(
                 request.clone(),
-                Run { cell, execution: None, count: 0, outputs: Vec::new() },
+                Run {
+                    cell,
+                    execution: None,
+                    count: 0,
+                    outputs: Vec::new(),
+                },
             );
-            adapter.emit(KernelEvent::Status { state: KernelState::Busy, parent: Some(request.clone()) });
-            let (controller, notebook, key) = (adapter.controller, adapter.notebook.clone(), adapter.key);
+            adapter.emit(KernelEvent::Status {
+                state: KernelState::Busy,
+                parent: Some(request.clone()),
+            });
+            let (controller, notebook, key) =
+                (adapter.controller, adapter.notebook.clone(), adapter.key);
             let sent = self.notebook_call(
                 runtime,
                 "ExtHostNotebookKernels",
                 "$executeCells",
                 vec![json!(controller), uri_argument(&notebook), json!([cell])],
                 &[],
-                Op::Execute { adapter: key, request: request.clone() },
+                Op::Execute {
+                    adapter: key,
+                    request: request.clone(),
+                },
             );
             if let Err(error) = sent {
                 self.status = error;
@@ -563,7 +618,11 @@ impl App {
     /// Gives the extension host the notebook as it is now, with a text document for each cell.
     fn sync_notebook_with_host(&mut self, runtime: &mut Runtime, index: usize) {
         let adapter = &runtime.notebooks.adapters[index];
-        let (document, uri, controller) = (adapter.document, adapter.notebook.clone(), adapter.controller);
+        let (document, uri, controller) = (
+            adapter.document,
+            adapter.notebook.clone(),
+            adapter.controller,
+        );
         let Some(session) = self.documents[document].notebook.as_deref() else {
             return;
         };
@@ -583,9 +642,17 @@ impl App {
         let mut cells = Vec::new();
         let mut cell_uris = Vec::new();
         for state in &session.cells {
-            let cell_uri = format!("vscode-notebook-cell:{}#ch{:07}", base.trim_start_matches("file://"), state.uid);
+            let cell_uri = format!(
+                "vscode-notebook-cell:{}#ch{:07}",
+                base.trim_start_matches("file://"),
+                state.uid
+            );
             let code = state.cell.kind == crate::notebook::CellKind::Code;
-            let language = if code { default_language.clone() } else { "markdown".into() };
+            let language = if code {
+                default_language.clone()
+            } else {
+                "markdown".into()
+            };
             let source = state.text();
             cell_documents.push(json!({
                 "uri": uri_argument(&cell_uri),
@@ -656,7 +723,12 @@ impl App {
         let error = event["error"].as_str().map(str::to_owned);
         match op {
             Op::Execute { adapter, request } => {
-                if let Some(adapter) = runtime.notebooks.adapters.iter_mut().find(|a| a.key == adapter) {
+                if let Some(adapter) = runtime
+                    .notebooks
+                    .adapters
+                    .iter_mut()
+                    .find(|a| a.key == adapter)
+                {
                     // A run the extension never completed ends with its handler.
                     if adapter.runs.contains_key(&request) {
                         if let Some(error) = &error {
@@ -675,20 +747,34 @@ impl App {
                     self.status = format!("{}: {error}", path.display());
                     self.open_file_as_text(path);
                 }
-                None => self.open_serialized_notebook_result(runtime, &path, &view_type, &event["result"]),
+                None => self.open_serialized_notebook_result(
+                    runtime,
+                    &path,
+                    &view_type,
+                    &event["result"],
+                ),
             },
             Op::Write { original } => match error {
                 Some(error) => self.status = format!("{}: {error}", original.display()),
                 None => {
-                    let bytes = event["result"]["$bytes"]
-                        .as_str()
-                        .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok());
+                    let bytes = event["result"]["$bytes"].as_str().and_then(|text| {
+                        base64::engine::general_purpose::STANDARD.decode(text).ok()
+                    });
                     match bytes {
                         Some(bytes) => match std::fs::write(&original, bytes) {
-                            Ok(()) => self.status = format!("{} {}", self.t("custom_editor.saved"), original.display()),
+                            Ok(()) => {
+                                self.status = format!(
+                                    "{} {}",
+                                    self.t("custom_editor.saved"),
+                                    original.display()
+                                )
+                            }
                             Err(error) => self.status = format!("{}: {error}", original.display()),
                         },
-                        None => self.status = format!("{}: the serializer returned no data", original.display()),
+                        None => {
+                            self.status =
+                                format!("{}: the serializer returned no data", original.display())
+                        }
                     }
                 }
             },
@@ -704,7 +790,9 @@ impl App {
     pub(crate) fn default_notebook_type(&self, path: &Path) -> Option<String> {
         if self.plugins.vsix_polling
             || !self.vsix_workspace_trusted()
-            || path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("ipynb"))
+            || path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("ipynb"))
             || self.custom_editor_text_paths.contains(path)
         {
             return None;
@@ -732,10 +820,16 @@ impl App {
         if runtime.notebooks.serializer_for(view_type).is_some() {
             self.start_notebook_read(&mut runtime, path, view_type);
         } else {
-            runtime.notebooks.waiting_opens.push((path.to_path_buf(), view_type.to_owned()));
+            runtime
+                .notebooks
+                .waiting_opens
+                .push((path.to_path_buf(), view_type.to_owned()));
         }
         self.plugins.vsix = Some(runtime);
-        self.status = self.tf("notebook.opening_with_extension", &[("name", &path.display().to_string())]);
+        self.status = self.tf(
+            "notebook.opening_with_extension",
+            &[("name", &path.display().to_string())],
+        );
         true
     }
 
@@ -757,7 +851,10 @@ impl App {
             "$dataToNotebook",
             vec![json!(handle), json!({ "$graphiteBytes": encoded })],
             &[],
-            Op::Read { path: path.to_path_buf(), view_type: view_type.to_owned() },
+            Op::Read {
+                path: path.to_path_buf(),
+                view_type: view_type.to_owned(),
+            },
         );
         if let Err(error) = sent {
             self.status = error;
@@ -782,10 +879,10 @@ impl App {
             self.status = format!("{}: {error}", mirror.display());
             return;
         }
-        runtime
-            .notebooks
-            .bindings
-            .insert(mirror.clone(), (original.to_path_buf(), view_type.to_owned()));
+        runtime.notebooks.bindings.insert(
+            mirror.clone(),
+            (original.to_path_buf(), view_type.to_owned()),
+        );
         self.open_file_as_text(mirror);
     }
 
@@ -824,7 +921,9 @@ impl App {
             "$notebookToData",
             vec![json!(handle), dto],
             &[1],
-            Op::Write { original: original.to_path_buf() },
+            Op::Write {
+                original: original.to_path_buf(),
+            },
         );
         if let Err(error) = sent {
             self.status = error;
@@ -862,7 +961,10 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                 };
                 if !append {
                     run.outputs.clear();
-                    adapter.emit(KernelEvent::ClearOutput { parent: request.clone(), wait: false });
+                    adapter.emit(KernelEvent::ClearOutput {
+                        parent: request.clone(),
+                        wait: false,
+                    });
                 }
                 for output in update["outputs"].as_array().into_iter().flatten() {
                     let (id, notebook_output) = output_from_dto(output, None);
@@ -870,7 +972,10 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                     if let Some(run) = adapter.runs.get_mut(&request) {
                         run.outputs.push((id, items, output["metadata"].clone()));
                     }
-                    adapter.emit(KernelEvent::Output { parent: request.clone(), output: notebook_output });
+                    adapter.emit(KernelEvent::Output {
+                        parent: request.clone(),
+                        output: notebook_output,
+                    });
                 }
             }
             // OutputItems
@@ -881,7 +986,9 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                 let Some(run) = adapter.runs.get_mut(&request) else {
                     return;
                 };
-                let Some((_, items, metadata)) = run.outputs.iter_mut().find(|(output, ..)| output == id) else {
+                let Some((_, items, metadata)) =
+                    run.outputs.iter_mut().find(|(output, ..)| output == id)
+                else {
                     return;
                 };
                 if append {
@@ -895,12 +1002,22 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                     .outputs
                     .iter()
                     .map(|(id, items, metadata)| {
-                        output_from_dto(&json!({"outputId": id, "items": items, "metadata": metadata}), None).1
+                        output_from_dto(
+                            &json!({"outputId": id, "items": items, "metadata": metadata}),
+                            None,
+                        )
+                        .1
                     })
                     .collect();
-                adapter.emit(KernelEvent::ClearOutput { parent: request.clone(), wait: false });
+                adapter.emit(KernelEvent::ClearOutput {
+                    parent: request.clone(),
+                    wait: false,
+                });
                 for output in outputs {
-                    adapter.emit(KernelEvent::Output { parent: request.clone(), output });
+                    adapter.emit(KernelEvent::Output {
+                        parent: request.clone(),
+                        output,
+                    });
                 }
             }
             // ExecutionState
@@ -910,7 +1027,10 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                         run.count = order;
                     }
                     adapter.counter = adapter.counter.max(order);
-                    adapter.emit(KernelEvent::ExecuteInput { parent: request.clone(), count: order });
+                    adapter.emit(KernelEvent::ExecuteInput {
+                        parent: request.clone(),
+                        count: order,
+                    });
                 }
             }
             _ => {}
@@ -929,7 +1049,10 @@ fn finish_run(adapter: &mut Adapter, request: &str, ok: bool) {
         ok,
         count: (run.count > 0).then_some(run.count),
     });
-    adapter.emit(KernelEvent::Status { state: KernelState::Idle, parent: Some(request.to_owned()) });
+    adapter.emit(KernelEvent::Status {
+        state: KernelState::Idle,
+        parent: Some(request.to_owned()),
+    });
 }
 
 #[cfg(test)]
@@ -958,7 +1081,12 @@ mod tests {
     fn run(adapter: &mut Adapter, request: &str, execution: u64) {
         adapter.runs.insert(
             request.into(),
-            Run { cell: 7, execution: Some(execution), count: 0, outputs: Vec::new() },
+            Run {
+                cell: 7,
+                execution: Some(execution),
+                count: 0,
+                outputs: Vec::new(),
+            },
         );
     }
 
@@ -972,22 +1100,50 @@ mod tests {
         run(&mut adapters, "req", 9);
         let mut list = [adapters];
         apply_execution_update(&mut list, 9, &json!({"editType": 3, "executionOrder": 4}));
-        apply_execution_update(&mut list, 9, &json!({"editType": 1, "append": false,
-            "outputs": [{"outputId": "o1", "items": [item("application/vnd.code.notebook.stdout", "a")]}]}));
-        apply_execution_update(&mut list, 9, &json!({"editType": 2, "outputId": "o1", "append": true,
-            "items": [item("application/vnd.code.notebook.stdout", "b")]}));
+        apply_execution_update(
+            &mut list,
+            9,
+            &json!({"editType": 1, "append": false,
+            "outputs": [{"outputId": "o1", "items": [item("application/vnd.code.notebook.stdout", "a")]}]}),
+        );
+        apply_execution_update(
+            &mut list,
+            9,
+            &json!({"editType": 2, "outputId": "o1", "append": true,
+            "items": [item("application/vnd.code.notebook.stdout", "b")]}),
+        );
         // Updates of an unknown execution or output change nothing.
         apply_execution_update(&mut list, 10, &json!({"editType": 1, "outputs": []}));
-        apply_execution_update(&mut list, 9, &json!({"editType": 2, "outputId": "nope", "items": []}));
+        apply_execution_update(
+            &mut list,
+            9,
+            &json!({"editType": 2, "outputId": "nope", "items": []}),
+        );
         let sent: Vec<KernelEvent> = events.try_iter().collect();
         assert_eq!(sent.len(), 5, "{sent:?}");
-        assert_eq!(sent[0], KernelEvent::ExecuteInput { parent: "req".into(), count: 4 });
-        assert!(matches!(sent[1], KernelEvent::ClearOutput { wait: false, .. }));
-        let KernelEvent::Output { output, .. } = &sent[2] else { panic!("{:?}", sent[2]) };
+        assert_eq!(
+            sent[0],
+            KernelEvent::ExecuteInput {
+                parent: "req".into(),
+                count: 4
+            }
+        );
+        assert!(matches!(
+            sent[1],
+            KernelEvent::ClearOutput { wait: false, .. }
+        ));
+        let KernelEvent::Output { output, .. } = &sent[2] else {
+            panic!("{:?}", sent[2])
+        };
         assert_eq!(output["text"], "a");
         // Changing an output shows the outputs of the run again with the new content.
-        assert!(matches!(sent[3], KernelEvent::ClearOutput { wait: false, .. }));
-        let KernelEvent::Output { output, .. } = &sent[4] else { panic!("{:?}", sent[4]) };
+        assert!(matches!(
+            sent[3],
+            KernelEvent::ClearOutput { wait: false, .. }
+        ));
+        let KernelEvent::Output { output, .. } = &sent[4] else {
+            panic!("{:?}", sent[4])
+        };
         assert_eq!(output["text"], "ab", "appended items extend the output");
     }
 
@@ -1002,8 +1158,15 @@ mod tests {
         assert_eq!(
             sent,
             [
-                KernelEvent::Reply { parent: "req".into(), ok: false, count: Some(2) },
-                KernelEvent::Status { state: KernelState::Idle, parent: Some("req".into()) },
+                KernelEvent::Reply {
+                    parent: "req".into(),
+                    ok: false,
+                    count: Some(2)
+                },
+                KernelEvent::Status {
+                    state: KernelState::Idle,
+                    parent: Some("req".into())
+                },
             ]
         );
     }
@@ -1039,8 +1202,14 @@ mod tests {
 
     #[test]
     fn execution_updates_accept_the_wrapped_and_the_plain_form() {
-        assert_eq!(updates_of(&json!({"value": [{"editType": 3}], "buffers": []})).len(), 1);
-        assert_eq!(updates_of(&json!([{"editType": 3}, {"editType": 1}])).len(), 2);
+        assert_eq!(
+            updates_of(&json!({"value": [{"editType": 3}], "buffers": []})).len(),
+            1
+        );
+        assert_eq!(
+            updates_of(&json!([{"editType": 3}, {"editType": 1}])).len(),
+            2
+        );
         assert!(updates_of(&Value::Null).is_empty());
     }
 }

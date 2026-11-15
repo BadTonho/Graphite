@@ -84,10 +84,7 @@ fn debug_add_data_breakpoint(
         .map_err(CommandError::Failed)
 }
 
-fn debug_remove_data_breakpoints(
-    app: &mut App,
-    _: &CommandInvocation,
-) -> Result<(), CommandError> {
+fn debug_remove_data_breakpoints(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.debug
         .remove_data_breakpoints()
         .map_err(|e| CommandError::Failed(e.to_string()))

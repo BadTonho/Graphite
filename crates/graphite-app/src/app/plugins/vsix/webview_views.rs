@@ -245,12 +245,15 @@ impl App {
                 Ok(Value::Null)
             }
             "$setWebviewViewBadge" => {
-                let badge = args.get(1).filter(|badge| !badge.is_null()).and_then(|badge| {
-                    Some((
-                        badge["value"].as_u64()?,
-                        badge["tooltip"].as_str().map(str::to_owned),
-                    ))
-                });
+                let badge = args
+                    .get(1)
+                    .filter(|badge| !badge.is_null())
+                    .and_then(|badge| {
+                        Some((
+                            badge["value"].as_u64()?,
+                            badge["tooltip"].as_str().map(str::to_owned),
+                        ))
+                    });
                 if let Some(state) = runtime.webview_views.view_for_handle_mut(text(0)?) {
                     state.badge = badge;
                 }
@@ -300,7 +303,12 @@ impl App {
 
     /// Asks the extension to resolve `view_type`: the panel entry makes `$setHtml`, `$setOptions` and
     /// `$postMessage` work for the new handle before the provider runs.
-    pub(super) fn resolve_webview_view(&mut self, runtime: &mut Runtime, view_type: &str, title: &str) {
+    pub(super) fn resolve_webview_view(
+        &mut self,
+        runtime: &mut Runtime,
+        view_type: &str,
+        title: &str,
+    ) {
         let extension_root = runtime
             .webview_views
             .providers
@@ -536,10 +544,16 @@ impl App {
             .values()
             .map(|state| state.handle.clone())
             .collect();
-        self.sidebar_webviews.retain(|handle, _| live.contains(handle));
+        self.sidebar_webviews
+            .retain(|handle, _| live.contains(handle));
     }
 
-    fn resolve_webview_view_if_needed(&mut self, runtime: &mut Runtime, view_type: &str, title: &str) {
+    fn resolve_webview_view_if_needed(
+        &mut self,
+        runtime: &mut Runtime,
+        view_type: &str,
+        title: &str,
+    ) {
         if runtime.webview_views.has_provider(view_type) {
             self.resolve_webview_view(runtime, view_type, title);
         }
@@ -587,7 +601,10 @@ mod tests {
         views.finish_resolve(id, true);
         assert!(views.view("sample.panel").unwrap().failed);
         assert!(views.begin_resolve("sample.panel").is_none());
-        assert_eq!(views.register("sample.panel", provider(false)), Some(handle));
+        assert_eq!(
+            views.register("sample.panel", provider(false)),
+            Some(handle)
+        );
         assert!(views.begin_resolve("sample.panel").is_some());
     }
 

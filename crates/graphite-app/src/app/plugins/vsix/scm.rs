@@ -205,13 +205,16 @@ impl Scm {
                     collapsed: group.collapsed,
                 });
                 if !group.collapsed {
-                    rows.extend(group.resources.iter().map(|resource| {
-                        ExtensionRow::Resource {
-                            provider: provider.handle,
-                            group: group.handle,
-                            resource: resource.handle,
-                        }
-                    }));
+                    rows.extend(
+                        group
+                            .resources
+                            .iter()
+                            .map(|resource| ExtensionRow::Resource {
+                                provider: provider.handle,
+                                group: group.handle,
+                                resource: resource.handle,
+                            }),
+                    );
                 }
             }
         }
@@ -242,12 +245,7 @@ impl Scm {
             else {
                 continue;
             };
-            for splice in entry
-                .get(1)
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
+            for splice in entry.get(1).and_then(Value::as_array).into_iter().flatten() {
                 let start = splice.get(0).and_then(Value::as_u64).unwrap_or(0) as usize;
                 let delete = splice.get(1).and_then(Value::as_u64).unwrap_or(0) as usize;
                 let inserted: Vec<ScmResource> = splice
@@ -358,16 +356,13 @@ impl App {
             }
             "$registerGroups" => {
                 if let Some(provider) = scm.provider_mut(handle) {
-                    for group in args
-                        .get(1)
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                    {
+                    for group in args.get(1).and_then(Value::as_array).into_iter().flatten() {
                         let Some(group_handle) = group.get(0).and_then(Value::as_u64) else {
                             continue;
                         };
-                        provider.groups.retain(|existing| existing.handle != group_handle);
+                        provider
+                            .groups
+                            .retain(|existing| existing.handle != group_handle);
                         provider.groups.push(ScmGroup {
                             handle: group_handle,
                             id: group
@@ -430,7 +425,8 @@ impl App {
             }
             "$setInputBoxPlaceholder" => {
                 if let Some(provider) = scm.provider_mut(handle) {
-                    provider.placeholder = text(1).filter(|text| !text.is_empty()).map(str::to_owned);
+                    provider.placeholder =
+                        text(1).filter(|text| !text.is_empty()).map(str::to_owned);
                 }
                 Ok(Value::Null)
             }
@@ -597,14 +593,28 @@ mod tests {
         let mut scm = Scm::default();
         scm.register(provider());
         let uris = ["file:///a", "file:///b", "file:///c"];
-        let insert: Vec<Value> = uris.iter().enumerate().map(|(i, u)| resource(i as u64, u)).collect();
+        let insert: Vec<Value> = uris
+            .iter()
+            .enumerate()
+            .map(|(i, u)| resource(i as u64, u))
+            .collect();
         scm.splice(1, &json!([[7, [[0, 0, insert]]]]));
         let names = |scm: &Scm| -> Vec<u64> {
-            scm.provider(1).unwrap().group(7).unwrap().resources.iter().map(|r| r.handle).collect()
+            scm.provider(1)
+                .unwrap()
+                .group(7)
+                .unwrap()
+                .resources
+                .iter()
+                .map(|r| r.handle)
+                .collect()
         };
         assert_eq!(names(&scm), [0, 1, 2]);
         // Replace the middle one and delete the last, past-the-end ranges are clamped.
-        scm.splice(1, &json!([[7, [[1, 1, [resource(9, "file:///z")]], [2, 50, []]]]]));
+        scm.splice(
+            1,
+            &json!([[7, [[1, 1, [resource(9, "file:///z")]], [2, 50, []]]]]),
+        );
         assert_eq!(names(&scm), [0, 9]);
         // Unknown groups and providers are ignored.
         scm.splice(1, &json!([[99, [[0, 0, [resource(5, "file:///q")]]]]]));
@@ -631,8 +641,17 @@ mod tests {
             [
                 ExtensionRow::Provider(1),
                 ExtensionRow::Input(1),
-                ExtensionRow::Group { provider: 1, group: 7, count: 1, collapsed: false },
-                ExtensionRow::Resource { provider: 1, group: 7, resource: 3 },
+                ExtensionRow::Group {
+                    provider: 1,
+                    group: 7,
+                    count: 1,
+                    collapsed: false
+                },
+                ExtensionRow::Resource {
+                    provider: 1,
+                    group: 7,
+                    resource: 3
+                },
             ]
         );
         scm.provider_mut(1).unwrap().groups[0].collapsed = true;
@@ -650,8 +669,11 @@ mod tests {
             ScmResource::parse(&resource(2, "file:///b")).unwrap(),
         ];
         assert_eq!(state.display_count(), 2);
-        apply_features(&mut state, &json!({"count": 5, "commitTemplate": "feat: ",
-            "acceptInputCommand": {"id": "ext.commit", "title": "Commit"}}));
+        apply_features(
+            &mut state,
+            &json!({"count": 5, "commitTemplate": "feat: ",
+            "acceptInputCommand": {"id": "ext.commit", "title": "Commit"}}),
+        );
         assert_eq!(state.display_count(), 5);
         assert_eq!(state.input, "feat: ");
         assert_eq!(state.accept_input.as_ref().unwrap().id, "ext.commit");

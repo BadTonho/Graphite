@@ -102,7 +102,10 @@ fn files_explorer_copy(app: &mut App, _invocation: &CommandInvocation) -> Result
     Ok(())
 }
 
-fn files_explorer_paste(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+fn files_explorer_paste(
+    app: &mut App,
+    _invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
     app.explorer_paste().map_err(CommandError::Failed)
 }
 

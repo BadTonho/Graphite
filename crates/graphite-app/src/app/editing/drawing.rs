@@ -32,7 +32,9 @@ impl App {
         let visible = self.visible_lines(r);
         if self.reveal_cursor {
             // Rows that hold code lenses are not available to lines.
-            let for_lines = visible.saturating_sub(self.lens_rows_in_view(visible)).max(1);
+            let for_lines = visible
+                .saturating_sub(self.lens_rows_in_view(visible))
+                .max(1);
             self.keep_cursor_visible(for_lines, w, h, lh, cw);
             self.reveal_cursor = false;
         }
@@ -649,12 +651,14 @@ impl App {
                 );
             }
         }
-        let hover_with_decorations = self.hover_text.as_deref().filter(|text| !text.is_empty()).map(|hover| {
-            match self.decoration_hover_at_cursor() {
+        let hover_with_decorations = self
+            .hover_text
+            .as_deref()
+            .filter(|text| !text.is_empty())
+            .map(|hover| match self.decoration_hover_at_cursor() {
                 Some(extra) if !hover.contains(&extra) => format!("{hover}\n{extra}"),
                 _ => hover.to_owned(),
-            }
-        });
+            });
         if let Some(hover) = hover_with_decorations.as_deref() {
             let lines = hover.lines().take(6).collect::<Vec<_>>();
             let box_h = lh * lines.len() as f32 + PAD;

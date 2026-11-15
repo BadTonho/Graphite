@@ -1125,7 +1125,11 @@ mod flow_tests {
         let sent = calls(&host, "$provideOnTypeFormattingEdits");
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0]["args"][3], "\n");
-        assert_eq!(sent[0]["args"][2], json!({"lineNumber": 2, "column": 1}), "on the new line");
+        assert_eq!(
+            sent[0]["args"][2],
+            json!({"lineNumber": 2, "column": 1}),
+            "on the new line"
+        );
 
         // A formatter without the line feed among its triggers is left alone.
         let (mut app, host) = app_with_on_type_formatter(&dir, "x", &[";"]);

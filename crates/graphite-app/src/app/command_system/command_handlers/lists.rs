@@ -134,12 +134,7 @@ fn list_toggle_filter_on_type(app: &mut App, _: &CommandInvocation) -> Result<()
 }
 
 fn list_find(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
-    if let Some(query) = invocation
-        .request
-        .arguments
-        .get(0)
-        .and_then(|v| v.as_str())
-    {
+    if let Some(query) = invocation.request.arguments.get(0).and_then(|v| v.as_str()) {
         app.explorer_type_find(query);
     } else {
         app.explorer_filter_on_type = true;

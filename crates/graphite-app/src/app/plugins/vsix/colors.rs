@@ -73,7 +73,11 @@ pub(super) struct Colors {
 
 impl Colors {
     pub(super) fn busy(&self) -> bool {
-        self.request.is_some() || self.picker.as_ref().is_some_and(|picker| picker.request.is_some())
+        self.request.is_some()
+            || self
+                .picker
+                .as_ref()
+                .is_some_and(|picker| picker.request.is_some())
     }
 
     fn next_id(&mut self) -> u64 {
@@ -114,12 +118,20 @@ pub(super) fn presentations(result: &Value) -> Vec<Presentation> {
         .into_iter()
         .flatten()
         .filter_map(|item| {
-            let label = item["label"].as_str().filter(|label| !label.is_empty())?.to_owned();
+            let label = item["label"]
+                .as_str()
+                .filter(|label| !label.is_empty())?
+                .to_owned();
             let mut edits = Vec::new();
             if item["textEdit"].is_object() {
                 edits.push(item["textEdit"].clone());
             }
-            edits.extend(item["additionalTextEdits"].as_array().cloned().unwrap_or_default());
+            edits.extend(
+                item["additionalTextEdits"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default(),
+            );
             Some(Presentation { label, edits })
         })
         .collect()
@@ -138,7 +150,13 @@ pub(super) fn hex_of(color: Color) -> String {
     let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u8;
     let [r, g, b, a] = color;
     if a < 1.0 {
-        format!("#{:02x}{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b), byte(a))
+        format!(
+            "#{:02x}{:02x}{:02x}{:02x}",
+            byte(r),
+            byte(g),
+            byte(b),
+            byte(a)
+        )
     } else {
         format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
     }
@@ -238,7 +256,11 @@ impl App {
     }
 
     /// Asks the provider how the picker's color can be written.
-    fn request_color_presentations(&mut self, runtime: &mut Runtime, mut picker: Picker) -> std::result::Result<(), String> {
+    fn request_color_presentations(
+        &mut self,
+        runtime: &mut Runtime,
+        mut picker: Picker,
+    ) -> std::result::Result<(), String> {
         let id = runtime.colors.next_id();
         runtime
             .session
@@ -279,9 +301,18 @@ impl App {
                 .enumerate()
                 .map(|(index, presentation)| item(index.to_string(), presentation.label.clone())),
         );
-        let title = self.tf("color.pick.title", &[("color", &hex_of(picker.range.color))]);
+        let title = self.tf(
+            "color.pick.title",
+            &[("color", &hex_of(picker.range.color))],
+        );
         runtime.colors.picker = Some(picker);
-        self.open_vsix_internal_prompt(runtime, super::prompts::Kind::ColorChoice, title, items, String::new());
+        self.open_vsix_internal_prompt(
+            runtime,
+            super::prompts::Kind::ColorChoice,
+            title,
+            items,
+            String::new(),
+        );
     }
 
     /// The user picked a presentation, or asked to type another color.
@@ -292,16 +323,34 @@ impl App {
         match selected.as_deref() {
             None => runtime.colors.picker = None,
             Some("edit") => {
-                let initial = runtime.colors.picker.as_ref().map(|picker| hex_of(picker.range.color)).unwrap_or_default();
+                let initial = runtime
+                    .colors
+                    .picker
+                    .as_ref()
+                    .map(|picker| hex_of(picker.range.color))
+                    .unwrap_or_default();
                 let title = self.t("color.input.title").to_owned();
-                self.open_vsix_internal_prompt(&mut runtime, super::prompts::Kind::ColorInput, title, Vec::new(), initial);
+                self.open_vsix_internal_prompt(
+                    &mut runtime,
+                    super::prompts::Kind::ColorInput,
+                    title,
+                    Vec::new(),
+                    initial,
+                );
             }
             Some(index) => {
-                let presentation = index
-                    .parse::<usize>()
-                    .ok()
-                    .and_then(|index| runtime.colors.picker.as_ref()?.presentations.get(index).cloned());
-                if let (Some(picker), Some(presentation)) = (runtime.colors.picker.take(), presentation) {
+                let presentation = index.parse::<usize>().ok().and_then(|index| {
+                    runtime
+                        .colors
+                        .picker
+                        .as_ref()?
+                        .presentations
+                        .get(index)
+                        .cloned()
+                });
+                if let (Some(picker), Some(presentation)) =
+                    (runtime.colors.picker.take(), presentation)
+                {
                     self.apply_color_presentation(&picker, &presentation);
                 }
             }
@@ -315,7 +364,11 @@ impl App {
             return;
         };
         if let Some(mut picker) = runtime.colors.picker.take() {
-            match typed.as_deref().map(str::trim).filter(|text| !text.is_empty()) {
+            match typed
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+            {
                 None => {}
                 Some(text) => match super::decorations::parse_color(&json!(text)) {
                     Some(color) => {
@@ -335,7 +388,9 @@ impl App {
     /// started.
     fn apply_color_presentation(&mut self, picker: &Picker, presentation: &Presentation) {
         let document = picker.document;
-        if self.active_document() != document || self.documents[document].buffer.revision() != picker.revision {
+        if self.active_document() != document
+            || self.documents[document].buffer.revision() != picker.revision
+        {
             self.status = self.t("color.changed").to_owned();
             return;
         }
@@ -353,12 +408,9 @@ impl App {
 
     /// Applies the answer if the document has not moved on.
     pub(super) fn finish_vsix_colors(&mut self, runtime: &mut Runtime, event: &Value) {
-        if runtime
-            .colors
-            .picker
-            .as_ref()
-            .is_some_and(|picker| picker.request.is_some() && picker.request == event["id"].as_u64())
-        {
+        if runtime.colors.picker.as_ref().is_some_and(|picker| {
+            picker.request.is_some() && picker.request == event["id"].as_u64()
+        }) {
             self.finish_color_presentations(runtime, event);
             return;
         }
@@ -584,12 +636,33 @@ mod tests {
             {"label": ""},
         ]}));
         app.poll_vsix();
-        let palette = app.command_palette.as_ref().expect("the formats are offered");
-        let titles: Vec<&str> = palette.items.iter().map(|item| item.title.as_str()).collect();
-        assert_eq!(titles[1..], ["#ff0000", "rgb(255, 0, 0)"], "an empty label is dropped");
-        assert!(palette.extension_prompt.as_ref().unwrap().0.contains("#ff0000"));
+        let palette = app
+            .command_palette
+            .as_ref()
+            .expect("the formats are offered");
+        let titles: Vec<&str> = palette
+            .items
+            .iter()
+            .map(|item| item.title.as_str())
+            .collect();
+        assert_eq!(
+            titles[1..],
+            ["#ff0000", "rgb(255, 0, 0)"],
+            "an empty label is dropped"
+        );
+        assert!(palette
+            .extension_prompt
+            .as_ref()
+            .unwrap()
+            .0
+            .contains("#ff0000"));
         answer(&mut app, "", Some("1"));
-        assert_eq!(app.editor().text(), "color: rgb(255, 0, 0);\n", "{}", app.status);
+        assert_eq!(
+            app.editor().text(),
+            "color: rgb(255, 0, 0);\n",
+            "{}",
+            app.status
+        );
         // The picker is over: nothing else is waiting.
         assert!(app.plugins.vsix.as_ref().unwrap().colors.picker.is_none());
     }
@@ -617,7 +690,10 @@ mod tests {
         host.emit(json!({"type": "result", "id": asked[0]["id"], "result": [presentation("#ff0000", "#ff0000")]}));
         app.poll_vsix();
         answer(&mut app, "", Some("edit"));
-        let palette = app.command_palette.as_ref().expect("a box to type the color in");
+        let palette = app
+            .command_palette
+            .as_ref()
+            .expect("a box to type the color in");
         assert!(palette.items.is_empty());
         assert_eq!(palette.query, "#ff0000", "starts from the current color");
 
@@ -649,7 +725,10 @@ mod tests {
         let dir = TempDir::new();
         let (mut app, host) = app_with_a_red_swatch(&dir);
         app.editor_mut().set_cursor_line_col(0, 2);
-        assert!(app.start_color_picker().unwrap_err().contains("no color"), "outside the color");
+        assert!(
+            app.start_color_picker().unwrap_err().contains("no color"),
+            "outside the color"
+        );
         assert!(presentation_requests(&host).is_empty());
 
         app.editor_mut().set_cursor_line_col(0, 10);
@@ -669,8 +748,12 @@ mod tests {
         app.editor_mut().insert("x");
         answer(&mut app, "", Some("0"));
         assert!(app.status.contains("changed"), "{}", app.status);
-        assert_eq!(app.editor().text(), "color: #ffx0000;
-", "the edit was not applied over the change");
+        assert_eq!(
+            app.editor().text(),
+            "color: #ffx0000;
+",
+            "the edit was not applied over the change"
+        );
     }
 
     #[test]

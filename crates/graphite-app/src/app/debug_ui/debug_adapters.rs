@@ -390,8 +390,10 @@ mod tests {
     #[test]
     fn pipes_and_inline_implementations_are_endpoints() {
         assert_eq!(
-            adapter_from_descriptor(&serde_json::json!({"type": "pipeServer", "path": "/tmp/dap.sock"}))
-                .unwrap(),
+            adapter_from_descriptor(
+                &serde_json::json!({"type": "pipeServer", "path": "/tmp/dap.sock"})
+            )
+            .unwrap(),
             AdapterEndpoint::Pipe("/tmp/dap.sock".into())
         );
         assert_eq!(

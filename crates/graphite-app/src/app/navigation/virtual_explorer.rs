@@ -40,7 +40,8 @@ impl App {
                 );
             }
             let icon_x = indent + chevron_slot;
-            let icon = crate::icon_theme::for_entry(&row.name, row.dir, row.expanded, row.depth == 0);
+            let icon =
+                crate::icon_theme::for_entry(&row.name, row.dir, row.expanded, row.depth == 0);
             crate::icon_theme::draw(
                 r,
                 &icon,

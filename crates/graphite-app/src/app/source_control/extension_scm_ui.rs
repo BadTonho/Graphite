@@ -78,7 +78,9 @@ impl App {
                     renderer.draw_rect(x, top, width, height, rgb(border));
                 }
                 let padding = cell_width * 0.55;
-                let visible = ((field_width - padding * 2.0) / cell_width).floor().max(0.0) as usize;
+                let visible = ((field_width - padding * 2.0) / cell_width)
+                    .floor()
+                    .max(0.0) as usize;
                 let placeholder = provider
                     .placeholder
                     .as_deref()
@@ -225,7 +227,13 @@ impl App {
 
     /// Handles a click on an extension row of the Source Control panel. `x` and `y` are in the
     /// panel's coordinates.
-    pub(crate) fn click_extension_scm_row(&mut self, row: &ScmListRow, extension: ExtensionRow, x: f32, y: f32) {
+    pub(crate) fn click_extension_scm_row(
+        &mut self,
+        row: &ScmListRow,
+        extension: ExtensionRow,
+        x: f32,
+        y: f32,
+    ) {
         match extension {
             ExtensionRow::Provider(_) => {}
             ExtensionRow::Input(handle) => {

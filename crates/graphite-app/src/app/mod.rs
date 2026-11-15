@@ -17,8 +17,8 @@ pub(crate) use command_system::{
 };
 mod editing;
 pub(crate) use editing::{
-    change_navigation, drawing_helpers, editor_groups, emmet, folding, group_drawing,
-    lens_rows, local_history, outline, sticky_scroll, textmate, visual_lines,
+    change_navigation, drawing_helpers, editor_groups, emmet, folding, group_drawing, lens_rows,
+    local_history, outline, sticky_scroll, textmate, visual_lines,
 };
 mod navigation;
 pub(crate) use navigation::{

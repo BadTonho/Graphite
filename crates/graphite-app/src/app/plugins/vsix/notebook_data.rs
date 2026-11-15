@@ -63,7 +63,8 @@ pub(super) fn output_from_dto(output: &Value, execution_count: Option<u64>) -> (
     let items = output["items"].as_array().cloned().unwrap_or_default();
     let mime = |item: &Value| item["mime"].as_str().unwrap_or_default().to_owned();
     if let Some(item) = items.iter().find(|item| mime(item) == ERROR) {
-        let error: Value = serde_json::from_slice(&bytes_of(&item["valueBytes"])).unwrap_or(Value::Null);
+        let error: Value =
+            serde_json::from_slice(&bytes_of(&item["valueBytes"])).unwrap_or(Value::Null);
         let stack = error["stack"].as_str().unwrap_or_default();
         let traceback: Vec<Value> = if stack.is_empty() {
             Vec::new()
@@ -84,13 +85,20 @@ pub(super) fn output_from_dto(output: &Value, execution_count: Option<u64>) -> (
         .iter()
         .find(|item| matches!(mime(item).as_str(), STDOUT | STDERR))
     {
-        let name = if mime(item) == STDERR { "stderr" } else { "stdout" };
+        let name = if mime(item) == STDERR {
+            "stderr"
+        } else {
+            "stdout"
+        };
         let text: String = items
             .iter()
             .filter(|other| mime(other) == mime(item))
             .map(|other| String::from_utf8_lossy(&bytes_of(&other["valueBytes"])).into_owned())
             .collect();
-        return (id, json!({"output_type": "stream", "name": name, "text": text}));
+        return (
+            id,
+            json!({"output_type": "stream", "name": name, "text": text}),
+        );
     }
     let mut data = Map::new();
     for item in &items {
@@ -127,13 +135,23 @@ pub(super) fn output_to_dto(output: &Value, id: &str) -> Value {
     let item = |mime: &str, bytes: &[u8]| json!({"mime": mime, "valueBytes": bytes_value(bytes)});
     let items: Vec<Value> = match output["output_type"].as_str() {
         Some("stream") => {
-            let mime = if output["name"] == "stderr" { STDERR } else { STDOUT };
+            let mime = if output["name"] == "stderr" {
+                STDERR
+            } else {
+                STDOUT
+            };
             vec![item(mime, text_of(&output["text"]).as_bytes())]
         }
         Some("error") => {
             let stack = output["traceback"]
                 .as_array()
-                .map(|lines| lines.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"))
+                .map(|lines| {
+                    lines
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
                 .unwrap_or_default();
             let error = json!({
                 "name": output["ename"].as_str().unwrap_or("Error"),
@@ -159,7 +177,10 @@ pub(super) fn output_to_dto(output: &Value, id: &str) -> Value {
             .collect(),
     };
     let mut dto = json!({"outputId": id, "items": items});
-    if output["metadata"].as_object().is_some_and(|metadata| !metadata.is_empty()) {
+    if output["metadata"]
+        .as_object()
+        .is_some_and(|metadata| !metadata.is_empty())
+    {
         dto["metadata"] = output["metadata"].clone();
     }
     dto
@@ -220,7 +241,11 @@ pub(super) fn notebook_to_dto(notebook: &Notebook) -> Value {
 
 /// The notebook a serializer produced (`NotebookDataDto`).
 pub(super) fn notebook_from_dto(data: &Value) -> Notebook {
-    let data = if data["value"].is_object() { &data["value"] } else { data };
+    let data = if data["value"].is_object() {
+        &data["value"]
+    } else {
+        data
+    };
     let mut notebook = Notebook::new();
     notebook.cells = data["cells"]
         .as_array()
@@ -228,7 +253,14 @@ pub(super) fn notebook_from_dto(data: &Value) -> Notebook {
         .flatten()
         .map(|dto| {
             let code = dto["cellKind"].as_u64() == Some(CODE);
-            let mut cell = Cell::new(if code { CellKind::Code } else { CellKind::Markdown }, dto["source"].as_str().unwrap_or_default());
+            let mut cell = Cell::new(
+                if code {
+                    CellKind::Code
+                } else {
+                    CellKind::Markdown
+                },
+                dto["source"].as_str().unwrap_or_default(),
+            );
             if let Some(metadata) = dto["metadata"].as_object() {
                 cell.metadata = metadata.clone();
             }
@@ -241,11 +273,11 @@ pub(super) fn notebook_from_dto(data: &Value) -> Notebook {
                     .flatten()
                     .map(|output| output_from_dto(output, None).1)
                     .collect();
-                if let Some(language) = dto["language"].as_str().filter(|language| !language.is_empty()) {
-                    let vscode = cell
-                        .metadata
-                        .entry("vscode")
-                        .or_insert_with(|| json!({}));
+                if let Some(language) = dto["language"]
+                    .as_str()
+                    .filter(|language| !language.is_empty())
+                {
+                    let vscode = cell.metadata.entry("vscode").or_insert_with(|| json!({}));
                     if let Some(object) = vscode.as_object_mut() {
                         object.insert("languageId".into(), json!(language));
                     }
@@ -276,7 +308,10 @@ mod tests {
         let stream = json!({"outputId": "o1", "items": [dto_item(STDOUT, b"hi\n"), dto_item(STDOUT, b"there\n")]});
         let (id, output) = output_from_dto(&stream, None);
         assert_eq!(id, "o1");
-        assert_eq!(output, json!({"output_type": "stream", "name": "stdout", "text": "hi\nthere\n"}));
+        assert_eq!(
+            output,
+            json!({"output_type": "stream", "name": "stdout", "text": "hi\nthere\n"})
+        );
 
         let error = json!({"outputId": "o2", "items": [dto_item(ERROR,
             br#"{"name":"Boom","message":"bad","stack":"line1\nline2"}"#)]});
@@ -299,7 +334,10 @@ mod tests {
         assert_eq!(output["data"]["application/json"], json!({"a": 1}));
         assert_eq!(output["data"]["image/svg+xml"], "<svg/>", "svg is text");
         assert_eq!(output["metadata"], json!({"k": 1}));
-        assert_eq!(output_from_dto(&rich, None).1["output_type"], "display_data");
+        assert_eq!(
+            output_from_dto(&rich, None).1["output_type"],
+            "display_data"
+        );
     }
 
     #[test]
@@ -313,7 +351,10 @@ mod tests {
         assert_eq!(stream["text"], "a\nb");
         assert_eq!(stream["name"], "stderr");
         let (_, error) = output_from_dto(&output_to_dto(&outputs[1], "e"), None);
-        assert_eq!((error["ename"].clone(), error["traceback"].clone()), (json!("E"), json!(["t1", "t2"])));
+        assert_eq!(
+            (error["ename"].clone(), error["traceback"].clone()),
+            (json!("E"), json!(["t1", "t2"]))
+        );
         let (id, display) = output_from_dto(&output_to_dto(&outputs[2], "d"), None);
         assert_eq!(id, "d");
         assert_eq!(display["data"]["text/plain"], "x\ny");

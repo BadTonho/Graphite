@@ -856,12 +856,21 @@ fn vsix_virtual_files_open_through_a_mirror_are_identified_by_uri_and_save_back(
     )
     .unwrap();
     let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
-    assert!(sent.iter().all(|message| message["id"] != 7), "no early reply: {sent:?}");
-    let read = sent.iter().find(|message| message["method"] == "$readFile").expect("read call");
+    assert!(
+        sent.iter().all(|message| message["id"] != 7),
+        "no early reply: {sent:?}"
+    );
+    let read = sent
+        .iter()
+        .find(|message| message["method"] == "$readFile")
+        .expect("read call");
     assert_eq!(read["actor"], "ExtHostFileSystem");
     assert_eq!(read["bytes"], true);
     assert_eq!(read["args"], json!([5, {"$graphiteUri": scheme_uri}]));
-    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": read["id"], "result": {"$bytes": encode(b"hello")}}));
+    app.finish_vsix_virtual_fs(
+        &mut runtime,
+        &json!({"id": read["id"], "result": {"$bytes": encode(b"hello")}}),
+    );
     let reply = std::iter::from_fn(|| host.next_sent())
         .find(|message| message["type"] == "reply")
         .expect("deferred reply");
@@ -870,10 +879,14 @@ fn vsix_virtual_files_open_through_a_mirror_are_identified_by_uri_and_save_back(
 
     // The document is identified by its virtual URI and its text is the provider's content.
     let documents = graphite_core_api::DocumentService::documents(&app).unwrap();
-    let opened = documents.iter().find(|document| document.uri.as_str() == scheme_uri)
+    let opened = documents
+        .iter()
+        .find(|document| document.uri.as_str() == scheme_uri)
         .expect("document with the virtual URI");
     assert_eq!(opened.text, "hello");
-    let mirror = super::virtual_fs::mirror_path(&graphite_core_api::DocumentUri::parse(scheme_uri).unwrap()).unwrap();
+    let mirror =
+        super::virtual_fs::mirror_path(&graphite_core_api::DocumentUri::parse(scheme_uri).unwrap())
+            .unwrap();
     assert_eq!(std::fs::read_to_string(&mirror).unwrap(), "hello");
     assert!(mirror.starts_with(app.profile_root.join("virtual-fs")));
 
@@ -883,9 +896,16 @@ fn vsix_virtual_files_open_through_a_mirror_are_identified_by_uri_and_save_back(
         &json!({"id": 8, "actor": "MainThreadDocuments", "method": "$tryOpenDocument", "args": ["vfstest-b:/missing"]}),
     )
     .unwrap();
-    let read = std::iter::from_fn(|| host.next_sent()).find(|message| message["method"] == "$readFile").unwrap();
-    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": read["id"], "error": "FileNotFound"}));
-    let failure = std::iter::from_fn(|| host.next_sent()).find(|message| message["id"] == 8).unwrap();
+    let read = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$readFile")
+        .unwrap();
+    app.finish_vsix_virtual_fs(
+        &mut runtime,
+        &json!({"id": read["id"], "error": "FileNotFound"}),
+    );
+    let failure = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["id"] == 8)
+        .unwrap();
     assert_eq!(failure["error"], "FileNotFound");
 
     // Saving writes the mirror back through the provider.
@@ -896,21 +916,35 @@ fn vsix_virtual_files_open_through_a_mirror_are_identified_by_uri_and_save_back(
         .expect("write call");
     assert_eq!(write["args"][0], 5);
     assert_eq!(write["args"][1], json!({"$graphiteUri": scheme_uri}));
-    assert_eq!(write["args"][2], json!({"$graphiteBytes": encode(b"hello")}));
+    assert_eq!(
+        write["args"][2],
+        json!({"$graphiteBytes": encode(b"hello")})
+    );
     app.upload_virtual_document(&dir.path().join("plain.txt"));
-    assert!(std::iter::from_fn(|| host.next_sent()).all(|message| message["method"] != "$writeFile"));
+    assert!(
+        std::iter::from_fn(|| host.next_sent()).all(|message| message["method"] != "$writeFile")
+    );
 
     // The explorer lists the provider's root and its folders once they are read.
     let rows = app.virtual_explorer_rows();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].uri, "vfstest-b:/");
     app.activate_virtual_explorer_row(0);
-    let list = std::iter::from_fn(|| host.next_sent()).find(|message| message["method"] == "$readdir").unwrap();
+    let list = std::iter::from_fn(|| host.next_sent())
+        .find(|message| message["method"] == "$readdir")
+        .unwrap();
     assert_eq!(list["args"], json!([5, {"$graphiteUri": "vfstest-b:/"}]));
     let mut runtime = app.plugins.vsix.take().unwrap();
-    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": list["id"], "result": [["notes", 2], ["b.txt", 1]]}));
+    app.finish_vsix_virtual_fs(
+        &mut runtime,
+        &json!({"id": list["id"], "result": [["notes", 2], ["b.txt", 1]]}),
+    );
     app.plugins.vsix = Some(runtime);
-    let names: Vec<String> = app.virtual_explorer_rows().into_iter().map(|row| row.name).collect();
+    let names: Vec<String> = app
+        .virtual_explorer_rows()
+        .into_iter()
+        .map(|row| row.name)
+        .collect();
     assert_eq!(names, ["vfstest-b", "notes", "b.txt"]);
 
     // Removing the provider removes the folder and the scheme.
@@ -947,24 +981,36 @@ fn vsix_virtual_file_operations_call_the_provider_and_refresh_the_folder() {
             .find(|message| message["method"] == method)
             .unwrap_or_else(|| panic!("no {method} call"))
     };
-    app.request_virtual_stat(&mut runtime, "vfstest-c:/d/x.txt").unwrap();
+    app.request_virtual_stat(&mut runtime, "vfstest-c:/d/x.txt")
+        .unwrap();
     let stat = call(&host, "$stat");
-    assert_eq!(stat["args"], json!([9, {"$graphiteUri": "vfstest-c:/d/x.txt"}]));
+    assert_eq!(
+        stat["args"],
+        json!([9, {"$graphiteUri": "vfstest-c:/d/x.txt"}])
+    );
 
-    app.request_virtual_delete(&mut runtime, "vfstest-c:/d/x.txt").unwrap();
+    app.request_virtual_delete(&mut runtime, "vfstest-c:/d/x.txt")
+        .unwrap();
     let delete = call(&host, "$delete");
-    assert_eq!(delete["args"][1], json!({"$graphiteUri": "vfstest-c:/d/x.txt"}));
+    assert_eq!(
+        delete["args"][1],
+        json!({"$graphiteUri": "vfstest-c:/d/x.txt"})
+    );
     assert_eq!(delete["args"][2]["recursive"], true);
     // A finished delete asks for the parent folder again.
     app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": delete["id"], "result": null}));
     let refresh = call(&host, "$readdir");
     assert_eq!(refresh["args"][1], json!({"$graphiteUri": "vfstest-c:/d"}));
 
-    app.request_virtual_rename(&mut runtime, "vfstest-c:/d/a", "vfstest-c:/d/b").unwrap();
+    app.request_virtual_rename(&mut runtime, "vfstest-c:/d/a", "vfstest-c:/d/b")
+        .unwrap();
     let rename = call(&host, "$rename");
     assert_eq!(rename["args"][2], json!({"$graphiteUri": "vfstest-c:/d/b"}));
     // A failure is reported and does not refresh.
-    app.finish_vsix_virtual_fs(&mut runtime, &json!({"id": rename["id"], "error": "NoPermissions"}));
+    app.finish_vsix_virtual_fs(
+        &mut runtime,
+        &json!({"id": rename["id"], "error": "NoPermissions"}),
+    );
     assert!(app.status.contains("NoPermissions"));
     assert!(std::iter::from_fn(|| host.next_sent()).all(|message| message["method"] != "$readdir"));
 
@@ -977,7 +1023,10 @@ fn vsix_virtual_file_operations_call_the_provider_and_refresh_the_folder() {
         &json!({"id": 3, "actor": "MainThreadFileSystem", "method": "$onFileSystemChange", "args": [9, []]}),
     )
     .unwrap();
-    assert_eq!(call(&host, "$readdir")["args"][1], json!({"$graphiteUri": "vfstest-c:/"}));
+    assert_eq!(
+        call(&host, "$readdir")["args"][1],
+        json!({"$graphiteUri": "vfstest-c:/"})
+    );
 }
 
 /// Plays the extension host for authentication tests.
@@ -992,7 +1041,11 @@ impl AuthHarness {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.profile_root = dir.path().join("profile");
         let (session, host) = Session::loopback();
-        Self { app, runtime: Some(Runtime::for_test(session)), host }
+        Self {
+            app,
+            runtime: Some(Runtime::for_test(session)),
+            host,
+        }
     }
 
     fn request(&mut self, id: u64, method: &str, args: Value) {
@@ -1048,8 +1101,10 @@ impl AuthHarness {
             .0;
         // The palette closes itself before it reports the choice.
         self.app.command_palette = None;
-        self.app
-            .answer_vsix_prompt(Some((String::new(), Some(if allow { "1" } else { "2" }.into()))));
+        self.app.answer_vsix_prompt(Some((
+            String::new(),
+            Some(if allow { "1" } else { "2" }.into()),
+        )));
         self.runtime = self.app.plugins.vsix.take();
         title
     }
@@ -1064,11 +1119,13 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     use super::auth::AccessStore;
     let dir = TempDir::new();
     let mut h = AuthHarness::new(&dir);
-    h.request(1, "$registerAuthenticationProvider", json!([{"id": "sample", "label": "Sample", "supportsMultipleAccounts": false}]));
+    h.request(
+        1,
+        "$registerAuthenticationProvider",
+        json!([{"id": "sample", "label": "Sample", "supportsMultipleAccounts": false}]),
+    );
     assert_eq!(h.reply_of(1)["result"], Value::Null);
-    let get = |silent: bool, create: bool| {
-        json!(["sample", ["a"], "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}])
-    };
+    let get = |silent: bool, create: bool| json!(["sample", ["a"], "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}]);
 
     // A silent request without a session answers undefined and never asks.
     h.request(10, "$getSession", get(true, false));
@@ -1083,7 +1140,10 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     let lookup = h.call("$getSessions");
     h.finish(&lookup, json!({"result": []}));
     let title = h.answer_consent(true);
-    assert!(title.contains("Pub Ext") && title.contains("Sample"), "{title}");
+    assert!(
+        title.contains("Pub Ext") && title.contains("Sample"),
+        "{title}"
+    );
     let create = h.call("$createSession");
     assert_eq!(create["args"], json!(["sample", ["a"], {}]));
     h.finish(&create, json!({"result": sample_session()}));
@@ -1099,7 +1159,11 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     assert!(h.app.command_palette.is_none());
 
     // Another extension has to be allowed, and a refusal is an error.
-    h.request(13, "$getSession", json!(["sample", ["a"], "other.ext", "Other", {}]));
+    h.request(
+        13,
+        "$getSession",
+        json!(["sample", ["a"], "other.ext", "Other", {}]),
+    );
     let lookup = h.call("$getSessions");
     h.finish(&lookup, json!({"result": [sample_session()]}));
     let title = h.answer_consent(false);
@@ -1108,7 +1172,11 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     assert!(!AccessStore::load(&h.app.profile_root).is_allowed("sample", "u1", "other.ext"));
 
     // A silent request from an extension that was not allowed learns nothing.
-    h.request(14, "$getSession", json!(["sample", ["a"], "other.ext", "Other", {"silent": true}]));
+    h.request(
+        14,
+        "$getSession",
+        json!(["sample", ["a"], "other.ext", "Other", {"silent": true}]),
+    );
     let lookup = h.call("$getSessions");
     h.finish(&lookup, json!({"result": [sample_session()]}));
     assert_eq!(h.reply_of(14)["result"], Value::Null);
@@ -1117,8 +1185,14 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     h.request(15, "$getAccounts", json!(["sample"]));
     let lookup = h.call("$getSessions");
     assert_eq!(lookup["args"], json!(["sample", null, {}]));
-    h.finish(&lookup, json!({"result": [sample_session(), sample_session()]}));
-    assert_eq!(h.reply_of(15)["result"], json!([{"id": "u1", "label": "User"}]));
+    h.finish(
+        &lookup,
+        json!({"result": [sample_session(), sample_session()]}),
+    );
+    assert_eq!(
+        h.reply_of(15)["result"],
+        json!([{"id": "u1", "label": "User"}])
+    );
 
     // Removing a session and session changes go through to the extensions.
     h.request(16, "$removeSession", json!(["sample", "s1"]));
@@ -1126,7 +1200,11 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
     assert_eq!(removal["args"], json!(["sample", "s1"]));
     h.finish(&removal, json!({"result": null}));
     assert_eq!(h.reply_of(16)["result"], Value::Null);
-    h.request(17, "$sendDidChangeSessions", json!(["sample", {"added": [], "removed": [], "changed": []}]));
+    h.request(
+        17,
+        "$sendDidChangeSessions",
+        json!(["sample", {"added": [], "removed": [], "changed": []}]),
+    );
     let change = h.call("$onDidChangeAuthenticationSessions");
     assert_eq!(change["args"], json!(["sample", "Sample"]));
 }
@@ -1135,23 +1213,48 @@ fn vsix_authentication_providers_release_sessions_only_after_consent() {
 fn vsix_authentication_waits_for_a_provider_that_registers_late() {
     let dir = TempDir::new();
     let mut h = AuthHarness::new(&dir);
-    h.request(20, "$getSession", json!(["late", ["a"], "pub.ext", "Pub", {"createIfNone": true}]));
+    h.request(
+        20,
+        "$getSession",
+        json!(["late", ["a"], "pub.ext", "Pub", {"createIfNone": true}]),
+    );
     let sent = h.sent();
-    let activation = sent.iter().find(|message| message["type"] == "activateByEvent").expect("activation");
+    let activation = sent
+        .iter()
+        .find(|message| message["type"] == "activateByEvent")
+        .expect("activation");
     assert_eq!(activation["event"], "onAuthenticationRequest:late");
-    assert!(sent.iter().all(|message| message["id"] != 20), "no answer while waiting");
-    h.request(21, "$registerAuthenticationProvider", json!([{"id": "late", "label": "Late"}]));
+    assert!(
+        sent.iter().all(|message| message["id"] != 20),
+        "no answer while waiting"
+    );
+    h.request(
+        21,
+        "$registerAuthenticationProvider",
+        json!([{"id": "late", "label": "Late"}]),
+    );
     assert_eq!(h.call("$getSessions")["args"][0], "late");
 
     // A provider that never shows up fails the call once the wait is over.
-    h.request(22, "$getSession", json!(["never", ["a"], "pub.ext", "Pub", {}]));
+    h.request(
+        22,
+        "$getSession",
+        json!(["never", ["a"], "pub.ext", "Pub", {}]),
+    );
     let mut runtime = h.runtime.take().unwrap();
     runtime.auth.expire_waiting_for_test();
     h.app.drive_vsix_auth(&mut runtime);
     h.runtime = Some(runtime);
-    assert_eq!(h.reply_of(22)["error"], "No authentication provider 'never' is currently registered.");
+    assert_eq!(
+        h.reply_of(22)["error"],
+        "No authentication provider 'never' is currently registered."
+    );
     // Silent requests for an unknown provider answer undefined at once.
-    h.request(23, "$getSession", json!(["never", ["a"], "pub.ext", "Pub", {"silent": true}]));
+    h.request(
+        23,
+        "$getSession",
+        json!(["never", ["a"], "pub.ext", "Pub", {"silent": true}]),
+    );
     assert_eq!(h.reply_of(23)["result"], Value::Null);
 }
 
@@ -1166,19 +1269,23 @@ fn vsix_github_sessions_come_from_graphites_own_sign_in() {
         scope: "read:user user:email".into(),
         ..Default::default()
     });
-    let get = |scopes: Value, silent: bool, create: bool| {
-        json!(["github", scopes, "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}])
-    };
+    let get = |scopes: Value, silent: bool, create: bool| json!(["github", scopes, "pub.ext", "Pub Ext", {"silent": silent, "createIfNone": create}]);
 
     h.request(30, "$getSession", get(json!(["read:user"]), true, false));
     assert_eq!(h.reply_of(30)["result"], Value::Null, "not allowed yet");
     h.request(31, "$getSession", get(json!(["read:user"]), false, false));
     let title = h.answer_consent(true);
-    assert!(title.contains("GitHub") && title.contains("octocat"), "{title}");
+    assert!(
+        title.contains("GitHub") && title.contains("octocat"),
+        "{title}"
+    );
     let session = h.reply_of(31)["result"].clone();
     assert_eq!(session["accessToken"], "gho_x");
     assert_eq!(session["scopes"], json!(["read:user"]));
-    assert_eq!(session["account"], json!({"id": "octocat", "label": "octocat"}));
+    assert_eq!(
+        session["account"],
+        json!({"id": "octocat", "label": "octocat"})
+    );
     assert!(AccessStore::load(&h.app.profile_root).is_allowed("github", "octocat", "pub.ext"));
     h.request(32, "$getSession", get(json!(["user:email"]), true, false));
     assert_eq!(h.reply_of(32)["result"]["accessToken"], "gho_x");
@@ -1198,24 +1305,34 @@ fn vsix_github_sessions_come_from_graphites_own_sign_in() {
     h.answer_consent(true);
     assert!(h.sent().iter().all(|message| message["id"] != 35));
     h.app.plugins.vsix = h.runtime.take();
-    h.app.handle_github_auth_event(crate::app::source_control::github_auth::GitHubAuthEvent::Finished(Ok(
-        graphite_auth::Session {
-            token: "gho_new".into(),
-            login: "octocat".into(),
-            scope: "read:user gist".into(),
-            ..Default::default()
-        },
-    )));
+    h.app.handle_github_auth_event(
+        crate::app::source_control::github_auth::GitHubAuthEvent::Finished(Ok(
+            graphite_auth::Session {
+                token: "gho_new".into(),
+                login: "octocat".into(),
+                scope: "read:user gist".into(),
+                ..Default::default()
+            },
+        )),
+    );
     h.runtime = h.app.plugins.vsix.take();
     let sent = h.sent();
-    let reply = sent.iter().find(|message| message["id"] == 35).expect("deferred reply");
+    let reply = sent
+        .iter()
+        .find(|message| message["id"] == 35)
+        .expect("deferred reply");
     assert_eq!(reply["result"]["accessToken"], "gho_new");
-    assert!(sent.iter().any(|message| message["method"] == "$onDidChangeAuthenticationSessions"
-        && message["args"] == json!(["github", "GitHub"])));
+    assert!(sent.iter().any(
+        |message| message["method"] == "$onDidChangeAuthenticationSessions"
+            && message["args"] == json!(["github", "GitHub"])
+    ));
 
     // Accounts and sign-out.
     h.request(36, "$getAccounts", json!(["github"]));
-    assert_eq!(h.reply_of(36)["result"], json!([{"id": "octocat", "label": "octocat"}]));
+    assert_eq!(
+        h.reply_of(36)["result"],
+        json!([{"id": "octocat", "label": "octocat"}])
+    );
     h.request(37, "$removeSession", json!(["github", "github-octocat"]));
     assert_eq!(h.reply_of(37)["result"], Value::Null);
     assert!(h.app.github_session.is_none());
@@ -1302,100 +1419,176 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
 
     // Files with a default custom editor open with it; the extension is activated for it.
     assert_eq!(app.custom_editor_choices(&notes).len(), 1);
-    assert!(app.default_custom_editor(&notes).is_none(), "option editors do not open by default");
+    assert!(
+        app.default_custom_editor(&notes).is_none(),
+        "option editors do not open by default"
+    );
     app.open_file(drawing.clone());
-    let id = app.documents.id_for_path(&drawing).expect("the file is open");
+    let id = app
+        .documents
+        .id_for_path(&drawing)
+        .expect("the file is open");
     assert!(app.custom_editor_is_bound(&drawing));
     let state = app.custom_editor_state(id).unwrap();
     assert!(!state.ready && state.display_name == "sample.paint editor");
     let activation = drain(&host);
-    assert!(activation.iter().any(|m| m["type"] == "activateByEvent" && m["event"] == "onCustomEditor:sample.paint"));
+    assert!(activation
+        .iter()
+        .any(|m| m["type"] == "activateByEvent" && m["event"] == "onCustomEditor:sample.paint"));
     // Nothing is asked until the provider registers.
     drive(&mut app);
-    assert!(drain(&host).iter().all(|m| m["method"] != "$createCustomDocument"));
+    assert!(drain(&host)
+        .iter()
+        .all(|m| m["method"] != "$createCustomDocument"));
 
     // Custom documents are created, then the provider fills the page.
-    request(&mut app, 1, "$registerCustomEditorProvider",
-        json!([{"id": "test.editors", "location": null}, "sample.paint", {}, {}, false, false]));
+    request(
+        &mut app,
+        1,
+        "$registerCustomEditorProvider",
+        json!([{"id": "test.editors", "location": null}, "sample.paint", {}, {}, false, false]),
+    );
     drive(&mut app);
     let sent = drain(&host);
     let create = find(&sent, "$createCustomDocument");
     assert_eq!(create["actor"], "ExtHostCustomEditors");
-    let resource = create["args"][0]["$graphiteUri"].as_str().unwrap().to_owned();
+    let resource = create["args"][0]["$graphiteUri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert!(resource.ends_with("/art.draw"));
     assert_eq!(create["args"][1], "sample.paint");
-    assert!(app.documents[id].buffer.is_read_only(), "the text behind the page is not editable");
+    assert!(
+        app.documents[id].buffer.is_read_only(),
+        "the text behind the page is not editable"
+    );
     finish(&mut app, &create, json!({"result": {"editable": true}}));
     let resolve = find(&drain(&host), "$resolveCustomEditor");
     let handle = resolve["args"][1].as_str().unwrap().to_owned();
     assert_eq!(resolve["args"][0], json!({"$graphiteUri": resource}));
     assert_eq!(resolve["args"][2], "sample.paint");
     assert_eq!(resolve["args"][3]["title"], "art.draw");
-    assert!(app.plugins.vsix.as_ref().unwrap().webviews.contains(&handle));
+    assert!(app
+        .plugins
+        .vsix
+        .as_ref()
+        .unwrap()
+        .webviews
+        .contains(&handle));
     finish(&mut app, &resolve, json!({"result": null}));
     let state = app.custom_editor_state(id).unwrap();
     assert!(state.ready && state.writable && !state.can_undo);
 
     // The page arrives over the webview bridge.
     let mut runtime = app.plugins.vsix.take().unwrap();
-    app.handle_vsix_request(&mut runtime, &json!({"id": 2, "actor": "MainThreadWebviews",
-        "method": "$setHtml", "args": [handle, "<p>canvas</p>"]})).unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({"id": 2, "actor": "MainThreadWebviews",
+        "method": "$setHtml", "args": [handle, "<p>canvas</p>"]}),
+    )
+    .unwrap();
     assert_eq!(runtime.webviews.panels[&handle].html, "<p>canvas</p>");
     app.plugins.vsix = Some(runtime);
     drain(&host);
 
     // Edits the extension reports make the tab dirty; save goes to the extension.
-    request(&mut app, 3, "$onDidEdit", json!([resource, "sample.paint", 1, "Draw"]));
+    request(
+        &mut app,
+        3,
+        "$onDidEdit",
+        json!([resource, "sample.paint", 1, "Draw"]),
+    );
     app.sync_custom_editor_webviews();
     assert!(app.documents[id].is_dirty());
     assert!(app.custom_editor_state(id).unwrap().can_undo);
     assert!(app.route_custom_editor_action(EditorAction::Save));
     let save = find(&drain(&host), "$onSave");
-    assert_eq!(save["args"], json!([{"$graphiteUri": resource}, "sample.paint"]));
+    assert_eq!(
+        save["args"],
+        json!([{"$graphiteUri": resource}, "sample.paint"])
+    );
     assert_eq!(save["cancellable"], true);
-    assert!(app.documents[id].is_dirty(), "dirty until the extension has saved");
+    assert!(
+        app.documents[id].is_dirty(),
+        "dirty until the extension has saved"
+    );
     finish(&mut app, &save, json!({"result": null}));
     app.sync_custom_editor_webviews();
     assert!(!app.documents[id].is_dirty());
 
     // Undo and redo go to the extension with the id of the edit.
-    request(&mut app, 4, "$onDidEdit", json!([resource, "sample.paint", 2, null]));
+    request(
+        &mut app,
+        4,
+        "$onDidEdit",
+        json!([resource, "sample.paint", 2, null]),
+    );
     assert!(app.route_custom_editor_action(EditorAction::Undo));
     let undo = find(&drain(&host), "$undo");
-    assert_eq!(undo["args"], json!([{"$graphiteUri": resource}, "sample.paint", 2, false]));
+    assert_eq!(
+        undo["args"],
+        json!([{"$graphiteUri": resource}, "sample.paint", 2, false])
+    );
     assert!(app.route_custom_editor_action(EditorAction::Redo));
     let redo = find(&drain(&host), "$redo");
     assert_eq!(redo["args"][2], 2);
     assert_eq!(redo["args"][3], true);
-    assert!(app.route_custom_editor_action(EditorAction::Redo), "nothing to redo is still handled");
+    assert!(
+        app.route_custom_editor_action(EditorAction::Redo),
+        "nothing to redo is still handled"
+    );
     assert!(drain(&host).iter().all(|m| m["method"] != "$redo"));
 
     // Open With: the text editor releases the page; the choice sticks across opens.
     app.open_with_palette();
-    let ids: Vec<String> = app.command_palette.as_ref().unwrap().items.iter().map(|i| i.id.clone()).collect();
-    assert_eq!(ids, ["graphite.openWith:", "graphite.openWith:sample.paint"]);
+    let ids: Vec<String> = app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|i| i.id.clone())
+        .collect();
+    assert_eq!(
+        ids,
+        ["graphite.openWith:", "graphite.openWith:sample.paint"]
+    );
     app.command_palette = None;
     app.reopen_with("");
     assert!(!app.custom_editor_is_bound(&drawing));
-    assert!(!app.documents[id].buffer.is_read_only(), "the text is editable again");
+    assert!(
+        !app.documents[id].buffer.is_read_only(),
+        "the text is editable again"
+    );
     assert!(!app.documents[id].is_dirty());
     let sent = drain(&host);
-    assert!(sent.iter().any(|m| m["method"] == "$onDidDisposeWebviewPanel" && m["args"][0] == json!(handle)));
+    assert!(sent
+        .iter()
+        .any(|m| m["method"] == "$onDidDisposeWebviewPanel" && m["args"][0] == json!(handle)));
     assert!(sent.iter().any(|m| m["method"] == "$disposeCustomDocument"));
     app.open_file(drawing.clone());
-    assert!(!app.custom_editor_is_bound(&drawing), "the text choice is kept");
+    assert!(
+        !app.custom_editor_is_bound(&drawing),
+        "the text choice is kept"
+    );
     app.reopen_with("sample.paint");
     assert!(app.custom_editor_is_bound(&drawing));
 
     // A text editor works on the open text document and keeps its own undo and save.
-    request(&mut app, 5, "$registerTextEditorProvider",
-        json!([{"id": "test.editors", "location": null}, "sample.notes", {}, {}, false]));
+    request(
+        &mut app,
+        5,
+        "$registerTextEditorProvider",
+        json!([{"id": "test.editors", "location": null}, "sample.notes", {}, {}, false]),
+    );
     app.open_file_as_text(notes.clone());
     let notes_id = app.documents.id_for_path(&notes).unwrap();
     app.reopen_with("sample.notes");
     drive(&mut app);
     let sent = drain(&host);
-    assert!(sent.iter().all(|m| m["method"] != "$createCustomDocument" || m["args"][1] != "sample.notes"));
+    assert!(sent
+        .iter()
+        .all(|m| m["method"] != "$createCustomDocument" || m["args"][1] != "sample.notes"));
     let resolve = sent
         .iter()
         .find(|m| m["method"] == "$resolveCustomEditor" && m["args"][2] == "sample.notes")
@@ -1404,10 +1597,18 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
     let state = app.custom_editor_state(notes_id).unwrap();
     assert!(state.ready && state.kind == crate::app::plugins::vsix::EditorKind::Text);
     assert!(!state.writable && !app.documents[notes_id].buffer.is_read_only());
-    assert!(!app.route_custom_editor_action(EditorAction::Save), "the document saves itself");
+    assert!(
+        !app.route_custom_editor_action(EditorAction::Save),
+        "the document saves itself"
+    );
 
     // Removing a provider returns its files to the text editor.
-    request(&mut app, 6, "$unregisterEditorProvider", json!(["sample.notes"]));
+    request(
+        &mut app,
+        6,
+        "$unregisterEditorProvider",
+        json!(["sample.notes"]),
+    );
     assert!(!app.custom_editor_is_bound(&notes));
     app.sync_custom_editor_webviews();
     assert!(app.custom_editor_is_bound(&drawing), "other editors stay");
@@ -1415,7 +1616,13 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
 
 /// An app with a trusted workspace, a ready extension host and one installed extension that
 /// contributes the notebook type `sample-book` for `*.sbook` files.
-fn notebook_test_app(dir: &TempDir) -> (App, graphite_extension_host::code_oss::LoopbackHost, PathBuf) {
+fn notebook_test_app(
+    dir: &TempDir,
+) -> (
+    App,
+    graphite_extension_host::code_oss::LoopbackHost,
+    PathBuf,
+) {
     let work = dir.path().join("work");
     std::fs::create_dir_all(&work).unwrap();
     let mut app = App::new_with_options(work.clone(), None, true);
@@ -1487,16 +1694,35 @@ fn vsix_notebook_controllers_run_cells_through_the_extension() {
     )
     .unwrap();
     app.open_file(file.clone());
-    assert!(app.active_notebook().is_some(), "the notebook opened in the notebook editor");
+    assert!(
+        app.active_notebook().is_some(),
+        "the notebook opened in the notebook editor"
+    );
 
     // A registered controller is offered for the notebook and can be started.
-    notebook_request(&mut app, "MainThreadNotebookKernels", 1, "$addKernel", json!([7, {
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        1,
+        "$addKernel",
+        json!([7, {
         "id": "ext.kernel", "notebookType": "jupyter-notebook", "extensionId": {"value": "test.books"},
-        "label": "Ext Kernel", "detail": "1.0", "supportedLanguages": ["python"]}]));
-    notebook_request(&mut app, "MainThreadNotebookKernels", 2, "$addKernel", json!([8, {
-        "id": "ext.other", "notebookType": "another-type", "label": "Other"}]));
+        "label": "Ext Kernel", "detail": "1.0", "supportedLanguages": ["python"]}]),
+    );
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        2,
+        "$addKernel",
+        json!([8, {
+        "id": "ext.other", "notebookType": "another-type", "label": "Other"}]),
+    );
     let specs = app.vsix_notebook_kernel_specs();
-    assert_eq!(specs.len(), 1, "only controllers of this notebook type: {specs:?}");
+    assert_eq!(
+        specs.len(),
+        1,
+        "only controllers of this notebook type: {specs:?}"
+    );
     assert_eq!(specs[0].name, "vsix:7");
     assert_eq!(specs[0].display_name, "Ext Kernel (1.0)");
     app.start_extension_kernel(specs[0].clone()).unwrap();
@@ -1506,9 +1732,18 @@ fn vsix_notebook_controllers_run_cells_through_the_extension() {
     app.run_notebook_cells(RunTarget::Selected).unwrap();
     notebook_drive(&mut app);
     let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
-    let find = |method: &str| sent.iter().find(|m| m["method"] == method).cloned().unwrap_or_else(|| panic!("no {method}: {sent:?}"));
+    let find = |method: &str| {
+        sent.iter()
+            .find(|m| m["method"] == method)
+            .cloned()
+            .unwrap_or_else(|| panic!("no {method}: {sent:?}"))
+    };
     let cells = find("$acceptDocumentsAndEditorsDelta");
-    assert_eq!(cells["args"][0]["addedDocuments"].as_array().unwrap().len(), 2, "a document for each cell");
+    assert_eq!(
+        cells["args"][0]["addedDocuments"].as_array().unwrap().len(),
+        2,
+        "a document for each cell"
+    );
     let notebook = find("$acceptDocumentAndEditorsDelta");
     assert_eq!(notebook["actor"], "ExtHostNotebook");
     assert_eq!(notebook["serializable"], json!([0]));
@@ -1522,23 +1757,48 @@ fn vsix_notebook_controllers_run_cells_through_the_extension() {
     assert_eq!(execute["args"][0], 7);
     let handle = model["cells"][0]["handle"].clone();
     assert_eq!(execute["args"][2], json!([handle]));
-    let notebook_uri = execute["args"][1]["$graphiteUri"].as_str().unwrap().to_owned();
+    let notebook_uri = execute["args"][1]["$graphiteUri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert!(app.active_notebook().unwrap().is_running());
 
     // The execution the extension creates streams outputs and completes.
     let encode = |text: &str| base64::engine::general_purpose::STANDARD.encode(text);
-    notebook_request(&mut app, "MainThreadNotebookKernels", 3, "$createExecution",
-        json!([100, "ext.kernel", notebook_uri, handle]));
-    notebook_request(&mut app, "MainThreadNotebookKernels", 4, "$updateExecution", json!([100, {"value": [
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        3,
+        "$createExecution",
+        json!([100, "ext.kernel", notebook_uri, handle]),
+    );
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        4,
+        "$updateExecution",
+        json!([100, {"value": [
         {"editType": 3, "executionOrder": 5},
         {"editType": 1, "append": false, "outputs": [{"outputId": "o1", "items": [
             {"mime": "application/vnd.code.notebook.stdout", "valueBytes": {"$bytes": encode("hello\n")}}]}]},
-    ], "buffers": []}]));
-    notebook_request(&mut app, "MainThreadNotebookKernels", 5, "$updateExecution", json!([100, [
+    ], "buffers": []}]),
+    );
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        5,
+        "$updateExecution",
+        json!([100, [
         {"editType": 2, "outputId": "o1", "append": true, "items": [
-            {"mime": "application/vnd.code.notebook.stdout", "valueBytes": {"$bytes": encode("world\n")}}]}]]));
-    notebook_request(&mut app, "MainThreadNotebookKernels", 6, "$completeExecution",
-        json!([100, {"value": {"lastRunSuccess": true}}]));
+            {"mime": "application/vnd.code.notebook.stdout", "valueBytes": {"$bytes": encode("world\n")}}]}]]),
+    );
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        6,
+        "$completeExecution",
+        json!([100, {"value": {"lastRunSuccess": true}}]),
+    );
     notebook_finish(&mut app, &execute, json!({"result": null}));
     app.poll_kernels();
     let session = app.active_notebook().unwrap();
@@ -1550,13 +1810,21 @@ fn vsix_notebook_controllers_run_cells_through_the_extension() {
     // A failing handler ends the run with an error output.
     app.run_notebook_cells(RunTarget::Selected).unwrap();
     notebook_drive(&mut app);
-    let execute = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$executeCells").unwrap();
+    let execute = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$executeCells")
+        .unwrap();
     notebook_finish(&mut app, &execute, json!({"error": "Boom"}));
     app.poll_kernels();
     let session = app.active_notebook().unwrap();
     assert!(!session.is_running());
-    assert_eq!(session.cells[0].cell.outputs.last().unwrap()["output_type"], "error");
-    assert_eq!(session.cells[0].cell.outputs.last().unwrap()["evalue"], "Boom");
+    assert_eq!(
+        session.cells[0].cell.outputs.last().unwrap()["output_type"],
+        "error"
+    );
+    assert_eq!(
+        session.cells[0].cell.outputs.last().unwrap()["evalue"],
+        "Boom"
+    );
 
     // Interrupting reaches the extension; removing the controller ends the kernel.
     app.run_notebook_cells(RunTarget::Selected).unwrap();
@@ -1564,9 +1832,17 @@ fn vsix_notebook_controllers_run_cells_through_the_extension() {
     while host.next_sent().is_some() {}
     app.with_notebook(|session| session.interrupt_kernel());
     notebook_drive(&mut app);
-    let cancel = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$cancelCells").expect("cancel");
+    let cancel = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$cancelCells")
+        .expect("cancel");
     assert_eq!(cancel["args"][0], 7);
-    notebook_request(&mut app, "MainThreadNotebookKernels", 7, "$removeKernel", json!([7]));
+    notebook_request(
+        &mut app,
+        "MainThreadNotebookKernels",
+        7,
+        "$removeKernel",
+        json!([7]),
+    );
     assert!(app.vsix_notebook_kernel_specs().is_empty());
 }
 
@@ -1578,39 +1854,74 @@ fn vsix_notebook_serializers_open_and_save_files_in_the_notebook_editor() {
     let (mut app, host, work) = notebook_test_app(&dir);
     let file = work.join("story.sbook");
     std::fs::write(&file, "abc").unwrap();
-    assert_eq!(app.default_notebook_type(&file).as_deref(), Some("sample-book"));
-    assert!(app.default_notebook_type(&work.join("a.ipynb")).is_none(), "ipynb keeps the Jupyter editor");
+    assert_eq!(
+        app.default_notebook_type(&file).as_deref(),
+        Some("sample-book")
+    );
+    assert!(
+        app.default_notebook_type(&work.join("a.ipynb")).is_none(),
+        "ipynb keeps the Jupyter editor"
+    );
     assert!(app.default_notebook_type(&work.join("a.txt")).is_none());
 
     // The provider is not there yet: the open waits for it and the extension is activated.
     app.open_file(file.clone());
     let sent: Vec<Value> = std::iter::from_fn(|| host.next_sent()).collect();
-    assert!(sent.iter().any(|m| m["type"] == "activateByEvent" && m["event"] == "onNotebook:sample-book"));
+    assert!(sent
+        .iter()
+        .any(|m| m["type"] == "activateByEvent" && m["event"] == "onNotebook:sample-book"));
     assert!(sent.iter().all(|m| m["method"] != "$dataToNotebook"));
-    assert!(app.documents.id_for_path(&file).is_none(), "the raw file is not opened as text");
-    notebook_request(&mut app, "MainThreadNotebook", 1, "$registerNotebookSerializer",
-        json!([3, {"id": "test.books", "location": null}, "sample-book", {}, null]));
-    let read = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$dataToNotebook").expect("read call");
+    assert!(
+        app.documents.id_for_path(&file).is_none(),
+        "the raw file is not opened as text"
+    );
+    notebook_request(
+        &mut app,
+        "MainThreadNotebook",
+        1,
+        "$registerNotebookSerializer",
+        json!([3, {"id": "test.books", "location": null}, "sample-book", {}, null]),
+    );
+    let read = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$dataToNotebook")
+        .expect("read call");
     assert_eq!(read["actor"], "ExtHostNotebook");
     assert_eq!(read["args"], json!([3, {"$graphiteBytes": encode(b"abc")}]));
 
     // The serializer's notebook opens in the notebook editor, through a mirror.
-    notebook_finish(&mut app, &read, json!({"result": {"value": {
+    notebook_finish(
+        &mut app,
+        &read,
+        json!({"result": {"value": {
         "metadata": {"language_info": {"name": "python"}},
         "cells": [{"cellKind": 2, "source": "x = 1", "language": "python", "outputs": []},
-                  {"cellKind": 1, "source": "# Story", "language": "markdown", "outputs": []}]}}}));
+                  {"cellKind": 1, "source": "# Story", "language": "markdown", "outputs": []}]}}}),
+    );
     let session = app.active_notebook().expect("the notebook opened");
     assert_eq!(session.cells.len(), 2);
     assert_eq!(session.cells[0].text(), "x = 1");
-    let mirror = app.documents[app.active_document()].buffer.path().unwrap().to_path_buf();
+    let mirror = app.documents[app.active_document()]
+        .buffer
+        .path()
+        .unwrap()
+        .to_path_buf();
     assert!(mirror.starts_with(app.profile_root.join("notebook-mirror")));
     assert_eq!(mirror.file_name().unwrap(), "story.sbook.ipynb");
-    assert_eq!(app.serialized_notebook_origin(&mirror).as_deref(), Some(file.as_path()));
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "abc", "opening does not touch the file");
+    assert_eq!(
+        app.serialized_notebook_origin(&mirror).as_deref(),
+        Some(file.as_path())
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "abc",
+        "opening does not touch the file"
+    );
 
     // Saving the mirror writes the real file through the serializer.
     app.upload_serialized_notebook(&mirror);
-    let write = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$notebookToData").expect("write call");
+    let write = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$notebookToData")
+        .expect("write call");
     assert_eq!(write["serializable"], json!([1]));
     assert_eq!(write["bytes"], true);
     assert_eq!(write["args"][0], 3);
@@ -1618,12 +1929,18 @@ fn vsix_notebook_serializers_open_and_save_files_in_the_notebook_editor() {
     assert_eq!(data["cells"][0]["source"], "x = 1");
     assert_eq!(data["cells"][0]["cellKind"], 2);
     assert_eq!(data["cells"][1]["cellKind"], 1);
-    notebook_finish(&mut app, &write, json!({"result": {"$bytes": encode(b"serialized!")}}));
+    notebook_finish(
+        &mut app,
+        &write,
+        json!({"result": {"$bytes": encode(b"serialized!")}}),
+    );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "serialized!");
 
     // A serializer error is reported and leaves the file alone.
     app.upload_serialized_notebook(&mirror);
-    let write = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$notebookToData").unwrap();
+    let write = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$notebookToData")
+        .unwrap();
     notebook_finish(&mut app, &write, json!({"error": "cannot write"}));
     assert!(app.status.contains("cannot write"));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "serialized!");
@@ -1635,9 +1952,14 @@ fn vsix_notebook_serializers_open_and_save_files_in_the_notebook_editor() {
     let broken = work.join("broken.sbook");
     std::fs::write(&broken, "xyz").unwrap();
     app.open_file(broken.clone());
-    let read = std::iter::from_fn(|| host.next_sent()).find(|m| m["method"] == "$dataToNotebook").unwrap();
+    let read = std::iter::from_fn(|| host.next_sent())
+        .find(|m| m["method"] == "$dataToNotebook")
+        .unwrap();
     notebook_finish(&mut app, &read, json!({"error": "not a book"}));
-    assert!(app.documents.id_for_path(&broken).is_some(), "opened as text instead");
+    assert!(
+        app.documents.id_for_path(&broken).is_some(),
+        "opened as text instead"
+    );
 }
 
 #[test]
@@ -1662,23 +1984,38 @@ fn vsix_decorations_offer_hover_messages_gutter_icons_and_ruler_marks() {
         .unwrap();
         app.plugins.vsix = Some(runtime);
     };
-    call(&mut app, "$registerTextEditorDecorationType", json!([
+    call(
+        &mut app,
+        "$registerTextEditorDecorationType",
+        json!([
         "ext", "deco-1",
         {"gutterIconPath": "/icons/dot.svg", "overviewRulerColor": "#ff0000",
-         "before": {"contentText": "> "}}]));
-    call(&mut app, "$trySetDecorations", json!([uri, "deco-1", [
-        {"range": {"startLineNumber": 1, "startColumn": 7, "endLineNumber": 1, "endColumn": 12},
-         "hoverMessage": [{"value": "about wörld"}]},
-        {"range": {"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 3}},
-    ]]));
+         "before": {"contentText": "> "}}]),
+    );
+    call(
+        &mut app,
+        "$trySetDecorations",
+        json!([uri, "deco-1", [
+            {"range": {"startLineNumber": 1, "startColumn": 7, "endLineNumber": 1, "endColumn": 12},
+             "hoverMessage": [{"value": "about wörld"}]},
+            {"range": {"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 3}},
+        ]]),
+    );
 
     // The cursor inside the first range shows its message (columns count UTF-16 units).
     app.editor_mut().set_cursor_line_col(0, 8);
-    assert_eq!(app.decoration_hover_at_cursor().as_deref(), Some("about wörld"));
+    assert_eq!(
+        app.decoration_hover_at_cursor().as_deref(),
+        Some("about wörld")
+    );
     app.editor_mut().set_cursor_line_col(0, 2);
     assert_eq!(app.decoration_hover_at_cursor(), None, "outside the range");
     app.editor_mut().set_cursor_line_col(1, 0);
-    assert_eq!(app.decoration_hover_at_cursor(), None, "a range without a message");
+    assert_eq!(
+        app.decoration_hover_at_cursor(),
+        None,
+        "a range without a message"
+    );
 
     // The command shows it even when no provider answers, and keeps what a provider answered.
     app.editor_mut().set_cursor_line_col(0, 8);
@@ -1693,12 +2030,20 @@ fn vsix_decorations_offer_hover_messages_gutter_icons_and_ruler_marks() {
     let marks = app.vsix_line_decorations(&uri, 0, true);
     assert_eq!(marks.len(), 1);
     assert_eq!(marks[0].before.as_ref().unwrap().text, "> ");
-    assert_eq!(marks[0].gutter_icon.as_deref(), Some(std::path::Path::new("/icons/dot.svg")));
     assert_eq!(
-        app.vsix_overview_marks(&uri, true).iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        marks[0].gutter_icon.as_deref(),
+        Some(std::path::Path::new("/icons/dot.svg"))
+    );
+    assert_eq!(
+        app.vsix_overview_marks(&uri, true)
+            .iter()
+            .map(|(line, _)| *line)
+            .collect::<Vec<_>>(),
         [0, 1]
     );
-    assert!(app.vsix_overview_marks("file:///elsewhere", true).is_empty());
+    assert!(app
+        .vsix_overview_marks("file:///elsewhere", true)
+        .is_empty());
     // A missing icon file is remembered as missing and does not fail.
     assert!(crate::icon_theme::load_file_image(std::path::Path::new("/icons/dot.svg")).is_none());
 }
@@ -1722,43 +2067,118 @@ fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resourc
         .unwrap();
     };
 
-    call(&mut app, &mut runtime, "$registerSourceControl",
-        json!([1, null, "sample", "Sample SCM", root_uri.as_str(), null, false, "scm://sample/input"]));
-    call(&mut app, &mut runtime, "$registerGroups", json!([1, [[10, "changes", "Changes", {}, false]], [
-        [10, [[0, 0, [
-            [100, "file:///work/a.txt", [null, null], "Modified", false, false, "", {"id": "sample.open", "title": "Open"}],
-            [101, "file:///work/b.txt", [null, null], "", true, true, "", null],
-        ]]]]
-    ]]));
-    call(&mut app, &mut runtime, "$updateSourceControl",
-        json!([1, {"count": 2, "acceptInputCommand": {"id": "sample.commit", "title": "Commit"}}]));
-    call(&mut app, &mut runtime, "$setInputBoxPlaceholder", json!([1, "Say something"]));
+    call(
+        &mut app,
+        &mut runtime,
+        "$registerSourceControl",
+        json!([
+            1,
+            null,
+            "sample",
+            "Sample SCM",
+            root_uri.as_str(),
+            null,
+            false,
+            "scm://sample/input"
+        ]),
+    );
+    call(
+        &mut app,
+        &mut runtime,
+        "$registerGroups",
+        json!([1, [[10, "changes", "Changes", {}, false]], [
+            [10, [[0, 0, [
+                [100, "file:///work/a.txt", [null, null], "Modified", false, false, "", {"id": "sample.open", "title": "Open"}],
+                [101, "file:///work/b.txt", [null, null], "", true, true, "", null],
+            ]]]]
+        ]]),
+    );
+    call(
+        &mut app,
+        &mut runtime,
+        "$updateSourceControl",
+        json!([1, {"count": 2, "acceptInputCommand": {"id": "sample.commit", "title": "Commit"}}]),
+    );
+    call(
+        &mut app,
+        &mut runtime,
+        "$setInputBoxPlaceholder",
+        json!([1, "Say something"]),
+    );
     app.plugins.vsix = Some(runtime);
 
     let rows = app.vsix_scm_rows();
     assert_eq!(rows.len(), 5, "{rows:?}");
     assert_eq!(app.vsix_scm().unwrap().providers()[0].display_count(), 2);
-    assert_eq!(app.vsix_scm().unwrap().providers()[0].placeholder.as_deref(), Some("Say something"));
+    assert_eq!(
+        app.vsix_scm().unwrap().providers()[0]
+            .placeholder
+            .as_deref(),
+        Some("Say something")
+    );
 
     // The panel layout appends the extension rows after the Git ones.
     let layout = crate::app::scm_ui::scm_panel_layout(
-        &crate::scm::Snapshot::default(), 300.0, 900.0, 20.0, 9.0, 0, false, false, false, &rows);
-    let listed = layout.list_rows.iter()
-        .filter(|row| matches!(row.kind, ScmListRowKind::Extension(_))).count();
+        &crate::scm::Snapshot::default(),
+        300.0,
+        900.0,
+        20.0,
+        9.0,
+        0,
+        false,
+        false,
+        false,
+        &rows,
+    );
+    let listed = layout
+        .list_rows
+        .iter()
+        .filter(|row| matches!(row.kind, ScmListRowKind::Extension(_)))
+        .count();
     assert_eq!(listed, 5);
 
     // Clicking the commit box focuses it, typing forwards the value to the extension.
     let row = |action_x: f32| ScmListRow {
-        bounds: ScmRect { x: 0.0, y: 0.0, width: 300.0, height: 20.0 },
-        chevron: ScmRect { x: 0.0, y: 0.0, width: 10.0, height: 20.0 },
-        action: ScmRect { x: action_x, y: 0.0, width: 18.0, height: 20.0 },
+        bounds: ScmRect {
+            x: 0.0,
+            y: 0.0,
+            width: 300.0,
+            height: 20.0,
+        },
+        chevron: ScmRect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 20.0,
+        },
+        action: ScmRect {
+            x: action_x,
+            y: 0.0,
+            width: 18.0,
+            height: 20.0,
+        },
         kind: ScmListRowKind::Extension(rows[1]),
     };
     app.click_extension_scm_row(&row(250.0), rows[1], 20.0, 5.0);
     assert_eq!(app.scm_extension_input, Some(1));
-    assert!(app.handle_extension_scm_input_key(&Key::Character("h".into()), Some("h"), false, false));
-    assert!(app.handle_extension_scm_input_key(&Key::Character("i".into()), Some("i"), false, false));
-    assert!(app.handle_extension_scm_input_key(&Key::Named(NamedKey::Backspace), None, false, false));
+    assert!(app.handle_extension_scm_input_key(
+        &Key::Character("h".into()),
+        Some("h"),
+        false,
+        false
+    ));
+    assert!(app.handle_extension_scm_input_key(
+        &Key::Character("i".into()),
+        Some("i"),
+        false,
+        false
+    ));
+    assert!(app.handle_extension_scm_input_key(
+        &Key::Named(NamedKey::Backspace),
+        None,
+        false,
+        false
+    ));
     assert_eq!(app.vsix_scm().unwrap().providers()[0].input, "h");
     let change = std::iter::from_fn(|| host.next_sent())
         .filter(|message| message["method"] == "$onInputBoxValueChange")
@@ -1779,14 +2199,29 @@ fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resourc
     assert_eq!(app.vsix_scm_rows().len(), 3);
     assert!(app.handle_extension_scm_input_key(&Key::Named(NamedKey::Escape), None, false, false));
     assert_eq!(app.scm_extension_input, None);
-    assert!(!app.handle_extension_scm_input_key(&Key::Character("x".into()), Some("x"), false, false));
+    assert!(!app.handle_extension_scm_input_key(
+        &Key::Character("x".into()),
+        Some("x"),
+        false,
+        false
+    ));
 
     // Accepting without an accept command reports it; unregistering removes the provider.
-    app.plugins.vsix.as_mut().unwrap().scm.clear_accept_for_test(1);
+    app.plugins
+        .vsix
+        .as_mut()
+        .unwrap()
+        .scm
+        .clear_accept_for_test(1);
     app.accept_vsix_scm_input(1);
     assert_eq!(app.status, app.t("scm.sidebar.extension_no_accept"));
     let mut runtime = app.plugins.vsix.take().unwrap();
-    call(&mut app, &mut runtime, "$unregisterSourceControl", json!([1]));
+    call(
+        &mut app,
+        &mut runtime,
+        "$unregisterSourceControl",
+        json!([1]),
+    );
     app.plugins.vsix = Some(runtime);
     assert!(app.vsix_scm_rows().is_empty());
 }
@@ -1839,25 +2274,63 @@ fn vsix_webview_views_resolve_update_their_header_and_are_disposed_with_the_prov
     let _ = host.next_sent();
     assert_eq!(runtime.webviews.panels[&handle].html, "<p>hi</p>");
 
-    call(&mut app, &mut runtime, "$setWebviewViewTitle", json!([handle, "Open notes"])).unwrap();
-    call(&mut app, &mut runtime, "$setWebviewViewDescription", json!([handle, "2 pending"])).unwrap();
-    call(&mut app, &mut runtime, "$setWebviewViewBadge", json!([handle, { "value": 2, "tooltip": "two" }])).unwrap();
+    call(
+        &mut app,
+        &mut runtime,
+        "$setWebviewViewTitle",
+        json!([handle, "Open notes"]),
+    )
+    .unwrap();
+    call(
+        &mut app,
+        &mut runtime,
+        "$setWebviewViewDescription",
+        json!([handle, "2 pending"]),
+    )
+    .unwrap();
+    call(
+        &mut app,
+        &mut runtime,
+        "$setWebviewViewBadge",
+        json!([handle, { "value": 2, "tooltip": "two" }]),
+    )
+    .unwrap();
     let state = runtime.webview_views.view("sample.notes").unwrap();
     assert_eq!(state.title.as_deref(), Some("Open notes"));
     assert_eq!(state.description.as_deref(), Some("2 pending"));
     assert_eq!(state.badge, Some((2, Some("two".into()))));
-    call(&mut app, &mut runtime, "$setWebviewViewBadge", json!([handle, null])).unwrap();
-    assert!(runtime.webview_views.view("sample.notes").unwrap().badge.is_none());
+    call(
+        &mut app,
+        &mut runtime,
+        "$setWebviewViewBadge",
+        json!([handle, null]),
+    )
+    .unwrap();
+    assert!(runtime
+        .webview_views
+        .view("sample.notes")
+        .unwrap()
+        .badge
+        .is_none());
 
     call(&mut app, &mut runtime, "$show", json!([handle, false])).unwrap();
-    assert_eq!(runtime.webview_views.pending_show.as_deref(), Some("sample.notes"));
+    assert_eq!(
+        runtime.webview_views.pending_show.as_deref(),
+        Some("sample.notes")
+    );
 
     // A failed resolution is reported and not retried.
     app.finish_vsix_webview_view(&mut runtime, &json!({"id": resolve["id"], "error": "boom"}));
     assert_eq!(app.status, "boom");
     assert!(runtime.webview_views.view("sample.notes").unwrap().failed);
 
-    call(&mut app, &mut runtime, "$unregisterWebviewViewProvider", json!(["sample.notes"])).unwrap();
+    call(
+        &mut app,
+        &mut runtime,
+        "$unregisterWebviewViewProvider",
+        json!(["sample.notes"]),
+    )
+    .unwrap();
     // Earlier replies are still queued; the dispose call is the one naming its method.
     let dispose = std::iter::from_fn(|| host.next_sent())
         .find(|message| message["method"] == "$disposeWebviewView")

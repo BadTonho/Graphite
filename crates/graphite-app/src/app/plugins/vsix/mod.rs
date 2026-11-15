@@ -41,8 +41,8 @@ mod testing;
 mod tests;
 mod text_search;
 mod tree_views;
-mod webview_views;
 pub(crate) mod virtual_fs;
+mod webview_views;
 pub(crate) use webview_views::SidebarWebview;
 mod webviews;
 mod workbench;
@@ -448,7 +448,10 @@ impl App {
                         self.finish_vsix_tree(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(debug::is_config_reply) {
                         self.finish_vsix_debug_configurations(runtime, &event);
-                    } else if event["id"].as_u64().is_some_and(notebooks::is_notebook_reply) {
+                    } else if event["id"]
+                        .as_u64()
+                        .is_some_and(notebooks::is_notebook_reply)
+                    {
                         self.finish_vsix_notebook(runtime, &event);
                     } else if event["id"].as_u64().is_some_and(editors::is_editor_reply) {
                         self.finish_vsix_custom_editor(runtime, &event);

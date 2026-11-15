@@ -3,16 +3,13 @@ pub(in crate::app) fn document_uri(
     id: DocumentId,
     document: &Document,
 ) -> ServiceResult<DocumentUri> {
-    document
-        .buffer
-        .path()
-        .map_or_else(
-            || Ok(DocumentUri::untitled(id)),
-            |path| {
-                crate::app::plugins::vsix::virtual_fs::uri_for_path(path)
-                    .map_or_else(|| DocumentUri::from_path(path), Ok)
-            },
-        )
+    document.buffer.path().map_or_else(
+        || Ok(DocumentUri::untitled(id)),
+        |path| {
+            crate::app::plugins::vsix::virtual_fs::uri_for_path(path)
+                .map_or_else(|| DocumentUri::from_path(path), Ok)
+        },
+    )
 }
 pub(in crate::app) fn snapshot_document(
     id: DocumentId,

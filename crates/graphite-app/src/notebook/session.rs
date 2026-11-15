@@ -1087,7 +1087,11 @@ fn format_cell_text(text: &str, kind: CellKind, tab_size: usize) -> String {
             if kind == CellKind::Code {
                 let leading_tabs = trimmed.bytes().take_while(|&b| b == b'\t').count();
                 if leading_tabs > 0 {
-                    return format!("{}{}", indent.repeat(leading_tabs), &trimmed[leading_tabs..]);
+                    return format!(
+                        "{}{}",
+                        indent.repeat(leading_tabs),
+                        &trimmed[leading_tabs..]
+                    );
                 }
             }
             trimmed.to_owned()

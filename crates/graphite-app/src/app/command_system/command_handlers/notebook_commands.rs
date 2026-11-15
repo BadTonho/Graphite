@@ -375,7 +375,12 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             |_, _| Ok(()),
         ),
         ("notebook.formatCell", "Format Cell", NOTEBOOK, format_cell),
-        ("notebook.format", "Format Notebook", NOTEBOOK, format_notebook),
+        (
+            "notebook.format",
+            "Format Notebook",
+            NOTEBOOK,
+            format_notebook,
+        ),
         (
             "notebook.cell.copyOutput",
             "Copy Cell Output",

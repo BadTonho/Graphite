@@ -51,7 +51,10 @@ impl App {
 
     /// Starts `spec` for the active notebook, replacing the kernel it had.
     fn start_kernel(&mut self, spec: KernelSpec) -> Result<(), String> {
-        if spec.name.starts_with(crate::app::plugins::vsix::SPEC_PREFIX) {
+        if spec
+            .name
+            .starts_with(crate::app::plugins::vsix::SPEC_PREFIX)
+        {
             return self.start_extension_kernel(spec);
         }
         let document = self.active_document();

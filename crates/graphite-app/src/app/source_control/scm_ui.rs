@@ -131,7 +131,11 @@ pub(crate) fn scm_panel_layout(
         .count();
     // Without a repository there is no Git list; extension providers are still listed.
     if snapshot.error.is_some() {
-        entries.extend(extension_rows.iter().map(|row| ScmListRowKind::Extension(*row)));
+        entries.extend(
+            extension_rows
+                .iter()
+                .map(|row| ScmListRowKind::Extension(*row)),
+        );
     } else {
         if staged_count > 0 {
             entries.push(ScmListRowKind::Section {
@@ -171,7 +175,11 @@ pub(crate) fn scm_panel_layout(
                     }),
             );
         }
-        entries.extend(extension_rows.iter().map(|row| ScmListRowKind::Extension(*row)));
+        entries.extend(
+            extension_rows
+                .iter()
+                .map(|row| ScmListRowKind::Extension(*row)),
+        );
     }
     let list_top = commit_y + row_height * 2.50;
     let available = ((height - list_top - row_height * 1.2) / row_height).max(0.0) as usize;
@@ -357,14 +365,39 @@ mod scm_sidebar_layout_tests {
             ..Default::default()
         };
         let extension = [ExtensionRow::Provider(1), ExtensionRow::Input(1)];
-        let layout = scm_panel_layout(&snapshot, SIDEBAR_WIDTH, 700.0, 20.0, 9.0, 0, false, false, false, &extension);
+        let layout = scm_panel_layout(
+            &snapshot,
+            SIDEBAR_WIDTH,
+            700.0,
+            20.0,
+            9.0,
+            0,
+            false,
+            false,
+            false,
+            &extension,
+        );
         assert_eq!(layout.list_rows.len(), 2);
         assert!(layout
             .list_rows
             .iter()
             .all(|row| matches!(row.kind, ScmListRowKind::Extension(_))));
-        let with_git = scm_panel_layout(&crate::scm::Snapshot::default(), SIDEBAR_WIDTH, 700.0, 20.0, 9.0, 0, false, false, false, &extension);
-        assert!(matches!(with_git.list_rows[0].kind, ScmListRowKind::Section { .. }));
+        let with_git = scm_panel_layout(
+            &crate::scm::Snapshot::default(),
+            SIDEBAR_WIDTH,
+            700.0,
+            20.0,
+            9.0,
+            0,
+            false,
+            false,
+            false,
+            &extension,
+        );
+        assert!(matches!(
+            with_git.list_rows[0].kind,
+            ScmListRowKind::Section { .. }
+        ));
         assert!(matches!(
             with_git.list_rows.last().unwrap().kind,
             ScmListRowKind::Extension(ExtensionRow::Input(1))

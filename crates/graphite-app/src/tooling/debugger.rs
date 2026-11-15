@@ -1352,7 +1352,10 @@ impl DapSession {
             )));
         }
         #[cfg(windows)]
-        let stream = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+        let stream = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)?;
         #[cfg(unix)]
         let stream = std::os::unix::net::UnixStream::connect(path)?;
         let reader = stream.try_clone()?;
@@ -1532,7 +1535,10 @@ impl Drop for DapSession {
 fn is_local_pipe(path: &Path) -> bool {
     #[cfg(windows)]
     {
-        let text = path.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+        let text = path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .replace('/', "\\");
         text.starts_with("\\\\.\\pipe\\") && text.len() > "\\\\.\\pipe\\".len()
     }
     #[cfg(not(windows))]
@@ -1551,15 +1557,23 @@ struct InlineWriter {
 impl Write for InlineWriter {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend_from_slice(bytes);
-        while let Some(header_end) = self.buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+        while let Some(header_end) = self
+            .buffer
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+        {
             let header = String::from_utf8_lossy(&self.buffer[..header_end]).into_owned();
             let length = header
                 .lines()
                 .find_map(|line| {
                     let (name, value) = line.split_once(':')?;
-                    name.trim().eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok())?
+                    name.trim()
+                        .eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())?
                 })
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "a message has no length"))?;
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "a message has no length")
+                })?;
             let end = header_end + 4 + length;
             if self.buffer.len() < end {
                 break;
@@ -1567,9 +1581,9 @@ impl Write for InlineWriter {
             let message: Value = serde_json::from_slice(&self.buffer[header_end + 4..end])
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
             self.buffer.drain(..end);
-            self.sink
-                .send(message)
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the adapter is gone"))?;
+            self.sink.send(message).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the adapter is gone")
+            })?;
         }
         Ok(bytes.len())
     }
@@ -1605,7 +1619,9 @@ mod transport_tests {
         }
         assert_eq!(messages.try_iter().collect::<Vec<_>>(), [first, second]);
         // A send through the session is framed and unframed again.
-        let seq = session.send_request("threads", serde_json::json!({})).unwrap();
+        let seq = session
+            .send_request("threads", serde_json::json!({}))
+            .unwrap();
         let sent = messages.try_recv().unwrap();
         assert_eq!(sent["seq"], seq);
         assert_eq!(sent["command"], "threads");
@@ -1615,16 +1631,31 @@ mod transport_tests {
     fn an_inline_adapter_reports_a_closed_session_and_garbage() {
         let (sender, messages) = mpsc::channel();
         let (mut session, events) = DapSession::inline(sender);
-        events.send(AdapterEvent::Message(serde_json::json!({"type": "event"}))).unwrap();
-        assert!(matches!(session.events.try_recv(), Ok(AdapterEvent::Message(_))));
+        events
+            .send(AdapterEvent::Message(serde_json::json!({"type": "event"})))
+            .unwrap();
+        assert!(matches!(
+            session.events.try_recv(),
+            Ok(AdapterEvent::Message(_))
+        ));
         // A message the extension host side dropped is a broken pipe for the writer.
         drop(messages);
-        let error = session.send_request("next", serde_json::json!({})).unwrap_err();
-        assert!(matches!(error, DebugError::Read(ref io) if io.kind() == std::io::ErrorKind::BrokenPipe), "{error}");
+        let error = session
+            .send_request("next", serde_json::json!({}))
+            .unwrap_err();
+        assert!(
+            matches!(error, DebugError::Read(ref io) if io.kind() == std::io::ErrorKind::BrokenPipe),
+            "{error}"
+        );
         // A header without a length is invalid.
         let (sender, _messages) = mpsc::channel();
         let (mut session, _events) = DapSession::inline(sender);
-        let error = session.stdin.as_mut().unwrap().write_all(b"X: 1\r\n\r\n").unwrap_err();
+        let error = session
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"X: 1\r\n\r\n")
+            .unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 
@@ -1665,7 +1696,9 @@ mod transport_tests {
             let _ = stream.read_to_end(&mut rest);
         });
         let mut session = DapSession::connect_pipe(&path).unwrap();
-        session.send_request("initialize", serde_json::json!({})).unwrap();
+        session
+            .send_request("initialize", serde_json::json!({}))
+            .unwrap();
         let reply = loop {
             match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
                 AdapterEvent::Message(message) => break message,

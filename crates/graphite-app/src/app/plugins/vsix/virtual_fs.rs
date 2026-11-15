@@ -39,7 +39,10 @@ pub(crate) fn set_mirror_root(root: PathBuf) {
     let _ = std::fs::create_dir_all(&root);
     let resolved = root.canonicalize().unwrap_or_else(|_| root.clone());
     if let Ok(mut current) = MIRROR_ROOT.write() {
-        *current = Some(MirrorRoot { raw: root, resolved });
+        *current = Some(MirrorRoot {
+            raw: root,
+            resolved,
+        });
     }
 }
 
@@ -53,7 +56,13 @@ fn mirror_root() -> Option<PathBuf> {
 fn encode_segment(segment: &str) -> String {
     let mut out = String::with_capacity(segment.len());
     for ch in segment.chars() {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-' | ' ' | '~' | '@' | '+' | ',' | '=' | '(' | ')') || !ch.is_ascii() {
+        if ch.is_ascii_alphanumeric()
+            || matches!(
+                ch,
+                '.' | '_' | '-' | ' ' | '~' | '@' | '+' | ',' | '=' | '(' | ')'
+            )
+            || !ch.is_ascii()
+        {
             out.push(ch);
         } else {
             let mut buffer = [0u8; 4];
@@ -208,10 +217,20 @@ struct Provider {
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
     /// Read a file, mirror it and open it; `reply` is the extension request waiting for the result.
-    Open { uri: String, reply: Option<u64> },
-    List { uri: String },
-    Save { uri: String },
-    Other { what: &'static str, refresh: Option<String> },
+    Open {
+        uri: String,
+        reply: Option<u64>,
+    },
+    List {
+        uri: String,
+    },
+    Save {
+        uri: String,
+    },
+    Other {
+        what: &'static str,
+        refresh: Option<String>,
+    },
 }
 
 #[derive(Default)]
@@ -290,7 +309,9 @@ impl VirtualFs {
             dir: true,
             expanded,
         });
-        let Some(entries) = state.filter(|_| expanded).and_then(|state| state.entries.as_ref())
+        let Some(entries) = state
+            .filter(|_| expanded)
+            .and_then(|state| state.entries.as_ref())
         else {
             return;
         };
@@ -370,7 +391,9 @@ impl App {
                     .ok_or("Invalid file system provider scheme")?
                     .to_ascii_lowercase();
                 if !graphite_core_api::register_virtual_scheme(&scheme) {
-                    return Err(format!("The scheme {scheme} cannot have a file system provider"));
+                    return Err(format!(
+                        "The scheme {scheme} cannot have a file system provider"
+                    ));
                 }
                 let capabilities = args.get(2).and_then(Value::as_u64).unwrap_or(0);
                 set_mirror_root(self.profile_root.join("virtual-fs"));
@@ -386,7 +409,9 @@ impl App {
             }
             "$unregisterProvider" => {
                 let handle = args.first().and_then(Value::as_u64);
-                if let Some(provider) = handle.and_then(|handle| runtime.vfs.providers.remove(&handle)) {
+                if let Some(provider) =
+                    handle.and_then(|handle| runtime.vfs.providers.remove(&handle))
+                {
                     let still_served = runtime
                         .vfs
                         .providers
@@ -419,11 +444,15 @@ impl App {
                 // Extensions reach their own providers inside the extension host. Anything that
                 // arrives here targets a scheme Graphite does not serve.
                 self.record_unsupported_vsix_call(runtime, "MainThreadFileSystem", method);
-                Err(format!("Graphite does not serve this scheme through MainThreadFileSystem.{method}"))
+                Err(format!(
+                    "Graphite does not serve this scheme through MainThreadFileSystem.{method}"
+                ))
             }
             _ => {
                 self.record_unsupported_vsix_call(runtime, "MainThreadFileSystem", method);
-                Err(format!("Graphite does not support MainThreadFileSystem.{method}"))
+                Err(format!(
+                    "Graphite does not support MainThreadFileSystem.{method}"
+                ))
             }
         }
     }
@@ -446,7 +475,10 @@ impl App {
         let id = runtime.vfs.next_id();
         let mut args = vec![json!(handle), uri_argument(uri)];
         args.extend(extra);
-        runtime.vfs.pending.insert(id, (op, Instant::now() + REQUEST_TIMEOUT));
+        runtime
+            .vfs
+            .pending
+            .insert(id, (op, Instant::now() + REQUEST_TIMEOUT));
         let sent = runtime.session.send(json!({
             "type": "call",
             "id": id,
@@ -474,8 +506,21 @@ impl App {
         }));
     }
 
-    pub(super) fn request_virtual_listing(&mut self, runtime: &mut Runtime, uri: &str) -> Result<u64> {
-        self.virtual_call(runtime, uri, "$readdir", vec![], false, Op::List { uri: uri.to_owned() })
+    pub(super) fn request_virtual_listing(
+        &mut self,
+        runtime: &mut Runtime,
+        uri: &str,
+    ) -> Result<u64> {
+        self.virtual_call(
+            runtime,
+            uri,
+            "$readdir",
+            vec![],
+            false,
+            Op::List {
+                uri: uri.to_owned(),
+            },
+        )
     }
 
     /// Reads a virtual file, mirrors it and opens it. `reply` is answered with the URI once open.
@@ -491,7 +536,10 @@ impl App {
             "$readFile",
             vec![],
             true,
-            Op::Open { uri: uri.to_owned(), reply },
+            Op::Open {
+                uri: uri.to_owned(),
+                reply,
+            },
         )
     }
 
@@ -507,7 +555,8 @@ impl App {
     ) -> Result<bool> {
         if !matches!(
             (actor, method),
-            ("MainThreadDocuments", "$tryOpenDocument") | ("MainThreadTextEditors", "$tryShowTextDocument")
+            ("MainThreadDocuments", "$tryOpenDocument")
+                | ("MainThreadTextEditors", "$tryShowTextDocument")
         ) {
             return Ok(false);
         }
@@ -555,7 +604,11 @@ impl App {
 
     /// Deletes a virtual resource, then refreshes its folder.
     #[allow(dead_code)]
-    pub(crate) fn request_virtual_delete(&mut self, runtime: &mut Runtime, uri: &str) -> Result<u64> {
+    pub(crate) fn request_virtual_delete(
+        &mut self,
+        runtime: &mut Runtime,
+        uri: &str,
+    ) -> Result<u64> {
         let parent = parent_uri(uri);
         self.virtual_call(
             runtime,
@@ -563,7 +616,10 @@ impl App {
             "$delete",
             vec![json!({"recursive": true, "useTrash": false, "atomic": false})],
             false,
-            Op::Other { what: "delete", refresh: parent },
+            Op::Other {
+                what: "delete",
+                refresh: parent,
+            },
         )
     }
 
@@ -582,14 +638,27 @@ impl App {
             "$rename",
             vec![uri_argument(target), json!({"overwrite": false})],
             false,
-            Op::Other { what: "rename", refresh: parent },
+            Op::Other {
+                what: "rename",
+                refresh: parent,
+            },
         )
     }
 
     /// Reads the type, size and times of a virtual resource.
     #[allow(dead_code)]
     pub(crate) fn request_virtual_stat(&mut self, runtime: &mut Runtime, uri: &str) -> Result<u64> {
-        self.virtual_call(runtime, uri, "$stat", vec![], false, Op::Other { what: "stat", refresh: None })
+        self.virtual_call(
+            runtime,
+            uri,
+            "$stat",
+            vec![],
+            false,
+            Op::Other {
+                what: "stat",
+                refresh: None,
+            },
+        )
     }
 
     pub(super) fn finish_vsix_virtual_fs(&mut self, runtime: &mut Runtime, event: &Value) {
@@ -701,7 +770,11 @@ fn parent_uri(uri: &str) -> Option<String> {
     let (scheme, authority, path) = uri_parts(uri)?;
     let trimmed = path.trim_end_matches('/');
     let parent = trimmed.rsplit_once('/').map(|(parent, _)| parent)?;
-    Some(build_uri(&scheme, &authority, if parent.is_empty() { "/" } else { parent }))
+    Some(build_uri(
+        &scheme,
+        &authority,
+        if parent.is_empty() { "/" } else { parent },
+    ))
 }
 
 #[cfg(test)]
@@ -753,13 +826,28 @@ mod tests {
 
     #[test]
     fn listings_parse_types_and_reject_bad_names() {
-        let entries = parse_listing(&json!([["a.txt", 1], ["src", 2], ["link", 66], ["bad/name", 1], ["", 1]]));
+        let entries = parse_listing(&json!([
+            ["a.txt", 1],
+            ["src", 2],
+            ["link", 66],
+            ["bad/name", 1],
+            ["", 1]
+        ]));
         assert_eq!(
             entries,
             [
-                VirtualEntry { name: "a.txt".into(), dir: false },
-                VirtualEntry { name: "src".into(), dir: true },
-                VirtualEntry { name: "link".into(), dir: true },
+                VirtualEntry {
+                    name: "a.txt".into(),
+                    dir: false
+                },
+                VirtualEntry {
+                    name: "src".into(),
+                    dir: true
+                },
+                VirtualEntry {
+                    name: "link".into(),
+                    dir: true
+                },
             ]
         );
     }
@@ -767,7 +855,13 @@ mod tests {
     #[test]
     fn rows_list_roots_then_expanded_folders_directories_first() {
         let mut fs = VirtualFs::default();
-        fs.providers.insert(1, Provider { scheme: "memfs".into(), readonly: false });
+        fs.providers.insert(
+            1,
+            Provider {
+                scheme: "memfs".into(),
+                readonly: false,
+            },
+        );
         assert_eq!(fs.rows().len(), 1);
         assert!(!fs.rows()[0].expanded);
         fs.dirs.insert(
@@ -775,9 +869,18 @@ mod tests {
             VirtualDirectory {
                 expanded: true,
                 entries: Some(vec![
-                    VirtualEntry { name: "b.txt".into(), dir: false },
-                    VirtualEntry { name: "Zed".into(), dir: true },
-                    VirtualEntry { name: "a.txt".into(), dir: false },
+                    VirtualEntry {
+                        name: "b.txt".into(),
+                        dir: false,
+                    },
+                    VirtualEntry {
+                        name: "Zed".into(),
+                        dir: true,
+                    },
+                    VirtualEntry {
+                        name: "a.txt".into(),
+                        dir: false,
+                    },
                 ]),
                 error: None,
             },
@@ -786,11 +889,18 @@ mod tests {
             "memfs:/Zed".into(),
             VirtualDirectory {
                 expanded: true,
-                entries: Some(vec![VirtualEntry { name: "in.rs".into(), dir: false }]),
+                entries: Some(vec![VirtualEntry {
+                    name: "in.rs".into(),
+                    dir: false,
+                }]),
                 error: None,
             },
         );
-        let rows: Vec<(String, usize)> = fs.rows().into_iter().map(|row| (row.uri, row.depth)).collect();
+        let rows: Vec<(String, usize)> = fs
+            .rows()
+            .into_iter()
+            .map(|row| (row.uri, row.depth))
+            .collect();
         assert_eq!(
             rows,
             [
@@ -816,7 +926,15 @@ mod tests {
         let mut fs = VirtualFs::default();
         let id = fs.next_id();
         assert!(is_fs_reply(id));
-        fs.pending.insert(id, (Op::List { uri: "memfs:/".into() }, Instant::now()));
+        fs.pending.insert(
+            id,
+            (
+                Op::List {
+                    uri: "memfs:/".into(),
+                },
+                Instant::now(),
+            ),
+        );
         assert!(fs.busy());
         fs.expire(Instant::now() + Duration::from_secs(1));
         assert!(!fs.busy());

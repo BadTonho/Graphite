@@ -8,7 +8,10 @@ pub(super) struct Prompt {
 
 pub(super) enum Kind {
     Input,
-    Pick { instance: u64, many: bool },
+    Pick {
+        instance: u64,
+        many: bool,
+    },
     Message,
     /// The user decides whether an extension may use an account (see `auth.rs`).
     Consent,
@@ -101,7 +104,10 @@ impl App {
             source: "VSIX".into(),
             enabled: true,
         };
-        let items = vec![choice("1", "auth.consent.allow"), choice("2", "auth.consent.deny")];
+        let items = vec![
+            choice("1", "auth.consent.allow"),
+            choice("2", "auth.consent.deny"),
+        ];
         self.open_vsix_internal_prompt(runtime, Kind::Consent, title, items, String::new());
     }
 

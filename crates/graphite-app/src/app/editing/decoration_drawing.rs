@@ -82,7 +82,17 @@ impl App {
         let line_chars = text.trim_end_matches(['\r', '\n']).chars().count();
         // Unwrapped lines show their lenses in a row above, so the end of the line keeps its own.
         let lens_above = !self.word_wrap;
-        self.draw_marks(r, layer, uri, line, text, tab_size, geometry, 0..line_chars, lens_above);
+        self.draw_marks(
+            r,
+            layer,
+            uri,
+            line,
+            text,
+            tab_size,
+            geometry,
+            0..line_chars,
+            lens_above,
+        );
     }
 
     /// Draws one layer of the decorations on the characters `segment` of a line: all of it, or
@@ -99,7 +109,9 @@ impl App {
         geometry: (f32, f32, f32, f32, f32),
         segment: std::ops::Range<usize>,
     ) {
-        self.draw_marks(r, layer, uri, line, text, tab_size, geometry, segment, false);
+        self.draw_marks(
+            r, layer, uri, line, text, tab_size, geometry, segment, false,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -122,7 +134,15 @@ impl App {
             if skip_lens && mark.lens {
                 continue;
             }
-            let span = span_in(&mark, text, tab_size, text_x, cw, area_right, segment.clone());
+            let span = span_in(
+                &mark,
+                text,
+                tab_size,
+                text_x,
+                cw,
+                area_right,
+                segment.clone(),
+            );
             match layer {
                 DecorationLayer::Under => {
                     if let (Some(color), Some((left, right))) = (mark.look.background, span) {
@@ -142,12 +162,17 @@ impl App {
                     }
                     if let Some(before) = &mark.before {
                         // Drawn over the text at the start of the range, like an inlay hint.
-                        let start = mark
-                            .start
-                            .map_or(0, |column| utf16_column_to_chars(text, column).min(line_chars));
-                        if segment.contains(&start) || (start == line_chars && segment.end == line_chars) {
-                            let prefix: String =
-                                text.chars().skip(segment.start).take(start - segment.start).collect();
+                        let start = mark.start.map_or(0, |column| {
+                            utf16_column_to_chars(text, column).min(line_chars)
+                        });
+                        if segment.contains(&start)
+                            || (start == line_chars && segment.end == line_chars)
+                        {
+                            let prefix: String = text
+                                .chars()
+                                .skip(segment.start)
+                                .take(start - segment.start)
+                                .collect();
                             let shown = display_line(&prefix, tab_size).chars().count();
                             let color = before
                                 .color
@@ -173,7 +198,15 @@ impl App {
     }
 
     /// Draws the gutter icons of the decorations on a line: small images at the gutter's left.
-    pub(crate) fn draw_gutter_icons(&self, r: &mut Renderer, uri: &str, line: usize, x: f32, y: f32, lh: f32) {
+    pub(crate) fn draw_gutter_icons(
+        &self,
+        r: &mut Renderer,
+        uri: &str,
+        line: usize,
+        x: f32,
+        y: f32,
+        lh: f32,
+    ) {
         let dark = crate::app::theme::DARK_THEME.load(Ordering::Relaxed);
         for mark in self.vsix_line_decorations(uri, line, dark) {
             let Some(path) = &mark.gutter_icon else {
@@ -212,13 +245,7 @@ impl App {
             self.debug.breakpoints_disabled,
         ) {
             let size = (lh * 0.45).clamp(6.0, 9.0);
-            r.draw_rect(
-                x + 3.0,
-                y + (lh - size) * 0.5,
-                size,
-                size,
-                rgb(color),
-            );
+            r.draw_rect(x + 3.0, y + (lh - size) * 0.5, size, size, rgb(color));
         }
         if matches!(self.debug.state, crate::debugger::DebugState::Paused { .. }) {
             let active_frame = self.debug.frames.get(self.debug.selected_frame);
@@ -230,19 +257,21 @@ impl App {
         }
         if let Some(color) = test_gutter_color(&self.test_explorer, path, line) {
             let size = (lh * 0.42).clamp(5.0, 8.0);
-            r.draw_rect(
-                x + 11.0,
-                y + (lh - size) * 0.5,
-                size,
-                size,
-                rgb(color),
-            );
+            r.draw_rect(x + 11.0, y + (lh - size) * 0.5, size, size, rgb(color));
         }
     }
 
     /// Draws the overview ruler: a strip at the right edge of the editor with a mark for each
     /// decoration that asks for one, placed by its line within the whole document.
-    pub(crate) fn draw_overview_ruler(&self, r: &mut Renderer, uri: &str, total_lines: usize, right: f32, top: f32, height: f32) {
+    pub(crate) fn draw_overview_ruler(
+        &self,
+        r: &mut Renderer,
+        uri: &str,
+        total_lines: usize,
+        right: f32,
+        top: f32,
+        height: f32,
+    ) {
         let dark = crate::app::theme::DARK_THEME.load(Ordering::Relaxed);
         let marks = self.vsix_overview_marks(uri, dark);
         if marks.is_empty() || total_lines == 0 || height <= 0.0 {
@@ -251,7 +280,13 @@ impl App {
         let mark_height = (height / total_lines as f32).clamp(2.0, 6.0);
         for (line, color) in marks {
             let y = top + (line.min(total_lines - 1) as f32 / total_lines as f32) * height;
-            r.draw_rect(right - 6.0, y.min(top + height - mark_height), 6.0, mark_height, color);
+            r.draw_rect(
+                right - 6.0,
+                y.min(top + height - mark_height),
+                6.0,
+                mark_height,
+                color,
+            );
         }
     }
 
@@ -274,7 +309,9 @@ pub(crate) fn breakpoint_gutter_color(
     all_disabled: bool,
 ) -> Option<u32> {
     let target_line = line as u64 + 1;
-    let point = points?.iter().find(|p| p["line"].as_u64() == Some(target_line))?;
+    let point = points?
+        .iter()
+        .find(|p| p["line"].as_u64() == Some(target_line))?;
     let enabled = point["enabled"].as_bool().unwrap_or(true) && !all_disabled;
     if !enabled {
         return Some(0x6b7280);
@@ -283,7 +320,9 @@ pub(crate) fn breakpoint_gutter_color(
         return Some(0xa855f7);
     }
     if point["condition"].as_str().is_some_and(|s| !s.is_empty())
-        || point["hitCondition"].as_str().is_some_and(|s| !s.is_empty())
+        || point["hitCondition"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
     {
         return Some(0xd97706);
     }
@@ -416,15 +455,32 @@ mod tests {
             serde_json::json!({ "line": 6, "logMessage": "hit" }),
             serde_json::json!({ "line": 8, "enabled": false }),
         ];
-        assert_eq!(breakpoint_gutter_color(Some(&points), 1, false), Some(0xe51400));
-        assert_eq!(breakpoint_gutter_color(Some(&points), 3, false), Some(0xd97706));
-        assert_eq!(breakpoint_gutter_color(Some(&points), 5, false), Some(0xa855f7));
-        assert_eq!(breakpoint_gutter_color(Some(&points), 7, false), Some(0x6b7280));
-        assert_eq!(breakpoint_gutter_color(Some(&points), 1, true), Some(0x6b7280));
+        assert_eq!(
+            breakpoint_gutter_color(Some(&points), 1, false),
+            Some(0xe51400)
+        );
+        assert_eq!(
+            breakpoint_gutter_color(Some(&points), 3, false),
+            Some(0xd97706)
+        );
+        assert_eq!(
+            breakpoint_gutter_color(Some(&points), 5, false),
+            Some(0xa855f7)
+        );
+        assert_eq!(
+            breakpoint_gutter_color(Some(&points), 7, false),
+            Some(0x6b7280)
+        );
+        assert_eq!(
+            breakpoint_gutter_color(Some(&points), 1, true),
+            Some(0x6b7280)
+        );
         assert_eq!(breakpoint_gutter_color(Some(&points), 0, false), None);
 
         let mut explorer = crate::test_explorer::TestExplorer::default();
-        explorer.register_controller("c".into(), "Tests".into()).unwrap();
+        explorer
+            .register_controller("c".into(), "Tests".into())
+            .unwrap();
         let file = std::path::PathBuf::from("src/lib.rs");
         explorer
             .replace_roots(

@@ -550,7 +550,10 @@ mod tests {
         let uri = uri(&dir);
         assert_eq!(app.code_lens_text(&uri, 1).as_deref(), Some("run"));
         assert_eq!(app.code_lens_text(&uri, 2), None);
-        assert!(app.vsix_line_decorations(&uri, 1, true)[0].lens, "marked as a lens");
+        assert!(
+            app.vsix_line_decorations(&uri, 1, true)[0].lens,
+            "marked as a lens"
+        );
 
         // Their rows: the lens row goes above its line and the rest move down.
         let lines: Vec<usize> = (0..4).collect();
@@ -585,7 +588,11 @@ mod tests {
         app.word_wrap = true;
         assert_eq!(app.body_rows_for_active(&lines, 10).len(), 4);
         assert_eq!(app.lens_rows_in_view(4), 0);
-        assert_eq!(app.code_lens_text(&uri, 1).as_deref(), Some("run"), "still known");
+        assert_eq!(
+            app.code_lens_text(&uri, 1).as_deref(),
+            Some("run"),
+            "still known"
+        );
         assert_eq!(app.editor_line_at_row(2), 2);
     }
 

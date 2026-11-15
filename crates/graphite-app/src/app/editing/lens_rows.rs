@@ -121,7 +121,9 @@ impl App {
         // Each line takes at least one row, so `row + 1` lines are enough to reach the row.
         let lines = super::folding::visible_lines(&tab.buffer, &hidden, view.scroll_line, row + 1);
         // Lens rows take room too: twice the rows is room for every line with its lens.
-        self.body_rows_for_active(&lines, 2 * (row + 1)).get(row).copied()
+        self.body_rows_for_active(&lines, 2 * (row + 1))
+            .get(row)
+            .copied()
     }
 }
 
@@ -134,20 +136,39 @@ mod tests {
         let rows = body_rows(&[3, 4, 5], 10, |line| line == 4);
         assert_eq!(
             rows,
-            [BodyRow::Line(3), BodyRow::Lens(4), BodyRow::Line(4), BodyRow::Line(5)]
+            [
+                BodyRow::Line(3),
+                BodyRow::Lens(4),
+                BodyRow::Line(4),
+                BodyRow::Line(5)
+            ]
         );
         assert_eq!(rows[1].line(), 4);
-        assert_eq!(body_rows(&[0, 1], 10, |_| false), [BodyRow::Line(0), BodyRow::Line(1)]);
+        assert_eq!(
+            body_rows(&[0, 1], 10, |_| false),
+            [BodyRow::Line(0), BodyRow::Line(1)]
+        );
         assert!(body_rows(&[], 10, |_| true).is_empty());
     }
 
     #[test]
     fn rows_are_cut_to_the_capacity_without_separating_a_lens_from_its_line() {
         let all = |_| true;
-        assert_eq!(body_rows(&[1, 2], 3, all), [BodyRow::Lens(1), BodyRow::Line(1)], "the lens row of 2 would be alone");
+        assert_eq!(
+            body_rows(&[1, 2], 3, all),
+            [BodyRow::Lens(1), BodyRow::Line(1)],
+            "the lens row of 2 would be alone"
+        );
         assert_eq!(body_rows(&[1, 2], 4, all).len(), 4);
-        assert_eq!(body_rows(&[1, 2], 1, all), [], "not even one line with its lens fits");
-        assert_eq!(body_rows(&[1, 2, 3], 2, |_| false), [BodyRow::Line(1), BodyRow::Line(2)]);
+        assert_eq!(
+            body_rows(&[1, 2], 1, all),
+            [],
+            "not even one line with its lens fits"
+        );
+        assert_eq!(
+            body_rows(&[1, 2, 3], 2, |_| false),
+            [BodyRow::Line(1), BodyRow::Line(2)]
+        );
         assert!(body_rows(&[1], 0, |_| false).is_empty());
     }
 }

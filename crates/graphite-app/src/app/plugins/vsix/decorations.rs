@@ -326,8 +326,8 @@ impl Decorations {
                 start,
                 end,
                 after: None,
- ..Default::default()
-})
+                ..Default::default()
+            })
             .collect();
         self.set(editor, HIGHLIGHT_KEY, marks);
     }
@@ -356,8 +356,8 @@ impl Decorations {
                 start,
                 end,
                 after: None,
- ..Default::default()
-})
+                ..Default::default()
+            })
             .collect();
         self.set(editor, LINK_KEY, marks);
     }
@@ -379,8 +379,8 @@ impl Decorations {
                 start: (line, 0),
                 end: (line, 0),
                 after: Some(After { text, color: None }),
- ..Default::default()
-})
+                ..Default::default()
+            })
             .collect();
         self.set(editor, LENS_KEY, marks);
     }
@@ -430,8 +430,8 @@ impl Decorations {
                 start,
                 end,
                 after: None,
- ..Default::default()
-})
+                ..Default::default()
+            })
             .collect();
         self.set(editor, key, marks);
     }
@@ -441,7 +441,12 @@ impl Decorations {
     }
 
     /// The color swatch of `editor` that contains a 0-based line and UTF-16 column.
-    pub(super) fn color_at(&self, editor: &str, line: u32, column: u32) -> Option<super::colors::ColorRange> {
+    pub(super) fn color_at(
+        &self,
+        editor: &str,
+        line: u32,
+        column: u32,
+    ) -> Option<super::colors::ColorRange> {
         self.colors
             .get(editor)?
             .iter()
@@ -469,14 +474,20 @@ impl Decorations {
     /// What the extensions want to show on hover at a 0-based line and UTF-16 column.
     pub(crate) fn hover_at(&self, editor: &str, line: u32, column: u32) -> Vec<String> {
         let mut found = Vec::new();
-        for marks in self.marks.get(editor).into_iter().flat_map(BTreeMap::values) {
+        for marks in self
+            .marks
+            .get(editor)
+            .into_iter()
+            .flat_map(BTreeMap::values)
+        {
             for mark in marks {
                 let Some(hover) = &mark.hover else {
                     continue;
                 };
                 let after_start = (line, column) >= mark.start;
                 // A range ends before its end position; an empty range still hovers at its start.
-                let before_end = (line, column) < mark.end || mark.start == mark.end && (line, column) == mark.start;
+                let before_end = (line, column) < mark.end
+                    || mark.start == mark.end && (line, column) == mark.start;
                 if after_start && before_end {
                     found.push(hover.clone());
                 }
@@ -595,8 +606,8 @@ pub(super) fn dispatch(
                             after: instance,
                             before: instance_before,
                             hover: hover_text(&item["hoverMessage"]),
- ..Default::default()
-})
+                            ..Default::default()
+                        })
                     })
                     .take(MARK_LIMIT)
                     .collect();
@@ -620,8 +631,8 @@ pub(super) fn dispatch(
                             start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),
                             end: (range[2].checked_sub(1)?, range[3].checked_sub(1)?),
                             after: None,
- ..Default::default()
-})
+                            ..Default::default()
+                        })
                     })
                     .take(MARK_LIMIT)
                     .collect();
@@ -749,8 +760,8 @@ mod tests {
                 start: (1, 3),
                 end: (3, 5),
                 after: None,
- ..Default::default()
-}],
+                ..Default::default()
+            }],
         );
         let first = &decorations.on_line("file:///a.txt", 1, true)[0];
         assert_eq!((first.start, first.end), (Some(3), None));
@@ -774,42 +785,80 @@ mod tests {
             "e",
             "type",
             vec![
-                Mark { start: (2, 4), end: (3, 1), ..Default::default() },
+                Mark {
+                    start: (2, 4),
+                    end: (3, 1),
+                    ..Default::default()
+                },
                 Mark {
                     start: (7, 0),
                     end: (7, 2),
-                    before: Some(After { text: "own ".into(), color: None }),
+                    before: Some(After {
+                        text: "own ".into(),
+                        color: None,
+                    }),
                     ..Default::default()
                 },
             ],
         );
         let first = &decorations.on_line("e", 2, true)[0];
         assert_eq!(first.before.as_ref().unwrap().text, "▶ ");
-        assert_eq!(first.gutter_icon.as_deref(), Some(std::path::Path::new("/icons/dark.png")));
+        assert_eq!(
+            first.gutter_icon.as_deref(),
+            Some(std::path::Path::new("/icons/dark.png"))
+        );
         let light = &decorations.on_line("e", 2, false)[0];
-        assert!(light.gutter_icon.as_ref().unwrap().to_string_lossy().ends_with("dot.svg"));
+        assert!(light
+            .gutter_icon
+            .as_ref()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with("dot.svg"));
         let second = &decorations.on_line("e", 3, true)[0];
         assert!(second.before.is_none() && second.gutter_icon.is_none());
-        assert_eq!(decorations.on_line("e", 7, true)[0].before.as_ref().unwrap().text, "own ");
-        assert!(first.look.before.is_none(), "the look itself carries neither");
+        assert_eq!(
+            decorations.on_line("e", 7, true)[0]
+                .before
+                .as_ref()
+                .unwrap()
+                .text,
+            "own "
+        );
+        assert!(
+            first.look.before.is_none(),
+            "the look itself carries neither"
+        );
     }
 
     #[test]
     fn overview_marks_list_the_lines_with_their_colors_in_order() {
-        let mut decorations = registered(json!({"overviewRulerColor": "#ff0000", "dark": {"overviewRulerColor": "#00ff00"}}));
+        let mut decorations = registered(
+            json!({"overviewRulerColor": "#ff0000", "dark": {"overviewRulerColor": "#00ff00"}}),
+        );
         decorations.set(
             "e",
             "type",
             vec![
-                Mark { start: (9, 0), end: (9, 1), ..Default::default() },
-                Mark { start: (3, 0), end: (5, 1), ..Default::default() },
+                Mark {
+                    start: (9, 0),
+                    end: (9, 1),
+                    ..Default::default()
+                },
+                Mark {
+                    start: (3, 0),
+                    end: (5, 1),
+                    ..Default::default()
+                },
             ],
         );
         assert_eq!(
             decorations.overview_marks("e", true),
             [(3, [0.0, 1.0, 0.0, 1.0]), (9, [0.0, 1.0, 0.0, 1.0])]
         );
-        assert_eq!(decorations.overview_marks("e", false)[0].1, [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(
+            decorations.overview_marks("e", false)[0].1,
+            [1.0, 0.0, 0.0, 1.0]
+        );
         assert!(decorations.overview_marks("other", true).is_empty());
         let plain = registered(json!({"backgroundColor": "#ff0000"}));
         assert!(plain.overview_marks("e", true).is_empty());
@@ -820,7 +869,9 @@ mod tests {
         let mut runtime_decorations = Decorations::default();
         let mut runtime = None::<()>;
         let _ = &mut runtime;
-        runtime_decorations.styles.insert("type".into(), style(&json!({})));
+        runtime_decorations
+            .styles
+            .insert("type".into(), style(&json!({})));
         let items = json!([
             {"range": {"startLineNumber": 1, "startColumn": 2, "endLineNumber": 1, "endColumn": 6},
              "hoverMessage": [{"value": "first"}, {"value": "second"}]},
@@ -834,20 +885,41 @@ mod tests {
             .iter()
             .filter_map(|item| {
                 let (start, end) = zero_based(&item["range"])?;
-                Some(Mark { start, end, hover: hover_text(&item["hoverMessage"]), ..Default::default() })
+                Some(Mark {
+                    start,
+                    end,
+                    hover: hover_text(&item["hoverMessage"]),
+                    ..Default::default()
+                })
             })
             .collect();
         runtime_decorations.set("e", "type", marks);
         assert_eq!(runtime_decorations.hover_at("e", 0, 3), ["first\n\nsecond"]);
-        assert!(runtime_decorations.hover_at("e", 0, 0).is_empty(), "before the range");
-        assert_eq!(runtime_decorations.hover_at("e", 0, 1), ["first
+        assert!(
+            runtime_decorations.hover_at("e", 0, 0).is_empty(),
+            "before the range"
+        );
+        assert_eq!(
+            runtime_decorations.hover_at("e", 0, 1),
+            ["first
 
-second"], "the start is inclusive");
-        assert!(runtime_decorations.hover_at("e", 0, 5).is_empty(), "the end is exclusive");
+second"],
+            "the start is inclusive"
+        );
+        assert!(
+            runtime_decorations.hover_at("e", 0, 5).is_empty(),
+            "the end is exclusive"
+        );
         assert_eq!(runtime_decorations.hover_at("e", 2, 0), ["empty range"]);
-        assert!(runtime_decorations.hover_at("e", 4, 1).is_empty(), "no message, nothing to show");
+        assert!(
+            runtime_decorations.hover_at("e", 4, 1).is_empty(),
+            "no message, nothing to show"
+        );
         assert_eq!(hover_text(&json!("")), None);
-        assert_eq!(hover_text(&json!([{"value": "a"}, "b"])).as_deref(), Some("a\n\nb"));
+        assert_eq!(
+            hover_text(&json!([{"value": "a"}, "b"])).as_deref(),
+            Some("a\n\nb")
+        );
     }
 
     #[test]
@@ -862,8 +934,8 @@ second"], "the start is inclusive");
                     start: (0, 0),
                     end: (1, 2),
                     after: None,
- ..Default::default()
-},
+                    ..Default::default()
+                },
                 Mark {
                     start: (4, 0),
                     end: (4, 3),
@@ -871,8 +943,8 @@ second"], "the start is inclusive");
                         text: " instance".into(),
                         color: None,
                     }),
- ..Default::default()
-},
+                    ..Default::default()
+                },
             ],
         );
         assert_eq!(decorations.on_line("e", 0, true)[0].after, None);
@@ -909,8 +981,8 @@ second"], "the start is inclusive");
                     start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),
                     end: (range[2].checked_sub(1)?, range[3].checked_sub(1)?),
                     after: None,
- ..Default::default()
-})
+                    ..Default::default()
+                })
             })
             .collect();
         // The second range has a 0 coordinate (invalid, 1-based) and is dropped.

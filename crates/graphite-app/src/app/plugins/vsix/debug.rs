@@ -70,7 +70,9 @@ fn offered_configs(result: &Value, debug_type: &str) -> Vec<LaunchConfig> {
         .flatten()
         .filter_map(|item| {
             let mut item = item.as_object()?.clone();
-            item.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
+            item.get("name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.is_empty())?;
             item.entry("type").or_insert_with(|| json!(debug_type));
             item.entry("request").or_insert_with(|| json!("launch"));
             serde_json::from_value(Value::Object(item)).ok()
@@ -400,7 +402,11 @@ impl App {
     }
 
     /// The provider answered: its configurations join the lists of debug configurations.
-    pub(super) fn finish_vsix_debug_configurations(&mut self, runtime: &mut Runtime, event: &Value) {
+    pub(super) fn finish_vsix_debug_configurations(
+        &mut self,
+        runtime: &mut Runtime,
+        event: &Value,
+    ) {
         let Some(id) = event["id"].as_u64() else {
             return;
         };
@@ -482,7 +488,9 @@ impl App {
     ) -> Option<Result<Value>> {
         use crate::debugger::AdapterEvent;
         let event = match method {
-            "$acceptDAMessage" => AdapterEvent::Message(args.get(1).cloned().unwrap_or(Value::Null)),
+            "$acceptDAMessage" => {
+                AdapterEvent::Message(args.get(1).cloned().unwrap_or(Value::Null))
+            }
             "$acceptDAError" => AdapterEvent::Failed(format!(
                 "{}: {}",
                 args.get(1).and_then(Value::as_str).unwrap_or("Error"),
@@ -492,7 +500,11 @@ impl App {
             _ => return None,
         };
         let handle = args.first().and_then(Value::as_u64);
-        if let Some(inline) = runtime.debug_inline.as_ref().filter(|inline| Some(inline.handle) == handle) {
+        if let Some(inline) = runtime
+            .debug_inline
+            .as_ref()
+            .filter(|inline| Some(inline.handle) == handle)
+        {
             let _ = inline.incoming.try_send(event);
         }
         Some(Ok(Value::Null))
@@ -754,18 +766,25 @@ mod tests {
     fn an_adapter_implemented_in_the_extension_host_talks_through_the_bridge() {
         let dir = TempDir::new();
         let (mut app, host) = app_with_host(&dir, true);
-        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
         app.poll_vsix();
         sent_of(&host, "provideDebugAdapter").expect("request sent");
-        answer(&host, json!({"result": {
+        answer(
+            &host,
+            json!({"result": {
             "configuration": {"name": "Run it", "type": "python", "request": "launch"},
-            "descriptor": {"type": "implementation"}}}));
+            "descriptor": {"type": "implementation"}}}),
+        );
         app.poll_vsix();
 
         // The extension host is asked to start the adapter, and the session's first message
         // (initialize) is handed over as a debug adapter message.
         let sent = calls(&host);
-        let start = sent.iter().find(|m| m["method"] == "$startDASession").expect("the adapter is started");
+        let start = sent
+            .iter()
+            .find(|m| m["method"] == "$startDASession")
+            .expect("the adapter is started");
         assert_eq!(start["actor"], "ExtHostDebugService");
         let handle = start["args"][0].clone();
         assert_eq!(start["args"][1]["type"], "python");
@@ -776,7 +795,10 @@ mod tests {
             Some(message) => message.clone(),
             None => {
                 app.poll_vsix();
-                calls(&host).into_iter().find(|m| m["method"] == "$sendDAMessage").expect("initialize sent")
+                calls(&host)
+                    .into_iter()
+                    .find(|m| m["method"] == "$sendDAMessage")
+                    .expect("initialize sent")
             }
         };
         assert_eq!(initialize["args"][0], handle);
@@ -784,26 +806,39 @@ mod tests {
 
         // What the adapter says reaches the session.
         let mut runtime = app.plugins.vsix.take().unwrap();
-        app.handle_vsix_request(&mut runtime, &json!({"id": 5, "actor": "MainThreadDebugService",
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 5, "actor": "MainThreadDebugService",
             "method": "$acceptDAMessage",
             "args": [handle, {"seq": 1, "type": "event", "event": "output",
-                "body": {"category": "stdout", "output": "hello from the adapter\n"}}]}))
-            .unwrap();
+                "body": {"category": "stdout", "output": "hello from the adapter\n"}}]}),
+        )
+        .unwrap();
         // A message for a session that is not running is ignored.
-        app.handle_vsix_request(&mut runtime, &json!({"id": 6, "actor": "MainThreadDebugService",
-            "method": "$acceptDAMessage", "args": [999, {"type": "event", "event": "output"}]}))
-            .unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 6, "actor": "MainThreadDebugService",
+            "method": "$acceptDAMessage", "args": [999, {"type": "event", "event": "output"}]}),
+        )
+        .unwrap();
         app.plugins.vsix = Some(runtime);
         app.debug.poll(app.tree.root()).unwrap();
         assert!(
-            app.debug.output.iter().any(|line| line.text.contains("hello from the adapter")),
-            "{:?}", app.debug.output
+            app.debug
+                .output
+                .iter()
+                .any(|line| line.text.contains("hello from the adapter")),
+            "{:?}",
+            app.debug.output
         );
 
         // Stopping the session stops the adapter in the extension host.
         app.debug.stop().unwrap();
         app.poll_vsix();
-        let stop = calls(&host).into_iter().find(|m| m["method"] == "$stopDASession").expect("the adapter is stopped");
+        let stop = calls(&host)
+            .into_iter()
+            .find(|m| m["method"] == "$stopDASession")
+            .expect("the adapter is stopped");
         assert_eq!(stop["args"][0], handle);
     }
 
@@ -811,32 +846,54 @@ mod tests {
     fn an_inline_adapter_that_exits_or_fails_ends_the_session() {
         let dir = TempDir::new();
         let (mut app, host) = app_with_host(&dir, true);
-        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
         app.poll_vsix();
         sent_of(&host, "provideDebugAdapter").unwrap();
-        answer(&host, json!({"result": {"descriptor": {"type": "implementation"}}}));
+        answer(
+            &host,
+            json!({"result": {"descriptor": {"type": "implementation"}}}),
+        );
         app.poll_vsix();
-        let handle = calls(&host).into_iter().find(|m| m["method"] == "$startDASession").unwrap()["args"][0].clone();
+        let handle = calls(&host)
+            .into_iter()
+            .find(|m| m["method"] == "$startDASession")
+            .unwrap()["args"][0]
+            .clone();
         let mut runtime = app.plugins.vsix.take().unwrap();
-        app.handle_vsix_request(&mut runtime, &json!({"id": 7, "actor": "MainThreadDebugService",
-            "method": "$acceptDAError", "args": [handle, "Error", "adapter crashed", null]}))
-            .unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 7, "actor": "MainThreadDebugService",
+            "method": "$acceptDAError", "args": [handle, "Error", "adapter crashed", null]}),
+        )
+        .unwrap();
         app.plugins.vsix = Some(runtime);
         // A failing adapter surfaces as the error of the poll, like one that is a process.
         let error = app.debug.poll(app.tree.root()).unwrap_err();
         assert!(error.to_string().contains("adapter crashed"), "{error}");
         // A normal exit of the adapter ends the session.
         let (mut app, host) = app_with_host(&dir, true);
-        app.request_vsix_debug_adapter(config("python"), OWNER).unwrap();
+        app.request_vsix_debug_adapter(config("python"), OWNER)
+            .unwrap();
         app.poll_vsix();
         sent_of(&host, "provideDebugAdapter").unwrap();
-        answer(&host, json!({"result": {"descriptor": {"type": "implementation"}}}));
+        answer(
+            &host,
+            json!({"result": {"descriptor": {"type": "implementation"}}}),
+        );
         app.poll_vsix();
-        let handle = calls(&host).into_iter().find(|m| m["method"] == "$startDASession").unwrap()["args"][0].clone();
+        let handle = calls(&host)
+            .into_iter()
+            .find(|m| m["method"] == "$startDASession")
+            .unwrap()["args"][0]
+            .clone();
         let mut runtime = app.plugins.vsix.take().unwrap();
-        app.handle_vsix_request(&mut runtime, &json!({"id": 8, "actor": "MainThreadDebugService",
-            "method": "$acceptDAExit", "args": [handle, 0, null]}))
-            .unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 8, "actor": "MainThreadDebugService",
+            "method": "$acceptDAExit", "args": [handle, 0, null]}),
+        )
+        .unwrap();
         app.plugins.vsix = Some(runtime);
         app.debug.poll(app.tree.root()).unwrap();
         assert!(app.debug.session.is_none());
@@ -854,16 +911,20 @@ mod tests {
         .unwrap();
         let mut register = |app: &mut App, args: Value| {
             let mut runtime = app.plugins.vsix.take().unwrap();
-            app.handle_vsix_request(&mut runtime, &json!({"id": 3, "actor": "MainThreadDebugService",
-                "method": "$registerDebugConfigurationProvider", "args": args}))
-                .unwrap();
+            app.handle_vsix_request(
+                &mut runtime,
+                &json!({"id": 3, "actor": "MainThreadDebugService",
+                "method": "$registerDebugConfigurationProvider", "args": args}),
+            )
+            .unwrap();
             app.plugins.vsix = Some(runtime);
         };
         // (type, triggerKind, hasProvide, hasResolve, hasResolve2, handle)
         register(&mut app, json!(["python", 1, true, true, false, 11]));
         register(&mut app, json!(["python", 2, false, true, false, 12]));
         assert!(
-            std::iter::from_fn(|| host.next_sent()).all(|m| m["method"] != "$provideDebugConfigurations"),
+            std::iter::from_fn(|| host.next_sent())
+                .all(|m| m["method"] != "$provideDebugConfigurations"),
             "only dynamic providers that provide are asked"
         );
         register(&mut app, json!(["python", 2, true, false, false, 13]));
@@ -881,13 +942,34 @@ mod tests {
             "oops",
         ]}));
         app.poll_vsix();
-        let names: Vec<&str> = app.debug.extension_configs.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Dynamic run", "From file"], "unnamed entries are dropped");
-        assert_eq!(app.debug.extension_configs[0].adapter_type, "python", "the provider's type is the default");
-        assert_eq!(app.launch_config_names(), ["From file", "Dynamic run"], "launch.json first, no duplicates");
+        let names: Vec<&str> = app
+            .debug
+            .extension_configs
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["Dynamic run", "From file"],
+            "unnamed entries are dropped"
+        );
+        assert_eq!(
+            app.debug.extension_configs[0].adapter_type, "python",
+            "the provider's type is the default"
+        );
+        assert_eq!(
+            app.launch_config_names(),
+            ["From file", "Dynamic run"],
+            "launch.json first, no duplicates"
+        );
 
         app.debug.refresh_configs(app.tree.root()).unwrap();
-        let listed: Vec<&str> = app.debug.launch_configs.iter().map(|c| c.name.as_str()).collect();
+        let listed: Vec<&str> = app
+            .debug
+            .launch_configs
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
         assert_eq!(listed, ["From file", "Dynamic run"]);
         assert!(app.select_debug_configuration("Dynamic run").is_ok());
 
@@ -898,12 +980,18 @@ mod tests {
 
         // Unregistering the provider takes its configurations away; a failure offers nothing.
         let mut runtime = app.plugins.vsix.take().unwrap();
-        app.handle_vsix_request(&mut runtime, &json!({"id": 4, "actor": "MainThreadDebugService",
-            "method": "$unregisterDebugConfigurationProvider", "args": [13]}))
-            .unwrap();
+        app.handle_vsix_request(
+            &mut runtime,
+            &json!({"id": 4, "actor": "MainThreadDebugService",
+            "method": "$unregisterDebugConfigurationProvider", "args": [13]}),
+        )
+        .unwrap();
         app.plugins.vsix = Some(runtime);
         assert!(app.debug.extension_configs.is_empty());
-        assert!(app.debug.refresh_configs(app.tree.root()).is_err(), "nothing left to list");
+        assert!(
+            app.debug.refresh_configs(app.tree.root()).is_err(),
+            "nothing left to list"
+        );
     }
 
     #[test]
