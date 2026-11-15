@@ -90,5 +90,10 @@
   "scm.prompt.new_branch": "Nome da nova branch:",
   "scm.prompt.new_branch_hint": "Enter cria a branch e muda para ela · Esc cancela",
   "scm.prompt.branch_empty": "Digite um nome de branch primeiro",
-  "scm.graph.title": "Grafo"
+  "scm.graph.title": "Grafo",
+  "scm.welcome.intro": "A pasta aberta no momento não possui um repositório Git. Você pode inicializar um repositório para habilitar os recursos de controle de código com Git.",
+  "scm.welcome.initialize": "Inicializar Repositório",
+  "scm.welcome.docs": "Para saber mais sobre como usar Git e controle de código no Graphite, consulte a documentação.",
+  "scm.welcome.publish_intro": "Você pode publicar esta pasta diretamente em um repositório do GitHub. Após publicar, terá acesso aos recursos de controle de código com Git e GitHub.",
+  "scm.welcome.publish_github": "Publicar no GitHub"
 }

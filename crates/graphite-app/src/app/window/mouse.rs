@@ -194,6 +194,16 @@ impl App {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);
                 let row_h = lh.max(18.0);
+                if self.shows_scm_welcome_view() {
+                    self.click_scm_welcome_view(
+                        local_x,
+                        local_y,
+                        self.sidebar_layout_width_px(),
+                        row_h,
+                        cw,
+                    );
+                    return;
+                }
                 let layout = self.scm_sidebar_layout_for(window_height, lh, cw);
                 if !self.scm_repositories_collapsed {
                     if layout.repo_sync.contains(local_x, local_y) {

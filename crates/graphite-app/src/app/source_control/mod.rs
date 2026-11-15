@@ -27,3 +27,4 @@ pub(crate) mod scm_graph_ui;
 pub(crate) mod scm_icons;
 pub(crate) mod scm_remote_ui;
 pub(crate) mod scm_ui;
+pub(crate) mod scm_welcome;

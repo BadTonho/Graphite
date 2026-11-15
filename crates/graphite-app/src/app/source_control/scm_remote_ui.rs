@@ -6,6 +6,7 @@ use crate::scm_remote;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RemoteOp {
+    Init,
     Pull,
     Push,
     Fetch,
@@ -30,6 +31,7 @@ impl RemoteOp {
     fn run(&self, root: &std::path::Path) -> Result<String, String> {
         use crate::scm_branches as branches;
         match self {
+            RemoteOp::Init => scm_remote::init_repository(root),
             RemoteOp::Pull => scm_remote::pull(root),
             RemoteOp::Push => scm_remote::push(root),
             RemoteOp::Fetch => scm_remote::fetch(root),

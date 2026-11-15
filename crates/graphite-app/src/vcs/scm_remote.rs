@@ -26,6 +26,10 @@ pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+pub(crate) fn init_repository(root: &Path) -> Result<String, String> {
+    run_git(root, &["init"])
+}
+
 pub(crate) fn pull(root: &Path) -> Result<String, String> {
     run_git(root, &["pull", "--no-rebase"])
 }

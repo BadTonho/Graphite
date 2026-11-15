@@ -1170,6 +1170,11 @@ impl App {
         cell_width: f32,
     ) {
         let sidebar_width = self.sidebar_layout_width_px();
+        let row_h = line_height.max(18.0);
+        if self.shows_scm_welcome_view() {
+            self.draw_scm_welcome_view(renderer, sidebar_width, height, row_h, cell_width);
+            return;
+        }
         renderer.draw_rect(
             ACTIVITY_BAR_WIDTH,
             0.0,
