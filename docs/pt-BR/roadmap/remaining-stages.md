@@ -75,10 +75,9 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 **Ferramentas do dia a dia**
 - Canais de saída, logs compostos.
 - Comandos de gerar e pré-visualizar temas.
-- Editor de busca.
 - Comandos de teste que existem para extensões.
 - Controle de código-fonte: foco da entrada e dos grupos de recursos, o gráfico do Git, commit seguinte e anterior.
-- Depuração: pontos de interrupção de dados e testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
+- Depuração: testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, pontos de interrupção de dados (`setDataBreakpoints`), decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
 - Extensões: atualizar todas, verificar atualizações, ativar só no espaço de trabalho, recomendações, lista de embutidas, abrir a pasta de extensões.
 
 **Editores de merge e de diff**

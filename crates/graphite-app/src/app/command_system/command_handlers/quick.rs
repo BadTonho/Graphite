@@ -72,8 +72,13 @@ fn quick_13(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn quick_open_search_editor(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_search_editor();
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 14] = [
+    let commands: [(&'static str, &'static str, Handler); 15] = [
         (
             "workbench.action.quickOpenPreviousRecentlyUsedEditor",
             "Quick open previous editor from history",
@@ -103,6 +108,11 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.acceptSelectedQuickOpenItem",
             "Accept the selected quick open item",
             quick_5,
+        ),
+        (
+            "search.action.openNewEditor",
+            "Open New Search Editor",
+            quick_open_search_editor,
         ),
         (
             "workbench.action.alternativeAcceptSelectedQuickOpenItem",

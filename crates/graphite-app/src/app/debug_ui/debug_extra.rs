@@ -68,6 +68,34 @@ impl App {
         Ok(())
     }
 
+    /// Adds or updates a DAP data breakpoint from `address` (or the debug input / selection).
+    pub(crate) fn add_data_breakpoint_from_input(
+        &mut self,
+        address: Option<&str>,
+    ) -> Result<(), String> {
+        let target = address
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .or_else(|| {
+                let input = self.debug_input.trim().to_owned();
+                if !input.is_empty() {
+                    self.debug_input.clear();
+                    Some(input)
+                } else {
+                    self.editor().selected_text().map(|s| s.trim().to_owned())
+                }
+            })
+            .filter(|s| !s.is_empty());
+        let Some(data_id) = target else {
+            return Ok(());
+        };
+        self.debug_panel_visible = true;
+        self.debug
+            .add_data_breakpoint(&data_id, Some("write"), None)
+            .map_err(|error| error.to_string())
+    }
+
     /// Turns all breakpoints off, or back on when they were off.
     pub(crate) fn toggle_breakpoints_activated(&mut self) {
         let enabled = self.debug.breakpoints_disabled;

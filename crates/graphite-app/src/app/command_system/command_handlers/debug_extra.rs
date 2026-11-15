@@ -73,6 +73,26 @@ fn debug_14(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn debug_add_data_breakpoint(
+    app: &mut App,
+    invocation: &CommandInvocation,
+) -> Result<(), CommandError> {
+    let address = invocation.request.arguments["dataId"]
+        .as_str()
+        .or_else(|| invocation.request.arguments["address"].as_str());
+    app.add_data_breakpoint_from_input(address)
+        .map_err(CommandError::Failed)
+}
+
+fn debug_remove_data_breakpoints(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.debug
+        .remove_data_breakpoints()
+        .map_err(|e| CommandError::Failed(e.to_string()))
+}
+
 fn debug_more_0(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.toggle_breakpoint_enabled()
         .map_err(CommandError::Failed)
@@ -186,7 +206,7 @@ fn register_more(registry: &mut CommandRegistry) {
 
 pub(super) fn register(registry: &mut CommandRegistry) {
     register_more(registry);
-    let commands: [(&'static str, &'static str, Handler); 15] = [
+    let commands: [(&'static str, &'static str, Handler); 18] = [
         (
             "editor.debug.action.goToNextBreakpoint",
             "Go to next breakpoint",
@@ -237,6 +257,21 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "loadedScripts.collapse",
             "Collapse loaded scripts",
             debug_14,
+        ),
+        (
+            "workbench.debug.viewlet.action.addDataBreakpointOnAddress",
+            "Add data breakpoint on address",
+            debug_add_data_breakpoint,
+        ),
+        (
+            "workbench.debug.viewlet.action.editDataBreakpointOnAddress",
+            "Edit data breakpoint on address",
+            debug_add_data_breakpoint,
+        ),
+        (
+            "workbench.debug.viewlet.action.removeAllDataBreakpoints",
+            "Remove all data breakpoints",
+            debug_remove_data_breakpoints,
         ),
     ];
     for (id, title, handler) in commands {

@@ -252,6 +252,30 @@ impl App {
             );
         });
     }
+
+    /// Opens an untitled Search Editor buffer containing the current search query and results.
+    pub(crate) fn open_search_editor(&mut self) {
+        let query = self.search_query.as_deref().unwrap_or("");
+        let options = self.search_filters.options();
+        let mut content = format!(
+            "# Query: {query}\n# Flags: CaseSensitive={} RegExp={} WholeWord={}\n",
+            options.case_sensitive, options.regex, options.whole_word,
+        );
+        if self.search_results.is_empty() {
+            content.push_str("\n(no results)\n");
+        } else {
+            let mut last_path: Option<&std::path::Path> = None;
+            for hit in &self.search_results {
+                if last_path != Some(hit.path.as_path()) {
+                    content.push_str(&format!("\n{}:\n", hit.path.display()));
+                    last_path = Some(hit.path.as_path());
+                }
+                content.push_str(&format!("  {}: {}\n", hit.line + 1, hit.text));
+            }
+        }
+        self.new_untitled_document();
+        self.editor_mut().insert(&content);
+    }
 }
 
 #[cfg(test)]

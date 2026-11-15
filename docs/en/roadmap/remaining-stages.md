@@ -75,10 +75,9 @@ Items that were left out because they depend on something the application does n
 **Daily tools**
 - Output channels, compound logs.
 - Theme generation and preview commands.
-- Search editor.
 - Testing commands that exist for extensions.
 - Source control: input and resource group focus, the Git graph, next and previous commit.
-- Debug: data breakpoints, and tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
+- Debug: tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, data breakpoints (`setDataBreakpoints`), Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
 - Extensions: update all, check for updates, workspace-only enable, recommendations, built-in list, open the extensions folder.
 
 **Merge and diff editors**

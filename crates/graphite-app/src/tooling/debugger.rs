@@ -216,6 +216,15 @@ pub fn is_disabled(point: &Value) -> bool {
     point[DISABLED_KEY].as_bool().unwrap_or(false)
 }
 
+/// One DAP data breakpoint (watchpoint on a memory address or variable `dataId`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataBreakpoint {
+    pub data_id: String,
+    pub access_type: Option<String>,
+    pub condition: Option<String>,
+    pub hit_condition: Option<String>,
+}
+
 #[derive(Default)]
 pub struct DebugRuntime {
     pub session: Option<DapSession>,
@@ -250,6 +259,8 @@ pub struct DebugRuntime {
     pending_breakpoints: BTreeMap<i64, PathBuf>,
     /// Names of the function breakpoints, sent with `setFunctionBreakpoints`.
     pub function_breakpoints: Vec<String>,
+    /// Data breakpoints sent with `setDataBreakpoints`.
+    pub data_breakpoints: Vec<DataBreakpoint>,
     /// Only console lines that contain this text are shown (empty shows everything).
     pub console_filter: String,
     /// Most recent `evaluate(..., "hover")` result ready to show in the editor hover popup.
@@ -548,6 +559,72 @@ impl DebugRuntime {
         };
         session.send_request(
             "setFunctionBreakpoints",
+            serde_json::json!({"breakpoints": breakpoints}),
+        )?;
+        Ok(())
+    }
+
+    /// Adds or updates a data breakpoint (`dataId`) and syncs `setDataBreakpoints`.
+    pub fn add_data_breakpoint(
+        &mut self,
+        data_id: &str,
+        access_type: Option<&str>,
+        condition: Option<&str>,
+    ) -> Result<(), DebugError> {
+        let data_id = data_id.trim();
+        if data_id.is_empty() {
+            return Ok(());
+        }
+        let entry = DataBreakpoint {
+            data_id: data_id.to_owned(),
+            access_type: access_type.map(str::to_owned),
+            condition: condition.map(str::to_owned),
+            hit_condition: None,
+        };
+        if let Some(existing) = self
+            .data_breakpoints
+            .iter_mut()
+            .find(|bp| bp.data_id == data_id)
+        {
+            *existing = entry;
+        } else {
+            self.data_breakpoints.push(entry);
+        }
+        self.send_data_breakpoints()
+    }
+
+    pub fn remove_data_breakpoints(&mut self) -> Result<(), DebugError> {
+        self.data_breakpoints.clear();
+        self.send_data_breakpoints()
+    }
+
+    /// Sends the active data breakpoints; does nothing without a session.
+    pub fn send_data_breakpoints(&mut self) -> Result<(), DebugError> {
+        let Some(session) = self.session.as_mut() else {
+            return Ok(());
+        };
+        let breakpoints: Vec<Value> = if self.breakpoints_disabled {
+            Vec::new()
+        } else {
+            self.data_breakpoints
+                .iter()
+                .map(|bp| {
+                    let mut obj = serde_json::json!({ "dataId": bp.data_id });
+                    if let Some(access) = &bp.access_type {
+                        obj["accessType"] = serde_json::json!(access);
+                    }
+                    if let Some(cond) = &bp.condition {
+                        obj["condition"] = serde_json::json!(cond);
+                    }
+                    if let Some(hit) = &bp.hit_condition {
+                        obj["hitCondition"] = serde_json::json!(hit);
+                    }
+                    obj
+                })
+                .collect()
+        };
+        session.send_request(
+            "setDataBreakpoints",
             serde_json::json!({"breakpoints": breakpoints}),
         )?;
         Ok(())
@@ -2391,6 +2468,35 @@ mod tests {
             serde_json::json!([])
         );
         assert_eq!(runtime.function_breakpoints, ["main"], "still remembered");
+    }
+
+    #[test]
+    fn data_breakpoints_are_sent_deduplicated_and_respect_disabled_flag() {
+        let (mut runtime, writer) = paused_runtime();
+        runtime
+            .add_data_breakpoint("0x1000", Some("write"), Some("x > 0"))
+            .unwrap();
+        runtime
+            .add_data_breakpoint("0x1000", Some("readWrite"), None)
+            .unwrap();
+        assert_eq!(runtime.data_breakpoints.len(), 1);
+        let req = writer.last();
+        assert_eq!(req["command"], "setDataBreakpoints");
+        assert_eq!(req["arguments"]["breakpoints"][0]["dataId"], "0x1000");
+        assert_eq!(
+            req["arguments"]["breakpoints"][0]["accessType"],
+            "readWrite"
+        );
+
+        runtime.breakpoints_disabled = true;
+        runtime.send_data_breakpoints().unwrap();
+        assert_eq!(
+            writer.last()["arguments"]["breakpoints"],
+            serde_json::json!([])
+        );
+
+        runtime.remove_data_breakpoints().unwrap();
+        assert!(runtime.data_breakpoints.is_empty());
     }
 
     #[test]
