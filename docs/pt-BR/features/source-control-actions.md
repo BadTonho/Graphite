@@ -15,7 +15,7 @@ Os comandos `Git:` estão na paleta de comandos (e listados pelo botão ⋯): Pu
 
 O Git roda em segundo plano, então a janela continua respondendo durante um pull ou push. Erros do Git (por exemplo, um remoto inacessível) aparecem na barra de status.
 
-Limites: os botões usam símbolos de texto, então podem ficar um pouco diferentes dos ícones do VS Code. O botão ⋯ abre a paleta, e não um menu suspenso. Passar o mouse sobre um botão ainda não mostra dica.
+Os botões são pequenos ícones desenhados, sem moldura; o que está sob o mouse ganha destaque, e o botão Commit mostra um visto ao lado do texto. A caixa de commit sugere o atalho e a branch em que o commit será feito. Limites: o botão ⋯ abre a paleta, e não um menu suspenso, e passar o mouse sobre um botão ainda não mostra dica.
 
 ## Branches, amend, merge e rebase
 

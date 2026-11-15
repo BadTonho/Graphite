@@ -1,4 +1,5 @@
 use super::command_execution::{deliver_command_event, CommandError};
+use super::scm_icons::{draw_scm_icon, ScmIcon};
 use super::*;
 
 pub(super) fn scm_centered_text_x(x: f32, width: f32, text: &str, cell_width: f32) -> f32 {
@@ -319,23 +320,28 @@ pub(super) fn scm_icon_color(color: u32) -> u32 {
     (blend(channels[0]) << 16) | (blend(channels[1]) << 8) | blend(channels[2])
 }
 
+/// Hover background of an icon button. Idle buttons draw no frame, only their icon.
 pub(super) fn draw_scm_control_slot(renderer: &mut Renderer, bounds: ScmRect, hovered: bool) {
+    if !hovered {
+        return;
+    }
     let inset = 2.0;
-    let background = if hovered {
-        Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+    renderer.draw_rect(
+        bounds.x + inset,
+        bounds.y + inset,
+        (bounds.width - inset * 2.0).max(1.0),
+        (bounds.height - inset * 2.0).max(1.0),
+        rgb(Theme::color(0x45474c, 0xdcdde0)),
+    );
+}
+
+/// Icon color of a button: dim at rest, full strength under the pointer.
+pub(super) fn scm_button_color(hovered: bool) -> graphite_render::Color {
+    rgb(if hovered {
+        Theme::color(Theme::TEXT, 0x1e1e1e)
     } else {
-        Theme::color(0x303033, 0xeeeeee)
-    };
-    let border = Theme::color(0x4d4d50, 0xc7c7c7);
-    let x = bounds.x + inset;
-    let y = bounds.y + inset;
-    let width = (bounds.width - inset * 2.0).max(1.0);
-    let height = (bounds.height - inset * 2.0).max(1.0);
-    renderer.draw_rect(x, y, width, height, rgb(background));
-    renderer.draw_rect(x, y, width, 1.0, rgb(border));
-    renderer.draw_rect(x, y + height - 1.0, width, 1.0, rgb(border));
-    renderer.draw_rect(x, y, 1.0, height, rgb(border));
-    renderer.draw_rect(x + width - 1.0, y, 1.0, height, rgb(border));
+        Theme::color(Theme::DIM, 0x616161)
+    })
 }
 
 #[cfg(test)]
@@ -1104,22 +1110,14 @@ impl App {
             );
         }
         if !self.scm_repositories_collapsed {
-            for (rect, glyph) in [
-                (layout.repo_sync, "⇅"),
-                (layout.repo_pull_request, "⇄"),
-                (layout.repo_more, "⋯"),
+            for (rect, icon) in [
+                (layout.repo_sync, ScmIcon::Sync),
+                (layout.repo_pull_request, ScmIcon::PullRequest),
+                (layout.repo_more, ScmIcon::More),
             ] {
-                draw_scm_control_slot(
-                    renderer,
-                    rect,
-                    rect.contains(self.mouse.x as f32, self.mouse.y as f32),
-                );
-                renderer.draw_text(
-                    glyph,
-                    scm_centered_text_x(rect.x, rect.width, glyph, cell_width),
-                    rect.y + (row_h - line_height) * 0.5 + row_h * 0.08,
-                    dim,
-                );
+                let hovered = rect.contains(self.mouse.x as f32, self.mouse.y as f32);
+                draw_scm_control_slot(renderer, rect, hovered);
+                draw_scm_icon(renderer, icon, rect, scm_button_color(hovered));
             }
         }
         let branch = self
@@ -1144,33 +1142,26 @@ impl App {
                 text,
             );
             let control_size = (row_h * 0.62).round();
-            draw_scm_control_slot(
-                renderer,
-                layout.branch_picker,
-                layout
-                    .branch_picker
-                    .contains(self.mouse.x as f32, self.mouse.y as f32),
-            );
+            let picker_hovered = layout
+                .branch_picker
+                .contains(self.mouse.x as f32, self.mouse.y as f32);
+            draw_scm_control_slot(renderer, layout.branch_picker, picker_hovered);
             renderer.draw_icon(
                 crate::file_icons::CHEVRON_DOWN,
                 layout.branch_picker.x + (layout.branch_picker.width - control_size) * 0.5,
                 layout.branch_picker.y + (row_h - control_size) * 0.5,
                 control_size,
-                dim,
+                scm_button_color(picker_hovered),
             );
-            let refresh = "⟳";
-            draw_scm_control_slot(
+            let refresh_hovered = layout
+                .refresh
+                .contains(self.mouse.x as f32, self.mouse.y as f32);
+            draw_scm_control_slot(renderer, layout.refresh, refresh_hovered);
+            draw_scm_icon(
                 renderer,
+                ScmIcon::Refresh,
                 layout.refresh,
-                layout
-                    .refresh
-                    .contains(self.mouse.x as f32, self.mouse.y as f32),
-            );
-            renderer.draw_text(
-                refresh,
-                scm_centered_text_x(layout.refresh.x, layout.refresh.width, refresh, cell_width),
-                layout.refresh.y + (row_h - line_height) * 0.5 + row_h * 0.08,
-                dim,
+                scm_button_color(refresh_hovered),
             );
         }
         let commit_top = layout.commit_field.y;
@@ -1180,7 +1171,7 @@ impl App {
         let field_border = if focused {
             Theme::color(Theme::STATUS, 0x007acc)
         } else {
-            Theme::color(0x606060, 0x8a8a8a)
+            Theme::color(0x454545, 0xc8c8c8)
         };
         renderer.draw_rect(left, commit_top, field_width, row_h, rgb(field_background));
         renderer.draw_rect(left, commit_top, field_width, 1.0, rgb(field_border));
@@ -1203,9 +1194,15 @@ impl App {
         let visible_chars = ((field_width - field_padding * 2.0) / cell_width)
             .floor()
             .max(0.0) as usize;
-        let placeholder = self.t("scm.sidebar.commit_placeholder");
+        let placeholder = match &self.scm_snapshot.branch {
+            Some(branch) => self.tf(
+                "scm.sidebar.commit_placeholder_branch",
+                &[("branch", branch)],
+            ),
+            None => self.t("scm.sidebar.commit_placeholder").to_owned(),
+        };
         let field_text = if self.scm_commit_message.is_empty() {
-            placeholder.chars().take(visible_chars).collect::<String>()
+            scm_fit_label(&placeholder, visible_chars)
         } else {
             scm_visible_tail(&self.scm_commit_message, visible_chars)
         };
@@ -1247,12 +1244,29 @@ impl App {
                 rgb(Theme::color(0x3c3c3c, 0xe5e5e5))
             },
         );
+        // The check icon and the label are centered together as one group.
         let commit_label = self.t("scm.sidebar.commit");
+        let commit_color = if commit_enabled { rgb(0xffffff) } else { dim };
+        let check_size = (row_h * 0.72).round().max(12.0);
+        let label_gap = cell_width * 0.4;
+        let label_width = commit_label.chars().count() as f32 * cell_width;
+        let group_x = left + ((field_width - check_size - label_gap - label_width) * 0.5).max(0.0);
+        draw_scm_icon(
+            renderer,
+            ScmIcon::Check,
+            ScmRect {
+                x: group_x,
+                y: commit_y,
+                width: check_size,
+                height: row_h,
+            },
+            commit_color,
+        );
         renderer.draw_text(
             commit_label,
-            scm_centered_text_x(left, field_width, commit_label, cell_width),
+            group_x + check_size + label_gap,
             commit_y + (row_h - line_height) * 0.5 + row_h * 0.08,
-            if commit_enabled { rgb(0xffffff) } else { dim },
+            commit_color,
         );
         let list_top = layout.list_top;
         if let Some(error) = &self.scm_snapshot.error {
@@ -1297,33 +1311,27 @@ impl App {
                     );
                     renderer.draw_text(label, row.chevron.x + row.chevron.width, y, text);
                     renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
-                    let action = if staged { "−" } else { "+" };
-                    draw_scm_control_slot(
+                    let action_icon = if staged {
+                        ScmIcon::Minus
+                    } else {
+                        ScmIcon::Plus
+                    };
+                    let action_hovered = row
+                        .action
+                        .contains(self.mouse.x as f32, self.mouse.y as f32);
+                    draw_scm_control_slot(renderer, row.action, action_hovered);
+                    draw_scm_icon(
                         renderer,
+                        action_icon,
                         row.action,
-                        row.action
-                            .contains(self.mouse.x as f32, self.mouse.y as f32),
-                    );
-                    renderer.draw_text(
-                        action,
-                        scm_centered_text_x(row.action.x, row.action.width, action, cell_width),
-                        y + row_h * 0.12,
-                        dim,
+                        scm_button_color(action_hovered),
                     );
                     if !staged {
                         let (history, stash) = changes_header_buttons(row.action, cell_width);
-                        for (rect, glyph) in [(history, "↺"), (stash, "▤")] {
-                            draw_scm_control_slot(
-                                renderer,
-                                rect,
-                                rect.contains(self.mouse.x as f32, self.mouse.y as f32),
-                            );
-                            renderer.draw_text(
-                                glyph,
-                                scm_centered_text_x(rect.x, rect.width, glyph, cell_width),
-                                y + row_h * 0.12,
-                                dim,
-                            );
+                        for (rect, icon) in [(history, ScmIcon::History), (stash, ScmIcon::Stash)] {
+                            let hovered = rect.contains(self.mouse.x as f32, self.mouse.y as f32);
+                            draw_scm_control_slot(renderer, rect, hovered);
+                            draw_scm_icon(renderer, icon, rect, scm_button_color(hovered));
                         }
                     }
                 }
@@ -1392,18 +1400,20 @@ impl App {
                         dim,
                     );
                     renderer.draw_text(status, right - cell_width, y, rgb(status_color));
-                    let action = if staged { "−" } else { "+" };
-                    draw_scm_control_slot(
+                    let action_icon = if staged {
+                        ScmIcon::Minus
+                    } else {
+                        ScmIcon::Plus
+                    };
+                    let action_hovered = row
+                        .action
+                        .contains(self.mouse.x as f32, self.mouse.y as f32);
+                    draw_scm_control_slot(renderer, row.action, action_hovered);
+                    draw_scm_icon(
                         renderer,
+                        action_icon,
                         row.action,
-                        row.action
-                            .contains(self.mouse.x as f32, self.mouse.y as f32),
-                    );
-                    renderer.draw_text(
-                        action,
-                        scm_centered_text_x(row.action.x, row.action.width, action, cell_width),
-                        y + row_h * 0.12,
-                        dim,
+                        scm_button_color(action_hovered),
                     );
                 }
             }

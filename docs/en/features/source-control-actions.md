@@ -15,7 +15,7 @@ The `Git:` commands are in the command palette (and listed by the ⋯ button): P
 
 Git runs in the background, so the window stays responsive during a pull or push. Errors from git (for example, an unreachable remote) appear in the status bar.
 
-Limits: the buttons use text symbols, so they may look slightly different from VS Code's icons. The ⋯ button opens the palette, not a dropdown. Hovering a button does not show a tooltip yet.
+The buttons are small drawn icons with no frame; the one under the pointer gets a highlight, and the Commit button shows a check mark next to its label. The commit box suggests the shortcut and the branch it commits on. Limits: the ⋯ button opens the palette, not a dropdown, and hovering a button does not show a tooltip yet.
 
 ## Branches, amend, merge and rebase
 
