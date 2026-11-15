@@ -766,15 +766,15 @@ impl App {
             std::thread::Builder::new()
                 .name("graphite-scm-status".into())
                 .spawn(move || {
-                    let _ = proxy.send_event(UserEvent::ScmSnapshot(crate::scm::snapshot(&root)));
+                    let snapshot = crate::scm::snapshot(&root);
+                    let _ = proxy.send_event(UserEvent::ScmSnapshot(root, snapshot));
                 })
                 .ok();
             std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
                 .spawn(move || {
-                    let _ = graph_proxy.send_event(UserEvent::ScmGraph(
-                        crate::vcs::scm_graph::load_graph_commits(&graph_root, graph_limit),
-                    ));
+                    let rows = crate::vcs::scm_graph::load_graph_commits(&graph_root, graph_limit);
+                    let _ = graph_proxy.send_event(UserEvent::ScmGraph(graph_root, rows));
                 })
                 .ok();
         } else {
@@ -791,9 +791,8 @@ impl App {
             std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
                 .spawn(move || {
-                    let _ = proxy.send_event(UserEvent::ScmGraph(
-                        crate::vcs::scm_graph::load_graph_commits(&root, graph_limit),
-                    ));
+                    let rows = crate::vcs::scm_graph::load_graph_commits(&root, graph_limit);
+                    let _ = proxy.send_event(UserEvent::ScmGraph(root, rows));
                 })
                 .ok();
         } else {

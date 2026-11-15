@@ -353,8 +353,9 @@ pub(crate) enum UserEvent {
         set: crate::scm_changes::ChangeSet,
         result: Result<Vec<crate::multi_diff::FileInput>, String>,
     },
-    ScmSnapshot(crate::scm::Snapshot),
-    ScmGraph(Result<Vec<crate::vcs::scm_graph::GraphRow>, String>),
+    /// A refreshed snapshot and the folder it was read from; one for another folder is stale.
+    ScmSnapshot(PathBuf, crate::scm::Snapshot),
+    ScmGraph(PathBuf, Result<Vec<crate::vcs::scm_graph::GraphRow>, String>),
     ScmOperationCompleted {
         message: String,
         snapshot: Option<crate::scm::Snapshot>,

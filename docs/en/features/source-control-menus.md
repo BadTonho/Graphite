@@ -64,6 +64,10 @@ The Graph draws commits as circles (a ring for the checked out one) and keeps lo
 
 Commit ids passed to git are checked to be hexadecimal, and branch and tag names are validated before git runs, so nothing the user types can be read as a git option.
 
+## Switching folders
+
+Opening another folder (File menu, removing a folder from the workspace, or the command line) reloads the view for it: the lists, the Graph and its scroll position, the commit message, open menus and pickers are reset, and the file watcher follows the folders that are open now. A result still loading for the previous folder is discarded instead of replacing the new one.
+
 ## Tooltips
 
 Every icon button of the view (repository row, commit arrow, file rows, Changes and Graph headers) shows its name in a small card when the pointer rests on it.

@@ -736,14 +736,19 @@ impl App {
             UserEvent::Chat(event) => self.handle_chat_ui_event(event),
             UserEvent::Sync(event) => self.handle_sync_event(event),
             UserEvent::Update(event) => self.handle_update_event(event),
-            UserEvent::ScmSnapshot(snapshot) => {
-                self.accept_scm_snapshot(snapshot);
+            UserEvent::ScmSnapshot(root, snapshot) => {
+                // A result for a folder that is no longer the one shown is out of date.
+                if root == self.scm_workspace_root() {
+                    self.accept_scm_snapshot(snapshot);
+                }
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
                 }
             }
-            UserEvent::ScmGraph(result) => {
-                if let Ok(rows) = result {
+            UserEvent::ScmGraph(root, result) => {
+                if root != self.scm_workspace_root() {
+                    // Stale: it was loaded for the folder that was open before.
+                } else if let Ok(rows) = result {
                     self.scm_graph_rows = rows;
                 } else {
                     self.scm_graph_rows.clear();

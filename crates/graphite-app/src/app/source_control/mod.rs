@@ -32,6 +32,7 @@ pub(crate) mod scm_icons;
 pub(crate) mod scm_publish;
 pub(crate) mod scm_remote_ui;
 pub(crate) mod scm_tooltips;
+pub(crate) mod scm_workspace;
 pub(crate) mod scm_tree;
 pub(crate) mod scm_ui;
 pub(crate) mod scm_welcome;

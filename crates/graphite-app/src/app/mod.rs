@@ -27,7 +27,7 @@ pub(crate) use navigation::{
 };
 mod source_control;
 pub(crate) use source_control::{
-    github_auth, github_dialog, merge_editor, scm_branch_ui, scm_confirm, scm_graph_menu, scm_graph_ui, scm_more_menu, scm_publish, scm_tree,
+    github_auth, github_dialog, merge_editor, scm_branch_ui, scm_confirm, scm_graph_menu, scm_graph_ui, scm_more_menu, scm_publish, scm_tree, scm_workspace,
     scm_remote_ui, scm_ui,
 };
 mod debug_ui;

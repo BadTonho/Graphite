@@ -980,7 +980,7 @@ impl App {
     }
 
     fn refresh_workspace_services(&mut self) {
-        self.scm_snapshot = crate::scm::snapshot(self.tree.root());
+        self.reset_scm_for_workspace();
         if self
             .workspace_trust
             .as_ref()

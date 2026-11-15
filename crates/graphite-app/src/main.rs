@@ -275,7 +275,7 @@ struct App {
     task_diagnostics: Vec<app::phase5::TaskDiagnostic>,
     terminal_size: (u16, u16),
     terminal_sizes: Vec<(u16, u16)>,
-    _scm_watcher: Option<notify::RecommendedWatcher>,
+    scm_watcher: Option<notify::RecommendedWatcher>,
     scm_snapshot: scm::Snapshot,
     scm_visible: bool,
     scm_selected: usize,
@@ -572,29 +572,9 @@ impl App {
                 Err(_) => {}
             }
         }
-        let scm_watcher = event_proxy.clone().and_then(|proxy| {
-            use notify::Watcher;
-            let mut watcher =
-                notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-                    if result
-                        .as_ref()
-                        .map_or(true, |event| scm::is_relevant_watch_event(event))
-                    {
-                        let _ = proxy.send_event(UserEvent::ScmRefresh);
-                        if let Ok(event) = &result {
-                            let changes = app::plugins::file_changes(event);
-                            if !changes.is_empty() {
-                                let _ = proxy.send_event(UserEvent::FileEvents(changes));
-                            }
-                        }
-                    }
-                })
-                .ok()?;
-            watcher
-                .watch(&root, notify::RecursiveMode::Recursive)
-                .ok()?;
-            Some(watcher)
-        });
+        let scm_watcher = event_proxy
+            .clone()
+            .and_then(|proxy| app::scm_workspace::start_watcher(proxy, &[root.clone()]));
         let initialization_ms = initialization_started.elapsed().as_secs_f64() * 1000.0;
         let github_session = if isolated {
             None
@@ -840,7 +820,7 @@ impl App {
             task_diagnostics: Vec::new(),
             terminal_size: (0, 0),
             terminal_sizes: Vec::new(),
-            _scm_watcher: scm_watcher,
+            scm_watcher,
             scm_snapshot: scm::Snapshot::default(),
             scm_visible: false,
             scm_selected: 0,

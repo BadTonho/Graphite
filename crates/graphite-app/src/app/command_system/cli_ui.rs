@@ -91,6 +91,7 @@ impl App {
                                             doc.inlay_revision = None;
                                         }
                                         self.tree.replace_workspace(workspace);
+                                        self.reset_scm_for_workspace();
                                         if self
                                             .workspace_trust
                                             .as_ref()
