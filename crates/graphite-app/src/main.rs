@@ -120,6 +120,7 @@ struct App {
     activity_bar_focused: bool,
     /// Whether the status bar has keyboard focus.
     status_bar_focused: bool,
+    screen_reader_mode: bool,
     /// First explorer row shown in the side bar.
     explorer_scroll: usize,
     /// Entry pressed in the explorer, moved if the mouse is released on a folder.
@@ -645,6 +646,7 @@ impl App {
             explorer_filter_on_type: false,
             activity_bar_focused: false,
             status_bar_focused: false,
+            screen_reader_mode: false,
             explorer_scroll: 0,
             explorer_drag: None,
             explorer_prompt: None,

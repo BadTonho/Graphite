@@ -62,8 +62,8 @@ Intentional exclusions and unverified checks:
 Items that were left out because they depend on something the application does not have yet. Each can be picked up once its prerequisite exists.
 
 **Editor core**
-- Diff editor commands: need the diff editor interface.
-- Editor accessibility commands and inspection commands.
+- Diff editor commands (`switchSide`, `collapseAllUnchangedRegions`, `showAllUnchangedRegions`, `compareEditor.nextChange`/`previousChange`, `git.revertSelectedRanges`) are implemented.
+- Editor accessibility and token inspection (`editor.action.inspectTMScopes`, `editor.action.toggleScreenReaderAccessibilityMode`, `workbench.action.showAccessibilityHelp`) are implemented.
 
 **Workbench shell**
 - Keyboard focus for the activity bar (`workbench.action.focusActivityBar`) and status bar (`workbench.action.focusStatusBar`) is implemented; banner and panel sub-views remain.
@@ -75,7 +75,7 @@ Items that were left out because they depend on something the application does n
 - Output channels, compound logs (`workbench.output.action.clearOutput` is implemented).
 - Theme generation (`workbench.action.generateColorTheme`) is implemented; live theme preview remains.
 - Testing commands that exist for extensions.
-- Source control: resource group focus remains; commit message history navigation (`ArrowUp`/`ArrowDown` in the commit input) and `git.viewHistory` graph view are implemented.
+- Source control: `scm.focusResourceGroup`, commit message history navigation (`ArrowUp`/`ArrowDown` in the commit input), and `git.viewHistory` graph view are implemented.
 - Debug: tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, data breakpoints (`setDataBreakpoints`), Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
 - Extensions: `checkForUpdates`, `updateAll`, `showBuiltInExtensions`, `openExtensionsFolder`, and `showRecommendedExtensions` are implemented; workspace-only enable remains.
 
@@ -90,9 +90,9 @@ Items that were left out because they depend on something the application does n
 - Remote or Jupyter server kernels: only local kernels are started.
 - Format the notebook or the cell (`notebook.format`, `notebook.formatCell` are implemented for whitespace/indentation cleanup; external per-language formatters remain).
 - Multi-cursor inside a cell and the notebook cursor commands.
-- Select all of a cell's output, show empty outputs, cell toolbar position, MIME type order and the layout and layout troubleshooting commands.
+- Select/copy cell output (`notebook.cell.copyOutput`) and inline chat entry (`notebook.cell.chat.start`) are implemented; show empty outputs, cell toolbar position, MIME type order and layout diagnostics remain.
 - Notebook diff (next, previous, revert input, outputs and metadata): needs the diff view to become an editor.
-- Chat commands on cells: they belong to Stage 6.
+- Chat commands on cells: `notebook.cell.chat.start` opens chat from a cell.
 - Tests against a real `ipykernel`: one test exists and is ignored by default (set `GRAPHITE_TEST_KERNEL_PYTHON`); the rest use a fake kernel that speaks the real protocol over real sockets.
 - Drawing of images and cells needs a window and was not checked visually.
 

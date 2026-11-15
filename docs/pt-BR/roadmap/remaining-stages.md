@@ -62,8 +62,8 @@ Exclusões intencionais e verificações não executadas:
 Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não tem. Cada um pode ser retomado quando o pré-requisito existir.
 
 **Núcleo do editor**
-- Comandos do editor de diff: precisam da interface do editor de diff.
-- Comandos de acessibilidade e de inspeção do editor.
+- Comandos do editor de diff (`switchSide`, `collapseAllUnchangedRegions`, `showAllUnchangedRegions`, `compareEditor.nextChange`/`previousChange`, `git.revertSelectedRanges`) já estão implementados.
+- Comandos de acessibilidade e inspeção de tokens do editor (`editor.action.inspectTMScopes`, `editor.action.toggleScreenReaderAccessibilityMode`, `workbench.action.showAccessibilityHelp`) já estão implementados.
 
 **Shell do workbench**
 - Foco de teclado para a barra de atividades (`workbench.action.focusActivityBar`) e barra de status (`workbench.action.focusStatusBar`) já está implementado; banner e sub-vistas do painel seguem pendentes.
@@ -75,7 +75,7 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Canais de saída, logs compostos (`workbench.output.action.clearOutput` já está implementado).
 - Geração de tema (`workbench.action.generateColorTheme`) já está implementada; pré-visualização ao vivo segue pendente.
 - Comandos de teste que existem para extensões.
-- Controle de código-fonte: foco dos grupos de recursos segue pendente; navegação do histórico de mensagens de commit (`ArrowUp`/`ArrowDown` na entrada de commit) e `git.viewHistory` com grafo Git já estão implementados.
+- Controle de código-fonte: `scm.focusResourceGroup`, navegação do histórico de mensagens de commit (`ArrowUp`/`ArrowDown` na entrada de commit) e `git.viewHistory` com grafo Git já estão implementados.
 - Depuração: testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, pontos de interrupção de dados (`setDataBreakpoints`), decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
 - Extensões: `checkForUpdates`, `updateAll`, `showBuiltInExtensions`, `openExtensionsFolder` e `showRecommendedExtensions` já estão implementados; ativação só no workspace segue pendente.
 
@@ -90,9 +90,9 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Kernels remotos ou de servidor Jupyter: só kernels locais são iniciados.
 - Formatar o notebook ou a célula (`notebook.format` e `notebook.formatCell` já estão implementados para limpeza de espaços/indentação; formatadores externos por linguagem seguem pendentes).
 - Multi-cursor dentro de uma célula e os comandos de cursor de notebook.
-- Selecionar toda a saída de uma célula, mostrar saídas vazias, posição da barra de ferramentas da célula, ordem dos tipos MIME e os comandos de layout e de diagnóstico de layout.
+- Copiar saída da célula (`notebook.cell.copyOutput`) e entrada de chat (`notebook.cell.chat.start`) já estão implementados; mostrar saídas vazias, posição da barra de ferramentas da célula, ordem dos tipos MIME e comandos de diagnóstico de layout seguem pendentes.
 - Diff de notebook (próximo, anterior, reverter entrada, saídas e metadados): exige que a vista de diff vire um editor.
-- Comandos de chat em células: pertencem à Etapa 6.
+- Comandos de chat em células: `notebook.cell.chat.start` abre o chat a partir da célula.
 - Testes contra um `ipykernel` real: existe um teste ignorado por padrão (defina `GRAPHITE_TEST_KERNEL_PYTHON`); o restante usa um kernel falso que fala o protocolo de verdade por sockets de verdade.
 - O desenho das imagens e das células precisa de uma janela e não foi verificado visualmente.
 

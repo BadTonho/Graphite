@@ -52,8 +52,19 @@ fn change_9(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn revert_selected_ranges(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.perform_scm_action(crate::app::scm_ui::ScmAction::RevertCursorLine);
+    Ok(())
+}
+
+fn focus_resource_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_ui_command("workbench.view.scm");
+    app.explorer_focused = true;
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Handler); 10] = [
+    let commands: [(&'static str, &'static str, &'static str, Handler); 12] = [
         (
             "workbench.action.editor.nextChange",
             "Go to next change",
@@ -98,6 +109,18 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "Open repository in integrated terminal",
             "Scm",
             change_9,
+        ),
+        (
+            "git.revertSelectedRanges",
+            "Revert selected ranges",
+            "Scm",
+            revert_selected_ranges,
+        ),
+        (
+            "scm.focusResourceGroup",
+            "Focus source control resource group",
+            "Scm",
+            focus_resource_group,
         ),
     ];
     for (id, title, category, handler) in commands {

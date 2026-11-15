@@ -196,8 +196,37 @@ fn format_notebook(app: &mut App, _: &CommandInvocation) -> Result<(), CommandEr
     Ok(())
 }
 
+fn copy_cell_output(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    use crate::app::clipboard::{ClipboardAccess, SystemClipboard};
+    use crate::notebook::rich::Block;
+    let mut text = String::new();
+    app.with_notebook(|session| {
+        for block in session.focused().blocks().iter() {
+            if let Block::Lines(lines) = block {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&lines.join("\n"));
+            }
+        }
+    });
+    if text.is_empty() {
+        return Ok(());
+    }
+    SystemClipboard
+        .set_text(&text)
+        .map_err(|_| CommandError::Failed(app.t("misc.clipboard_failed").into()))?;
+    app.status = "Copied cell output".into();
+    Ok(())
+}
+
+fn cell_inline_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_ui_command("workbench.action.chat.open");
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [Entry; 34] = [
+    let commands: [Entry; 36] = [
         ("notebook.cell.edit", "Edit Cell", COMMAND_MODE, edit_cell),
         (
             "notebook.cell.quitEdit",
@@ -347,6 +376,18 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
         ("notebook.formatCell", "Format Cell", NOTEBOOK, format_cell),
         ("notebook.format", "Format Notebook", NOTEBOOK, format_notebook),
+        (
+            "notebook.cell.copyOutput",
+            "Copy Cell Output",
+            NOTEBOOK,
+            copy_cell_output,
+        ),
+        (
+            "notebook.cell.chat.start",
+            "Start Inline Chat in Cell",
+            NOTEBOOK,
+            cell_inline_chat,
+        ),
     ];
     for (id, title, enablement, handler) in commands {
         add(
