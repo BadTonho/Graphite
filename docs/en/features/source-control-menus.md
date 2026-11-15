@@ -52,6 +52,7 @@ The `Git:` commands are still listed in the command palette.
 
 - The letter at the end of each row says how the file differs on that side: `M` modified, `A` added, `D` deleted, `U` untracked, `R` renamed, `C` copied, `!` conflict. A file with staged and unstaged edits shows its own letter in each list.
 - Unstaged rows have a **Discard Changes** button (the arrow) beside the stage button. Discarding a tracked file restores it to the staged content; discarding an untracked file deletes it. Both ask for confirmation, and staged changes are never touched. Conflicted files are not discarded: resolve them instead.
+- **⋯ → View as Tree** shows each list as folders (folders first, then files, sorted by name) and **View as List** goes back. Click a folder to open or close it; its `+` / `-` button stages or unstages every file below it. A folder is opened or closed separately in the staged and unstaged lists.
 - Right-click a file for: Open File, Stage or Unstage Changes, Discard Changes, **Add to .gitignore** (an anchored entry such as `/src/a.rs`, added once) and Copy Path / Copy Relative Path.
 
 ## Graph
@@ -68,4 +69,4 @@ Every icon button of the view (repository row, commit arrow, file rows, Changes 
 
 ## Limits
 
-The list is not shown as a tree; **Clone** is not available yet.
+**Clone** is not available yet.

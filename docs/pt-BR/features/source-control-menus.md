@@ -52,6 +52,7 @@ Os comandos `Git:` continuam listados na paleta de comandos.
 
 - A letra no fim de cada linha diz como o arquivo difere naquele lado: `M` modificado, `A` adicionado, `D` excluído, `U` não rastreado, `R` renomeado, `C` copiado, `!` conflito. Um arquivo com edições preparadas e não preparadas mostra a própria letra em cada lista.
 - As linhas não preparadas têm um botão **Descartar Alterações** (a seta) ao lado do botão de preparar. Descartar um arquivo rastreado o restaura ao conteúdo preparado; descartar um não rastreado o exclui. Ambos pedem confirmação, e as alterações preparadas nunca são tocadas. Arquivos em conflito não são descartados: resolva-os.
+- **⋯ → Exibir como Árvore** mostra cada lista em pastas (pastas primeiro, depois arquivos, em ordem alfabética) e **Exibir como Lista** volta ao normal. Clique numa pasta para abri-la ou fechá-la; o botão `+` / `-` dela prepara ou remove do stage todos os arquivos abaixo. Uma pasta abre e fecha separadamente nas listas de preparados e não preparados.
 - Clique com o botão direito num arquivo para: Abrir Arquivo, Preparar ou Remover Alterações do Stage, Descartar Alterações, **Adicionar ao .gitignore** (uma entrada ancorada como `/src/a.rs`, adicionada uma só vez) e Copiar Caminho / Copiar Caminho Relativo.
 
 ## Grafo
@@ -68,4 +69,4 @@ Todo botão de ícone da visão (linha do repositório, seta do commit, linhas d
 
 ## Limites
 
-A lista não aparece como árvore; **Clone** ainda não existe.
+**Clone** ainda não existe.

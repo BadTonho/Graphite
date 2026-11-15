@@ -333,6 +333,21 @@ impl App {
                             let row = *row;
                             self.click_extension_scm_row(&row, extension, local_x, local_y);
                         }
+                        ScmListRowKind::Folder {
+                            staged,
+                            first,
+                            depth,
+                            ..
+                        } => {
+                            if let Some(file) = self.scm_snapshot.files.get(first) {
+                                let folder = super::scm_ui::folder_path(&file.path, depth);
+                                if row.action.contains(local_x, local_y) {
+                                    self.stage_folder(staged, &folder);
+                                } else {
+                                    self.toggle_scm_folder(staged, folder);
+                                }
+                            }
+                        }
                         ScmListRowKind::GraphHeader { .. } => {
                             let [fetch, pull, push, refresh] =
                                 super::source_control::scm_graph_ui::graph_header_buttons(

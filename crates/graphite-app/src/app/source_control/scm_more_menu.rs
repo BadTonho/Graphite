@@ -34,6 +34,8 @@ pub(crate) enum MoreCommand {
     StageAll,
     UnstageAll,
     DiscardAll,
+    /// Show the changes lists as a folder tree (`true`) or as a flat list.
+    ViewAsTree(bool),
     Merge,
     Rebase,
     CreateBranch,
@@ -120,9 +122,9 @@ impl MoreNode {
 }
 
 /// The tree of the menu of `kind`.
-pub(crate) fn menu_tree(kind: MoreMenuKind) -> Vec<MoreNode> {
+pub(crate) fn menu_tree(kind: MoreMenuKind, as_tree: bool) -> Vec<MoreNode> {
     match kind {
-        MoreMenuKind::Actions => more_menu_tree(),
+        MoreMenuKind::Actions => more_menu_tree(as_tree),
         MoreMenuKind::File { staged, .. } => file_menu_tree(staged),
         MoreMenuKind::CommitOptions => commit_button_tree(),
     }
@@ -189,7 +191,7 @@ fn file_menu_tree(staged: bool) -> Vec<MoreNode> {
 }
 
 /// The whole "…" menu.
-pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
+pub(crate) fn more_menu_tree(as_tree: bool) -> Vec<MoreNode> {
     use MoreCommand as C;
     use MoreNode as N;
     vec![
@@ -197,6 +199,12 @@ pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
         N::leaf("scm.more.push", C::Push),
         N::leaf("scm.more.checkout_to", C::CheckoutTo),
         N::leaf("scm.more.fetch", C::Fetch),
+        N::Separator,
+        if as_tree {
+            N::leaf("scm.more.view_as_list", C::ViewAsTree(false))
+        } else {
+            N::leaf("scm.more.view_as_tree", C::ViewAsTree(true))
+        },
         N::Separator,
         N::submenu(
             "scm.more.commit",
@@ -625,7 +633,7 @@ impl App {
         } else {
             0.0
         };
-        let tree = menu_tree(kind);
+        let tree = menu_tree(kind, self.scm_view_as_tree);
         let char_width = cw.max(6.0);
         let mut menu = MoreMenu::new(&tree, anchor, window, bottom_inset, |label| {
             self.t(label).chars().count() as f32 * char_width
@@ -682,7 +690,10 @@ impl App {
 
     /// The tree of the open menu.
     fn open_more_tree(&self) -> Vec<MoreNode> {
-        menu_tree(self.scm_more_menu.as_ref().map(|menu| menu.kind).unwrap_or_default())
+        menu_tree(
+            self.scm_more_menu.as_ref().map(|menu| menu.kind).unwrap_or_default(),
+            self.scm_view_as_tree,
+        )
     }
 
     /// The old "…" behavior: the Git commands in the command palette.
@@ -826,6 +837,7 @@ impl App {
             C::StageAll => self.perform_scm_action(ScmAction::StageAll),
             C::UnstageAll => self.perform_scm_action(ScmAction::UnstageAll),
             C::DiscardAll => self.confirm_discard(self.discard_all_targets()),
+            C::ViewAsTree(tree) => self.scm_view_as_tree = tree,
             C::Merge => self.open_branch_picker_for(BranchPickerAction::Merge),
             C::Rebase => self.open_branch_picker_for(BranchPickerAction::Rebase),
             C::CreateBranch => self.open_create_branch_prompt(),
@@ -956,7 +968,8 @@ mod tests {
             }
         }
         let mut keys = Vec::new();
-        walk(&more_menu_tree(), &mut keys);
+        walk(&more_menu_tree(false), &mut keys);
+        walk(&more_menu_tree(true), &mut keys);
         walk(&file_menu_tree(true), &mut keys);
         walk(&file_menu_tree(false), &mut keys);
         walk(&commit_button_tree(), &mut keys);
@@ -973,7 +986,8 @@ mod tests {
         )
         .unwrap();
         let mut keys = Vec::new();
-        walk(&more_menu_tree(), &mut keys);
+        walk(&more_menu_tree(false), &mut keys);
+        walk(&more_menu_tree(true), &mut keys);
         walk(&file_menu_tree(true), &mut keys);
         walk(&file_menu_tree(false), &mut keys);
         walk(&commit_button_tree(), &mut keys);
@@ -984,7 +998,7 @@ mod tests {
 
     #[test]
     fn hovering_a_group_opens_its_submenu_beside_it_and_hovering_a_leaf_closes_it() {
-        let tree = more_menu_tree();
+        let tree = more_menu_tree(false);
         let mut menu = menu(&tree);
         assert_eq!(menu.panels(&tree).len(), 1);
         let branch = index_of(&tree, "scm.more.branch");
@@ -1002,7 +1016,7 @@ mod tests {
 
     #[test]
     fn a_submenu_that_does_not_fit_on_the_right_opens_on_the_left() {
-        let tree = more_menu_tree();
+        let tree = more_menu_tree(false);
         let mut menu = MoreMenu::new(&tree, (700.0, 50.0), (800.0, 800.0), 0.0, |label| {
             label.len() as f32 * 8.0
         });
@@ -1018,7 +1032,7 @@ mod tests {
 
     #[test]
     fn clicking_a_leaf_returns_its_command_and_a_group_only_opens() {
-        let tree = more_menu_tree();
+        let tree = more_menu_tree(false);
         let mut menu = menu(&tree);
         let (x, y) = point(&menu, &tree, 0, index_of(&tree, "scm.more.stash"));
         assert_eq!(menu.click(&tree, x, y), None);
@@ -1036,10 +1050,10 @@ mod tests {
 
     #[test]
     fn the_keyboard_walks_levels_with_the_arrows_and_skips_separators() {
-        let tree = more_menu_tree();
+        let tree = more_menu_tree(false);
         let mut menu = menu(&tree);
-        // Pull, Push, Checkout to, Fetch, (separator), Commit...
-        for _ in 0..4 {
+        // Pull, Push, Checkout to, Fetch, (separator), View as Tree, (separator), Commit...
+        for _ in 0..5 {
             menu.step(&tree, true);
         }
         assert_eq!(
@@ -1241,7 +1255,7 @@ mod tests {
 
     #[test]
     fn the_commit_submenu_offers_every_scope_with_amend_and_sign_off() {
-        let options = commit_commands(&more_menu_tree());
+        let options = commit_commands(&more_menu_tree(false));
         assert_eq!(options.len(), 9, "{options:?}");
         for scope in [CommitScope::Smart, CommitScope::Staged, CommitScope::All] {
             for (amend, signoff) in [(false, false), (true, false), (false, true)] {
@@ -1302,6 +1316,32 @@ mod tests {
         assert!(app.scm_more_menu.is_none());
         // The choice reached the commit action; without an event loop it stops at this message.
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+    }
+
+    #[test]
+    fn the_view_toggle_offers_the_other_view_and_switches_it() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let offered = |tree: bool| {
+            more_menu_tree(tree)
+                .iter()
+                .filter_map(|row| match row {
+                    MoreNode::Item {
+                        label,
+                        command: Some(MoreCommand::ViewAsTree(to)),
+                        ..
+                    } => Some((*label, *to)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(offered(false), [("scm.more.view_as_tree", true)]);
+        assert_eq!(offered(true), [("scm.more.view_as_list", false)]);
+        assert!(!app.scm_view_as_tree);
+        app.run_more_command(MoreCommand::ViewAsTree(true));
+        assert!(app.scm_view_as_tree);
+        app.run_more_command(MoreCommand::ViewAsTree(false));
+        assert!(!app.scm_view_as_tree);
     }
 
     #[test]

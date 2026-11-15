@@ -156,6 +156,10 @@ impl App {
             self.scm_graph_rows.len(),
             self.scm_graph_scroll,
             self.scm_graph_height,
+            &super::scm_ui::ScmListView {
+                tree: self.scm_view_as_tree,
+                collapsed_folders: Some(&self.scm_collapsed_folders),
+            },
         )
     }
 
@@ -430,7 +434,9 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::source_control::scm_ui::{scm_panel_layout_with_graph, ScmListRowKind};
+    use crate::app::source_control::scm_ui::{
+        scm_panel_layout_with_graph, ScmListRowKind, ScmListView,
+    };
 
     #[test]
     fn discs_are_round_and_symmetric() {
@@ -496,7 +502,7 @@ mod tests {
             false,
             3,
             0,
-            None,
+            None, &ScmListView::LIST,
         );
         assert!(expanded.graph_divider.is_some());
         assert!(expanded
@@ -527,7 +533,7 @@ mod tests {
             true,
             3,
             0,
-            None,
+            None, &ScmListView::LIST,
         );
         assert_eq!(
             collapsed

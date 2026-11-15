@@ -60,6 +60,13 @@ pub(crate) fn tip_at(
                 "scm.tip.stage_all"
             }))
         }
+        ScmListRowKind::Folder { staged, .. } => {
+            row.action.contains(x, y).then_some(Tip::Button(if staged {
+                "scm.tip.unstage_folder"
+            } else {
+                "scm.tip.stage_folder"
+            }))
+        }
         ScmListRowKind::File { index, staged } => {
             if !staged && discardable(index) && discard_button(row.action, cell_width).contains(x, y)
             {
@@ -181,14 +188,14 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::scm_ui::scm_panel_layout_with_graph;
+    use super::super::scm_ui::{scm_panel_layout_with_graph, ScmListView};
     use super::*;
     use crate::scm::{FileStatus, Snapshot};
 
     fn layout(snapshot: &Snapshot) -> ScmPanelLayout {
         scm_panel_layout_with_graph(
             snapshot, 300.0, 700.0, 20.0, 9.0, 0, false, false, false, &[], true, false, 2, 0,
-            None,
+            None, &ScmListView::LIST,
         )
     }
 
@@ -330,6 +337,8 @@ mod tests {
             "scm.tip.unstage_all",
             "scm.tip.stage",
             "scm.tip.unstage",
+            "scm.tip.stage_folder",
+            "scm.tip.unstage_folder",
             "scm.tip.discard",
             "scm.tip.fetch",
             "scm.tip.pull",

@@ -281,6 +281,11 @@ struct App {
     scm_selected: usize,
     scm_repositories_collapsed: bool,
     scm_staged_collapsed: bool,
+    /// The changes lists as a folder tree instead of a flat list.
+    scm_view_as_tree: bool,
+    scm_collapsed_folders: app::scm_tree::Collapsed,
+    /// The files a folder action (stage or unstage everything in it) works on.
+    scm_batch_paths: Vec<PathBuf>,
     scm_changes_collapsed: bool,
     scm_graph_collapsed: bool,
     scm_graph_height: Option<f32>,
@@ -841,6 +846,9 @@ impl App {
             scm_selected: 0,
             scm_repositories_collapsed: false,
             scm_staged_collapsed: false,
+            scm_view_as_tree: false,
+            scm_collapsed_folders: Default::default(),
+            scm_batch_paths: Vec::new(),
             scm_changes_collapsed: false,
             scm_graph_collapsed: false,
             scm_graph_height: None,

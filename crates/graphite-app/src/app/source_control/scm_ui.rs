@@ -35,6 +35,15 @@ pub(crate) enum ScmListRowKind {
         index: usize,
         staged: bool,
     },
+    /// A folder of the tree view of a changes list. `first` is the snapshot index of its first
+    /// file; the folder is the first `depth + 1` parts of that file's path.
+    Folder {
+        staged: bool,
+        first: usize,
+        depth: usize,
+        count: usize,
+        collapsed: bool,
+    },
     /// A row of a source control an extension registered.
     Extension(crate::app::plugins::vsix::ExtensionRow),
     GraphHeader {
@@ -73,6 +82,27 @@ pub(crate) struct ScmPanelLayout {
     pub list_top: f32,
     pub graph_divider: Option<ScmRect>,
     pub list_rows: Vec<ScmListRow>,
+}
+
+/// How the changes lists are shown.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScmListView<'a> {
+    /// Folders instead of a flat list.
+    pub tree: bool,
+    pub collapsed_folders: Option<&'a super::scm_tree::Collapsed>,
+}
+
+impl ScmListView<'static> {
+    /// The flat list.
+    pub(crate) const LIST: Self = Self {
+        tree: false,
+        collapsed_folders: None,
+    };
+}
+
+/// The folder a [`ScmListRowKind::Folder`] row stands for.
+pub(crate) fn folder_path(file: &Path, depth: usize) -> PathBuf {
+    file.components().take(depth + 1).collect()
 }
 
 /// History and stash buttons of the Changes header, placed left of its stage-all button.
@@ -135,6 +165,7 @@ pub(crate) fn scm_panel_layout(
         0,
         0,
         None,
+        &ScmListView::LIST,
     )
 }
 
@@ -155,6 +186,7 @@ pub(crate) fn scm_panel_layout_with_graph(
     graph_count: usize,
     graph_scroll: usize,
     graph_height: Option<f32>,
+    view: &ScmListView<'_>,
 ) -> ScmPanelLayout {
     let left = ACTIVITY_BAR_WIDTH + PAD;
     let right = sidebar_width - PAD;
@@ -201,6 +233,52 @@ pub(crate) fn scm_panel_layout_with_graph(
                 .map(|row| ScmListRowKind::Extension(*row)),
         );
     } else {
+        let list_entries = |staged: bool, entries: &mut Vec<ScmListRowKind>| {
+            use super::scm_tree::{tree_rows, Collapsed, TreeRow};
+            let files: Vec<(usize, &Path)> = snapshot
+                .files
+                .iter()
+                .enumerate()
+                .filter(|(_, file)| {
+                    if staged {
+                        file.staged
+                    } else {
+                        file.unstaged || file.untracked || file.conflicted
+                    }
+                })
+                .map(|(index, file)| (index, file.path.as_path()))
+                .collect();
+            if view.tree {
+                let none = Collapsed::new();
+                let collapsed = view.collapsed_folders.unwrap_or(&none);
+                for row in tree_rows(&files, staged, collapsed) {
+                    entries.push(match row {
+                        TreeRow::Folder {
+                            path,
+                            depth,
+                            first,
+                            count,
+                        } => ScmListRowKind::Folder {
+                            staged,
+                            first,
+                            depth,
+                            count,
+                            collapsed: collapsed.contains(&(staged, path)),
+                        },
+                        TreeRow::File { index, .. } => ScmListRowKind::File { index, staged },
+                    });
+                }
+            } else {
+                entries.extend(
+                    files
+                        .iter()
+                        .map(|(index, _)| ScmListRowKind::File {
+                            index: *index,
+                            staged,
+                        }),
+                );
+            }
+        };
         if staged_count > 0 {
             entries.push(ScmListRowKind::Section {
                 staged: true,
@@ -208,17 +286,7 @@ pub(crate) fn scm_panel_layout_with_graph(
                 collapsed: staged_collapsed,
             });
             if !staged_collapsed {
-                entries.extend(
-                    snapshot
-                        .files
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, file)| file.staged)
-                        .map(|(index, _)| ScmListRowKind::File {
-                            index,
-                            staged: true,
-                        }),
-                );
+                list_entries(true, &mut entries);
             }
         }
         entries.push(ScmListRowKind::Section {
@@ -227,17 +295,7 @@ pub(crate) fn scm_panel_layout_with_graph(
             collapsed: changes_collapsed,
         });
         if !changes_collapsed {
-            entries.extend(
-                snapshot
-                    .files
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, file)| file.unstaged || file.untracked || file.conflicted)
-                    .map(|(index, _)| ScmListRowKind::File {
-                        index,
-                        staged: false,
-                    }),
-            );
+            list_entries(false, &mut entries);
         }
         entries.extend(
             extension_rows
@@ -850,6 +908,37 @@ impl App {
         }
     }
 
+    /// Stages or unstages every file of a list that is at or below `folder`.
+    pub(crate) fn stage_folder(&mut self, staged: bool, folder: &Path) {
+        self.scm_batch_paths = self
+            .scm_snapshot
+            .files
+            .iter()
+            .filter(|file| {
+                file.path.starts_with(folder)
+                    && if staged {
+                        file.staged
+                    } else {
+                        file.unstaged || file.untracked
+                    }
+            })
+            .map(|file| file.path.clone())
+            .collect();
+        self.perform_scm_action(if staged {
+            ScmAction::UnstageFolder
+        } else {
+            ScmAction::StageFolder
+        });
+    }
+
+    /// Opens or closes a folder of the tree view.
+    pub(crate) fn toggle_scm_folder(&mut self, staged: bool, folder: PathBuf) {
+        let key = (staged, folder);
+        if !self.scm_collapsed_folders.remove(&key) {
+            self.scm_collapsed_folders.insert(key);
+        }
+    }
+
     /// What the big button under the commit message does right now.
     pub(crate) fn scm_primary_action(&self) -> ScmPrimaryAction {
         scm_primary_action_for(&self.scm_snapshot)
@@ -882,6 +971,9 @@ impl App {
                 .filter(|file| file.unstaged || file.untracked)
                 .map(|file| file.path.clone())
                 .collect::<Vec<_>>(),
+            ScmAction::StageFolder | ScmAction::UnstageFolder => {
+                std::mem::take(&mut self.scm_batch_paths)
+            }
             ScmAction::UnstageAll => self
                 .scm_snapshot
                 .files
@@ -922,6 +1014,14 @@ impl App {
                     ScmAction::StageAll => {
                         crate::scm::stage_files(&root, &batch_paths, &translator)
                             .map(|_| translator.text("scm.status.all_staged").to_owned())
+                    }
+                    ScmAction::StageFolder => {
+                        crate::scm::stage_files(&root, &batch_paths, &translator)
+                            .map(|_| translator.text("scm.status.all_staged").to_owned())
+                    }
+                    ScmAction::UnstageFolder => {
+                        crate::scm::unstage_files(&root, &batch_paths, &translator)
+                            .map(|_| translator.text("scm.status.all_unstaged").to_owned())
                     }
                     ScmAction::UnstageAll => {
                         crate::scm::unstage_files(&root, &batch_paths, &translator)
@@ -1619,6 +1719,52 @@ impl App {
                         }
                     }
                 }
+                ScmListRowKind::Folder {
+                    staged,
+                    first,
+                    depth,
+                    count,
+                    collapsed,
+                } => {
+                    let name = self
+                        .scm_snapshot
+                        .files
+                        .get(first)
+                        .map(|file| folder_path(&file.path, depth))
+                        .and_then(|path| {
+                            path.file_name()
+                                .map(|name| name.to_string_lossy().into_owned())
+                        })
+                        .unwrap_or_default();
+                    let indent = depth as f32 * cell_width * 1.4;
+                    let chevron = if collapsed {
+                        crate::file_icons::CHEVRON_RIGHT
+                    } else {
+                        crate::file_icons::CHEVRON_DOWN
+                    };
+                    let icon_size = (row_h * 0.65).round();
+                    renderer.draw_icon(
+                        chevron,
+                        row.chevron.x + indent + (row.chevron.width - icon_size) * 0.5,
+                        y + (row.chevron.height - icon_size) * 0.5,
+                        icon_size,
+                        dim,
+                    );
+                    let name_x = row.chevron.x + indent + row.chevron.width;
+                    let max = ((right - name_x - cell_width * 6.0) / cell_width).max(1.0) as usize;
+                    renderer.draw_text(&name.chars().take(max).collect::<String>(), name_x, y, text);
+                    renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
+                    let action_hovered = row
+                        .action
+                        .contains(self.mouse.x as f32, self.mouse.y as f32);
+                    draw_scm_control_slot(renderer, row.action, action_hovered);
+                    draw_scm_icon(
+                        renderer,
+                        if staged { ScmIcon::Minus } else { ScmIcon::Plus },
+                        row.action,
+                        scm_button_color(action_hovered),
+                    );
+                }
                 ScmListRowKind::File { index, staged } => {
                     let item = &self.scm_snapshot.files[index];
                     if index == self.scm_selected {
@@ -1632,7 +1778,13 @@ impl App {
                     }
                     let icon = crate::icon_theme::for_path(&item.path);
                     let icon_size = (row_h * 0.72).round();
-                    let icon_x = left + cell_width;
+                    // In the tree the folders above a file already say where it is.
+                    let tree_depth = if self.scm_view_as_tree {
+                        item.path.components().count().saturating_sub(1)
+                    } else {
+                        0
+                    };
+                    let icon_x = left + cell_width + tree_depth as f32 * cell_width * 1.4;
                     crate::icon_theme::draw(
                         renderer,
                         &icon,
@@ -1650,7 +1802,7 @@ impl App {
                     let dir = item
                         .path
                         .parent()
-                        .filter(|p| !p.as_os_str().is_empty())
+                        .filter(|p| !p.as_os_str().is_empty() && !self.scm_view_as_tree)
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_default();
                     let kind = item.kind(staged);
@@ -2113,6 +2265,9 @@ pub(crate) enum ScmAction {
     Unstage,
     StageAll,
     UnstageAll,
+    /// Stage or unstage the files in `App::scm_batch_paths` (a folder of the tree view).
+    StageFolder,
+    UnstageFolder,
     Commit(crate::scm_commit::CommitOptions),
     StageCursorLine,
     RevertCursorLine,
