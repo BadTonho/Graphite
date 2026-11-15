@@ -179,8 +179,25 @@ fn toggle_line_numbers(app: &mut App, _: &CommandInvocation) -> Result<(), Comma
     Ok(())
 }
 
+fn format_cell(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let tab_size = app.tab_size;
+    app.with_notebook(|session| {
+        let focus = session.focus;
+        session.format_cell_at(focus, tab_size);
+    });
+    Ok(())
+}
+
+fn format_notebook(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let tab_size = app.tab_size;
+    app.with_notebook(|session| {
+        session.format_all_cells(tab_size);
+    });
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [Entry; 32] = [
+    let commands: [Entry; 34] = [
         ("notebook.cell.edit", "Edit Cell", COMMAND_MODE, edit_cell),
         (
             "notebook.cell.quitEdit",
@@ -328,6 +345,8 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             NOTEBOOK,
             |_, _| Ok(()),
         ),
+        ("notebook.formatCell", "Format Cell", NOTEBOOK, format_cell),
+        ("notebook.format", "Format Notebook", NOTEBOOK, format_notebook),
     ];
     for (id, title, enablement, handler) in commands {
         add(

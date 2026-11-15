@@ -682,6 +682,8 @@
   "command.notebook.toggleLineNumbers": "Notebook: toggle line numbers",
   "command.notebook.cell.toggleLineNumbers": "Notebook: toggle cell line numbers",
   "command.notebook.cell.nullAction": "Notebook: do nothing",
+  "command.notebook.formatCell": "Notebook: format cell",
+  "command.notebook.format": "Notebook: format notebook",
   "command.category.notebook": "Notebook",
   "command.notebook.cell.execute": "Notebook: run cell",
   "command.notebook.cell.executeAndSelectBelow": "Notebook: run cell and select below",

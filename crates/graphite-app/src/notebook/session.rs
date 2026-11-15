@@ -578,6 +578,40 @@ impl Session {
         self.set_output_collapsed(collapse);
     }
 
+    pub(crate) fn format_cell_at(&mut self, index: usize, tab_size: usize) -> bool {
+        let Some(state) = self.cells.get_mut(index) else {
+            return false;
+        };
+        let current = state.text();
+        let formatted = format_cell_text(&current, state.cell.kind, tab_size);
+        if formatted == current {
+            return false;
+        }
+        let uid = state.uid;
+        let before = state.buffer.revision();
+        {
+            let mut editor = state.buffer.edit(&mut state.selection, ViewId(uid));
+            editor.set_selection(0, current.len());
+            editor.insert(&formatted);
+        }
+        let changes = state.buffer.revision().saturating_sub(before);
+        for _ in 0..changes {
+            self.record(Entry::Text(uid));
+        }
+        self.delete_pending = false;
+        true
+    }
+
+    pub(crate) fn format_all_cells(&mut self, tab_size: usize) -> usize {
+        let mut changed = 0;
+        for index in 0..self.cells.len() {
+            if self.format_cell_at(index, tab_size) {
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     // History.
 
     pub(crate) fn can_undo(&self) -> bool {
@@ -1028,4 +1062,39 @@ mod tests {
         assert_eq!(written["cells"][0]["source"], serde_json::json!(["yx"]));
         assert_eq!(session.metadata().kernel_name(), Some("python3"));
     }
+
+    #[test]
+    fn format_cell_and_notebook_trim_trailing_whitespace_and_support_undo() {
+        let mut session = make(&["\tx = 1   \r\n\treturn x  \n\n", "# Title   \n"]);
+        assert!(session.format_cell_at(0, 4));
+        assert_eq!(texts(&session)[0], "    x = 1\n    return x");
+        assert!(session.undo());
+        assert_eq!(texts(&session)[0], "\tx = 1   \r\n\treturn x  \n\n");
+
+        let changed = session.format_all_cells(2);
+        assert_eq!(changed, 2);
+        assert_eq!(texts(&session), ["  x = 1\n  return x", "# Title"]);
+    }
+}
+
+fn format_cell_text(text: &str, kind: CellKind, tab_size: usize) -> String {
+    let indent = " ".repeat(tab_size.max(1));
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines: Vec<String> = normalized
+        .split('\n')
+        .map(|line| {
+            let trimmed = line.trim_end_matches([' ', '\t']);
+            if kind == CellKind::Code {
+                let leading_tabs = trimmed.bytes().take_while(|&b| b == b'\t').count();
+                if leading_tabs > 0 {
+                    return format!("{}{}", indent.repeat(leading_tabs), &trimmed[leading_tabs..]);
+                }
+            }
+            trimmed.to_owned()
+        })
+        .collect();
+    while lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    lines.join("\n")
 }

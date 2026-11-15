@@ -682,6 +682,8 @@
   "command.notebook.toggleLineNumbers": "Notebook: alternar números de linha",
   "command.notebook.cell.toggleLineNumbers": "Notebook: alternar números de linha da célula",
   "command.notebook.cell.nullAction": "Notebook: não fazer nada",
+  "command.notebook.formatCell": "Notebook: formatar célula",
+  "command.notebook.format": "Notebook: formatar notebook",
   "command.category.notebook": "Notebook",
   "command.notebook.cell.execute": "Notebook: executar célula",
   "command.notebook.cell.executeAndSelectBelow": "Notebook: executar célula e selecionar a de baixo",
