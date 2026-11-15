@@ -21,6 +21,12 @@ fn copy_breadcrumbs_path(app: &mut App, _: &CommandInvocation) -> Result<(), Com
     copy_path_of_active_file(app)
 }
 
+fn breadcrumbs_focus_and_select(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    set_breadcrumbs(app, true)?;
+    app.run_ui_command("workbench.action.gotoSymbol");
+    Ok(())
+}
+
 pub(super) fn copy_path_of_active_file(app: &mut App) -> Result<(), CommandError> {
     let Some(path) = app.documents[app.command_document()]
         .buffer
@@ -134,7 +140,7 @@ command!(duplicate_down, |app| duplicate_group(
 ));
 
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Handler); 14] = [
+    let commands: [(&'static str, &'static str, &'static str, Handler); 15] = [
         (
             "workbench.action.activityBarLocation.default",
             "Move activity bar to the side",
@@ -176,6 +182,12 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "Copy breadcrumbs path",
             "Editor",
             copy_breadcrumbs_path,
+        ),
+        (
+            "breadcrumbs.focusAndSelect",
+            "Focus and select breadcrumbs",
+            "View",
+            breadcrumbs_focus_and_select,
         ),
         (
             "workbench.action.newWindow",

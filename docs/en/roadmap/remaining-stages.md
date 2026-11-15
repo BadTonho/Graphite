@@ -66,16 +66,16 @@ Items that were left out because they depend on something the application does n
 - Editor accessibility commands and inspection commands.
 
 **Workbench shell**
-- Keyboard focus for the activity bar, the status bar, the banner and the panel's own views.
+- Keyboard focus for the activity bar (`workbench.action.focusActivityBar`) and status bar (`workbench.action.focusStatusBar`) is implemented; banner and panel sub-views remain.
 - Moving and resizing views, and the notifications position.
-- Navigable breadcrumbs (focus, step through, pick items).
+- Navigable breadcrumbs (`breadcrumbs.focusAndSelect` opens symbol navigation; per-segment stepping remains).
 - List commands for search results, the source control list and other lists; type to find; multi-selection.
 
 **Daily tools**
 - Output channels, compound logs (`workbench.output.action.clearOutput` is implemented).
 - Theme generation and preview commands.
 - Testing commands that exist for extensions.
-- Source control: input and resource group focus, next and previous commit (`git.viewHistory` graph view is implemented).
+- Source control: resource group focus remains; commit message history navigation (`ArrowUp`/`ArrowDown` in the commit input) and `git.viewHistory` graph view are implemented.
 - Debug: tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, data breakpoints (`setDataBreakpoints`), Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
 - Extensions: update all, check for updates, workspace-only enable, recommendations, built-in list, open the extensions folder.
 
@@ -88,7 +88,7 @@ Items that were left out because they depend on something the application does n
 **Notebooks**
 - Rich outputs: SVG, HTML drawn as a page (today it is read as text), interactive widgets and app outputs.
 - Remote or Jupyter server kernels: only local kernels are started.
-- Format the notebook or the cell: needs the per-language formatting wired to cells.
+- Format the notebook or the cell (`notebook.format`, `notebook.formatCell` are implemented for whitespace/indentation cleanup; external per-language formatters remain).
 - Multi-cursor inside a cell and the notebook cursor commands.
 - Select all of a cell's output, show empty outputs, cell toolbar position, MIME type order and the layout and layout troubleshooting commands.
 - Notebook diff (next, previous, revert input, outputs and metadata): needs the diff view to become an editor.

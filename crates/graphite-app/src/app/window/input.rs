@@ -193,6 +193,12 @@ impl App {
                 Key::Named(NamedKey::Backspace) => {
                     self.run_ui_command("graphite.commit.deleteLeft");
                 }
+                Key::Named(NamedKey::ArrowUp) => {
+                    self.cycle_scm_commit_history(true);
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    self.cycle_scm_commit_history(false);
+                }
                 _ if !ctrl && !self.modifiers.alt_key() => {
                     if let Some(text) = event
                         .text

@@ -91,11 +91,44 @@ impl App {
             self.status = self.t("scm.error.empty_message").into();
             return;
         }
+        let message = self.scm_commit_message.trim().to_owned();
+        self.record_scm_commit_history(&message);
         self.perform_scm_action(super::scm_ui::ScmAction::Commit);
     }
 
     pub(crate) fn scm_clear_input(&mut self) {
         self.scm_commit_message.clear();
+        self.scm_commit_history_index = None;
+    }
+
+    pub(crate) fn record_scm_commit_history(&mut self, message: &str) {
+        let trimmed = message.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if self.scm_commit_history.last().map(String::as_str) != Some(trimmed) {
+            self.scm_commit_history.push(trimmed.to_owned());
+        }
+        self.scm_commit_history_index = None;
+    }
+
+    pub(crate) fn cycle_scm_commit_history(&mut self, older: bool) {
+        if self.scm_commit_history.is_empty() {
+            return;
+        }
+        let next_index = match (self.scm_commit_history_index, older) {
+            (None, true) => Some(self.scm_commit_history.len() - 1),
+            (None, false) => None,
+            (Some(0), true) => Some(0),
+            (Some(index), true) => Some(index - 1),
+            (Some(index), false) if index + 1 < self.scm_commit_history.len() => Some(index + 1),
+            (Some(_), false) => None,
+        };
+        self.scm_commit_history_index = next_index;
+        self.scm_commit_message = next_index
+            .and_then(|index| self.scm_commit_history.get(index))
+            .cloned()
+            .unwrap_or_default();
     }
 
     /// Opens a terminal in the repository folder of the active file (or the workspace folder).
@@ -205,5 +238,22 @@ mod tests {
                 "{id}"
             );
         }
+    }
+
+    #[test]
+    fn commit_message_history_cycles_older_and_newer() {
+        let (mut app, _dir) = app_with_changes(&[]);
+        app.record_scm_commit_history("first");
+        app.record_scm_commit_history("second");
+        app.record_scm_commit_history("second");
+
+        app.cycle_scm_commit_history(true);
+        assert_eq!(app.scm_commit_message, "second");
+        app.cycle_scm_commit_history(true);
+        assert_eq!(app.scm_commit_message, "first");
+        app.cycle_scm_commit_history(false);
+        assert_eq!(app.scm_commit_message, "second");
+        app.cycle_scm_commit_history(false);
+        assert!(app.scm_commit_message.is_empty());
     }
 }

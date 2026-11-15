@@ -113,6 +113,10 @@ struct App {
     explorer_clipboard: Option<(PathBuf, bool)>,
     /// Whether the explorer, rather than the editor, has keyboard focus.
     explorer_focused: bool,
+    /// Whether the activity bar has keyboard focus.
+    activity_bar_focused: bool,
+    /// Whether the status bar has keyboard focus.
+    status_bar_focused: bool,
     /// First explorer row shown in the side bar.
     explorer_scroll: usize,
     /// Entry pressed in the explorer, moved if the mouse is released on a folder.
@@ -274,6 +278,8 @@ struct App {
     branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
     scm_commit_message: String,
     scm_commit_prompt: bool,
+    scm_commit_history: Vec<String>,
+    scm_commit_history_index: Option<usize>,
     /// The extension source control whose commit box has the keyboard focus.
     scm_extension_input: Option<u64>,
     diff_view: Option<app::scm_ui::DiffView>,
@@ -631,6 +637,8 @@ impl App {
             explorer_selected: None,
             explorer_clipboard: None,
             explorer_focused: false,
+            activity_bar_focused: false,
+            status_bar_focused: false,
             explorer_scroll: 0,
             explorer_drag: None,
             explorer_prompt: None,
@@ -801,6 +809,8 @@ impl App {
             branch_name_prompt: None,
             scm_commit_message: String::new(),
             scm_commit_prompt: false,
+            scm_commit_history: Vec::new(),
+            scm_commit_history_index: None,
             scm_extension_input: None,
             diff_view: None,
             diff_loading: false,

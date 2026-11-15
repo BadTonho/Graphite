@@ -9,6 +9,8 @@ pub(crate) enum FocusRegion {
     Terminal,
     Explorer,
     Chat,
+    ActivityBar,
+    StatusBar,
 }
 
 impl FocusRegion {
@@ -18,6 +20,8 @@ impl FocusRegion {
             FocusRegion::Terminal => "focus.region.terminal",
             FocusRegion::Explorer => "focus.region.explorer",
             FocusRegion::Chat => "focus.region.chat",
+            FocusRegion::ActivityBar => "focus.region.activity_bar",
+            FocusRegion::StatusBar => "focus.region.status_bar",
         }
     }
 }
@@ -54,6 +58,14 @@ impl App {
         if self.chat.visible {
             regions.push(FocusRegion::Chat);
         }
+        if self.activity_bar_preferences.position != crate::config::ActivityBarPosition::Hidden
+            && !self.zen_mode
+        {
+            regions.push(FocusRegion::ActivityBar);
+        }
+        if self.view_preferences.status_bar_visible && !self.zen_mode {
+            regions.push(FocusRegion::StatusBar);
+        }
         regions
     }
 
@@ -64,6 +76,10 @@ impl App {
             FocusRegion::Terminal
         } else if self.explorer_focused {
             FocusRegion::Explorer
+        } else if self.activity_bar_focused {
+            FocusRegion::ActivityBar
+        } else if self.status_bar_focused {
+            FocusRegion::StatusBar
         } else {
             FocusRegion::Editor
         }
@@ -73,6 +89,18 @@ impl App {
     pub(crate) fn cycle_focus_region(&mut self, reverse: bool) {
         let available = self.available_focus_regions();
         let region = next_region(&available, self.current_focus_region(), reverse);
+        self.focus_region_and_announce(region);
+    }
+
+    pub(crate) fn focus_activity_bar(&mut self) {
+        self.focus_region_and_announce(FocusRegion::ActivityBar);
+    }
+
+    pub(crate) fn focus_status_bar(&mut self) {
+        self.focus_region_and_announce(FocusRegion::StatusBar);
+    }
+
+    fn focus_region_and_announce(&mut self, region: FocusRegion) {
         self.focus_region(region);
         self.status = self.tf(
             "focus.region.changed",
@@ -81,27 +109,18 @@ impl App {
     }
 
     pub(crate) fn focus_region(&mut self, region: FocusRegion) {
+        self.terminal_focused = false;
+        self.explorer_focused = false;
+        self.chat.focused = false;
+        self.activity_bar_focused = false;
+        self.status_bar_focused = false;
         match region {
-            FocusRegion::Editor => {
-                self.terminal_focused = false;
-                self.explorer_focused = false;
-                self.chat.focused = false;
-            }
-            FocusRegion::Terminal => {
-                self.terminal_focused = true;
-                self.explorer_focused = false;
-                self.chat.focused = false;
-            }
-            FocusRegion::Explorer => {
-                self.terminal_focused = false;
-                self.explorer_focused = true;
-                self.chat.focused = false;
-            }
-            FocusRegion::Chat => {
-                self.terminal_focused = false;
-                self.explorer_focused = false;
-                self.chat.focused = true;
-            }
+            FocusRegion::Editor => {}
+            FocusRegion::Terminal => self.terminal_focused = true,
+            FocusRegion::Explorer => self.explorer_focused = true,
+            FocusRegion::Chat => self.chat.focused = true,
+            FocusRegion::ActivityBar => self.activity_bar_focused = true,
+            FocusRegion::StatusBar => self.status_bar_focused = true,
         }
     }
 }
@@ -149,6 +168,8 @@ mod tests {
         app.terminal_visible = true;
         app.view_preferences.panel_visible = true;
         app.view_preferences.primary_sidebar_visible = true;
+        app.activity_bar_preferences.position = crate::config::ActivityBarPosition::Hidden;
+        app.view_preferences.status_bar_visible = false;
 
         assert_eq!(app.current_focus_region(), FocusRegion::Editor);
         app.cycle_focus_region(false);
@@ -160,5 +181,23 @@ mod tests {
         assert_eq!(app.current_focus_region(), FocusRegion::Editor);
         app.cycle_focus_region(true);
         assert_eq!(app.current_focus_region(), FocusRegion::Explorer);
+    }
+
+    #[test]
+    fn activity_bar_and_status_bar_receive_focus_when_visible() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.view_preferences.primary_sidebar_visible = false;
+        app.view_preferences.panel_visible = false;
+        app.activity_bar_preferences.position = crate::config::ActivityBarPosition::Default;
+        app.view_preferences.status_bar_visible = true;
+
+        app.run_ui_command("workbench.action.focusActivityBar");
+        assert_eq!(app.current_focus_region(), FocusRegion::ActivityBar);
+        assert!(app.activity_bar_focused);
+
+        app.run_ui_command("workbench.action.focusStatusBar");
+        assert_eq!(app.current_focus_region(), FocusRegion::StatusBar);
+        assert!(app.status_bar_focused && !app.activity_bar_focused);
     }
 }

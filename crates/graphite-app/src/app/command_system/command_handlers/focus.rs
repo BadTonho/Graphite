@@ -25,6 +25,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "workbench.action.focusActivityBar",
+        "Focus activity bar",
+        "Workbench",
+        ALL,
+        "true",
+        None,
+        focus_activity_bar,
+    );
+    add(
+        registry,
+        "workbench.action.focusStatusBar",
+        "Focus status bar",
+        "Workbench",
+        ALL,
+        "true",
+        None,
+        focus_status_bar,
+    );
+    add(
+        registry,
         "workbench.action.toggleHighContrast",
         "Toggle high contrast",
         "Workbench",
@@ -45,6 +65,16 @@ fn focus_previous_region(
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
     app.cycle_focus_region(true);
+    Ok(())
+}
+
+fn focus_activity_bar(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_activity_bar();
+    Ok(())
+}
+
+fn focus_status_bar(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    app.focus_status_bar();
     Ok(())
 }
 

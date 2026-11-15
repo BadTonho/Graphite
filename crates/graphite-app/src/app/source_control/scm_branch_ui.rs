@@ -247,6 +247,9 @@ impl App {
     /// otherwise the message is kept.
     pub(crate) fn amend_last_commit(&mut self) {
         let message = self.scm_commit_message.trim().to_owned();
+        if !message.is_empty() {
+            self.record_scm_commit_history(&message);
+        }
         let message = (!message.is_empty()).then_some(message);
         let used_message = message.is_some();
         self.run_scm_remote(RemoteOp::Amend(message));

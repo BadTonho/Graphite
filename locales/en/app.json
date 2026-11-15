@@ -306,6 +306,8 @@
   "focus.region.terminal": "terminal",
   "focus.region.explorer": "explorer",
   "focus.region.chat": "chat",
+  "focus.region.activity_bar": "activity bar",
+  "focus.region.status_bar": "status bar",
   "focus.region.changed": "Focus moved to the {region}",
   "theme.high_contrast.changed": "High contrast: {state}",
   "github.dialog.title": "Sign in with GitHub",

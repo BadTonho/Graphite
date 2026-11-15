@@ -66,16 +66,16 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Comandos de acessibilidade e de inspeção do editor.
 
 **Shell do workbench**
-- Foco de teclado para a barra de atividades, a barra de status, o banner e as vistas do próprio painel.
+- Foco de teclado para a barra de atividades (`workbench.action.focusActivityBar`) e barra de status (`workbench.action.focusStatusBar`) já está implementado; banner e sub-vistas do painel seguem pendentes.
 - Mover e redimensionar vistas, e a posição das notificações.
-- Breadcrumbs navegáveis (focar, percorrer, escolher itens).
+- Breadcrumbs navegáveis (`breadcrumbs.focusAndSelect` abre a navegação de símbolos; navegação por segmento individual segue pendente).
 - Comandos de lista para resultados de busca, a lista do controle de código-fonte e as outras listas; busca por digitação; seleção múltipla.
 
 **Ferramentas do dia a dia**
 - Canais de saída, logs compostos (`workbench.output.action.clearOutput` já está implementado).
 - Comandos de gerar e pré-visualizar temas.
 - Comandos de teste que existem para extensões.
-- Controle de código-fonte: foco da entrada e dos grupos de recursos, commit seguinte e anterior (`git.viewHistory` com grafo Git já está implementado).
+- Controle de código-fonte: foco dos grupos de recursos segue pendente; navegação do histórico de mensagens de commit (`ArrowUp`/`ArrowDown` na entrada de commit) e `git.viewHistory` com grafo Git já estão implementados.
 - Depuração: testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, pontos de interrupção de dados (`setDataBreakpoints`), decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
 - Extensões: atualizar todas, verificar atualizações, ativar só no espaço de trabalho, recomendações, lista de embutidas, abrir a pasta de extensões.
 
@@ -88,7 +88,7 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 **Notebooks**
 - Saídas ricas: SVG, HTML desenhado como página (hoje é lido como texto), widgets interativos e saídas de aplicativos.
 - Kernels remotos ou de servidor Jupyter: só kernels locais são iniciados.
-- Formatar o notebook ou a célula: depende de ligar a formatação por linguagem às células.
+- Formatar o notebook ou a célula (`notebook.format` e `notebook.formatCell` já estão implementados para limpeza de espaços/indentação; formatadores externos por linguagem seguem pendentes).
 - Multi-cursor dentro de uma célula e os comandos de cursor de notebook.
 - Selecionar toda a saída de uma célula, mostrar saídas vazias, posição da barra de ferramentas da célula, ordem dos tipos MIME e os comandos de layout e de diagnóstico de layout.
 - Diff de notebook (próximo, anterior, reverter entrada, saídas e metadados): exige que a vista de diff vire um editor.
