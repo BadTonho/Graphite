@@ -210,6 +210,7 @@ impl ApplicationHandler<UserEvent> for App {
                         window_height,
                     );
                     self.profile_menu_pointer_moved(position.x as f32, position.y as f32);
+                    self.terminal_toolbar_menu_pointer_moved(position.x as f32, position.y as f32);
                 }
                 if self.titlebar_pointer_moved(position.x as f32, position.y as f32) {
                     if let Some(gpu) = &self.gpu {

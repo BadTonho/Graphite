@@ -1,4 +1,7 @@
 use super::scm_ui::{scm_panel_layout, ScmAction, ScmListRowKind};
+use super::terminal_panel::terminal_drawing::{
+    TerminalHeaderTab, TerminalToolbarAction, TERMINAL_HEADER_HEIGHT,
+};
 use super::*;
 
 impl App {
@@ -43,6 +46,15 @@ impl App {
                 return;
             }
             self.profile_menu = None;
+        }
+
+        let prev_terminal_toolbar_menu = self.terminal_toolbar_menu.as_ref().map(|m| m.kind);
+        if self.terminal_toolbar_menu.is_some() {
+            if self.terminal_toolbar_menu_contains(mx, my) {
+                self.terminal_toolbar_menu_click(mx, my);
+                return;
+            }
+            self.terminal_toolbar_menu = None;
         }
 
         if self.settings_menu.is_some() {
@@ -153,82 +165,21 @@ impl App {
 
         if self.terminal_visible && self.view_preferences.panel_visible {
             let panel = self.panel_bounds(window_width, window_height, lh);
-            let panel_top = panel.y;
             if mx >= panel.x
                 && mx < panel.x + panel.width
-                && my >= panel_top
-                && my < panel_top + panel.height
+                && my >= panel.y
+                && my < panel.y + panel.height
             {
-                if self.modifiers.control_key()
-                    && my >= panel_top + lh * 1.4
-                    && self.open_terminal_link_at(mx, my, panel.x, panel_top, lh, cw)
-                {
-                    return;
-                }
-                if my < panel_top + lh * 1.4 {
-                    let panel_offset = mx - panel.x;
-                    self.terminal_problems = panel_offset < cw * 9.0;
-                    self.terminal_focused = !self.terminal_problems;
-                    if !self.terminal_problems && panel_offset >= cw * 19.0 {
-                        let offset = panel_offset;
-                        if offset < cw * 34.0 {
-                            self.run_ui_command("graphite.terminal.nextProfile");
-                        } else if offset < cw * 38.0 {
-                            self.run_ui_command("graphite.terminal.new");
-                        } else if offset < cw * 45.0 {
-                            self.run_ui_command("graphite.terminal.split");
-                        } else if offset < cw * 52.0 {
-                            self.run_ui_command("graphite.terminal.close");
-                        } else if offset < cw * 54.0 {
-                            self.run_ui_command("graphite.terminal.scrollLeft");
-                        } else if offset < cw * 57.0 {
-                            self.run_ui_command("graphite.terminal.scrollRight");
-                        } else {
-                            let mut x = panel.x + cw * 57.0;
-                            let mut selected = None;
-                            for (index, name) in self
-                                .terminal_names
-                                .iter()
-                                .enumerate()
-                                .skip(self.terminal_tab_offset)
-                            {
-                                let tab_width = (name.chars().count() as f32 + 2.0) * cw * 1.25;
-                                if x + tab_width > panel.x + panel.width - PAD {
-                                    break;
-                                }
-                                if mx >= x && mx < x + tab_width {
-                                    selected = Some(index);
-                                    break;
-                                }
-                                x += tab_width;
-                            }
-                            if let Some(index) = selected {
-                                self.run_ui_command_args(
-                                    "graphite.terminal.select",
-                                    serde_json::json!({"index":index}),
-                                );
-                            }
-                        }
-                    }
-                } else if self.terminal_problems {
-                    let row = ((my - panel_top - lh * 1.5) / lh).max(0.0) as usize;
-                    self.run_ui_command_args(
-                        "graphite.problems.open",
-                        serde_json::json!({"index":row}),
-                    );
-                } else {
-                    self.terminal_focused = true;
-                    self.focused_terminal = if let Some(second) = self.split_terminal {
-                        let split_x = sidebar_width + (window_width - sidebar_width) / 2.0;
-                        if mx >= split_x {
-                            second
-                        } else {
-                            self.active_terminal
-                        }
-                    } else {
-                        self.active_terminal
-                    };
-                }
+                self.handle_terminal_panel_click(
+                    mx,
+                    my,
+                    panel.x,
+                    panel.y,
+                    panel.width,
+                    lh,
+                    cw,
+                    prev_terminal_toolbar_menu,
+                );
                 return;
             }
         }
@@ -594,5 +545,154 @@ impl App {
             "graphite.editor.setSelection",
             serde_json::json!({"anchor":anchor,"head":head}),
         );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn handle_terminal_panel_click(
+        &mut self,
+        mx: f32,
+        my: f32,
+        panel_x: f32,
+        panel_top: f32,
+        panel_width: f32,
+        lh: f32,
+        cw: f32,
+        prev_terminal_toolbar_menu: Option<
+            super::terminal_panel::terminal_toolbar_menu::TerminalToolbarMenuKind,
+        >,
+    ) {
+        if self.modifiers.control_key()
+            && my >= panel_top + TERMINAL_HEADER_HEIGHT + 4.0
+            && self.open_terminal_link_at(mx, my, panel_x, panel_top, lh, cw)
+        {
+            return;
+        }
+        if my < panel_top + TERMINAL_HEADER_HEIGHT {
+            let layout = self.terminal_header_layout(panel_x, panel_top, panel_width, cw);
+            if let Some(hit) = layout.tabs.iter().find(|rect| rect.contains(mx, my)) {
+                match hit.item {
+                    TerminalHeaderTab::Problems => {
+                        self.terminal_problems = true;
+                        self.terminal_focused = false;
+                    }
+                    TerminalHeaderTab::Terminal => {
+                        self.terminal_problems = false;
+                        self.terminal_focused = true;
+                    }
+                    TerminalHeaderTab::Output => {
+                        self.terminal_problems = false;
+                        self.terminal_focused = false;
+                        self.run_ui_command("workbench.action.showOutputChannels");
+                    }
+                    TerminalHeaderTab::DebugConsole => {
+                        self.debug_panel_visible = !self.debug_panel_visible;
+                    }
+                    TerminalHeaderTab::Ports => {
+                        self.run_ui_command("graphite.ports.open");
+                    }
+                    TerminalHeaderTab::Comments => {
+                        self.terminal_problems = true;
+                        self.terminal_focused = false;
+                    }
+                }
+                return;
+            }
+            if let Some(hit) = layout.actions.iter().find(|rect| rect.contains(mx, my)) {
+                match hit.item {
+                    TerminalToolbarAction::NewTerminal => {
+                        self.terminal_problems = false;
+                        self.terminal_focused = true;
+                        self.run_ui_command("graphite.terminal.new");
+                    }
+                    TerminalToolbarAction::CycleProfile => {
+                        if prev_terminal_toolbar_menu
+                            != Some(super::terminal_panel::terminal_toolbar_menu::TerminalToolbarMenuKind::ProfilePicker)
+                        {
+                            let (window_width, window_height) = self
+                                .gpu
+                                .as_ref()
+                                .map_or((panel_x + panel_width, panel_top + 200.0), |gpu| {
+                                    gpu.renderer.size()
+                                });
+                            self.open_terminal_profile_menu(
+                                (hit.x, hit.y, hit.w, hit.h),
+                                window_width,
+                                window_height,
+                            );
+                        }
+                    }
+                    TerminalToolbarAction::SplitTerminal => {
+                        self.terminal_problems = false;
+                        self.terminal_focused = true;
+                        self.run_ui_command("graphite.terminal.split");
+                    }
+                    TerminalToolbarAction::KillTerminal => {
+                        self.run_ui_command("graphite.terminal.close");
+                    }
+                    TerminalToolbarAction::MoreActions => {
+                        if prev_terminal_toolbar_menu
+                            != Some(super::terminal_panel::terminal_toolbar_menu::TerminalToolbarMenuKind::MoreActions)
+                        {
+                            let (window_width, window_height) = self
+                                .gpu
+                                .as_ref()
+                                .map_or((panel_x + panel_width, panel_top + 200.0), |gpu| {
+                                    gpu.renderer.size()
+                                });
+                            self.open_terminal_more_actions_menu(
+                                (hit.x, hit.y, hit.w, hit.h),
+                                window_width,
+                                window_height,
+                            );
+                        }
+                    }
+                    TerminalToolbarAction::ToggleMaximize => {
+                        self.view_preferences.panel_height_delta =
+                            if self.view_preferences.panel_height_delta > 0 {
+                                0
+                            } else {
+                                220
+                            };
+                        self.save_view_preferences_for_command();
+                        self.resize_terminal();
+                    }
+                    TerminalToolbarAction::ClosePanel => {
+                        self.terminal_visible = false;
+                        self.terminal_focused = false;
+                    }
+                    TerminalToolbarAction::PrevSessionTabs => {
+                        self.run_ui_command("graphite.terminal.scrollLeft");
+                    }
+                    TerminalToolbarAction::NextSessionTabs => {
+                        self.run_ui_command("graphite.terminal.scrollRight");
+                    }
+                    TerminalToolbarAction::SelectSession(index) => {
+                        self.terminal_problems = false;
+                        self.terminal_focused = true;
+                        self.run_ui_command_args(
+                            "graphite.terminal.select",
+                            serde_json::json!({"index": index}),
+                        );
+                    }
+                }
+            }
+            return;
+        }
+        if self.terminal_problems {
+            let row = ((my - panel_top - TERMINAL_HEADER_HEIGHT - 4.0) / lh).max(0.0) as usize;
+            self.run_ui_command_args("graphite.problems.open", serde_json::json!({"index": row}));
+        } else {
+            self.terminal_focused = true;
+            self.focused_terminal = if let Some(second) = self.split_terminal {
+                let split_x = panel_x + panel_width * 0.5;
+                if mx >= split_x {
+                    second
+                } else {
+                    self.active_terminal
+                }
+            } else {
+                self.active_terminal
+            };
+        }
     }
 }

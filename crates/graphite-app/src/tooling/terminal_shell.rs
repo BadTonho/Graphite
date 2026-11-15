@@ -129,13 +129,18 @@ pub fn file_uri_path(uri: &str) -> Option<String> {
 }
 
 /// Script for PowerShell: wraps `prompt` so every prompt reports the previous exit code,
-/// the prompt position and the working directory.
+/// the prompt position and the working directory without Windows verbatim/provider prefixes.
 pub const POWERSHELL_INTEGRATION: &str = concat!(
-    "function global:prompt { ",
-    "$code = if ($?) { 0 } else { 1 }; ",
-    "$e = [char]27; $b = [char]7; ",
-    "[Console]::Write(\"$e]133;D;$code$b$e]133;A$b$e]7;file://localhost/$($PWD.ProviderPath -replace '\\\\','/')$b\"); ",
-    "\"PS $($PWD.Path)> \" }"
+    r#"function global:prompt { "#,
+    r#"$code = if ($?) { 0 } else { 1 }; "#,
+    r#"$e = [char]27; $b = [char]7; "#,
+    r#"$raw = if ($PWD.Provider.Name -eq 'FileSystem') { $PWD.ProviderPath } else { $PWD.Path }; "#,
+    r#"$clean = $raw -replace '^Microsoft\.PowerShell\.Core\\FileSystem::', '' -replace '^\\\\\?\\UNC\\', '\\' -replace '^\\\\\?\\', ''; "#,
+    r#"$uri_path = $clean -replace '\\', '/'; "#,
+    r#"$uri_prefix = if ($uri_path -notmatch '^/') { '/' } else { '' }; "#,
+    r#"$pre = if ($global:__graphite_has_prompted) { "$e]133;D;$code$b" } else { $global:__graphite_has_prompted = $true; '' }; "#,
+    r#"[Console]::Write("$pre$e]133;A$b$e]7;file://localhost$uri_prefix$uri_path$b"); "#,
+    r#""PS $clean> " }"#,
 );
 
 /// Prompt command for bash: reports the previous exit code and the prompt position.
@@ -244,5 +249,13 @@ mod tests {
         );
         assert_eq!(integrated_shell("/usr/bin/bash"), IntegratedShell::Bash);
         assert_eq!(integrated_shell("cmd.exe"), IntegratedShell::Other);
+    }
+
+    #[test]
+    fn powershell_integration_strips_provider_and_verbatim_prefixes() {
+        assert!(POWERSHELL_INTEGRATION.contains(r"Microsoft\.PowerShell\.Core\\FileSystem::"));
+        assert!(POWERSHELL_INTEGRATION.contains(r"^\\\\\?\\UNC\\"));
+        assert!(POWERSHELL_INTEGRATION.contains(r"^\\\\\?\\"));
+        assert!(POWERSHELL_INTEGRATION.contains("__graphite_has_prompted"));
     }
 }

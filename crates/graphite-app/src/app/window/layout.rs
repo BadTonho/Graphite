@@ -163,7 +163,7 @@ impl App {
             if !has_panel || self.view_preferences.panel_position == config::PanelPosition::Right {
                 0.0
             } else if self.terminal_visible {
-                terminal_panel_height(height)
+                terminal_panel_height_with_delta(height, self.view_preferences.panel_height_delta)
             } else if self.phase6_panel_visible() {
                 line_height * 9.0
             } else {
@@ -265,7 +265,8 @@ impl App {
             };
         }
         if self.terminal_visible {
-            let panel_height = terminal_panel_height(height);
+            let panel_height =
+                terminal_panel_height_with_delta(height, self.view_preferences.panel_height_delta);
             let y = height - line_height - panel_height;
             let available_x = self.sidebar_width_px();
             let available_width = (width - available_x).max(0.0);

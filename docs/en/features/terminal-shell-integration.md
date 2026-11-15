@@ -7,7 +7,7 @@ Graphite reads the standard shell integration sequences from the terminal output
 - **OSC 133** marks each prompt and reports the exit code of the command that just finished.
 - **OSC 7** reports the shell's working directory.
 
-When a command finishes, a bar in the left margin of the terminal shows its result: green for exit code 0, red for any other code, grey when the shell did not report one.
+When a prompt is active or a command finishes, a status circle in the left margin of the terminal shows its state: grey for an active prompt or when no exit code was reported, green for exit code 0, and red for any other exit code.
 
 | Action | Keys |
 |---|---|
@@ -18,7 +18,7 @@ The prompt jumps keep the terminal's scrollback. Up to 1000 marks are kept per t
 
 ### Shells that Graphite prepares
 
-- **PowerShell** (`pwsh` and Windows PowerShell): Graphite starts it with `-NoExit -Command <prompt wrapper>`. The wrapper keeps your prompt text, adds the sequences, and runs first. A profile that already passes `-Command`, `-c` or `-File` is left as you configured it.
+- **PowerShell** (`pwsh` and Windows PowerShell): Graphite starts it with `-NoExit -Command <prompt wrapper>`. The wrapper cleans any Windows extended-length (`\\?\`) or filesystem provider prefixes from the working directory path, emits shell integration sequences, and prints a clean `PS <path>>` prompt. A profile that already passes `-Command`, `-c` or `-File` is left as you configured it.
 - **bash** (including Git Bash): Graphite sets `PROMPT_COMMAND`. A `~/.bashrc` that assigns `PROMPT_COMMAND` itself replaces this, so the integration stops working for that shell.
 
 zsh and fish are not prepared yet. Their prompts still work, but no marks, exit-code bars or prompt jumps appear.

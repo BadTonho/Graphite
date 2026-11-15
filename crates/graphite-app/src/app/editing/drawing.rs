@@ -773,6 +773,7 @@ impl App {
             self.draw_activity_bar(r, h);
         }
 
+        self.draw_terminal_toolbar_menu(r);
         self.draw_workbench_menu(r);
         self.draw_help_modal(r);
 

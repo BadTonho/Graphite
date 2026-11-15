@@ -7,7 +7,7 @@ use alacritty_terminal::{
 };
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -55,6 +55,7 @@ enum WorkerMessage {
     },
     Scroll(i32),
     ScrollToRow(i64),
+    Clear,
     Exit(u32),
     Stop,
     PtyWrite(String),
@@ -88,6 +89,22 @@ impl EventListener for TerminalEvents {
 }
 
 static NEXT_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Strips Windows extended-length (`\\?\`) and PowerShell filesystem provider prefixes so the
+/// shell working directory renders as a normal drive or UNC path.
+pub(crate) fn clean_terminal_cwd(root: &Path) -> PathBuf {
+    let raw = root.to_string_lossy();
+    let without_provider = raw
+        .strip_prefix(r"Microsoft.PowerShell.Core\FileSystem::")
+        .unwrap_or(&raw);
+    if let Some(unc) = without_provider.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(local) = without_provider.strip_prefix(r"\\?\") {
+        PathBuf::from(local)
+    } else {
+        PathBuf::from(without_provider)
+    }
+}
 
 pub struct TerminalSession {
     /// Stable identity: tab indexes shift when terminals close, this never does.
@@ -142,7 +159,8 @@ impl TerminalSession {
             .map_err(|e| e.to_string())?;
         let mut command = CommandBuilder::new(&profile.path);
         command.args(&profile.args);
-        command.cwd(root);
+        let clean_root = clean_terminal_cwd(root);
+        command.cwd(&clean_root);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         #[cfg(windows)]
@@ -304,6 +322,11 @@ impl TerminalSession {
     pub fn scroll_to_row(&self, row: i64) {
         let _ = self.sender.send(WorkerMessage::ScrollToRow(row));
     }
+
+    /// Clears the terminal screen and scrollback history.
+    pub fn clear(&self) {
+        let _ = self.sender.send(WorkerMessage::Clear);
+    }
 }
 
 impl Drop for TerminalSession {
@@ -367,6 +390,12 @@ fn run_terminal_worker(
             }
             Ok(WorkerMessage::ScrollToRow(row)) => {
                 scroll_to_row_in(&mut term, row);
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::Clear) => {
+                parser.advance(&mut term, b"\x1b[3J\x1b[2J\x1b[H");
+                term.scroll_display(Scroll::Bottom);
                 publish_snapshot(&term, &snapshot);
                 wake();
             }
@@ -456,6 +485,12 @@ fn run_virtual_terminal_worker(
             }
             Ok(WorkerMessage::ScrollToRow(row)) => {
                 scroll_to_row_in(&mut term, row);
+                publish_snapshot(&term, &snapshot);
+                wake();
+            }
+            Ok(WorkerMessage::Clear) => {
+                parser.advance(&mut term, b"\x1b[3J\x1b[2J\x1b[H");
+                term.scroll_display(Scroll::Bottom);
                 publish_snapshot(&term, &snapshot);
                 wake();
             }
@@ -893,5 +928,27 @@ mod tests {
         }
         assert!(exited, "terminal did not report the shell exit");
         drop(session);
+    }
+
+    #[test]
+    fn clean_terminal_cwd_strips_windows_verbatim_and_provider_prefixes() {
+        assert_eq!(
+            clean_terminal_cwd(Path::new(r"\\?\D:\code\ProjetosCode\Graphite")),
+            PathBuf::from(r"D:\code\ProjetosCode\Graphite")
+        );
+        assert_eq!(
+            clean_terminal_cwd(Path::new(
+                r"Microsoft.PowerShell.Core\FileSystem::\\?\D:\code\ProjetosCode\Graphite"
+            )),
+            PathBuf::from(r"D:\code\ProjetosCode\Graphite")
+        );
+        assert_eq!(
+            clean_terminal_cwd(Path::new(r"\\?\UNC\server\share\repo")),
+            PathBuf::from(r"\\server\share\repo")
+        );
+        assert_eq!(
+            clean_terminal_cwd(Path::new("/home/dev/project")),
+            PathBuf::from("/home/dev/project")
+        );
     }
 }

@@ -58,6 +58,9 @@ impl App {
         if self.profile_menu_key(&event.logical_key) {
             return;
         }
+        if self.terminal_toolbar_menu_key(&event.logical_key) {
+            return;
+        }
         if self.settings_menu_key(&event.logical_key) {
             return;
         }

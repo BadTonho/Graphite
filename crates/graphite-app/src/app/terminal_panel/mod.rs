@@ -6,4 +6,5 @@ use super::*;
 pub(crate) mod terminal_drawing;
 pub(crate) mod terminal_input;
 pub(crate) mod terminal_navigation;
+pub(crate) mod terminal_toolbar_menu;
 pub(crate) mod terminal_ui;

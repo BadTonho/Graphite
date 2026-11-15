@@ -10,6 +10,9 @@ impl App {
             }
         }
         self.terminal_visible = !self.terminal_visible;
+        if self.terminal_visible {
+            self.view_preferences.panel_visible = true;
+        }
         self.terminal_focused = self.terminal_visible && !self.terminal_problems;
         self.terminal_problems = false;
         self.resize_terminal();
@@ -108,6 +111,7 @@ impl App {
         match self.spawn_terminal_session() {
             Ok(index) => {
                 self.terminal_visible = true;
+                self.view_preferences.panel_visible = true;
                 self.terminal_problems = false;
                 self.active_terminal = index;
                 self.focused_terminal = index;
@@ -170,6 +174,15 @@ impl App {
         self.close_terminal_at(index);
     }
 
+    pub(crate) fn clear_focused_terminal(&mut self) {
+        let index = self
+            .focused_terminal
+            .min(self.terminals.len().saturating_sub(1));
+        if let Some(terminal) = self.terminals.get(index) {
+            terminal.clear();
+        }
+    }
+
     pub(crate) fn close_terminal_at(&mut self, index: usize) {
         if index >= self.terminals.len() {
             return;
@@ -221,9 +234,14 @@ impl App {
         let cw = gpu.renderer.char_width().max(1.0);
         let (w, h) = gpu.renderer.size();
         let sidebar_width = self.sidebar_width_px();
-        let panel_h = (h * 0.32).clamp(150.0, 300.0);
-        let rows = ((panel_h - lh * 1.5) / lh).max(1.0) as u16;
-        let columns = (((w - sidebar_width - PAD * 2.0)
+        let panel_h =
+            drawing_helpers::terminal_panel_height_with_delta(h, self.view_preferences.panel_height_delta);
+        let rows = ((panel_h - super::terminal_drawing::TERMINAL_HEADER_HEIGHT - 4.0) / lh)
+            .max(1.0) as u16;
+        let columns = (((w
+            - sidebar_width
+            - super::terminal_drawing::TERMINAL_GUTTER_WIDTH
+            - PAD)
             / if self.split_terminal.is_some() {
                 2.0
             } else {

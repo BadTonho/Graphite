@@ -220,6 +220,13 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             terminal_next_command as Handler,
         ),
         (
+            "graphite.terminal.clear",
+            "Clear terminal",
+            None,
+            "true",
+            terminal_clear as Handler,
+        ),
+        (
             "graphite.terminal.scrollLeft",
             "Scroll terminal tabs left",
             None,
@@ -616,6 +623,10 @@ fn terminal_previous_command(app: &mut App, _: &CommandInvocation) -> Result<(),
 }
 fn terminal_next_command(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.jump_terminal_prompt(true);
+    Ok(())
+}
+fn terminal_clear(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.clear_focused_terminal();
     Ok(())
 }
 fn terminal_left(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

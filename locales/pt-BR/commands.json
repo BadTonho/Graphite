@@ -32,6 +32,7 @@
   "command.workbench.action.generateColorTheme": "Gerar tema de cores a partir das configurações atuais",
   "command.graphite.terminal.previousCommand": "Ir para o comando anterior",
   "command.graphite.terminal.nextCommand": "Ir para o próximo comando",
+  "command.graphite.terminal.clear": "Limpar terminal",
   "command.file.localHistory": "Abrir histórico local",
   "command.explorer.rename": "Renomear",
   "command.explorer.delete": "Excluir",

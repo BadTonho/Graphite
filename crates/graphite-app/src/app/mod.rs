@@ -31,7 +31,7 @@ pub(crate) use source_control::{
 mod debug_ui;
 pub(crate) use debug_ui::{debug_adapters, debug_inline, debug_panel, debugging};
 mod notebooks;
-mod terminal_panel;
+pub(crate) mod terminal_panel;
 pub(crate) use notebooks::{notebook_kernel, notebook_ui};
 mod language_ui;
 pub(crate) use language_ui::lsp_features;

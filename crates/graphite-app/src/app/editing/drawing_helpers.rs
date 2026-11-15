@@ -7,8 +7,14 @@ pub(crate) fn accessibility_position_to_char(buffer: &Buffer, row: usize, index:
         + index.min(super::accessibility::line_content(&text).chars().count())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn terminal_panel_height(height: f32) -> f32 {
-    (height * 0.32).clamp(150.0, 300.0)
+    terminal_panel_height_with_delta(height, 0)
+}
+
+pub(crate) fn terminal_panel_height_with_delta(height: f32, delta: i16) -> f32 {
+    let base = (height * 0.32).clamp(150.0, 300.0);
+    (base + delta as f32).clamp(120.0, (height * 0.75).max(300.0))
 }
 
 pub(crate) fn utf16_column_to_chars(line: &str, units: u32) -> usize {
@@ -334,5 +340,12 @@ mod guide_and_bracket_tests {
         assert_eq!(bracket_class(1), Class::BracketLevel2);
         assert_eq!(bracket_class(2), Class::BracketLevel3);
         assert_eq!(bracket_class(3), Class::BracketLevel1);
+    }
+
+    #[test]
+    fn terminal_panel_height_applies_delta_within_bounds() {
+        assert_eq!(terminal_panel_height(800.0), 256.0);
+        assert_eq!(terminal_panel_height_with_delta(800.0, 220), 476.0);
+        assert_eq!(terminal_panel_height_with_delta(800.0, -200), 120.0);
     }
 }

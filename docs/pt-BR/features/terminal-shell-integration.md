@@ -7,7 +7,7 @@ O Graphite lê as sequências padrão de integração com o shell presentes na s
 - **OSC 133** marca cada prompt e informa o código de saída do comando que acabou de terminar.
 - **OSC 7** informa o diretório de trabalho do shell.
 
-Quando um comando termina, uma barra na margem esquerda do terminal mostra o resultado: verde para código de saída 0, vermelho para qualquer outro código e cinza quando o shell não informou o código.
+Quando um prompt está ativo ou um comando termina, um círculo de status na margem esquerda do terminal mostra o resultado: cinza para prompt ativo ou sem código informado, verde para código de saída 0 e vermelho para qualquer outro código.
 
 | Ação | Teclas |
 |---|---|
@@ -18,7 +18,7 @@ Os saltos entre prompts mantêm o histórico de rolagem do terminal. São guarda
 
 ### Shells que o Graphite prepara
 
-- **PowerShell** (`pwsh` e Windows PowerShell): o Graphite o inicia com `-NoExit -Command <wrapper do prompt>`. O wrapper mantém o texto do seu prompt, acrescenta as sequências e roda primeiro. Um perfil que já passe `-Command`, `-c` ou `-File` é mantido como você configurou.
+- **PowerShell** (`pwsh` e Windows PowerShell): o Graphite o inicia com `-NoExit -Command <wrapper do prompt>`. O wrapper remove prefixos estendidos do Windows (`\\?\`) ou do provedor `FileSystem` do diretório de trabalho, emite as sequências de integração e exibe o prompt limpo `PS <caminho>>`. Um perfil que já passe `-Command`, `-c` ou `-File` é mantido como você configurou.
 - **bash** (incluindo Git Bash): o Graphite define `PROMPT_COMMAND`. Um `~/.bashrc` que atribua `PROMPT_COMMAND` substitui isso, e a integração deixa de funcionar nesse shell.
 
 zsh e fish ainda não são preparados. Os prompts funcionam normalmente, mas não aparecem marcas, barras de código de saída nem saltos entre prompts.

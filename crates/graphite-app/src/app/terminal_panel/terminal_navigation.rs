@@ -39,12 +39,13 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) -> bool {
-        let body_top = panel_top + line_height * 1.5;
-        if my < body_top || mx < panel_x + PAD {
+        let body_top = panel_top + super::terminal_drawing::TERMINAL_HEADER_HEIGHT + 4.0;
+        let text_left = panel_x + super::terminal_drawing::TERMINAL_GUTTER_WIDTH;
+        if my < body_top || mx < text_left {
             return false;
         }
         let row = ((my - body_top) / line_height) as usize;
-        let column = ((mx - (panel_x + PAD)) / cell_width) as usize;
+        let column = ((mx - text_left) / cell_width) as usize;
         let Some(terminal) = self.terminals.get(self.active_terminal) else {
             return false;
         };
