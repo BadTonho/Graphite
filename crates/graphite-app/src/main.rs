@@ -287,6 +287,8 @@ struct App {
     scm_graph_scroll: usize,
     scm_graph_resize_dragging: bool,
     scm_graph_rows: Vec<vcs::scm_graph::GraphRow>,
+    /// How many commits the Graph asks git for; it grows as the list is scrolled to its end.
+    scm_graph_limit: usize,
     scm_graph_selected_hash: Option<String>,
     scm_scroll: usize,
     branch_picker: bool,
@@ -845,6 +847,7 @@ impl App {
             scm_graph_scroll: 0,
             scm_graph_resize_dragging: false,
             scm_graph_rows: Vec::new(),
+            scm_graph_limit: app::scm_graph_ui::GRAPH_PAGE,
             scm_graph_selected_hash: None,
             scm_scroll: 0,
             branch_picker: false,

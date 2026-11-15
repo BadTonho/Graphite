@@ -850,6 +850,7 @@ impl App {
 
         self.draw_terminal_toolbar_menu(r);
         self.draw_explorer_context_menu(r);
+        self.draw_scm_graph_tooltip(r);
         self.draw_scm_graph_menu(r);
         self.draw_scm_more_menu(r);
         self.draw_workbench_menu(r);

@@ -258,6 +258,14 @@ impl ApplicationHandler<UserEvent> for App {
                         || self.is_over_scm_graph_resize_handle(pointer_x, pointer_y);
                     let was_over_panel_separator = self.is_over_terminal_resize_handle(previous_x, previous_y)
                         || self.is_over_scm_graph_resize_handle(previous_x, previous_y);
+                    // The hover card of a Graph commit follows the pointer from row to row.
+                    let graph_hover_changed = self.scm_visible
+                        && self.gpu.as_ref().is_some_and(|gpu| {
+                            let window = gpu.renderer.size();
+                            let (lh, cw) = (gpu.renderer.line_height(), gpu.renderer.char_width());
+                            self.scm_graph_commit_at(pointer_x, pointer_y, window, lh, cw)
+                                != self.scm_graph_commit_at(previous_x, previous_y, window, lh, cw)
+                        });
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(if over_panel_separator {
                             winit::window::CursorIcon::RowResize
@@ -272,6 +280,9 @@ impl ApplicationHandler<UserEvent> for App {
                             || was_over_panel_separator
                             || self.activity_bar_menu.is_some()
                             || self.explorer_context_menu.is_some()
+                            || self.scm_graph_menu.is_some()
+                            || self.scm_more_menu.is_some()
+                            || graph_hover_changed
                         {
                             gpu.window.request_redraw();
                         }

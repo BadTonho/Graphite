@@ -701,6 +701,7 @@ impl App {
 
     pub(crate) fn refresh_scm_async(&mut self) {
         let root = self.scm_workspace_root();
+        let graph_limit = self.scm_graph_limit;
         if let Some(proxy) = self.event_proxy.clone() {
             let graph_root = root.clone();
             let graph_proxy = proxy.clone();
@@ -714,30 +715,31 @@ impl App {
                 .name("graphite-scm-graph".into())
                 .spawn(move || {
                     let _ = graph_proxy.send_event(UserEvent::ScmGraph(
-                        crate::vcs::scm_graph::load_graph_commits(&graph_root, 100),
+                        crate::vcs::scm_graph::load_graph_commits(&graph_root, graph_limit),
                     ));
                 })
                 .ok();
         } else {
             self.scm_snapshot = crate::scm::snapshot(&root);
-            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, 100)
+            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, graph_limit)
                 .unwrap_or_default();
         }
     }
 
     pub(crate) fn refresh_scm_graph_async(&mut self) {
         let root = self.scm_workspace_root();
+        let graph_limit = self.scm_graph_limit;
         if let Some(proxy) = self.event_proxy.clone() {
             std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
                 .spawn(move || {
                     let _ = proxy.send_event(UserEvent::ScmGraph(
-                        crate::vcs::scm_graph::load_graph_commits(&root, 100),
+                        crate::vcs::scm_graph::load_graph_commits(&root, graph_limit),
                     ));
                 })
                 .ok();
         } else {
-            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, 100)
+            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, graph_limit)
                 .unwrap_or_default();
         }
     }

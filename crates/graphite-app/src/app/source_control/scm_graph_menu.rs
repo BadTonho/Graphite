@@ -3,9 +3,7 @@
 
 use super::scm_branch_ui::NameTarget;
 use super::scm_remote_ui::RemoteOp;
-use super::scm_ui::ScmListRowKind;
 use super::*;
-use crate::app::activity_bar::Activity;
 use crate::app::clipboard::{ClipboardAccess, SystemClipboard};
 use crate::app::explorer_context_menu::place_context_menu;
 
@@ -142,27 +140,10 @@ impl App {
                 (w, h, gpu.renderer.line_height(), gpu.renderer.char_width())
             })
             .unwrap_or((1200.0, 760.0, 18.0, 8.0));
-        if self.zen_mode
-            || !self.view_preferences.primary_sidebar_visible
-            || self.active_activity() != Activity::SourceControl
-            || self.active_plugin_activity.is_some()
-            || self.scm_graph_collapsed
-            || self.shows_scm_welcome_view()
-            || !self.primary_sidebar_contains(x, y, window_width, window_height, lh)
-        {
-            self.scm_graph_menu = None;
-            return false;
-        }
-        let local_x = self.sidebar_local_x(x, window_width);
-        let local_y = self.sidebar_local_y(y);
-        let layout = self.scm_sidebar_layout_for(window_height, lh, cw);
-        let index = layout.list_rows.iter().find_map(|row| match row.kind {
-            ScmListRowKind::GraphCommit { index } if row.bounds.contains(local_x, local_y) => {
-                Some(index)
-            }
-            _ => None,
-        });
-        let Some(commit) = index.and_then(|index| self.scm_graph_rows.get(index)) else {
+        let Some(commit) = self
+            .scm_graph_commit_at(x, y, (window_width, window_height), lh, cw)
+            .and_then(|index| self.scm_graph_rows.get(index))
+        else {
             self.scm_graph_menu = None;
             return false;
         };

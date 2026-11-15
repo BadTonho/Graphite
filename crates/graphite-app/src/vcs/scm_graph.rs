@@ -19,6 +19,8 @@ pub(crate) struct GraphCommit {
     pub parents: Vec<String>,
     pub subject: String,
     pub author: String,
+    /// Commit date as `YYYY-MM-DD HH:MM:SS +ZZZZ`; empty when git did not give one.
+    pub date: String,
     pub refs: Vec<GraphRef>,
     pub is_head: bool,
 }
@@ -73,6 +75,7 @@ pub(crate) fn parse_graph_log(output: &str, head_hash: Option<&str>) -> Vec<Grap
         let author = fields.next().unwrap_or("").trim().to_owned();
         let refs_raw = fields.next().unwrap_or("");
         let subject = fields.next().unwrap_or("").trim().to_owned();
+        let date = fields.next().unwrap_or("").trim().to_owned();
 
         let parents = parents_raw
             .split_whitespace()
@@ -88,11 +91,41 @@ pub(crate) fn parse_graph_log(output: &str, head_hash: Option<&str>) -> Vec<Grap
             parents,
             subject,
             author,
+            date,
             refs,
             is_head,
         });
     }
     commits
+}
+
+/// The lines of the hover card of a commit: subject, who and when, the id and the refs on it.
+pub(crate) fn tooltip_lines(commit: &GraphCommit) -> Vec<String> {
+    let mut lines = vec![commit.subject.clone()];
+    let who = match (commit.author.is_empty(), commit.date.is_empty()) {
+        (false, false) => format!("{} · {}", commit.author, commit.date),
+        (false, true) => commit.author.clone(),
+        (true, false) => commit.date.clone(),
+        (true, true) => String::new(),
+    };
+    if !who.is_empty() {
+        lines.push(who);
+    }
+    lines.push(commit.hash.clone());
+    let refs = commit
+        .refs
+        .iter()
+        .map(|reference| match reference {
+            GraphRef::HeadBranch(name)
+            | GraphRef::LocalBranch(name)
+            | GraphRef::RemoteBranch(name) => name.clone(),
+            GraphRef::Tag(name) => format!("tag: {name}"),
+        })
+        .collect::<Vec<_>>();
+    if !refs.is_empty() {
+        lines.push(refs.join(", "));
+    }
+    lines
 }
 
 #[derive(Clone, Debug)]
@@ -281,7 +314,7 @@ pub(crate) fn load_graph_commits(root: &Path, limit: usize) -> Result<Vec<GraphR
             "--date-order",
             "-n",
             &limit_arg,
-            "--format=%H%x1f%P%x1f%an%x1f%D%x1f%s",
+            "--format=%H%x1f%P%x1f%an%x1f%D%x1f%s%x1f%ci",
         ],
     )?;
     let commits = parse_graph_log(&output, head.as_deref());
@@ -321,6 +354,24 @@ mod tests {
     }
 
     #[test]
+    fn the_date_is_the_last_field_and_missing_dates_are_allowed() {
+        let log = "aaaa\x1f\x1fAlice\x1fHEAD -> main, tag: v1\x1fFix it\x1f2026-01-02 03:04:05 +0000\nbbbb\x1f\x1fBob\x1f\x1fOld\n";
+        let commits = parse_graph_log(log, None);
+        assert_eq!(commits[0].date, "2026-01-02 03:04:05 +0000");
+        assert_eq!(commits[1].date, "");
+        assert_eq!(
+            tooltip_lines(&commits[0]),
+            [
+                "Fix it",
+                "Alice · 2026-01-02 03:04:05 +0000",
+                "aaaa",
+                "main, tag: v1"
+            ]
+        );
+        assert_eq!(tooltip_lines(&commits[1]), ["Old", "Bob", "bbbb"]);
+    }
+
+    #[test]
     fn assigns_lanes_for_branch_and_merge() {
         let log = concat!(
             "c3\x1fc2 c1\x1fAlice\x1fHEAD -> main\x1fMerge feat\n",
@@ -353,6 +404,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(rows[0].commit.is_head);
         assert_eq!(rows[0].commit.subject, "first commit");
+        assert!(rows[0].commit.date.starts_with("20"), "{}", rows[0].commit.date);
         assert!(commit_details(root, &rows[0].commit.hash)
             .unwrap()
             .contains("first commit"));

@@ -58,8 +58,10 @@ Os comandos `Git:` continuam listados na paleta de comandos.
 
 Clique com o botão direito num commit para: **Checkout (Detached)**, **Criar Branch...**, **Criar Tag...** (ambas nesse commit), **Cherry Pick**, **Reverter Commit**, **Copiar ID do Commit** e **Copiar Mensagem do Commit**. Checkout e Cherry Pick ficam desabilitados no commit que já está em uso. Um cherry-pick ou revert parado por conflitos pode ser concluído ou abortado com **Git: Continuar merge ou rebase** e **Abortar merge ou rebase**.
 
+O Grafo desenha os commits como círculos (um anel para o commit em uso) e continua carregando commits mais antigos, 100 por vez, ao rolar até o fim. Passar o mouse sobre um commit mostra um cartão com mensagem, autor, data, id completo e as branches e tags nele.
+
 Os ids de commit passados ao git são conferidos como hexadecimais, e nomes de branch e tag são validados antes de o git rodar, então nada digitado pode ser lido como opção do git.
 
 ## Limites
 
-Ainda sem dicas (tooltips); a lista não aparece como árvore; **Clone** ainda não existe.
+Os botões ainda não têm dicas; a lista não aparece como árvore; **Clone** ainda não existe.

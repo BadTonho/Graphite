@@ -37,6 +37,34 @@ pub(crate) fn graph_header_buttons(right_action: ScmRect, cell_width: f32) -> [S
     [fetch, pull, push, refresh]
 }
 
+/// How many more commits are asked for each time the end of the Graph is reached.
+pub(crate) const GRAPH_PAGE: usize = 100;
+
+/// Whether scrolling to `scroll` is near the end of the `loaded` commits while git may still have
+/// more (the last request was filled to its `limit`).
+pub(crate) fn graph_needs_more(loaded: usize, limit: usize, scroll: usize) -> bool {
+    loaded >= limit && scroll + 12 >= loaded
+}
+
+/// The horizontal extent of a disc of `radius`, one `(offset from the center row, half width)` per
+/// pixel row. Used to draw circles with rectangles.
+pub(crate) fn disc_rows(radius: f32) -> Vec<(f32, f32)> {
+    let rows = radius.ceil().max(1.0) as i32;
+    (-rows..=rows)
+        .filter_map(|row| {
+            let dy = row as f32;
+            let squared = radius * radius - dy * dy;
+            (squared >= 0.0).then(|| (dy, squared.sqrt()))
+        })
+        .collect()
+}
+
+fn draw_disc(renderer: &mut Renderer, cx: f32, cy: f32, radius: f32, color: Color) {
+    for (dy, half) in disc_rows(radius) {
+        renderer.draw_rect(cx - half, cy + dy - 0.5, half * 2.0, 1.0, color);
+    }
+}
+
 fn draw_stepped_edge(
     renderer: &mut Renderer,
     x0: f32,
@@ -172,10 +200,98 @@ impl App {
         self.scm_graph_height = Some((list_end_y - local_y).max(row_h * 2.0));
     }
 
+    /// The Graph commit under a window point, when the Source Control view shows the Graph.
+    pub(crate) fn scm_graph_commit_at(
+        &self,
+        x: f32,
+        y: f32,
+        window: (f32, f32),
+        lh: f32,
+        cw: f32,
+    ) -> Option<usize> {
+        use crate::app::activity_bar::Activity;
+        if self.zen_mode
+            || !self.view_preferences.primary_sidebar_visible
+            || self.active_activity() != Activity::SourceControl
+            || self.active_plugin_activity.is_some()
+            || self.scm_graph_collapsed
+            || self.shows_scm_welcome_view()
+            || !self.primary_sidebar_contains(x, y, window.0, window.1, lh)
+        {
+            return None;
+        }
+        let local_x = self.sidebar_local_x(x, window.0);
+        let local_y = self.sidebar_local_y(y);
+        let layout = self.scm_sidebar_layout_for(window.1, lh, cw);
+        layout.list_rows.iter().find_map(|row| match row.kind {
+            super::scm_ui::ScmListRowKind::GraphCommit { index }
+                if row.bounds.contains(local_x, local_y) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+    }
+
+    /// The hover card of the commit under the pointer.
+    pub(crate) fn draw_scm_graph_tooltip(&self, renderer: &mut Renderer) {
+        if self.scm_graph_menu.is_some()
+            || self.scm_more_menu.is_some()
+            || self.scm_confirm.is_some()
+            || self.explorer_context_menu.is_some()
+            || self.scm_graph_resize_dragging
+        {
+            return;
+        }
+        let (width, height) = renderer.size();
+        let (cw, lh) = (renderer.char_width().max(4.0), renderer.line_height());
+        let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+        let Some(commit) = self
+            .scm_graph_commit_at(mx, my, (width, height), lh, cw)
+            .and_then(|index| self.scm_graph_rows.get(index))
+        else {
+            return;
+        };
+        let lines = scm_graph::tooltip_lines(&commit.commit);
+        let longest = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
+        let box_width = ((longest as f32 * cw) + 20.0).min((width - 16.0).max(60.0));
+        let box_height = lines.len() as f32 * lh + 12.0;
+        let x = if mx + 14.0 + box_width <= width - 4.0 {
+            mx + 14.0
+        } else {
+            (mx - box_width - 6.0).max(4.0)
+        };
+        let y = if my + 18.0 + box_height <= height - 4.0 {
+            my + 18.0
+        } else {
+            (my - box_height - 6.0).max(4.0)
+        };
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let text = rgb(Theme::color(Theme::TEXT, 0xcccccc));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        renderer.draw_rect(x, y, box_width, box_height, border);
+        renderer.draw_rect(x + 1.0, y + 1.0, box_width - 2.0, box_height - 2.0, bg);
+        for (index, line) in lines.iter().enumerate() {
+            let clipped = Self::help_menu_visible_label(line, cw, (box_width - 20.0).max(0.0));
+            renderer.draw_text(
+                &clipped,
+                x + 10.0,
+                y + 6.0 + index as f32 * lh,
+                if index == 0 { text } else { dim },
+            );
+        }
+    }
+
     pub(crate) fn scroll_scm_graph(&mut self, lines: i32) {
         let max_scroll = self.scm_graph_rows.len().saturating_sub(2);
         self.scm_graph_scroll =
             (self.scm_graph_scroll as i32 + lines).clamp(0, max_scroll as i32) as usize;
+        if graph_needs_more(self.scm_graph_rows.len(), self.scm_graph_limit, self.scm_graph_scroll)
+        {
+            self.scm_graph_limit += GRAPH_PAGE;
+            self.refresh_scm_graph_async();
+        }
     }
 
     pub(crate) fn open_scm_commit_diff(&mut self, hash: &str) {
@@ -303,25 +419,17 @@ impl App {
         let node_x = lane_x(graph_row.lane);
         let node_color = lane_color(graph_row.color_index);
         if graph_row.commit.is_head {
-            let outer = 8.0;
-            let inner = 4.0;
-            renderer.draw_rect(
-                node_x - outer * 0.5,
-                cy - outer * 0.5,
-                outer,
-                outer,
-                node_color,
-            );
-            renderer.draw_rect(
-                node_x - inner * 0.5,
-                cy - inner * 0.5,
-                inner,
-                inner,
+            // The checked out commit is a ring around the color of the background.
+            draw_disc(renderer, node_x, cy, 5.0, node_color);
+            draw_disc(
+                renderer,
+                node_x,
+                cy,
+                2.4,
                 rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
             );
         } else {
-            let dot = 6.0;
-            renderer.draw_rect(node_x - dot * 0.5, cy - dot * 0.5, dot, dot, node_color);
+            draw_disc(renderer, node_x, cy, 3.4, node_color);
         }
 
         // Draw ref pills on the right edge (up to 2 badges to keep the message readable).
@@ -373,6 +481,38 @@ impl App {
 mod tests {
     use super::*;
     use crate::app::source_control::scm_ui::{scm_panel_layout_with_graph, ScmListRowKind};
+
+    #[test]
+    fn discs_are_round_and_symmetric() {
+        let rows = disc_rows(3.4);
+        let widest = rows.iter().map(|(_, half)| *half).fold(0.0_f32, f32::max);
+        assert!((widest - 3.4).abs() < 1e-3, "widest row is the middle one");
+        assert_eq!(rows.first().map(|r| r.0), Some(-3.0));
+        assert_eq!(rows.last().map(|r| r.0), Some(3.0));
+        for (dy, half) in &rows {
+            let mirrored = rows.iter().find(|(other, _)| *other == -dy).unwrap();
+            assert!((mirrored.1 - half).abs() < 1e-4);
+        }
+        // A corner of the bounding square is outside the disc.
+        assert!(rows.iter().all(|(dy, half)| dy * dy + half * half <= 3.4 * 3.4 + 1e-3));
+    }
+
+    #[test]
+    fn no_commit_is_under_the_pointer_when_the_graph_is_not_shown() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        assert_eq!(app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0), None);
+        app.scm_graph_collapsed = true;
+        assert_eq!(app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0), None);
+    }
+
+    #[test]
+    fn more_commits_are_requested_only_near_the_end_of_a_full_page() {
+        assert!(graph_needs_more(100, 100, 90));
+        assert!(!graph_needs_more(100, 100, 10), "far from the end");
+        assert!(!graph_needs_more(40, 100, 35), "git has no more: the page was not full");
+        assert!(graph_needs_more(200, 200, 188));
+    }
 
     #[test]
     fn graph_header_buttons_are_ordered_fetch_pull_push_refresh_without_overlap() {

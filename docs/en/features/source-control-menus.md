@@ -58,8 +58,10 @@ The `Git:` commands are still listed in the command palette.
 
 Right-click a commit for: **Checkout (Detached)**, **Create Branch...**, **Create Tag...** (both at that commit), **Cherry Pick**, **Revert Commit**, **Copy Commit ID** and **Copy Commit Message**. Checkout and Cherry Pick are disabled on the commit that is already checked out. A cherry-pick or revert that stops on conflicts can be finished or aborted with **Git: Continue Merge or Rebase** and **Abort Merge or Rebase**.
 
+The Graph draws commits as circles (a ring for the checked out one) and keeps loading older commits, 100 at a time, as you scroll to its end. Hovering a commit shows a card with its message, author, date, full id and the branches and tags on it.
+
 Commit ids passed to git are checked to be hexadecimal, and branch and tag names are validated before git runs, so nothing the user types can be read as a git option.
 
 ## Limits
 
-No tooltips yet; the list is not shown as a tree; **Clone** is not available yet.
+Buttons have no tooltips yet; the list is not shown as a tree; **Clone** is not available yet.
