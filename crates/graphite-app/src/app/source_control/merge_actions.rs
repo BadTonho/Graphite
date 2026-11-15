@@ -67,6 +67,8 @@ impl App {
             left,
             right,
             inline: false,
+            collapse_unchanged: false,
+            selected_change: 0,
         });
         self.status = self.t("diff.opened").into();
     }

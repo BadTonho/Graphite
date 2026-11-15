@@ -84,7 +84,7 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 - Comandos de desenvolvimento do editor de merge (copiar, salvar e carregar o conteúdo como JSON, abrir uma seleção em um editor de merge temporário): ferramentas de desenvolvedor, sem previsão.
 - O painel da base só tem o que os marcadores de conflito trazem; calcular uma base para marcadores de duas vias exige os estágios do índice.
 - Digitar direto no painel de resultado (use Abrir o resultado no editor).
-- Comandos do editor de diff (trocar lados, reverter, recolher regiões sem alteração, código movido) e o diff de notebook: exigem que a vista de diff de dois arquivos vire um editor.
+- Comandos do editor de diff (`switchSide`, `collapseAllUnchangedRegions`, `showAllUnchangedRegions`, `compareEditor.nextChange`/`previousChange`) já estão implementados; reverter, código movido e diff de notebook ainda exigem que a vista de diff de dois arquivos vire um editor.
 
 **Notebooks**
 - Saídas ricas: SVG, HTML desenhado como página (hoje é lido como texto), widgets interativos e saídas de aplicativos.

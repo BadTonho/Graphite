@@ -84,7 +84,7 @@ Items that were left out because they depend on something the application does n
 - Merge editor developer commands (copy, save and load the contents as JSON, open a selection in a temporary merge editor): developer tools, not planned.
 - The base pane only has what the conflict markers carry; computing a base for two-way markers needs the index stages.
 - Typing directly in the result pane (use Open result in the editor instead).
-- Diff editor commands (switch sides, revert, collapse unchanged regions, moved code) and the notebook diff: they need the two-file diff view to become an editor.
+- Diff editor commands (`switchSide`, `collapseAllUnchangedRegions`, `showAllUnchangedRegions`, `compareEditor.nextChange`/`previousChange`) are implemented; revert, moved-code detection and notebook diff still need the two-file diff view to become an editor.
 
 **Notebooks**
 - Rich outputs: SVG, HTML drawn as a page (today it is read as text), interactive widgets and app outputs.

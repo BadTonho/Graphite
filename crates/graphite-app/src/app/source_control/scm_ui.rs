@@ -452,6 +452,8 @@ pub(crate) struct DiffView {
     pub left: String,
     pub right: String,
     pub inline: bool,
+    pub collapse_unchanged: bool,
+    pub selected_change: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -744,6 +746,8 @@ impl App {
                             left: left_text,
                             right: right_text,
                             inline: false,
+                            collapse_unchanged: false,
+                            selected_change: 0,
                         }));
                     }
                     (left_result, right_result) => {
@@ -801,6 +805,8 @@ impl App {
                         left: previous,
                         right: current,
                         inline: false,
+                        collapse_unchanged: false,
+                        selected_change: 0,
                     })
                 })();
                 match result {

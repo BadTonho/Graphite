@@ -94,6 +94,41 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             diff_layout as Handler,
         ),
         (
+            "diffEditor.switchSide",
+            "Switch sides in diff editor",
+            Some(WidgetKind::Diff),
+            "diffVisible",
+            diff_switch_side as Handler,
+        ),
+        (
+            "diffEditor.collapseAllUnchangedRegions",
+            "Collapse all unchanged regions",
+            Some(WidgetKind::Diff),
+            "diffVisible",
+            diff_collapse_unchanged as Handler,
+        ),
+        (
+            "diffEditor.showAllUnchangedRegions",
+            "Show all unchanged regions",
+            Some(WidgetKind::Diff),
+            "diffVisible",
+            diff_show_unchanged as Handler,
+        ),
+        (
+            "workbench.action.compareEditor.nextChange",
+            "Go to next change in diff editor",
+            Some(WidgetKind::Diff),
+            "diffVisible",
+            diff_next_change as Handler,
+        ),
+        (
+            "workbench.action.compareEditor.previousChange",
+            "Go to previous change in diff editor",
+            Some(WidgetKind::Diff),
+            "diffVisible",
+            diff_previous_change as Handler,
+        ),
+        (
             "graphite.terminal.new",
             "New terminal",
             None,
@@ -462,6 +497,72 @@ fn diff_layout(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
         diff.inline = !diff.inline;
     }
     Ok(())
+}
+fn diff_switch_side(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if let Some(diff) = &mut app.diff_view {
+        std::mem::swap(&mut diff.left_name, &mut diff.right_name);
+        std::mem::swap(&mut diff.left, &mut diff.right);
+    }
+    Ok(())
+}
+fn diff_collapse_unchanged(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if let Some(diff) = &mut app.diff_view {
+        diff.collapse_unchanged = true;
+    }
+    Ok(())
+}
+fn diff_show_unchanged(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if let Some(diff) = &mut app.diff_view {
+        diff.collapse_unchanged = false;
+    }
+    Ok(())
+}
+fn diff_next_change(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    diff_step_change(app, true);
+    Ok(())
+}
+fn diff_previous_change(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    diff_step_change(app, false);
+    Ok(())
+}
+fn diff_step_change(app: &mut App, forward: bool) {
+    let Some(diff) = &mut app.diff_view else {
+        return;
+    };
+    let mut changed_lines = Vec::new();
+    let mut line_index = 0usize;
+    let mut in_change = false;
+    for change in similar::TextDiff::from_lines(&diff.left, &diff.right).iter_all_changes() {
+        match change.tag() {
+            similar::ChangeTag::Equal => in_change = false,
+            similar::ChangeTag::Delete | similar::ChangeTag::Insert => {
+                if !in_change {
+                    changed_lines.push(line_index);
+                    in_change = true;
+                }
+            }
+        }
+        line_index += 1;
+    }
+    if changed_lines.is_empty() {
+        return;
+    }
+    let current = diff.selected_change;
+    let next = if forward {
+        changed_lines
+            .iter()
+            .copied()
+            .find(|&l| l > current)
+            .unwrap_or(changed_lines[0])
+    } else {
+        changed_lines
+            .iter()
+            .rev()
+            .copied()
+            .find(|&l| l < current)
+            .unwrap_or(*changed_lines.last().unwrap())
+    };
+    diff.selected_change = next;
 }
 fn terminal_new(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.create_terminal_tab();

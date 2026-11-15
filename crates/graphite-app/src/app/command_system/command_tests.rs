@@ -50,6 +50,8 @@ fn diff() -> Option<Box<UserEvent>> {
         left: "a".into(),
         right: "b".into(),
         inline: false,
+        collapse_unchanged: false,
+        selected_change: 0,
     })))
 }
 

@@ -44,8 +44,13 @@ fn show_logs(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn clear_output(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.task_output.clear();
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Handler); 5] = [
+    let commands: [(&'static str, &'static str, &'static str, Handler); 6] = [
         ("workbench.action.showLogs", "Show logs", "View", show_logs),
         (
             "workbench.action.openLogFile",
@@ -70,6 +75,12 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "Show output",
             "View",
             show_output,
+        ),
+        (
+            "workbench.output.action.clearOutput",
+            "Clear output",
+            "View",
+            clear_output,
         ),
     ];
     for (id, title, category, handler) in commands {
