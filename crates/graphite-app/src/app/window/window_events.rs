@@ -238,6 +238,11 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
                     }
+                } else if self.scm_graph_resize_dragging {
+                    self.resize_scm_graph_from_pointer(pointer_y);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
                 } else {
                     let separator_x = self.sidebar_width_px();
                     let over_separator = !self.zen_mode
@@ -246,9 +251,10 @@ impl ApplicationHandler<UserEvent> for App {
                             < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
                                 gpu.renderer.size().1 as f32 - gpu.renderer.line_height()
                             });
-                    let over_panel_separator = self.is_over_terminal_resize_handle(pointer_x, pointer_y);
-                    let was_over_panel_separator =
-                        self.is_over_terminal_resize_handle(previous_x, previous_y);
+                    let over_panel_separator = self.is_over_terminal_resize_handle(pointer_x, pointer_y)
+                        || self.is_over_scm_graph_resize_handle(pointer_x, pointer_y);
+                    let was_over_panel_separator = self.is_over_terminal_resize_handle(previous_x, previous_y)
+                        || self.is_over_scm_graph_resize_handle(previous_x, previous_y);
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(if over_panel_separator {
                             winit::window::CursorIcon::RowResize
@@ -292,6 +298,11 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 if self.is_over_terminal_resize_handle(self.mouse.x as f32, self.mouse.y as f32) {
                     self.panel_resize_dragging = true;
+                    self.selecting = false;
+                    return;
+                }
+                if self.is_over_scm_graph_resize_handle(self.mouse.x as f32, self.mouse.y as f32) {
+                    self.scm_graph_resize_dragging = true;
                     self.selecting = false;
                     return;
                 }
@@ -372,6 +383,12 @@ impl ApplicationHandler<UserEvent> for App {
                 } else if self.panel_resize_dragging {
                     self.panel_resize_dragging = false;
                     self.save_view_preferences_for_command();
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(winit::window::CursorIcon::Default);
+                        gpu.window.request_redraw();
+                    }
+                } else if self.scm_graph_resize_dragging {
+                    self.scm_graph_resize_dragging = false;
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
                         gpu.window.request_redraw();
@@ -488,8 +505,19 @@ impl ApplicationHandler<UserEvent> for App {
                         visible.max(1.0) as usize
                     });
                     let max = total_rows.saturating_sub(visible_rows);
-                    self.scm_scroll =
-                        (self.scm_scroll as i32 + lines as i32).clamp(0, max as i32) as usize;
+                    let over_graph = !self.scm_graph_collapsed
+                        && self
+                            .scm_graph_layout()
+                            .and_then(|layout| layout.graph_divider)
+                            .is_some_and(|divider| {
+                                self.sidebar_local_y(self.mouse.y as f32) >= divider.y
+                            });
+                    if over_graph {
+                        self.scroll_scm_graph(lines as i32);
+                    } else {
+                        self.scm_scroll =
+                            (self.scm_scroll as i32 + lines as i32).clamp(0, max as i32) as usize;
+                    }
                 } else if over_plugins {
                     self.scroll_plugins(lines as i32);
                 } else if self.plugins.active_graphite_detail.is_some() {
@@ -686,11 +714,22 @@ impl App {
                     gpu.window.request_redraw();
                 }
             }
+            UserEvent::ScmGraph(result) => {
+                if let Ok(rows) = result {
+                    self.scm_graph_rows = rows;
+                } else {
+                    self.scm_graph_rows.clear();
+                }
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
             UserEvent::ScmOperationCompleted { message, snapshot } => {
                 self.status = message;
                 if let Some(snapshot) = snapshot {
                     self.accept_scm_snapshot(snapshot);
                 }
+                self.refresh_scm_graph_async();
                 self.diff_loading = false;
                 self.check_cli_waiters();
                 if let Some(gpu) = &self.gpu {

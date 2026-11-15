@@ -1,4 +1,4 @@
-use super::scm_ui::{scm_panel_layout, ScmAction, ScmListRowKind};
+use super::scm_ui::{ScmAction, ScmListRowKind};
 use super::terminal_panel::terminal_drawing::{
     TerminalHeaderTab, TerminalToolbarAction, TERMINAL_HEADER_HEIGHT,
 };
@@ -194,18 +194,7 @@ impl App {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);
                 let row_h = lh.max(18.0);
-                let layout = scm_panel_layout(
-                    &self.scm_snapshot,
-                    sidebar_width,
-                    window_height,
-                    row_h,
-                    cw,
-                    self.scm_scroll,
-                    self.scm_repositories_collapsed,
-                    self.scm_staged_collapsed,
-                    self.scm_changes_collapsed,
-                    &self.vsix_scm_rows(),
-                );
+                let layout = self.scm_sidebar_layout_for(window_height, lh, cw);
                 if !self.scm_repositories_collapsed {
                     if layout.repo_sync.contains(local_x, local_y) {
                         self.run_scm_remote(super::scm_remote_ui::RemoteOp::Sync);
@@ -282,6 +271,33 @@ impl App {
                         ScmListRowKind::Extension(extension) => {
                             let row = *row;
                             self.click_extension_scm_row(&row, extension, local_x, local_y);
+                        }
+                        ScmListRowKind::GraphHeader { .. } => {
+                            let [fetch, pull, push, refresh] =
+                                super::source_control::scm_graph_ui::graph_header_buttons(
+                                    row.action, cw,
+                                );
+                            if fetch.contains(local_x, local_y) {
+                                self.run_scm_remote(super::scm_remote_ui::RemoteOp::Fetch);
+                            } else if pull.contains(local_x, local_y) {
+                                self.run_scm_remote(super::scm_remote_ui::RemoteOp::Pull);
+                            } else if push.contains(local_x, local_y) {
+                                self.run_scm_remote(super::scm_remote_ui::RemoteOp::Push);
+                            } else if refresh.contains(local_x, local_y) {
+                                self.refresh_scm_async();
+                            } else {
+                                self.scm_graph_collapsed = !self.scm_graph_collapsed;
+                            }
+                        }
+                        ScmListRowKind::GraphCommit { index } => {
+                            if let Some(hash) = self
+                                .scm_graph_rows
+                                .get(index)
+                                .map(|r| r.commit.hash.clone())
+                            {
+                                self.scm_graph_selected_hash = Some(hash.clone());
+                                self.open_scm_commit_diff(&hash);
+                            }
                         }
                         ScmListRowKind::File { index, staged } => {
                             self.scm_selected = index;

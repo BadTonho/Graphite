@@ -20,6 +20,9 @@ pub(super) enum ScmIcon {
     History,
     Stash,
     Check,
+    Fetch,
+    Pull,
+    Push,
 }
 
 fn plot(map: &mut Bitmap, x: f32, y: f32) {
@@ -165,6 +168,28 @@ fn bitmap(icon: ScmIcon) -> Bitmap {
             fill(&mut map, 7, 4, 5, 1);
             fill(&mut map, 6, 3, 1, 3);
         }
+        ScmIcon::Fetch => {
+            // Dashed down arrow to tray.
+            fill(&mut map, 7, 2, 2, 2);
+            fill(&mut map, 7, 5, 2, 5);
+            line(&mut map, (4.5, 7.5), (7.5, 10.5));
+            line(&mut map, (11.5, 7.5), (8.5, 10.5));
+            fill(&mut map, 4, 12, 8, 2);
+        }
+        ScmIcon::Pull => {
+            // Down arrow to base line.
+            fill(&mut map, 7, 3, 2, 7);
+            line(&mut map, (4.5, 7.5), (7.5, 10.5));
+            line(&mut map, (11.5, 7.5), (8.5, 10.5));
+            fill(&mut map, 4, 12, 8, 2);
+        }
+        ScmIcon::Push => {
+            // Up arrow from base line.
+            fill(&mut map, 7, 4, 2, 7);
+            line(&mut map, (4.5, 6.5), (7.5, 3.5));
+            line(&mut map, (11.5, 6.5), (8.5, 3.5));
+            fill(&mut map, 4, 12, 8, 2);
+        }
     }
     map
 }
@@ -205,7 +230,7 @@ pub(super) fn draw_scm_icon(
 mod tests {
     use super::*;
 
-    const ICONS: [ScmIcon; 9] = [
+    const ICONS: [ScmIcon; 12] = [
         ScmIcon::Sync,
         ScmIcon::Refresh,
         ScmIcon::PullRequest,
@@ -215,6 +240,9 @@ mod tests {
         ScmIcon::History,
         ScmIcon::Stash,
         ScmIcon::Check,
+        ScmIcon::Fetch,
+        ScmIcon::Pull,
+        ScmIcon::Push,
     ];
 
     fn count(map: &Bitmap) -> usize {

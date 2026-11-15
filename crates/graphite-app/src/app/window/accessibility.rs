@@ -354,6 +354,7 @@ pub(crate) enum UserEvent {
         result: Result<Vec<crate::multi_diff::FileInput>, String>,
     },
     ScmSnapshot(crate::scm::Snapshot),
+    ScmGraph(Result<Vec<crate::vcs::scm_graph::GraphRow>, String>),
     ScmOperationCompleted {
         message: String,
         snapshot: Option<crate::scm::Snapshot>,

@@ -37,6 +37,13 @@ pub(crate) enum ScmListRowKind {
     },
     /// A row of a source control an extension registered.
     Extension(crate::app::plugins::vsix::ExtensionRow),
+    GraphHeader {
+        collapsed: bool,
+        count: usize,
+    },
+    GraphCommit {
+        index: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,6 +71,7 @@ pub(crate) struct ScmPanelLayout {
     pub commit_field: ScmRect,
     pub commit_button: ScmRect,
     pub list_top: f32,
+    pub graph_divider: Option<ScmRect>,
     pub list_rows: Vec<ScmListRow>,
 }
 
@@ -81,6 +89,7 @@ pub(crate) fn changes_header_buttons(action: ScmRect, cell_width: f32) -> (ScmRe
     (history, stash)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn scm_panel_layout(
     snapshot: &crate::scm::Snapshot,
     sidebar_width: f32,
@@ -92,6 +101,43 @@ pub(crate) fn scm_panel_layout(
     staged_collapsed: bool,
     changes_collapsed: bool,
     extension_rows: &[crate::app::plugins::vsix::ExtensionRow],
+) -> ScmPanelLayout {
+    scm_panel_layout_with_graph(
+        snapshot,
+        sidebar_width,
+        height,
+        row_height,
+        cell_width,
+        scroll,
+        repositories_collapsed,
+        staged_collapsed,
+        changes_collapsed,
+        extension_rows,
+        false,
+        false,
+        0,
+        0,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn scm_panel_layout_with_graph(
+    snapshot: &crate::scm::Snapshot,
+    sidebar_width: f32,
+    height: f32,
+    row_height: f32,
+    cell_width: f32,
+    scroll: usize,
+    repositories_collapsed: bool,
+    staged_collapsed: bool,
+    changes_collapsed: bool,
+    extension_rows: &[crate::app::plugins::vsix::ExtensionRow],
+    show_graph: bool,
+    graph_collapsed: bool,
+    graph_count: usize,
+    graph_scroll: usize,
+    graph_height: Option<f32>,
 ) -> ScmPanelLayout {
     let left = ACTIVITY_BAR_WIDTH + PAD;
     let right = sidebar_width - PAD;
@@ -183,27 +229,83 @@ pub(crate) fn scm_panel_layout(
         );
     }
     let list_top = commit_y + row_height * 2.50;
-    let available = ((height - list_top - row_height * 1.2) / row_height).max(0.0) as usize;
-    let list_rows = entries
-        .into_iter()
-        .skip(scroll)
-        .take(available)
-        .enumerate()
-        .map(|(visible, kind)| {
-            let y = list_top + row_height * (visible as f32 + 1.0);
-            ScmListRow {
-                bounds: full_row(y),
-                chevron: ScmRect {
-                    x: left,
-                    y,
-                    width: chevron_slot,
-                    height: row_height,
-                },
-                action: action_rect(y),
-                kind,
-            }
-        })
-        .collect();
+    let list_start_y = list_top + row_height;
+    let list_end_y = (height - row_height * 0.25).max(list_start_y);
+    let make_row = |y: f32, kind: ScmListRowKind| ScmListRow {
+        bounds: full_row(y),
+        chevron: ScmRect {
+            x: left,
+            y,
+            width: chevron_slot,
+            height: row_height,
+        },
+        action: action_rect(y),
+        kind,
+    };
+
+    let (list_rows, graph_divider) = if show_graph && snapshot.error.is_none() {
+        let total_h = (list_end_y - list_start_y).max(row_height * 2.0);
+        let graph_area_h = if graph_collapsed {
+            row_height
+        } else {
+            let max_graph_h = (total_h - row_height * 2.0).max(row_height * 2.0);
+            graph_height
+                .unwrap_or(total_h * 0.44)
+                .clamp(row_height * 2.0, max_graph_h)
+        };
+        let graph_header_y = (list_end_y - graph_area_h).max(list_start_y);
+        let divider = ScmRect {
+            x: ACTIVITY_BAR_WIDTH,
+            y: graph_header_y - 3.0,
+            width: sidebar_width - ACTIVITY_BAR_WIDTH,
+            height: 6.0,
+        };
+        let top_cap = ((graph_header_y - list_start_y) / row_height)
+            .floor()
+            .max(0.0) as usize;
+        let mut rows: Vec<ScmListRow> = entries
+            .into_iter()
+            .skip(scroll)
+            .take(top_cap)
+            .enumerate()
+            .map(|(visible, kind)| make_row(list_start_y + row_height * visible as f32, kind))
+            .collect();
+        rows.push(make_row(
+            graph_header_y,
+            ScmListRowKind::GraphHeader {
+                collapsed: graph_collapsed,
+                count: graph_count,
+            },
+        ));
+        if !graph_collapsed {
+            let commit_cap = ((list_end_y - (graph_header_y + row_height)) / row_height)
+                .floor()
+                .max(0.0) as usize;
+            rows.extend(
+                (0..graph_count)
+                    .skip(graph_scroll)
+                    .take(commit_cap)
+                    .enumerate()
+                    .map(|(visible, index)| {
+                        make_row(
+                            graph_header_y + row_height * (visible as f32 + 1.0),
+                            ScmListRowKind::GraphCommit { index },
+                        )
+                    }),
+            );
+        }
+        (rows, Some(divider))
+    } else {
+        let available = ((height - list_top - row_height * 1.2) / row_height).max(0.0) as usize;
+        let rows = entries
+            .into_iter()
+            .skip(scroll)
+            .take(available)
+            .enumerate()
+            .map(|(visible, kind)| make_row(list_start_y + row_height * visible as f32, kind))
+            .collect();
+        (rows, None)
+    };
 
     ScmPanelLayout {
         repository_header: full_row(row_height),
@@ -281,6 +383,7 @@ pub(crate) fn scm_panel_layout(
             height: row_height,
         },
         list_top,
+        graph_divider,
         list_rows,
     }
 }
@@ -513,14 +616,43 @@ impl App {
     pub(crate) fn refresh_scm_async(&mut self) {
         let root = self.scm_workspace_root();
         if let Some(proxy) = self.event_proxy.clone() {
+            let graph_root = root.clone();
+            let graph_proxy = proxy.clone();
             std::thread::Builder::new()
                 .name("graphite-scm-status".into())
                 .spawn(move || {
                     let _ = proxy.send_event(UserEvent::ScmSnapshot(crate::scm::snapshot(&root)));
                 })
                 .ok();
+            std::thread::Builder::new()
+                .name("graphite-scm-graph".into())
+                .spawn(move || {
+                    let _ = graph_proxy.send_event(UserEvent::ScmGraph(
+                        crate::vcs::scm_graph::load_graph_commits(&graph_root, 100),
+                    ));
+                })
+                .ok();
         } else {
             self.scm_snapshot = crate::scm::snapshot(&root);
+            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, 100)
+                .unwrap_or_default();
+        }
+    }
+
+    pub(crate) fn refresh_scm_graph_async(&mut self) {
+        let root = self.scm_workspace_root();
+        if let Some(proxy) = self.event_proxy.clone() {
+            std::thread::Builder::new()
+                .name("graphite-scm-graph".into())
+                .spawn(move || {
+                    let _ = proxy.send_event(UserEvent::ScmGraph(
+                        crate::vcs::scm_graph::load_graph_commits(&root, 100),
+                    ));
+                })
+                .ok();
+        } else {
+            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, 100)
+                .unwrap_or_default();
         }
     }
 
@@ -1048,18 +1180,7 @@ impl App {
         let left = ACTIVITY_BAR_WIDTH + PAD;
         let right = sidebar_width - PAD;
         let row_h = line_height.max(18.0);
-        let layout = scm_panel_layout(
-            &self.scm_snapshot,
-            sidebar_width,
-            height,
-            row_h,
-            cell_width,
-            self.scm_scroll,
-            self.scm_repositories_collapsed,
-            self.scm_staged_collapsed,
-            self.scm_changes_collapsed,
-            &self.vsix_scm_rows(),
-        );
+        let layout = self.scm_sidebar_layout_for(height, line_height, cell_width);
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
@@ -1286,6 +1407,21 @@ impl App {
                     extension,
                     [row_h, line_height, cell_width, sidebar_width],
                 ),
+                ScmListRowKind::GraphHeader { collapsed, .. } => {
+                    self.draw_scm_graph_header(renderer, row, collapsed, row_h, cell_width, text, dim);
+                }
+                ScmListRowKind::GraphCommit { index } => {
+                    self.draw_scm_graph_commit_row(
+                        renderer,
+                        row,
+                        index,
+                        row_h,
+                        cell_width,
+                        sidebar_width,
+                        text,
+                        dim,
+                    );
+                }
                 ScmListRowKind::Section {
                     staged,
                     count,
@@ -1416,6 +1552,22 @@ impl App {
                         scm_button_color(action_hovered),
                     );
                 }
+            }
+        }
+        if let Some(divider) = layout.graph_divider {
+            let line_y = divider.y + divider.height * 0.5;
+            renderer.draw_rect(
+                divider.x,
+                line_y - 0.5,
+                divider.width,
+                1.0,
+                rgb(Theme::color(0x3c3c3c, 0xd0d0d0)),
+            );
+            let hovered = !self.scm_graph_resize_dragging
+                && !self.scm_graph_collapsed
+                && self.is_over_scm_graph_resize_handle(self.mouse.x as f32, self.mouse.y as f32);
+            if hovered || self.scm_graph_resize_dragging {
+                renderer.draw_rect(divider.x, line_y - 1.5, divider.width, 3.0, accent);
             }
         }
     }

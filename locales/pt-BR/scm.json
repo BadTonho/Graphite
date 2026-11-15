@@ -89,5 +89,6 @@
   "scm.error.unsaved_for_git_operation": "Salve ou descarte as edições não salvas antes de mesclar ou fazer rebase",
   "scm.prompt.new_branch": "Nome da nova branch:",
   "scm.prompt.new_branch_hint": "Enter cria a branch e muda para ela · Esc cancela",
-  "scm.prompt.branch_empty": "Digite um nome de branch primeiro"
+  "scm.prompt.branch_empty": "Digite um nome de branch primeiro",
+  "scm.graph.title": "Grafo"
 }
