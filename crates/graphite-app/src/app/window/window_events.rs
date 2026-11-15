@@ -368,7 +368,8 @@ impl ApplicationHandler<UserEvent> for App {
                 self.scm_more_menu = None;
                 let opened = self.activity_bar_right_click(mx, my)
                     || self.explorer_right_click(mx, my)
-                    || self.scm_graph_right_click(mx, my);
+                    || self.scm_graph_right_click(mx, my)
+                    || self.scm_file_right_click(mx, my);
                 if opened
                     || self.activity_bar_menu.is_none()
                     || self.explorer_context_menu.is_none()

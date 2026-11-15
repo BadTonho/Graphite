@@ -43,6 +43,22 @@ pub(crate) enum MoreCommand {
     StashApplyLatest,
     StashPopLatest,
     CreateTag,
+    FileOpen,
+    FileStage,
+    FileUnstage,
+    FileDiscard,
+    FileAddToGitignore,
+    FileCopyPath,
+    FileCopyRelativePath,
+}
+
+/// Which menu is open: the "…" menu, or the menu of a file of the changes list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum MoreMenuKind {
+    #[default]
+    Actions,
+    /// The file at this index of the snapshot, in the staged or the unstaged list.
+    File { index: usize, staged: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -89,7 +105,38 @@ impl MoreNode {
     }
 }
 
-/// The whole menu.
+/// The tree of the menu of `kind`.
+pub(crate) fn menu_tree(kind: MoreMenuKind) -> Vec<MoreNode> {
+    match kind {
+        MoreMenuKind::Actions => more_menu_tree(),
+        MoreMenuKind::File { staged, .. } => file_menu_tree(staged),
+    }
+}
+
+fn file_menu_tree(staged: bool) -> Vec<MoreNode> {
+    use MoreCommand as C;
+    use MoreNode as N;
+    let mut rows = vec![
+        N::leaf("scm.file.open", C::FileOpen),
+        N::Separator,
+    ];
+    if staged {
+        rows.push(N::leaf("scm.file.unstage", C::FileUnstage));
+    } else {
+        rows.push(N::leaf("scm.file.stage", C::FileStage));
+        rows.push(N::leaf("scm.file.discard", C::FileDiscard));
+    }
+    rows.extend([
+        N::Separator,
+        N::leaf("scm.file.add_to_gitignore", C::FileAddToGitignore),
+        N::Separator,
+        N::leaf("scm.file.copy_path", C::FileCopyPath),
+        N::leaf("scm.file.copy_relative_path", C::FileCopyRelativePath),
+    ]);
+    rows
+}
+
+/// The whole "…" menu.
 pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
     use MoreCommand as C;
     use MoreNode as N;
@@ -199,6 +246,7 @@ pub(crate) struct MoreMenu {
     pub selected: Vec<usize>,
     /// Label width per locale key, so layout does not need the translator.
     widths: Vec<(&'static str, f32)>,
+    pub kind: MoreMenuKind,
 }
 
 impl MoreMenu {
@@ -219,6 +267,7 @@ impl MoreMenu {
             open: Vec::new(),
             selected: vec![first],
             widths,
+            kind: MoreMenuKind::Actions,
         }
     }
 
@@ -437,6 +486,73 @@ fn collect_widths(
 }
 
 impl App {
+    /// Right click on a file of the changes list.
+    pub(crate) fn scm_file_right_click(&mut self, x: f32, y: f32) -> bool {
+        use super::scm_ui::ScmListRowKind;
+        let (window_width, window_height, lh, cw) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| {
+                let (w, h) = gpu.renderer.size();
+                (w, h, gpu.renderer.line_height(), gpu.renderer.char_width())
+            })
+            .unwrap_or((1200.0, 760.0, 18.0, 8.0));
+        if self.zen_mode
+            || !self.view_preferences.primary_sidebar_visible
+            || !self.scm_visible
+            || self.active_plugin_activity.is_some()
+            || self.shows_scm_welcome_view()
+            || !self.primary_sidebar_contains(x, y, window_width, window_height, lh)
+        {
+            return false;
+        }
+        let local_x = self.sidebar_local_x(x, window_width);
+        let local_y = self.sidebar_local_y(y);
+        let layout = self.scm_sidebar_layout_for(window_height, lh, cw);
+        let hit = layout.list_rows.iter().find_map(|row| match row.kind {
+            ScmListRowKind::File { index, staged } if row.bounds.contains(local_x, local_y) => {
+                Some((index, staged))
+            }
+            _ => None,
+        });
+        let Some((index, staged)) = hit else {
+            return false;
+        };
+        self.scm_selected = index;
+        self.workbench_menu = None;
+        self.settings_menu = None;
+        self.profile_menu = None;
+        self.terminal_toolbar_menu = None;
+        self.activity_bar_menu = None;
+        self.explorer_context_menu = None;
+        self.scm_graph_menu = None;
+        let kind = MoreMenuKind::File { index, staged };
+        self.open_more_menu(kind, (x, y), (window_width, window_height), lh, cw);
+        true
+    }
+
+    fn open_more_menu(
+        &mut self,
+        kind: MoreMenuKind,
+        anchor: (f32, f32),
+        window: (f32, f32),
+        lh: f32,
+        cw: f32,
+    ) {
+        let bottom_inset = if self.view_preferences.status_bar_visible {
+            lh
+        } else {
+            0.0
+        };
+        let tree = menu_tree(kind);
+        let char_width = cw.max(6.0);
+        let mut menu = MoreMenu::new(&tree, anchor, window, bottom_inset, |label| {
+            self.t(label).chars().count() as f32 * char_width
+        });
+        menu.kind = kind;
+        self.scm_more_menu = Some(menu);
+    }
+
     /// The "…" button: opens the menu below the pointer.
     pub(crate) fn open_scm_more_menu(&mut self) {
         let (window_width, window_height, lh, cw) = self
@@ -452,16 +568,20 @@ impl App {
         } else {
             0.0
         };
+        let _ = bottom_inset;
         let anchor = (self.mouse.x as f32, self.mouse.y as f32 + lh * 0.6);
-        let tree = more_menu_tree();
-        let char_width = cw.max(6.0);
-        self.scm_more_menu = Some(MoreMenu::new(
-            &tree,
+        self.open_more_menu(
+            MoreMenuKind::Actions,
             anchor,
             (window_width, window_height),
-            bottom_inset,
-            |label| self.t(label).chars().count() as f32 * char_width,
-        ));
+            lh,
+            cw,
+        );
+    }
+
+    /// The tree of the open menu.
+    fn open_more_tree(&self) -> Vec<MoreNode> {
+        menu_tree(self.scm_more_menu.as_ref().map(|menu| menu.kind).unwrap_or_default())
     }
 
     /// The old "…" behavior: the Git commands in the command palette.
@@ -473,15 +593,16 @@ impl App {
     }
 
     pub(crate) fn scm_more_menu_pointer_moved(&mut self, x: f32, y: f32) {
+        let tree = self.open_more_tree();
         if let Some(menu) = self.scm_more_menu.as_mut() {
-            menu.pointer_moved(&more_menu_tree(), x, y);
+            menu.pointer_moved(&tree, x, y);
         }
     }
 
     /// A left click while the menu is open: runs the row under it. The menu closes unless the
     /// click opened a submenu.
     pub(crate) fn scm_more_menu_click(&mut self, x: f32, y: f32) {
-        let tree = more_menu_tree();
+        let tree = self.open_more_tree();
         let Some(menu) = self.scm_more_menu.as_mut() else {
             return;
         };
@@ -489,14 +610,15 @@ impl App {
             self.scm_more_menu = None;
             return;
         }
+        let kind = menu.kind;
         if let Some(command) = menu.click(&tree, x, y) {
             self.scm_more_menu = None;
-            self.run_more_command(command);
+            self.run_more_command_for(command, kind);
         }
     }
 
     pub(crate) fn scm_more_menu_key(&mut self, key: &Key) -> bool {
-        let tree = more_menu_tree();
+        let tree = self.open_more_tree();
         let Some(menu) = self.scm_more_menu.as_mut() else {
             return false;
         };
@@ -511,9 +633,10 @@ impl App {
                 menu.leave_submenu();
             }
             Key::Named(NamedKey::Enter) => {
+                let kind = menu.kind;
                 if let Some(command) = menu.activate(&tree) {
                     self.scm_more_menu = None;
-                    self.run_more_command(command);
+                    self.run_more_command_for(command, kind);
                 }
             }
             _ => return false,
@@ -522,7 +645,73 @@ impl App {
     }
 
     pub(crate) fn run_more_command(&mut self, command: MoreCommand) {
+        self.run_more_command_for(command, MoreMenuKind::Actions);
+    }
+
+    /// The file a file menu command is about.
+    fn menu_file(&self, kind: MoreMenuKind) -> Option<crate::scm::FileStatus> {
+        match kind {
+            MoreMenuKind::File { index, .. } => self.scm_snapshot.files.get(index).cloned(),
+            MoreMenuKind::Actions => None,
+        }
+    }
+
+    fn run_file_command(&mut self, command: MoreCommand, kind: MoreMenuKind) {
+        use crate::app::clipboard::{ClipboardAccess, SystemClipboard};
         use MoreCommand as C;
+        let (Some(file), MoreMenuKind::File { index, .. }) = (self.menu_file(kind), kind) else {
+            return;
+        };
+        self.scm_selected = index;
+        match command {
+            C::FileOpen => {
+                let path = self.tree.root().join(&file.path);
+                self.open_file(path);
+            }
+            C::FileStage => self.perform_scm_action(ScmAction::Stage),
+            C::FileUnstage => self.perform_scm_action(ScmAction::Unstage),
+            C::FileDiscard => {
+                if let Some(target) = self.discard_target_at(index) {
+                    self.confirm_discard(vec![target]);
+                }
+            }
+            C::FileAddToGitignore => {
+                let root = self.scm_workspace_root();
+                self.status = match crate::scm_ignore::add_to_gitignore(&root, &file.path) {
+                    Ok(true) => self.t("scm.file.ignored").into(),
+                    Ok(false) => self.t("scm.file.already_ignored").into(),
+                    Err(error) => error,
+                };
+                self.refresh_scm_async();
+            }
+            C::FileCopyPath | C::FileCopyRelativePath => {
+                let text = if command == C::FileCopyPath {
+                    self.tree.root().join(&file.path).to_string_lossy().into_owned()
+                } else {
+                    file.path.to_string_lossy().replace('\\', "/")
+                };
+                self.status = if SystemClipboard.set_text(&text).is_ok() {
+                    self.t("misc.path_copied").into()
+                } else {
+                    self.t("misc.clipboard_failed").into()
+                };
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn run_more_command_for(&mut self, command: MoreCommand, kind: MoreMenuKind) {
+        use MoreCommand as C;
+        match command {
+            C::FileOpen
+            | C::FileStage
+            | C::FileUnstage
+            | C::FileDiscard
+            | C::FileAddToGitignore
+            | C::FileCopyPath
+            | C::FileCopyRelativePath => return self.run_file_command(command, kind),
+            _ => {}
+        }
         match command {
             C::Pull => self.run_scm_remote(RemoteOp::Pull),
             C::PullRebase => self.run_scm_remote(RemoteOp::PullRebase),
@@ -549,6 +738,13 @@ impl App {
             C::StashApplyLatest => self.run_scm_remote(RemoteOp::StashApplyLatest),
             C::StashPopLatest => self.run_scm_remote(RemoteOp::StashPopLatest),
             C::CreateTag => self.open_name_prompt(NameTarget::TagHead),
+            C::FileOpen
+            | C::FileStage
+            | C::FileUnstage
+            | C::FileDiscard
+            | C::FileAddToGitignore
+            | C::FileCopyPath
+            | C::FileCopyRelativePath => {}
         }
     }
 
@@ -556,7 +752,7 @@ impl App {
         let Some(menu) = &self.scm_more_menu else {
             return;
         };
-        let tree = more_menu_tree();
+        let tree = self.open_more_tree();
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let text = rgb(Theme::color(Theme::TEXT, 0xcccccc));
@@ -648,6 +844,8 @@ mod tests {
         }
         let mut keys = Vec::new();
         walk(&more_menu_tree(), &mut keys);
+        walk(&file_menu_tree(true), &mut keys);
+        walk(&file_menu_tree(false), &mut keys);
         let english = graphite_i18n::Translator::english();
         for key in keys {
             assert!(english.has(key), "{key} is missing in English");
@@ -662,6 +860,8 @@ mod tests {
         .unwrap();
         let mut keys = Vec::new();
         walk(&more_menu_tree(), &mut keys);
+        walk(&file_menu_tree(true), &mut keys);
+        walk(&file_menu_tree(false), &mut keys);
         for key in keys {
             assert!(pt.get(key).is_some(), "{key} is missing in pt-BR");
         }
@@ -798,6 +998,106 @@ mod tests {
             app.run_more_command(command);
             assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{command:?}");
         }
+    }
+
+    fn labels(rows: &[MoreNode]) -> Vec<&'static str> {
+        rows.iter()
+            .filter_map(|row| match row {
+                MoreNode::Item { label, .. } => Some(*label),
+                MoreNode::Separator => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_file_menu_offers_stage_and_discard_for_changes_and_only_unstage_for_staged_files() {
+        let unstaged = labels(&file_menu_tree(false));
+        assert!(unstaged.contains(&"scm.file.stage"));
+        assert!(unstaged.contains(&"scm.file.discard"));
+        assert!(!unstaged.contains(&"scm.file.unstage"));
+        let staged = labels(&file_menu_tree(true));
+        assert!(staged.contains(&"scm.file.unstage"));
+        assert!(!staged.contains(&"scm.file.discard"), "staged changes are unstaged first");
+        assert!(!staged.contains(&"scm.file.stage"));
+    }
+
+    fn app_with_file(dir: &TempDir, staged: bool) -> App {
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.scm_snapshot.files = vec![crate::scm::FileStatus {
+            path: "src/a.txt".into(),
+            staged,
+            unstaged: !staged,
+            ..Default::default()
+        }];
+        app
+    }
+
+    #[test]
+    fn choosing_discard_in_the_file_menu_asks_before_throwing_changes_away() {
+        let dir = TempDir::new();
+        let mut app = app_with_file(&dir, false);
+        app.open_more_menu(
+            MoreMenuKind::File {
+                index: 0,
+                staged: false,
+            },
+            (50.0, 50.0),
+            (1200.0, 800.0),
+            18.0,
+            8.0,
+        );
+        let tree = app.open_more_tree();
+        let menu = app.scm_more_menu.as_ref().unwrap();
+        let (x, y) = point(menu, &tree, 0, index_of(&tree, "scm.file.discard"));
+        app.scm_more_menu_click(x, y);
+        assert!(app.scm_more_menu.is_none());
+        let confirm = app.scm_confirm.as_ref().expect("a confirmation is shown first");
+        assert!(confirm.message.contains("a.txt"));
+    }
+
+    #[test]
+    fn adding_to_gitignore_writes_the_workspace_file_and_copy_path_uses_the_workspace() {
+        let dir = TempDir::new();
+        let mut app = app_with_file(&dir, false);
+        let kind = MoreMenuKind::File {
+            index: 0,
+            staged: false,
+        };
+        app.run_more_command_for(MoreCommand::FileAddToGitignore, kind);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(".gitignore")).unwrap(),
+            "/src/a.txt
+"
+        );
+        assert_eq!(app.status, app.t("scm.file.ignored"));
+        // Without an event loop the refresh replaces the snapshot, so list the file again.
+        let mut app = app_with_file(&dir, false);
+        app.run_more_command_for(MoreCommand::FileAddToGitignore, kind);
+        assert_eq!(app.status, app.t("scm.file.already_ignored"));
+        // A command for a file that is no longer listed does nothing.
+        let mut app = app_with_file(&dir, false);
+        app.scm_snapshot.files.clear();
+        app.status.clear();
+        app.run_more_command_for(MoreCommand::FileAddToGitignore, kind);
+        assert!(app.status.is_empty());
+    }
+
+    #[test]
+    fn staging_from_the_file_menu_selects_that_file_and_starts_the_operation() {
+        let dir = TempDir::new();
+        let mut app = app_with_file(&dir, false);
+        app.scm_selected = 7;
+        app.status.clear();
+        app.run_more_command_for(
+            MoreCommand::FileStage,
+            MoreMenuKind::File {
+                index: 0,
+                staged: false,
+            },
+        );
+        assert_eq!(app.scm_selected, 0);
+        // Without an event loop the operation stops at this message, which shows it was started.
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
 
     #[test]
