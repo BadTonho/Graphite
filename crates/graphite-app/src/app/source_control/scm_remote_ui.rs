@@ -15,6 +15,13 @@ pub(crate) enum RemoteOp {
     /// Amend the last commit, with a new message when one is given.
     Amend(Option<String>),
     CreateBranch(String),
+    /// Create a branch at a commit (name, commit id) and switch to it.
+    CreateBranchAt(String, String),
+    /// Tag a commit (name, commit id).
+    CreateTag(String, String),
+    CheckoutCommit(String),
+    CherryPick(String),
+    RevertCommit(String),
     Merge(String),
     Rebase(String),
     /// Delete a local branch; `true` deletes it even if it is not fully merged.
@@ -39,6 +46,11 @@ impl RemoteOp {
             RemoteOp::Stash => scm_remote::stash(root),
             RemoteOp::Amend(message) => branches::amend(root, message.as_deref()),
             RemoteOp::CreateBranch(name) => branches::create_branch(root, name),
+            RemoteOp::CreateBranchAt(name, hash) => branches::create_branch_at(root, name, hash),
+            RemoteOp::CreateTag(name, hash) => branches::create_tag(root, name, hash),
+            RemoteOp::CheckoutCommit(hash) => branches::checkout_commit(root, hash),
+            RemoteOp::CherryPick(hash) => branches::cherry_pick(root, hash),
+            RemoteOp::RevertCommit(hash) => branches::revert_commit(root, hash),
             RemoteOp::Merge(branch) => branches::merge(root, branch),
             RemoteOp::Rebase(onto) => branches::rebase(root, onto),
             RemoteOp::RebaseInteractive(onto, todo) => {
@@ -55,7 +67,12 @@ impl RemoteOp {
     pub(crate) fn needs_saved_documents(&self) -> bool {
         matches!(
             self,
-            RemoteOp::Merge(_) | RemoteOp::Rebase(_) | RemoteOp::ContinueOperation
+            RemoteOp::Merge(_)
+                | RemoteOp::Rebase(_)
+                | RemoteOp::ContinueOperation
+                | RemoteOp::CheckoutCommit(_)
+                | RemoteOp::CherryPick(_)
+                | RemoteOp::RevertCommit(_)
         )
     }
 }

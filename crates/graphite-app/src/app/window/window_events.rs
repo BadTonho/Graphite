@@ -213,6 +213,7 @@ impl ApplicationHandler<UserEvent> for App {
                     self.profile_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.terminal_toolbar_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.explorer_context_menu_pointer_moved(position.x as f32, position.y as f32);
+                    self.scm_graph_menu_pointer_moved(position.x as f32, position.y as f32);
                 }
                 if self.titlebar_pointer_moved(position.x as f32, position.y as f32) {
                     if let Some(gpu) = &self.gpu {
@@ -362,8 +363,10 @@ impl ApplicationHandler<UserEvent> for App {
                 self.dismiss_workbench_menu();
                 let mx = self.mouse.x as f32;
                 let my = self.mouse.y as f32;
+                self.scm_graph_menu = None;
                 let opened = self.activity_bar_right_click(mx, my)
-                    || self.explorer_right_click(mx, my);
+                    || self.explorer_right_click(mx, my)
+                    || self.scm_graph_right_click(mx, my);
                 if opened
                     || self.activity_bar_menu.is_none()
                     || self.explorer_context_menu.is_none()

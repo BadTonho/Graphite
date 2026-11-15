@@ -45,10 +45,23 @@ pub(crate) struct InteractiveRebase {
     pub(crate) commits: Vec<crate::scm_branches::Commit>,
 }
 
-/// The branch name being typed for **Git: Create Branch**.
+/// What the name being typed will be given to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) enum NameTarget {
+    /// A new branch at HEAD (**Git: Create Branch**).
+    #[default]
+    Branch,
+    /// A new branch at the commit with this id.
+    BranchAt(String),
+    /// A new tag on the commit with this id.
+    TagAt(String),
+}
+
+/// The branch or tag name being typed.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct BranchNamePrompt {
     pub(crate) value: String,
+    pub(crate) target: NameTarget,
 }
 
 impl App {
@@ -212,7 +225,14 @@ impl App {
     }
 
     pub(crate) fn open_create_branch_prompt(&mut self) {
-        self.branch_name_prompt = Some(BranchNamePrompt::default());
+        self.open_name_prompt(NameTarget::Branch);
+    }
+
+    pub(crate) fn open_name_prompt(&mut self, target: NameTarget) {
+        self.branch_name_prompt = Some(BranchNamePrompt {
+            value: String::new(),
+            target,
+        });
     }
 
     /// Routes keys to the branch name prompt while it is open. Returns whether it took the key.
@@ -224,11 +244,16 @@ impl App {
             Key::Named(NamedKey::Escape) => self.branch_name_prompt = None,
             Key::Named(NamedKey::Enter) => {
                 let name = prompt.value.trim().to_owned();
+                let target = prompt.target.clone();
                 if name.is_empty() {
                     self.status = self.t("scm.prompt.branch_empty").into();
                 } else {
                     self.branch_name_prompt = None;
-                    self.run_scm_remote(RemoteOp::CreateBranch(name));
+                    self.run_scm_remote(match target {
+                        NameTarget::Branch => RemoteOp::CreateBranch(name),
+                        NameTarget::BranchAt(hash) => RemoteOp::CreateBranchAt(name, hash),
+                        NameTarget::TagAt(hash) => RemoteOp::CreateTag(name, hash),
+                    });
                 }
             }
             Key::Named(NamedKey::Backspace) => {
@@ -290,7 +315,11 @@ impl App {
             panel_height - 2.0,
             bg,
         );
-        renderer.draw_text(self.t("scm.prompt.new_branch"), x + 16.0, y + 18.0, text);
+        let title = match prompt.target {
+            NameTarget::TagAt(_) => "scm.prompt.new_tag",
+            _ => "scm.prompt.new_branch",
+        };
+        renderer.draw_text(self.t(title), x + 16.0, y + 18.0, text);
         let max_chars = ((panel_width - 32.0) / cw.max(1.0)).floor() as usize;
         let input = Self::help_menu_visible_label(
             &format!("{}▏", prompt.value),

@@ -81,6 +81,11 @@ impl App {
         if self.click_explorer_delete_confirm(mx, my, window_width as f32, window_height as f32) {
             return;
         }
+        if self.scm_graph_menu.is_some() {
+            // A click outside only closes the menu; one inside runs its action.
+            self.scm_graph_menu_click(mx, my);
+            return;
+        }
         if self.explorer_context_menu.is_some() {
             if self.explorer_context_menu_contains(mx, my) {
                 self.explorer_context_menu_click(mx, my);

@@ -77,7 +77,7 @@ fn menu_rect(menu: &ExplorerContextMenu) -> (f32, f32, f32, f32) {
     (menu.x, menu.y, menu.width, menu_height(&menu.rows))
 }
 
-fn place_context_menu(
+pub(crate) fn place_context_menu(
     anchor: (f32, f32),
     size: (f32, f32),
     window: (f32, f32),

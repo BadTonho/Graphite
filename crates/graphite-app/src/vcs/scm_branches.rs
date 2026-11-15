@@ -11,6 +11,8 @@ use std::process::Command;
 pub(crate) enum Operation {
     Merge,
     Rebase,
+    CherryPick,
+    Revert,
 }
 
 struct Output {
@@ -102,6 +104,76 @@ pub(crate) fn create_branch(root: &Path, name: &str) -> Result<String, String> {
     }
     run(root, &["switch", "-c", name], false)?;
     Ok(format!("Switched to new branch '{name}'"))
+}
+
+/// Whether `hash` looks like an object id (the graph hands these over), so it can never be read as
+/// an option or a ref name.
+fn is_commit_id(hash: &str) -> bool {
+    (4..=64).contains(&hash.len()) && hash.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn checked_commit_id(hash: &str) -> Result<&str, String> {
+    if is_commit_id(hash) {
+        Ok(hash)
+    } else {
+        Err(format!("'{hash}' is not a commit id"))
+    }
+}
+
+/// Switches to `hash` with a detached HEAD.
+pub(crate) fn checkout_commit(root: &Path, hash: &str) -> Result<String, String> {
+    let hash = checked_commit_id(hash)?;
+    run(root, &["checkout", "--detach", hash], false)?;
+    Ok(format!("Checked out {}", short(hash)))
+}
+
+/// Creates `name` at the commit `hash` and switches to it.
+pub(crate) fn create_branch_at(root: &Path, name: &str, hash: &str) -> Result<String, String> {
+    let hash = checked_commit_id(hash)?;
+    let name = name.trim();
+    if !plain_ref(name) {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    let check = git(root, &["check-ref-format", "--branch", name], false)?;
+    if !check.success {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    run(root, &["switch", "-c", name, hash], false)?;
+    Ok(format!("Switched to new branch '{name}'"))
+}
+
+/// Creates the tag `name` on the commit `hash`.
+pub(crate) fn create_tag(root: &Path, name: &str, hash: &str) -> Result<String, String> {
+    let hash = checked_commit_id(hash)?;
+    let name = name.trim();
+    if !plain_ref(name) {
+        return Err(format!("'{name}' is not a valid tag name"));
+    }
+    let reference = format!("refs/tags/{name}");
+    let check = git(root, &["check-ref-format", &reference], false)?;
+    if !check.success {
+        return Err(format!("'{name}' is not a valid tag name"));
+    }
+    run(root, &["tag", name, hash], false)?;
+    Ok(format!("Created tag '{name}'"))
+}
+
+/// Applies the changes of the commit `hash` on top of HEAD. A conflict leaves it in progress.
+pub(crate) fn cherry_pick(root: &Path, hash: &str) -> Result<String, String> {
+    let hash = checked_commit_id(hash)?;
+    run(root, &["cherry-pick", hash], true)?;
+    Ok(format!("Cherry-picked {}", short(hash)))
+}
+
+/// Adds a commit that undoes the commit `hash`. A conflict leaves it in progress.
+pub(crate) fn revert_commit(root: &Path, hash: &str) -> Result<String, String> {
+    let hash = checked_commit_id(hash)?;
+    run(root, &["revert", "--no-edit", hash], true)?;
+    Ok(format!("Reverted {}", short(hash)))
+}
+
+fn short(hash: &str) -> &str {
+    &hash[..hash.len().min(7)]
 }
 
 /// Deletes the local branch `name`. Without `force` git refuses a branch that is not fully merged
@@ -311,6 +383,10 @@ pub(crate) fn operation_in_progress(root: &Path) -> Option<Operation> {
         Some(Operation::Rebase)
     } else if dir.join("MERGE_HEAD").exists() {
         Some(Operation::Merge)
+    } else if dir.join("CHERRY_PICK_HEAD").exists() {
+        Some(Operation::CherryPick)
+    } else if dir.join("REVERT_HEAD").exists() {
+        Some(Operation::Revert)
     } else {
         None
     }
@@ -325,6 +401,12 @@ pub(crate) fn abort(root: &Path) -> Result<String, String> {
         Some(Operation::Rebase) => {
             run(root, &["rebase", "--abort"], true).map(|_| "Rebase aborted".into())
         }
+        Some(Operation::CherryPick) => {
+            run(root, &["cherry-pick", "--abort"], true).map(|_| "Cherry-pick aborted".into())
+        }
+        Some(Operation::Revert) => {
+            run(root, &["revert", "--abort"], true).map(|_| "Revert aborted".into())
+        }
         None => Err("No merge or rebase is in progress".into()),
     }
 }
@@ -335,6 +417,8 @@ pub(crate) fn continue_operation(root: &Path) -> Result<String, String> {
     match operation_in_progress(root) {
         Some(Operation::Rebase) => run(root, &["rebase", "--continue"], true),
         Some(Operation::Merge) => run(root, &["commit", "--no-edit"], true),
+        Some(Operation::CherryPick) => run(root, &["cherry-pick", "--continue"], true),
+        Some(Operation::Revert) => run(root, &["revert", "--continue"], true),
         None => Err("No merge or rebase is in progress".into()),
     }
 }
@@ -408,6 +492,67 @@ mod tests {
 
     fn current_branch(root: &Path) -> String {
         sh(root, &["rev-parse", "--abbrev-ref", "HEAD"])
+    }
+
+    #[test]
+    fn commit_actions_check_out_branch_tag_cherry_pick_and_revert() {
+        let dir = repository();
+        let root = dir.path();
+        let base = sh(root, &["rev-parse", "HEAD"]);
+        sh(root, &["switch", "-q", "-c", "topic"]);
+        write(root, "extra.txt", "extra\n");
+        commit(root, "extra");
+        let extra = sh(root, &["rev-parse", "HEAD"]);
+
+        // Detached checkout of an older commit.
+        checkout_commit(root, &base).unwrap();
+        assert_eq!(current_branch(root), "HEAD");
+
+        // A branch and a tag at a commit.
+        create_branch_at(root, "from-extra", &extra).unwrap();
+        assert_eq!(current_branch(root), "from-extra");
+        create_tag(root, "v1", &base).unwrap();
+        assert_eq!(sh(root, &["rev-parse", "v1"]), base);
+
+        // Cherry-pick onto main, then revert it again.
+        sh(root, &["switch", "-q", "main"]);
+        cherry_pick(root, &extra).unwrap();
+        assert_eq!(head_message(root), "extra");
+        revert_commit(root, &sh(root, &["rev-parse", "HEAD"])).unwrap();
+        assert!(head_message(root).starts_with("Revert"));
+        assert!(!root.join("extra.txt").exists());
+    }
+
+    #[test]
+    fn commit_actions_refuse_anything_that_is_not_a_commit_id() {
+        let dir = repository();
+        for bad in ["", "--all", "main", "abc", "zzzzzzz"] {
+            assert!(checkout_commit(dir.path(), bad).is_err(), "{bad}");
+            assert!(cherry_pick(dir.path(), bad).is_err(), "{bad}");
+            assert!(revert_commit(dir.path(), bad).is_err(), "{bad}");
+        }
+        let head = sh(dir.path(), &["rev-parse", "HEAD"]);
+        assert!(create_tag(dir.path(), "bad name", &head).is_err());
+        assert!(create_tag(dir.path(), "-x", &head).is_err());
+        assert!(create_branch_at(dir.path(), "bad..name", &head).is_err());
+    }
+
+    #[test]
+    fn a_conflicting_cherry_pick_can_be_aborted() {
+        let dir = repository();
+        let root = dir.path();
+        sh(root, &["switch", "-q", "-c", "topic"]);
+        write(root, "file.txt", "topic\n");
+        commit(root, "topic change");
+        let topic = sh(root, &["rev-parse", "HEAD"]);
+        sh(root, &["switch", "-q", "main"]);
+        write(root, "file.txt", "main\n");
+        commit(root, "main change");
+
+        assert!(cherry_pick(root, &topic).is_err());
+        assert_eq!(operation_in_progress(root), Some(Operation::CherryPick));
+        abort(root).unwrap();
+        assert_eq!(operation_in_progress(root), None);
     }
 
     #[test]
