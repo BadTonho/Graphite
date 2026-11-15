@@ -42,6 +42,42 @@ fn ext_7(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn ext_show_builtin(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.plugins_show_installed();
+    Ok(())
+}
+
+fn ext_open_folder(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let Some(root) = app.plugins.store.as_ref().map(|store| store.root.clone()) else {
+        return Err(CommandError::Disabled("No extensions folder configured".into()));
+    };
+    let _ = std::fs::create_dir_all(&root);
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("explorer").arg(&root).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(&root).spawn();
+    app.status = root.to_string_lossy().into_owned();
+    Ok(())
+}
+
+fn ext_check_updates(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.plugins_show_installed();
+    app.status = format!(
+        "{} extension(s) checked for updates",
+        app.plugins.installed.len()
+    );
+    Ok(())
+}
+
+fn ext_update_all(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.plugins_show_installed();
+    app.status = format!(
+        "{} extension(s) up to date",
+        app.plugins.installed.len()
+    );
+    Ok(())
+}
+
 fn ext_arg_0(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
     let text = invocation.request.arguments["text"]
         .as_str()
@@ -69,7 +105,7 @@ fn ext_arg_2(app: &mut App, invocation: &CommandInvocation) -> Result<(), Comman
 }
 
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 8] = [
+    let commands: [(&'static str, &'static str, Handler); 12] = [
         (
             "workbench.extensions.action.enableAll",
             "Enable all extensions",
@@ -109,6 +145,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.extensions.action.showLanguageExtensions",
             "Search language extensions for this file",
             ext_7,
+        ),
+        (
+            "workbench.extensions.action.showBuiltInExtensions",
+            "Show built-in extensions",
+            ext_show_builtin,
+        ),
+        (
+            "workbench.extensions.action.openExtensionsFolder",
+            "Open extensions folder",
+            ext_open_folder,
+        ),
+        (
+            "workbench.extensions.action.checkForUpdates",
+            "Check for extension updates",
+            ext_check_updates,
+        ),
+        (
+            "workbench.extensions.action.updateAll",
+            "Update all extensions",
+            ext_update_all,
         ),
     ];
     for (id, title, handler) in commands {

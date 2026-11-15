@@ -174,6 +174,14 @@ impl App {
         self.search_plugins();
     }
 
+    pub(crate) fn plugins_show_installed(&mut self) {
+        self.open_plugins();
+        self.leave_plugin_details();
+        self.plugins.tab = PluginsTab::Installed;
+        self.plugins.path_input = false;
+        self.plugins.query.clear();
+    }
+
     /// Downloads an extension by its `publisher.name` id and shows it for approval before it is
     /// installed.
     pub(crate) fn plugins_install_from_open_vsx(

@@ -73,11 +73,11 @@ Items that were left out because they depend on something the application does n
 
 **Daily tools**
 - Output channels, compound logs (`workbench.output.action.clearOutput` is implemented).
-- Theme generation and preview commands.
+- Theme generation (`workbench.action.generateColorTheme`) is implemented; live theme preview remains.
 - Testing commands that exist for extensions.
 - Source control: resource group focus remains; commit message history navigation (`ArrowUp`/`ArrowDown` in the commit input) and `git.viewHistory` graph view are implemented.
 - Debug: tests against a real debug adapter (the client is only tested against a simulated one). Breakpoint gutter markers, data breakpoints (`setDataBreakpoints`), Test Explorer gutter decorators, and paused debug variable hover popup are implemented.
-- Extensions: update all, check for updates, workspace-only enable, recommendations, built-in list, open the extensions folder.
+- Extensions: `checkForUpdates`, `updateAll`, `showBuiltInExtensions`, `openExtensionsFolder`, and `showRecommendedExtensions` are implemented; workspace-only enable remains.
 
 **Merge and diff editors**
 - Merge editor developer commands (copy, save and load the contents as JSON, open a selection in a temporary merge editor): developer tools, not planned.

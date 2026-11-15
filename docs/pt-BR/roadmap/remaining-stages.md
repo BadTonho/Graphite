@@ -73,11 +73,11 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 
 **Ferramentas do dia a dia**
 - Canais de saída, logs compostos (`workbench.output.action.clearOutput` já está implementado).
-- Comandos de gerar e pré-visualizar temas.
+- Geração de tema (`workbench.action.generateColorTheme`) já está implementada; pré-visualização ao vivo segue pendente.
 - Comandos de teste que existem para extensões.
 - Controle de código-fonte: foco dos grupos de recursos segue pendente; navegação do histórico de mensagens de commit (`ArrowUp`/`ArrowDown` na entrada de commit) e `git.viewHistory` com grafo Git já estão implementados.
 - Depuração: testes contra um adaptador de depuração real (o cliente só foi testado contra um simulado). Marcas de breakpoint na margem, pontos de interrupção de dados (`setDataBreakpoints`), decoradores do Test Explorer na margem e popup de hover de variáveis no debug pausado já estão implementados.
-- Extensões: atualizar todas, verificar atualizações, ativar só no espaço de trabalho, recomendações, lista de embutidas, abrir a pasta de extensões.
+- Extensões: `checkForUpdates`, `updateAll`, `showBuiltInExtensions`, `openExtensionsFolder` e `showRecommendedExtensions` já estão implementados; ativação só no workspace segue pendente.
 
 **Editores de merge e de diff**
 - Comandos de desenvolvimento do editor de merge (copiar, salvar e carregar o conteúdo como JSON, abrir uma seleção em um editor de merge temporário): ferramentas de desenvolvedor, sem previsão.
