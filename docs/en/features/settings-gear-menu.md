@@ -4,7 +4,7 @@ The gear at the end of the Activity Bar opens Graphite's local settings menu. It
 
 The user silhouette directly above the gear opens local profiles. The active profile is checked; choosing another switches the current window, and **Create Profile...** creates a new profile.
 
-The menu opens the command palette, profile chooser, `settings.json`, Extensions, keyboard shortcuts, snippets, and tasks. **Themes** lists the built-in dark and light themes and every installed color theme (see [Color themes and Graphite Simple](graphite-simple-theme.md)). File icon and product icon theme choices are shown as unavailable until Graphite supports them. **Layout Density** offers Default and Compact; the selection is saved with the active profile and changes spacing in sidebar lists and panels, independently of Activity Bar size.
+The menu opens the command palette, profile chooser, `settings.json`, Extensions, keyboard shortcuts, snippets, and tasks. **Themes** lists the built-in dark and light themes and every installed color theme (see [Color themes and Graphite Simple](graphite-simple-theme.md)). File icon and product icon theme choices are shown as unavailable until Graphite supports them. **Layout Density** offers Default and Compact; it sets the size of the Activity Bar buttons, the same setting as **View > Appearance > Activity Bar Size**, and is saved with the active profile. It does not change the size of the file list.
 
 The update row reports **Updated**. Graphite does not currently check for or install application updates. Online settings synchronization is not included.
 

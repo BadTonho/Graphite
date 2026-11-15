@@ -406,7 +406,7 @@ impl App {
         if mx < 0.0 || mx >= self.sidebar_layout_width_px() {
             return None;
         }
-        let sidebar_lh = self.sidebar_density_line_height(lh);
+        let sidebar_lh = lh;
         let first_row_y = sidebar_lh * 1.5;
         (my >= first_row_y).then(|| ((my - first_row_y) / sidebar_lh) as usize)
     }

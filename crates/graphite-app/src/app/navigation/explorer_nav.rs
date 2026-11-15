@@ -23,7 +23,7 @@ impl App {
         else {
             return 20;
         };
-        let row = self.sidebar_density_line_height(line_height);
+        let row = line_height;
         (((height - row * 1.5) / row) as usize).max(1)
     }
 

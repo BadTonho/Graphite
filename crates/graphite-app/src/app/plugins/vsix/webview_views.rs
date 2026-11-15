@@ -391,7 +391,7 @@ impl App {
         window_height: f32,
         line_height: f32,
     ) -> Vec<WebviewSlot> {
-        let sidebar_lh = self.sidebar_density_line_height(line_height);
+        let sidebar_lh = line_height;
         let ids = entry
             .views
             .iter()

@@ -242,7 +242,7 @@ impl App {
             if self.scm_visible {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);
-                let row_h = self.sidebar_density_line_height(lh).max(18.0);
+                let row_h = lh.max(18.0);
                 let layout = scm_panel_layout(
                     &self.scm_snapshot,
                     sidebar_width,
@@ -355,7 +355,7 @@ impl App {
                 }
                 return;
             }
-            let sidebar_lh = self.sidebar_density_line_height(lh);
+            let sidebar_lh = lh;
             let first_row_y = sidebar_lh * 1.5;
             if my >= first_row_y {
                 let row = ((my - first_row_y) / sidebar_lh) as usize + self.explorer_scroll;

@@ -4,7 +4,7 @@ A engrenagem no final da barra de atividades abre o menu de configurações loca
 
 A silhueta de usuário logo acima da engrenagem abre os perfis locais. O perfil ativo fica marcado; escolher outro troca o perfil na janela atual, e **Criar Perfil...** cria um novo perfil.
 
-O menu abre a paleta de comandos, o seletor de perfis, `settings.json`, Extensões, atalhos de teclado, snippets e tarefas. **Temas** lista os temas escuro e claro integrados e todos os temas de cor instalados (veja [Temas de cores e Graphite Simple](graphite-simple-theme.md)). As opções de tema de ícones de arquivo e de produto aparecem indisponíveis até que o Graphite ofereça esses recursos. **Densidade do Layout** oferece Padrão e Compacta; a escolha é salva no perfil ativo e altera o espaçamento das listas e dos painéis, sem alterar o tamanho da barra de atividades.
+O menu abre a paleta de comandos, o seletor de perfis, `settings.json`, Extensões, atalhos de teclado, snippets e tarefas. **Temas** lista os temas escuro e claro integrados e todos os temas de cor instalados (veja [Temas de cores e Graphite Simple](graphite-simple-theme.md)). As opções de tema de ícones de arquivo e de produto aparecem indisponíveis até que o Graphite ofereça esses recursos. **Densidade do Layout** oferece Padrão e Compacta; define o tamanho dos botões da barra de atividades, a mesma configuração de **Exibir > Aparência > Tamanho da Barra de Atividades**, e é salva no perfil ativo. Não altera o tamanho da lista de arquivos.
 
 A opção de atualização informa **Atualizado**. No momento o Graphite não verifica nem instala atualizações do aplicativo. A sincronização online das configurações não está incluída.
 

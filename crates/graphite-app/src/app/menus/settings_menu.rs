@@ -383,16 +383,16 @@ impl App {
                     label: self.t("settings_menu.density_default").into(),
                     shortcut: String::new(),
                     enabled: true,
-                    checked: self.activity_bar_preferences.layout_density
-                        == config::LayoutDensity::Default,
+                    checked: self.activity_bar_preferences.size
+                        == config::ActivityBarSize::Default,
                 },
                 I {
                     command: C::DensityCompact,
                     label: self.t("settings_menu.density_compact").into(),
                     shortcut: String::new(),
                     enabled: true,
-                    checked: self.activity_bar_preferences.layout_density
-                        == config::LayoutDensity::Compact,
+                    checked: self.activity_bar_preferences.size
+                        == config::ActivityBarSize::Compact,
                 },
             ],
         }
@@ -837,24 +837,11 @@ impl App {
             SettingsSubcommand::FileIconTheme => self.open_icon_theme_picker(),
             SettingsSubcommand::ProductIconTheme => {}
             SettingsSubcommand::DensityDefault => {
-                self.set_layout_density(config::LayoutDensity::Default)
+                self.set_activity_bar_size(config::ActivityBarSize::Default)
             }
             SettingsSubcommand::DensityCompact => {
-                self.set_layout_density(config::LayoutDensity::Compact)
+                self.set_activity_bar_size(config::ActivityBarSize::Compact)
             }
-        }
-    }
-
-    pub(crate) fn set_layout_density(&mut self, density: config::LayoutDensity) {
-        self.activity_bar_preferences.layout_density = density;
-        self.save_activity_bar_preferences();
-        self.settings_menu = None;
-    }
-
-    pub(crate) fn sidebar_density_line_height(&self, line_height: f32) -> f32 {
-        match self.activity_bar_preferences.layout_density {
-            config::LayoutDensity::Default => line_height,
-            config::LayoutDensity::Compact => (line_height * 0.85).max(16.0),
         }
     }
 }
@@ -989,30 +976,51 @@ mod tests {
     }
 
     #[test]
-    fn compact_density_is_profile_persisted_without_changing_activity_bar_size() {
+    fn compact_density_shrinks_the_activity_bar_buttons_and_is_profile_persisted() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         app.profiles = Some(crate::app::phase5::Profiles::open(temp.path()).unwrap());
         app.profile_root = temp.path().join("profiles").join("Default");
-        let size = app.activity_bar_preferences.size;
-        app.set_layout_density(config::LayoutDensity::Compact);
         assert_eq!(
-            app.activity_bar_preferences.layout_density,
-            config::LayoutDensity::Compact
+            app.activity_bar_preferences.size,
+            config::ActivityBarSize::Default
         );
-        assert_eq!(app.activity_bar_preferences.size, size);
+        app.execute_settings_subcommand(SettingsSubcommand::DensityCompact);
+        assert_eq!(
+            app.activity_bar_preferences.size,
+            config::ActivityBarSize::Compact
+        );
         let loaded = config::load_activity_bar_preferences(&app.profile_root);
-        assert_eq!(loaded.layout_density, config::LayoutDensity::Compact);
+        assert_eq!(loaded.size, config::ActivityBarSize::Compact);
+        app.execute_settings_subcommand(SettingsSubcommand::DensityDefault);
+        assert_eq!(
+            app.activity_bar_preferences.size,
+            config::ActivityBarSize::Default
+        );
     }
 
     #[test]
-    fn density_compacts_sidebar_rows_only() {
+    fn density_checks_follow_the_activity_bar_size_however_it_was_changed() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
-        assert_eq!(app.sidebar_density_line_height(20.0), 20.0);
-        app.activity_bar_preferences.layout_density = config::LayoutDensity::Compact;
-        assert_eq!(app.sidebar_density_line_height(20.0), 17.0);
-        assert_eq!(app.sidebar_density_line_height(12.0), 16.0);
+        app.profile_root = temp.path().join("profile");
+        let checked = |app: &App| {
+            app.settings_submenu_rows(SettingsSubmenu::Density, &[])
+                .into_iter()
+                .filter_map(|row| match row {
+                    SettingsSubmenuRow::Item {
+                        command,
+                        checked: true,
+                        ..
+                    } => Some(command),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(checked(&app), [SettingsSubcommand::DensityDefault]);
+        // The View menu changes the same setting.
+        app.set_activity_bar_size(config::ActivityBarSize::Compact);
+        assert_eq!(checked(&app), [SettingsSubcommand::DensityCompact]);
     }
 
     #[test]
@@ -1049,8 +1057,8 @@ mod tests {
             800.0,
         );
         assert_eq!(
-            app.activity_bar_preferences.layout_density,
-            config::LayoutDensity::Compact
+            app.activity_bar_preferences.size,
+            config::ActivityBarSize::Compact
         );
         assert!(app.settings_menu.is_none());
     }

@@ -46,7 +46,7 @@ impl App {
                 let (_, height) = gpu.renderer.size();
                 PluginsLayout::new(
                     height,
-                    self.sidebar_density_line_height(gpu.renderer.line_height()),
+                    gpu.renderer.line_height(),
                     self.sidebar_layout_width_px(),
                 )
                 .visible_rows()
@@ -251,7 +251,7 @@ impl App {
         let Some(gpu) = &self.gpu else {
             return;
         };
-        let lh = self.sidebar_density_line_height(gpu.renderer.line_height());
+        let lh = gpu.renderer.line_height();
         let (_, height) = gpu.renderer.size();
         let layout = PluginsLayout::new(height, lh, self.sidebar_layout_width_px());
         let window_width = gpu.renderer.size().0;

@@ -18,20 +18,11 @@ pub(crate) enum ActivityBarSize {
     Compact,
 }
 
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum LayoutDensity {
-    #[default]
-    Default,
-    Compact,
-}
-
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub(crate) struct ActivityBarPreferences {
     pub position: ActivityBarPosition,
     pub size: ActivityBarSize,
-    pub layout_density: LayoutDensity,
     pub primary_sidebar_right: bool,
     pub hidden_items: std::collections::HashSet<String>,
 }

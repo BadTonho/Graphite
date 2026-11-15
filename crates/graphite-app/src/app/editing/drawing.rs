@@ -11,7 +11,7 @@ impl App {
         let r = &mut gpu.renderer;
         let (w, h) = r.size();
         let (lh, cw) = (r.line_height(), r.char_width());
-        let sidebar_lh = self.sidebar_density_line_height(lh);
+        let sidebar_lh = lh;
         let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
             self.activity_bar_width_px()
         } else {
