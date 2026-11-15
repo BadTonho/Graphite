@@ -509,6 +509,7 @@ impl App {
         self.view_menu = None;
         if menu == WorkbenchMenu::File {
             self.file_menu_submenu = None;
+            self.file_menu_nested = None;
             self.file_menu_selection = 0;
         }
         if menu == WorkbenchMenu::Terminal {
@@ -773,6 +774,7 @@ impl App {
                         self.profile_menu = None;
                         if selected == WorkbenchMenu::File {
                             self.file_menu_submenu = None;
+                            self.file_menu_nested = None;
                             self.file_menu_selection = 0;
                         } else if selected == WorkbenchMenu::Edit {
                             self.edit_menu_selection = 0;
@@ -860,37 +862,45 @@ impl App {
             let popup_x = layout
                 .menu_anchor(WorkbenchMenu::File)
                 .clamp(0.0, (width - popup_width).max(0.0));
-            let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width);
-            let submenu_x = if popup_x + popup_width + submenu_width <= width {
-                popup_x + popup_width
-            } else {
-                (popup_x - submenu_width).max(0.0)
-            };
+            let (submenu_x, nested_x, submenu_width) =
+                Self::file_panel_xs(popup_x, popup_width, width);
             if let Some((command, submenu, enabled)) =
-                self.file_menu_command_at(x, y, popup_x, submenu_x)
+                self.file_menu_command_at(x, y, popup_x, submenu_x, nested_x, height)
             {
                 if !enabled {
                     return true;
                 }
                 if let Some(submenu) = submenu {
-                    self.file_menu_submenu = Some(submenu);
-                    self.file_menu_selection = 0;
+                    self.open_file_submenu(submenu);
                 } else {
                     self.execute_file_menu_command(command);
                     self.close_workbench_menu();
                 }
             } else {
-                let rows = self.file_menu_rows(self.file_menu_submenu);
-                let popup_height = rows
-                    .iter()
-                    .map(|row| Self::file_menu_row_height(*row))
-                    .sum::<f32>()
-                    + 8.0;
-                let in_submenu = self.file_menu_submenu.is_some()
-                    && x >= submenu_x
-                    && x < submenu_x + submenu_width
-                    && y >= layout.height
-                    && y < layout.height + popup_height.max(250.0);
+                let inside_panel = |app: &Self, open: Option<_>, left: f32, top: f32| {
+                    let panel_height = app
+                        .file_menu_rows(open)
+                        .iter()
+                        .map(|row| Self::file_menu_row_height(*row))
+                        .sum::<f32>()
+                        + 8.0;
+                    open.is_some()
+                        && x >= left
+                        && x < left + submenu_width
+                        && y >= top
+                        && y < top + panel_height.max(250.0)
+                };
+                let in_submenu = inside_panel(
+                    self,
+                    self.file_menu_submenu,
+                    submenu_x,
+                    self.file_submenu_top(height),
+                ) || inside_panel(
+                    self,
+                    self.file_menu_nested,
+                    nested_x,
+                    self.file_nested_top(height),
+                );
                 if !in_submenu {
                     self.close_workbench_menu();
                 }
@@ -975,14 +985,15 @@ impl App {
                 })
                 .sum::<f32>()
                 + 8.0;
+            let submenu_top = self.run_breakpoint_submenu_top(layout.height, height);
             let in_submenu = self.run_breakpoint_submenu
                 && x >= submenu_x
                 && x < submenu_x + submenu_width
-                && y >= layout.height
-                && y < layout.height + submenu_height;
+                && y >= submenu_top
+                && y < submenu_top + submenu_height;
             if in_submenu {
                 if let Some((command, enabled)) =
-                    self.run_breakpoint_command_at(x, y, submenu_x, layout.height, submenu_width)
+                    self.run_breakpoint_command_at(x, y, submenu_x, submenu_top, submenu_width)
                 {
                     if enabled {
                         self.execute_run_menu_command(command);
@@ -1131,23 +1142,41 @@ impl App {
                 let popup_x = layout
                     .menu_anchor(WorkbenchMenu::File)
                     .clamp(0.0, (width - popup_width).max(0.0));
-                let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width);
-                let submenu_x = if popup_x + popup_width + submenu_width <= width {
-                    popup_x + popup_width
-                } else {
-                    (popup_x - submenu_width).max(0.0)
-                };
-                let in_submenu = self.file_menu_submenu.is_some()
+                let (submenu_x, nested_x, submenu_width) =
+                    Self::file_panel_xs(popup_x, popup_width, width);
+                let in_nested = self.file_menu_nested.is_some()
+                    && x >= nested_x
+                    && x < nested_x + submenu_width;
+                let in_submenu = !in_nested
+                    && self.file_menu_submenu.is_some()
                     && x >= submenu_x
                     && x < submenu_x + submenu_width;
-                if in_submenu {
-                    self.file_menu_pointer_selection(y, self.file_menu_submenu);
+                let hovered = self
+                    .file_menu_command_at(x, y, popup_x, submenu_x, nested_x, height)
+                    .and_then(|(_, submenu, enabled)| enabled.then_some(submenu).flatten());
+                if in_nested {
+                    self.file_menu_pointer_selection(y, self.file_menu_nested, height);
+                } else if in_submenu {
+                    self.file_menu_pointer_selection(y, self.file_menu_submenu, height);
+                    // Hovering Profiles or Themes opens them beside their row; any other row
+                    // closes the nested submenu.
+                    match hovered {
+                        Some(child) if self.file_menu_nested != Some(child) => {
+                            self.open_file_submenu(child)
+                        }
+                        Some(_) => {}
+                        None => self.file_menu_nested = None,
+                    }
                 } else if x >= popup_x && x < popup_x + popup_width {
-                    self.file_menu_pointer_selection(y, None);
-                    let hovered = self.file_menu_command_at(x, y, popup_x, submenu_x);
-                    self.file_menu_submenu = hovered.and_then(|(_, submenu, _)| submenu);
-                    if self.file_menu_submenu.is_some() {
-                        self.file_menu_selection = 0;
+                    if hovered.is_none() || hovered != self.file_menu_submenu {
+                        self.file_menu_pointer_selection(y, None, height);
+                    }
+                    if hovered != self.file_menu_submenu {
+                        self.file_menu_submenu = hovered;
+                        self.file_menu_nested = None;
+                        if hovered.is_some() {
+                            self.file_menu_selection = 0;
+                        }
                     }
                 }
             } else if active == WorkbenchMenu::Terminal {
@@ -1182,12 +1211,13 @@ impl App {
                     })
                     .sum::<f32>()
                     + 8.0;
+                let submenu_top = self.run_breakpoint_submenu_top(layout.height, height);
                 if self.run_breakpoint_submenu
                     && x >= submenu_x
                     && x < submenu_x + submenu_width
-                    && y < layout.height + submenu_height
+                    && y < submenu_top + submenu_height
                 {
-                    self.run_menu_pointer_selection(y, layout.height, true);
+                    self.run_menu_pointer_selection(y, submenu_top, true);
                 } else if x >= popup_x && x < popup_x + popup_width {
                     self.run_menu_pointer_selection(y, layout.height, false);
                 }
@@ -1267,9 +1297,7 @@ impl App {
             if active == WorkbenchMenu::File {
                 match key {
                     Key::Named(NamedKey::Escape) => {
-                        if self.file_menu_submenu.take().is_some() {
-                            self.file_menu_selection = 0;
-                        } else {
+                        if !self.close_file_submenu() {
                             self.close_workbench_menu();
                         }
                     }
@@ -1277,16 +1305,13 @@ impl App {
                     Key::Named(NamedKey::ArrowUp) => self.file_menu_move_selection(-1),
                     Key::Named(NamedKey::ArrowRight) => {
                         if let Some((_, Some(submenu), _)) = self.file_menu_selected() {
-                            self.file_menu_submenu = Some(submenu);
-                            self.file_menu_selection = 0;
+                            self.open_file_submenu(submenu);
                         } else if self.file_menu_submenu.is_none() {
                             self.workbench_menu = Some(WorkbenchMenu::Edit);
                         }
                     }
                     Key::Named(NamedKey::ArrowLeft) => {
-                        if self.file_menu_submenu.take().is_some() {
-                            self.file_menu_selection = 0;
-                        } else {
+                        if !self.close_file_submenu() {
                             self.workbench_menu = Some(WorkbenchMenu::Help);
                         }
                     }
@@ -1294,8 +1319,7 @@ impl App {
                         if let Some((command, submenu, enabled)) = self.file_menu_selected() {
                             if enabled {
                                 if let Some(submenu) = submenu {
-                                    self.file_menu_submenu = Some(submenu);
-                                    self.file_menu_selection = 0;
+                                    self.open_file_submenu(submenu);
                                 } else {
                                     self.execute_file_menu_command(command);
                                     self.close_workbench_menu();
@@ -1636,6 +1660,7 @@ impl App {
             self.workbench_menu = Some(WorkbenchMenu::File);
             self.workbench_menu_overflow = false;
             self.file_menu_submenu = None;
+            self.file_menu_nested = None;
             self.file_menu_selection = 0;
             return true;
         }
@@ -1850,7 +1875,7 @@ impl App {
 
     fn draw_run_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::run_menu::RunMenuRow;
-        let (window_width, _) = renderer.size();
+        let (window_width, window_height) = renderer.size();
         let char_width = renderer.char_width();
         let width = self.run_menu_width(char_width, window_width as f32);
         let x = layout
@@ -1950,15 +1975,16 @@ impl App {
                 })
                 .sum::<f32>()
                 + 8.0;
-            renderer.draw_rect(submenu_x, y, submenu_width, submenu_height, border);
+            let submenu_y = self.run_breakpoint_submenu_top(y, window_height as f32);
+            renderer.draw_rect(submenu_x, submenu_y, submenu_width, submenu_height, border);
             renderer.draw_rect(
                 submenu_x + 1.0,
-                y + 1.0,
+                submenu_y + 1.0,
                 (submenu_width - 2.0).max(0.0),
                 (submenu_height - 2.0).max(0.0),
                 bg,
             );
-            let mut top = y + 4.0;
+            let mut top = submenu_y + 4.0;
             let mut item = 0;
             for row in submenu_rows {
                 match row {
@@ -2180,7 +2206,7 @@ impl App {
 
     fn draw_file_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::file_menu::FileMenuRow;
-        let (width, _) = renderer.size();
+        let (width, window_height) = renderer.size();
         let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width as f32);
         let popup_x = layout
             .menu_anchor(WorkbenchMenu::File)
@@ -2277,96 +2303,137 @@ impl App {
                 }
             }
         }
-        if self.file_menu_submenu.is_some() {
-            let submenu_rows = self.file_menu_rows(self.file_menu_submenu);
-            let submenu_height = submenu_rows
-                .iter()
-                .map(|row| Self::file_menu_row_height(*row))
-                .sum::<f32>()
-                + 8.0;
-            let submenu_width = super::file_menu::FILE_SUBMENU_WIDTH.min(width as f32);
-            let submenu_x = if popup_x + popup_width + submenu_width <= width as f32 {
-                popup_x + popup_width
-            } else {
-                (popup_x - submenu_width).max(0.0)
-            };
-            renderer.draw_rect(submenu_x, popup_y, submenu_width, submenu_height, border);
-            renderer.draw_rect(
-                submenu_x + 1.0,
-                popup_y + 1.0,
-                submenu_width - 2.0,
-                submenu_height - 2.0,
-                background,
+        if let Some(open) = self.file_menu_submenu {
+            let (submenu_x, nested_x, submenu_width) =
+                Self::file_panel_xs(popup_x, popup_width, width as f32);
+            let nested_row = self.file_menu_nested.and_then(|nested| {
+                self.file_menu_rows(Some(open))
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        FileMenuRow::Item { submenu, .. } => Some(submenu),
+                        FileMenuRow::Separator => None,
+                    })
+                    .position(|submenu| submenu == Some(nested))
+            });
+            self.draw_file_panel(
+                renderer,
+                open,
+                submenu_x,
+                self.file_submenu_top(window_height as f32),
+                submenu_width,
+                Some(nested_row.unwrap_or(self.file_menu_selection)),
             );
-            let mut y = popup_y + 4.0;
-            let mut submenu_item_index = 0;
-            for row in submenu_rows.iter().copied() {
-                match row {
-                    FileMenuRow::Separator => {
+            if let Some(nested) = self.file_menu_nested {
+                self.draw_file_panel(
+                    renderer,
+                    nested,
+                    nested_x,
+                    self.file_nested_top(window_height as f32),
+                    submenu_width,
+                    Some(self.file_menu_nested_selection),
+                );
+            }
+        }
+    }
+
+    /// Draws one File submenu panel with its top-left corner at `(x, top)`.
+    fn draw_file_panel(
+        &self,
+        renderer: &mut Renderer,
+        open: super::file_menu::FileMenuSubmenu,
+        x: f32,
+        top: f32,
+        width: f32,
+        selected_index: Option<usize>,
+    ) {
+        use super::file_menu::FileMenuRow;
+        let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let foreground = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let selected = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        let submenu_rows = self.file_menu_rows(Some(open));
+        let submenu_height = submenu_rows
+            .iter()
+            .map(|row| Self::file_menu_row_height(*row))
+            .sum::<f32>()
+            + 8.0;
+        renderer.draw_rect(x, top, width, submenu_height, border);
+        renderer.draw_rect(
+            x + 1.0,
+            top + 1.0,
+            width - 2.0,
+            submenu_height - 2.0,
+            background,
+        );
+        let mut y = top + 4.0;
+        let mut submenu_item_index = 0;
+        for row in submenu_rows.iter().copied() {
+            match row {
+                FileMenuRow::Separator => {
+                    renderer.draw_rect(
+                        x + 8.0,
+                        y + 4.0,
+                        width - 16.0,
+                        1.0,
+                        border,
+                    );
+                    y += Self::file_menu_row_height(row);
+                }
+                FileMenuRow::Item {
+                    command,
+                    label,
+                    shortcut,
+                    submenu,
+                    enabled,
+                    checked,
+                } => {
+                    if Some(submenu_item_index) == selected_index {
                         renderer.draw_rect(
-                            submenu_x + 8.0,
-                            y + 4.0,
-                            submenu_width - 16.0,
-                            1.0,
-                            border,
+                            x + 2.0,
+                            y,
+                            width - 4.0,
+                            26.0,
+                            selected,
                         );
-                        y += Self::file_menu_row_height(row);
                     }
-                    FileMenuRow::Item {
-                        command,
-                        label,
-                        shortcut,
-                        submenu,
-                        enabled,
-                        checked,
-                    } => {
-                        if submenu_item_index == self.file_menu_selection {
-                            renderer.draw_rect(
-                                submenu_x + 2.0,
-                                y,
-                                submenu_width - 4.0,
-                                26.0,
-                                selected,
-                            );
-                        }
-                        if checked {
-                            renderer.draw_text("✓", submenu_x + 9.0, y + 5.0, foreground);
-                        }
-                        let label = fit_file_menu_label(
-                            self.file_menu_label(label, command),
-                            ((submenu_width
-                                - 50.0
-                                - if shortcut.is_empty() {
-                                    12.0
-                                } else {
-                                    shortcut.chars().count() as f32 * renderer.char_width() + 42.0
-                                })
-                                / renderer.char_width())
-                            .floor()
-                            .max(1.0) as usize,
-                        );
+                    if checked {
+                        renderer.draw_text("✓", x + 9.0, y + 5.0, foreground);
+                    }
+                    let label = fit_file_menu_label(
+                        self.file_menu_label(label, command),
+                        ((width
+                            - 50.0
+                            - if shortcut.is_empty() {
+                                12.0
+                            } else {
+                                shortcut.chars().count() as f32 * renderer.char_width() + 42.0
+                            })
+                            / renderer.char_width())
+                        .floor()
+                        .max(1.0) as usize,
+                    );
+                    renderer.draw_text(
+                        &label,
+                        x + 30.0,
+                        y + 5.0,
+                        if enabled { foreground } else { dim },
+                    );
+                    if !shortcut.is_empty() {
                         renderer.draw_text(
-                            &label,
-                            submenu_x + 30.0,
+                            shortcut,
+                            x + width
+                                - 12.0
+                                - shortcut.chars().count() as f32 * renderer.char_width(),
                             y + 5.0,
-                            if enabled { foreground } else { dim },
+                            dim,
                         );
-                        if !shortcut.is_empty() {
-                            renderer.draw_text(
-                                shortcut,
-                                submenu_x + submenu_width
-                                    - 12.0
-                                    - shortcut.chars().count() as f32 * renderer.char_width(),
-                                y + 5.0,
-                                dim,
-                            );
-                        }
-                        if submenu.is_some() {
-                            renderer.draw_text("›", submenu_x + submenu_width - 18.0, y + 4.0, dim);
-                        }
-                        submenu_item_index += 1;
-                        y += 26.0;
                     }
+                    if submenu.is_some() {
+                        renderer.draw_text("›", x + width - 18.0, y + 4.0, dim);
+                    }
+                    submenu_item_index += 1;
+                    y += 26.0;
                 }
             }
         }
@@ -3000,24 +3067,23 @@ mod tests {
         app.workbench_menu = Some(WorkbenchMenu::View);
         app.view_menu_open(0.0, 800.0, 600.0);
         assert!(app.activity_bar_menu.is_none());
-        let menu = app.view_menu.as_ref().unwrap();
-        assert_eq!(menu.page, super::super::view_menu::ViewPage::Root);
-        let x = menu.x + 45.0;
-        let y = menu.y + 4.0 + 3.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        assert_eq!(
+            app.view_menu_open_page(),
+            Some(super::super::view_menu::ViewPage::Root)
+        );
+        let (x, y) = app.view_menu_row_point(0, 3).unwrap();
         app.view_menu_click(x, y);
         assert_eq!(
-            app.view_menu.as_ref().unwrap().page,
-            super::super::view_menu::ViewPage::Appearance
+            app.view_menu_open_page(),
+            Some(super::super::view_menu::ViewPage::Appearance)
         );
-        let menu = app.view_menu.as_ref().unwrap();
-        let y = menu.y + 4.0 + 11.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        let (x, y) = app.view_menu_row_point(1, 11).unwrap();
         app.view_menu_click(x, y);
         assert_eq!(
-            app.view_menu.as_ref().unwrap().page,
-            super::super::view_menu::ViewPage::ActivityPosition
+            app.view_menu_open_page(),
+            Some(super::super::view_menu::ViewPage::ActivityPosition)
         );
-        let menu = app.view_menu.as_ref().unwrap();
-        let y = menu.y + 4.0 + 0.0 * super::super::view_menu::VIEW_ROW_HEIGHT + 1.0;
+        let (x, y) = app.view_menu_row_point(2, 0).unwrap();
         app.view_menu_click(x, y);
         assert_eq!(
             app.activity_bar_preferences.position,

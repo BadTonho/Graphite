@@ -18,7 +18,7 @@ O submenu Layout do Editor permite dividir para cima, baixo, esquerda ou direita
 
 ## Teclado e acessibilidade
 
-Use as setas para cima e para baixo para percorrer os itens, Direita ou Enter para abrir um submenu, Esquerda para voltar e Esc para fechar o nível atual do menu. Os itens expõem os estados marcado e indisponível aos recursos de acessibilidade. Os rótulos e as descrições estão localizados em inglês e português do Brasil.
+Os submenus abrem ao lado da linha ao passar o mouse (ou clicar) e podem se encadear em qualquer nível; um submenu que não cabe à direita abre à esquerda e fica dentro da janela. Use as setas para cima e para baixo para percorrer os itens, Direita ou Enter para abrir um submenu, Esquerda para voltar e Esc para fechar o nível atual do menu. Os itens expõem os estados marcado e indisponível aos recursos de acessibilidade. Os rótulos e as descrições estão localizados em inglês e português do Brasil.
 
 ## Botões de layout na barra de título
 

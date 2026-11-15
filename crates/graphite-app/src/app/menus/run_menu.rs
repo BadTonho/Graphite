@@ -289,6 +289,35 @@ impl App {
             .min(available_width.max(0.0))
     }
 
+    /// Top edge of the breakpoint submenu: level with the row that opens it and kept inside
+    /// the window.
+    pub(crate) fn run_breakpoint_submenu_top(&self, menu_top: f32, window_height: f32) -> f32 {
+        let mut row_top = menu_top + 4.0;
+        let mut anchor = menu_top;
+        for row in self.run_menu_rows() {
+            match row {
+                RunMenuRow::Separator => row_top += SEPARATOR_HEIGHT,
+                RunMenuRow::Item { submenu, .. } => {
+                    if submenu {
+                        anchor = row_top - 4.0;
+                        break;
+                    }
+                    row_top += ROW_HEIGHT;
+                }
+            }
+        }
+        let height = self
+            .run_breakpoint_rows()
+            .iter()
+            .map(|row| match row {
+                RunMenuRow::Separator => SEPARATOR_HEIGHT,
+                RunMenuRow::Item { .. } => ROW_HEIGHT,
+            })
+            .sum::<f32>()
+            + 8.0;
+        anchor.min(window_height - height).max(menu_top)
+    }
+
     pub(crate) fn run_breakpoint_submenu_position(
         &self,
         main_x: f32,
@@ -927,5 +956,24 @@ mod tests {
         assert!(!app.debug.breakpoints_disabled);
         app.remove_all_breakpoints();
         assert!(app.debug.breakpoints.is_empty());
+    }
+
+    #[test]
+    fn breakpoint_submenu_is_level_with_its_parent_row() {
+        let (_temp, app) = app();
+        let above: f32 = app
+            .run_menu_rows()
+            .iter()
+            .take_while(|row| !matches!(row, RunMenuRow::Item { submenu: true, .. }))
+            .map(|row| match row {
+                RunMenuRow::Separator => SEPARATOR_HEIGHT,
+                RunMenuRow::Item { .. } => ROW_HEIGHT,
+            })
+            .sum();
+        assert!(above > 0.0);
+        assert_eq!(app.run_breakpoint_submenu_top(30.0, 900.0), 30.0 + above);
+        // A short window pushes the submenu up, but never above the menu itself.
+        let top = app.run_breakpoint_submenu_top(30.0, 60.0);
+        assert_eq!(top, 30.0);
     }
 }

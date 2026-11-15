@@ -50,6 +50,16 @@ pub(crate) enum FileMenuSubmenu {
     Themes,
 }
 
+impl FileMenuSubmenu {
+    /// The submenu this one opens from, when it is not opened from the main menu.
+    pub(crate) fn parent(self) -> Option<FileMenuSubmenu> {
+        match self {
+            Self::Profiles | Self::Themes => Some(Self::Preferences),
+            Self::NewWindowProfile | Self::OpenRecent | Self::Preferences => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum FileMenuRow {
     Separator,
@@ -356,25 +366,98 @@ impl App {
         }
     }
 
+    /// The innermost open submenu (the nested one when there is one).
+    pub(crate) fn file_menu_innermost(&self) -> Option<FileMenuSubmenu> {
+        self.file_menu_nested.or(self.file_menu_submenu)
+    }
+
+    /// The panel that keyboard navigation acts on and the highlighted row inside it.
+    fn file_menu_focus(&self) -> (Option<FileMenuSubmenu>, usize) {
+        match self.file_menu_nested {
+            Some(nested) => (Some(nested), self.file_menu_nested_selection),
+            None => (self.file_menu_submenu, self.file_menu_selection),
+        }
+    }
+
+    /// Opens `child` beside its row: nested inside the open submenu when it belongs to it,
+    /// otherwise as the first-level submenu.
+    pub(crate) fn open_file_submenu(&mut self, child: FileMenuSubmenu) {
+        if child.parent().is_some() && child.parent() == self.file_menu_submenu {
+            self.file_menu_nested = Some(child);
+            self.file_menu_nested_selection = 0;
+        } else {
+            self.file_menu_submenu = Some(child);
+            self.file_menu_nested = None;
+            self.file_menu_selection = 0;
+        }
+    }
+
+    /// Closes the innermost submenu and reports whether one was open.
+    pub(crate) fn close_file_submenu(&mut self) -> bool {
+        if self.file_menu_nested.take().is_some() {
+            true
+        } else if self.file_menu_submenu.take().is_some() {
+            self.file_menu_selection = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Horizontal positions of the first-level and nested submenus: `(x, nested x, width)`.
+    /// Each opens to the right of its parent, or to the left when there is no room.
+    pub(crate) fn file_panel_xs(
+        popup_x: f32,
+        popup_width: f32,
+        window_width: f32,
+    ) -> (f32, f32, f32) {
+        let width = FILE_SUBMENU_WIDTH.min(window_width);
+        let opened_right = popup_x + popup_width + width <= window_width;
+        let submenu_x = if opened_right {
+            popup_x + popup_width
+        } else {
+            (popup_x - width).max(0.0)
+        };
+        let nested_x = if opened_right {
+            if submenu_x + width * 2.0 <= window_width {
+                submenu_x + width
+            } else {
+                (submenu_x - width).max(0.0)
+            }
+        } else if submenu_x >= width {
+            submenu_x - width
+        } else {
+            submenu_x + width
+        };
+        (submenu_x, nested_x, width)
+    }
+
     pub(crate) fn file_menu_move_selection(&mut self, direction: isize) {
+        let (panel, selected) = self.file_menu_focus();
         let count = self
-            .file_menu_rows(self.file_menu_submenu)
+            .file_menu_rows(panel)
             .iter()
             .filter(|row| matches!(row, FileMenuRow::Item { .. }))
             .count();
         if count > 0 {
-            self.file_menu_selection = if direction < 0 {
-                (self.file_menu_selection + count - 1) % count
+            let next = if direction < 0 {
+                (selected + count - 1) % count
             } else {
-                (self.file_menu_selection + 1) % count
+                (selected + 1) % count
             };
+            if self.file_menu_nested.is_some() {
+                self.file_menu_nested_selection = next;
+            } else {
+                self.file_menu_selection = next;
+            }
         }
     }
 
     pub(crate) fn file_menu_selected(
         &self,
     ) -> Option<(FileMenuCommand, Option<FileMenuSubmenu>, bool)> {
-        self.file_menu_rows(self.file_menu_submenu)
+        let (panel, selected) = self.file_menu_focus();
+        self.file_menu_rows(panel)
             .into_iter()
             .filter_map(|row| match row {
                 FileMenuRow::Item {
@@ -385,24 +468,106 @@ impl App {
                 } => Some((command, submenu, enabled)),
                 FileMenuRow::Separator => None,
             })
-            .nth(self.file_menu_selection)
+            .nth(selected)
     }
 
-    pub(crate) fn file_menu_pointer_selection(&mut self, y: f32, submenu: Option<FileMenuSubmenu>) {
-        let mut current = self.top_menu_height() + 4.0;
+    /// Top edge of a submenu: level with the row of `parent` that opens it and kept inside the
+    /// window.
+    fn file_child_top(
+        &self,
+        parent: Option<FileMenuSubmenu>,
+        parent_top: f32,
+        open: FileMenuSubmenu,
+        window_height: f32,
+    ) -> f32 {
+        let mut row_top = parent_top + 4.0;
+        let mut anchor = parent_top;
+        for row in self.file_menu_rows(parent) {
+            if matches!(row, FileMenuRow::Item { submenu: Some(child), .. } if child == open) {
+                anchor = row_top - 4.0;
+                break;
+            }
+            row_top += Self::file_menu_row_height(row);
+        }
+        let height = self
+            .file_menu_rows(Some(open))
+            .iter()
+            .map(|row| Self::file_menu_row_height(*row))
+            .sum::<f32>()
+            + 8.0;
+        anchor
+            .min(window_height - height)
+            .max(self.top_menu_height())
+    }
+
+    /// Top edge of the open first-level submenu.
+    pub(crate) fn file_submenu_top(&self, window_height: f32) -> f32 {
+        let menu_top = self.top_menu_height();
+        match self.file_menu_submenu {
+            Some(open) => self.file_child_top(None, menu_top, open, window_height),
+            None => menu_top,
+        }
+    }
+
+    /// Top edge of the open nested submenu.
+    pub(crate) fn file_nested_top(&self, window_height: f32) -> f32 {
+        match (self.file_menu_submenu, self.file_menu_nested) {
+            (Some(parent), Some(open)) => self.file_child_top(
+                Some(parent),
+                self.file_submenu_top(window_height),
+                open,
+                window_height,
+            ),
+            _ => self.top_menu_height(),
+        }
+    }
+
+    /// Top edge of the panel that shows `submenu` (`None` is the main menu).
+    fn file_panel_top(&self, submenu: Option<FileMenuSubmenu>, window_height: f32) -> f32 {
+        match submenu {
+            None => self.top_menu_height(),
+            Some(open) if Some(open) == self.file_menu_nested => {
+                self.file_nested_top(window_height)
+            }
+            Some(_) => self.file_submenu_top(window_height),
+        }
+    }
+
+    /// Index among the selectable rows of the panel showing `submenu` that is at `y`.
+    pub(crate) fn file_menu_row_index_at(
+        &self,
+        y: f32,
+        submenu: Option<FileMenuSubmenu>,
+        window_height: f32,
+    ) -> Option<usize> {
+        let mut current = self.file_panel_top(submenu, window_height) + 4.0;
         let mut selected = 0;
         for row in self.file_menu_rows(submenu) {
             let height = Self::file_menu_row_height(row);
             if y >= current && y < current + height {
-                if matches!(row, FileMenuRow::Item { .. }) {
-                    self.file_menu_selection = selected;
-                }
-                return;
+                return matches!(row, FileMenuRow::Item { .. }).then_some(selected);
             }
             if matches!(row, FileMenuRow::Item { .. }) {
                 selected += 1;
             }
             current += height;
+        }
+        None
+    }
+
+    /// Highlights the row of the panel showing `submenu` that is at `y`.
+    pub(crate) fn file_menu_pointer_selection(
+        &mut self,
+        y: f32,
+        submenu: Option<FileMenuSubmenu>,
+        window_height: f32,
+    ) {
+        if let Some(index) = self.file_menu_row_index_at(y, submenu, window_height) {
+            if submenu.is_some() && submenu == self.file_menu_nested {
+                self.file_menu_nested_selection = index;
+            } else {
+                self.file_menu_selection = index;
+            }
         }
     }
 
@@ -412,17 +577,24 @@ impl App {
         y: f32,
         popup_x: f32,
         submenu_x: f32,
+        nested_x: f32,
+        window_height: f32,
     ) -> Option<(FileMenuCommand, Option<FileMenuSubmenu>, bool)> {
-        let (popup_x, rows) = if x >= submenu_x && self.file_menu_submenu.is_some() {
-            (submenu_x, self.file_menu_rows(self.file_menu_submenu))
+        let inside = |left: f32, width: f32| x >= left && x < left + width;
+        let (panel, left, width) = if self.file_menu_nested.is_some()
+            && inside(nested_x, FILE_SUBMENU_WIDTH)
+        {
+            (self.file_menu_nested, nested_x, FILE_SUBMENU_WIDTH)
+        } else if self.file_menu_submenu.is_some() && inside(submenu_x, FILE_SUBMENU_WIDTH) {
+            (self.file_menu_submenu, submenu_x, FILE_SUBMENU_WIDTH)
         } else {
-            (popup_x, self.file_menu_rows(None))
+            (None, popup_x, FILE_MENU_WIDTH)
         };
-        if x < popup_x || x >= popup_x + FILE_MENU_WIDTH {
+        if !inside(left, width) {
             return None;
         }
-        let mut current = self.top_menu_height() + 4.0;
-        for row in rows {
+        let mut current = self.file_panel_top(panel, window_height) + 4.0;
+        for row in self.file_menu_rows(panel) {
             let height = Self::file_menu_row_height(row);
             if y >= current && y < current + height {
                 if let FileMenuRow::Item {
@@ -447,11 +619,11 @@ impl App {
             C::NewTextFile => self.new_untitled_document(),
             C::NewFile => self.create_new_file_dialog(),
             C::NewWindow => self.spawn_window(None),
-            C::NewWindowProfile => self.file_menu_submenu = Some(FileMenuSubmenu::NewWindowProfile),
+            C::NewWindowProfile => self.open_file_submenu(FileMenuSubmenu::NewWindowProfile),
             C::OpenFile => self.open_file_dialog(),
             C::OpenFolder => self.open_folder_dialog(),
             C::OpenWorkspace => self.open_workspace_dialog(),
-            C::OpenRecent => self.file_menu_submenu = Some(FileMenuSubmenu::OpenRecent),
+            C::OpenRecent => self.open_file_submenu(FileMenuSubmenu::OpenRecent),
             C::AddFolder => self.add_folder_dialog(),
             C::RemoveFolder => self.remove_active_workspace_folder(),
             C::SaveWorkspaceAs => self.save_workspace_dialog(false),
@@ -470,12 +642,12 @@ impl App {
             C::SaveAs => self.save_as_dialog(),
             C::SaveAll => self.run_ui_command("workbench.action.files.saveAll"),
             C::AutoSave => self.toggle_auto_save(),
-            C::Preferences => self.file_menu_submenu = Some(FileMenuSubmenu::Preferences),
+            C::Preferences => self.open_file_submenu(FileMenuSubmenu::Preferences),
             C::Revert => self.revert_active_file(),
             C::CloseEditor => self.run_ui_command("workbench.action.closeActiveEditor"),
             C::CloseWindow | C::Exit => self.run_ui_command("workbench.action.quit"),
             C::Profiles => {
-                if self.file_menu_submenu == Some(FileMenuSubmenu::Profiles) {
+                if self.file_menu_innermost() == Some(FileMenuSubmenu::Profiles) {
                     if let Some(path) = rfd::FileDialog::new()
                         .set_directory(&self.profile_root)
                         .save_file()
@@ -487,7 +659,7 @@ impl App {
                         }
                     }
                 } else {
-                    self.file_menu_submenu = Some(FileMenuSubmenu::Profiles);
+                    self.open_file_submenu(FileMenuSubmenu::Profiles);
                 }
             }
             C::Settings => self.open_preference_file("settings.json"),
@@ -495,7 +667,7 @@ impl App {
             C::KeyboardShortcuts => self.open_preference_file("keybindings.json"),
             C::ConfigureSnippets => self.open_snippet_configuration(),
             C::Tasks => self.open_task_configuration(),
-            C::Themes => self.file_menu_submenu = Some(FileMenuSubmenu::Themes),
+            C::Themes => self.open_file_submenu(FileMenuSubmenu::Themes),
             C::DarkTheme => self.select_builtin_theme(true),
             C::LightTheme => self.select_builtin_theme(false),
             C::RecentPath(index) => self.open_recent_workspace(index),
@@ -515,7 +687,7 @@ impl App {
 
     pub(crate) fn activate_file_menu_accessibility_item(&mut self, index: usize) {
         if let Some((command, submenu, enabled)) = self
-            .file_menu_rows(self.file_menu_submenu)
+            .file_menu_rows(self.file_menu_innermost())
             .into_iter()
             .filter_map(|row| match row {
                 FileMenuRow::Item {
@@ -532,8 +704,7 @@ impl App {
                 return;
             }
             if let Some(submenu) = submenu {
-                self.file_menu_submenu = Some(submenu);
-                self.file_menu_selection = 0;
+                self.open_file_submenu(submenu);
             } else {
                 self.execute_file_menu_command(command);
                 self.dismiss_workbench_menu();
@@ -993,5 +1164,99 @@ mod tests {
         app.new_untitled_document();
         assert_eq!(app.documents.len(), before + 1);
         assert!(app.documents[app.active_document()].buffer.path().is_none());
+    }
+
+    #[test]
+    fn submenu_is_level_with_its_parent_row_and_stays_inside_the_window() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        let menu_top = app.top_menu_height();
+        app.file_menu_submenu = None;
+        assert_eq!(app.file_submenu_top(900.0), menu_top);
+        app.file_menu_submenu = Some(FileMenuSubmenu::OpenRecent);
+        let above: f32 = app
+            .file_menu_rows(None)
+            .into_iter()
+            .take_while(|row| {
+                !matches!(
+                    row,
+                    FileMenuRow::Item {
+                        submenu: Some(FileMenuSubmenu::OpenRecent),
+                        ..
+                    }
+                )
+            })
+            .map(App::file_menu_row_height)
+            .sum();
+        assert!(above > 0.0);
+        assert_eq!(app.file_submenu_top(900.0), menu_top + 4.0 + above - 4.0);
+        // In a short window the submenu moves up so that it still fits, never above the menu.
+        let height: f32 = app
+            .file_menu_rows(Some(FileMenuSubmenu::OpenRecent))
+            .into_iter()
+            .map(App::file_menu_row_height)
+            .sum::<f32>()
+            + 8.0;
+        let short = menu_top + height + 10.0;
+        assert!(app.file_submenu_top(short) + height <= short);
+        assert!(app.file_submenu_top(short) >= menu_top);
+    }
+
+    #[test]
+    fn themes_and_profiles_open_nested_beside_preferences() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
+        app.open_file_submenu(FileMenuSubmenu::Preferences);
+        app.open_file_submenu(FileMenuSubmenu::Themes);
+        // The parent stays open; the nested submenu is the one keyboard navigation acts on.
+        assert_eq!(app.file_menu_submenu, Some(FileMenuSubmenu::Preferences));
+        assert_eq!(app.file_menu_nested, Some(FileMenuSubmenu::Themes));
+        assert_eq!(app.file_menu_innermost(), Some(FileMenuSubmenu::Themes));
+        let first = app.file_menu_selected().unwrap().0;
+        assert_eq!(first, FileMenuCommand::DarkTheme);
+        app.file_menu_move_selection(1);
+        assert_eq!(app.file_menu_selected().unwrap().0, FileMenuCommand::LightTheme);
+        // Back goes one level at a time.
+        assert!(app.close_file_submenu());
+        assert_eq!(app.file_menu_nested, None);
+        assert_eq!(app.file_menu_submenu, Some(FileMenuSubmenu::Preferences));
+        assert!(app.close_file_submenu());
+        assert!(!app.close_file_submenu());
+        // Opening Profiles replaces Themes beside the same parent.
+        app.open_file_submenu(FileMenuSubmenu::Preferences);
+        app.open_file_submenu(FileMenuSubmenu::Themes);
+        app.open_file_submenu(FileMenuSubmenu::Profiles);
+        assert_eq!(app.file_menu_nested, Some(FileMenuSubmenu::Profiles));
+        // A first-level submenu opened from the main menu discards the nested one.
+        app.open_file_submenu(FileMenuSubmenu::OpenRecent);
+        assert_eq!(app.file_menu_nested, None);
+        assert_eq!(app.file_menu_submenu, Some(FileMenuSubmenu::OpenRecent));
+    }
+
+    #[test]
+    fn nested_panel_is_hit_tested_level_with_its_own_row() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
+        app.open_file_submenu(FileMenuSubmenu::Preferences);
+        app.open_file_submenu(FileMenuSubmenu::Themes);
+        let (popup_x, window) = (0.0, (1400.0, 900.0));
+        let (submenu_x, nested_x, width) =
+            App::file_panel_xs(popup_x, FILE_MENU_WIDTH, window.0);
+        assert_eq!(submenu_x, FILE_MENU_WIDTH);
+        assert_eq!(nested_x, FILE_MENU_WIDTH + width);
+        // The nested panel starts at the Themes row, not at the top of the menu.
+        let nested_top = app.file_nested_top(window.1);
+        assert!(nested_top > app.file_submenu_top(window.1));
+        let first_row = nested_top + 4.0 + 5.0;
+        let hit = app.file_menu_command_at(nested_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1);
+        assert_eq!(hit.map(|hit| hit.0), Some(FileMenuCommand::DarkTheme));
+        // The same point over the first-level panel hits a Preferences row instead.
+        let hit = app.file_menu_command_at(submenu_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1);
+        assert_ne!(hit.map(|hit| hit.0), Some(FileMenuCommand::DarkTheme));
+        // With no room on the right, both submenus open to the left of their parents.
+        let (left_x, left_nested, _) = App::file_panel_xs(900.0, FILE_MENU_WIDTH, 1400.0);
+        assert!(left_x < 900.0 && left_nested < left_x);
     }
 }

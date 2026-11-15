@@ -151,6 +151,18 @@ impl ViewRow {
     }
 }
 
+/// Marks a panel that has no highlighted row (for example a flyout opened with the pointer).
+const NO_ROW: usize = usize::MAX;
+
+/// A submenu opened to the side of the row that owns it.
+#[derive(Clone, Debug)]
+struct Flyout {
+    page: ViewPage,
+    from_row: usize,
+    selected: usize,
+    scroll: usize,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ViewMenuState {
     pub x: f32,
@@ -158,14 +170,15 @@ pub(crate) struct ViewMenuState {
     pub page: ViewPage,
     pub selected: usize,
     scroll: usize,
-    parent: Vec<ViewPage>,
+    /// Submenus opened from the root panel, outermost first. `flyouts[n]` is panel `n + 1`.
+    flyouts: Vec<Flyout>,
 }
 
 impl ViewMenuState {
-    fn rows(&self, app: &App) -> Vec<ViewRow> {
+    fn rows_for(page: ViewPage, app: &App) -> Vec<ViewRow> {
         use ViewAction as A;
         use ViewPage as P;
-        let mut rows = match self.page {
+        let mut rows = match page {
             P::Root => vec![
                 ViewRow::item("view.command_palette", A::Palette, "Ctrl+Shift+P"),
                 ViewRow::item("view.open_view", A::OpenView, ""),
@@ -277,7 +290,7 @@ impl ViewMenuState {
                 ViewRow::item("view.whitespace.all", A::WhitespaceAll, ""),
             ],
         };
-        if self.page == P::Root {
+        if page == P::Root {
             let extension_rows = app
                 .plugin_activity_entries()
                 .into_iter()
@@ -384,13 +397,154 @@ impl ViewMenuState {
         rows
     }
 
-    fn selectable_rows(&self, app: &App) -> Vec<usize> {
-        self.rows(app)
-            .iter()
-            .enumerate()
-            .filter_map(|(i, row)| (!row.separator).then_some(i))
-            .collect()
+    fn depth(&self) -> usize {
+        self.flyouts.len()
     }
+
+    fn page_at(&self, panel: usize) -> ViewPage {
+        match panel {
+            0 => self.page,
+            _ => self.flyouts[panel - 1].page,
+        }
+    }
+
+    fn selected_at(&self, panel: usize) -> usize {
+        match panel {
+            0 => self.selected,
+            _ => self.flyouts[panel - 1].selected,
+        }
+    }
+
+    fn scroll_at(&self, panel: usize) -> usize {
+        match panel {
+            0 => self.scroll,
+            _ => self.flyouts[panel - 1].scroll,
+        }
+    }
+
+    fn set_selected(&mut self, panel: usize, row: usize) {
+        match panel {
+            0 => self.selected = row,
+            _ => self.flyouts[panel - 1].selected = row,
+        }
+    }
+
+    fn set_scroll(&mut self, panel: usize, scroll: usize) {
+        match panel {
+            0 => self.scroll = scroll,
+            _ => self.flyouts[panel - 1].scroll = scroll,
+        }
+    }
+
+    /// The highlighted row of the innermost open panel.
+    pub(crate) fn active_selected(&self) -> usize {
+        self.selected_at(self.depth())
+    }
+
+    fn rows_at(&self, app: &App, panel: usize) -> Vec<ViewRow> {
+        Self::rows_for(self.page_at(panel), app)
+    }
+
+    fn first_selectable(app: &App, page: ViewPage) -> usize {
+        Self::rows_for(page, app)
+            .iter()
+            .position(|row| !row.separator)
+            .unwrap_or(0)
+    }
+
+    /// Screen rectangle `(x, y, width, height)` of a panel. A flyout starts level with the row
+    /// that opened it, sits to the right of its parent (or to the left when there is no room)
+    /// and is kept inside the window.
+    fn rect_at(&self, app: &App, panel: usize, size: (f32, f32)) -> (f32, f32, f32, f32) {
+        let (window_width, window_height) = size;
+        let width = VIEW_MENU_WIDTH.min(window_width);
+        let full = self.rows_at(app, panel).len() as f32 * VIEW_ROW_HEIGHT + VIEW_MENU_PADDING * 2.0;
+        if panel == 0 {
+            return (
+                self.x,
+                self.y,
+                width,
+                full.min((window_height - self.y).max(0.0)),
+            );
+        }
+        let (parent_x, parent_y, parent_width, _) = self.rect_at(app, panel - 1, size);
+        let from_row = self.flyouts[panel - 1].from_row as f32;
+        let row_top = parent_y
+            + VIEW_MENU_PADDING
+            + (from_row - self.scroll_at(panel - 1) as f32) * VIEW_ROW_HEIGHT;
+        let x = if parent_x + parent_width + width <= window_width {
+            parent_x + parent_width
+        } else {
+            (parent_x - width).max(0.0)
+        };
+        let height = full.min(window_height);
+        let y = (row_top - VIEW_MENU_PADDING)
+            .min(window_height - height)
+            .max(0.0);
+        (x, y, width, height)
+    }
+
+    /// The innermost panel under the point and the row there, if any.
+    fn hit(&self, app: &App, x: f32, y: f32, size: (f32, f32)) -> Option<(usize, Option<usize>)> {
+        for panel in (0..=self.depth()).rev() {
+            let (left, top, width, height) = self.rect_at(app, panel, size);
+            if x >= left && x < left + width && y >= top && y < top + height {
+                let offset = ((y - top - VIEW_MENU_PADDING) / VIEW_ROW_HEIGHT).floor();
+                let row = (offset >= 0.0)
+                    .then(|| self.scroll_at(panel) + offset as usize)
+                    .filter(|row| *row < self.rows_at(app, panel).len());
+                return Some((panel, row));
+            }
+        }
+        None
+    }
+
+    /// Opens `page` as the submenu of `row` in `panel`, closing whatever was open beside it.
+    fn open_flyout(&mut self, panel: usize, row: usize, page: ViewPage, selected: usize) {
+        let same = self
+            .flyouts
+            .get(panel)
+            .is_some_and(|open| open.from_row == row && open.page == page);
+        if same {
+            self.flyouts.truncate(panel + 1);
+            if selected != NO_ROW {
+                self.flyouts[panel].selected = selected;
+            }
+        } else {
+            self.flyouts.truncate(panel);
+            self.flyouts.push(Flyout {
+                page,
+                from_row: row,
+                selected,
+                scroll: 0,
+            });
+        }
+    }
+
+    fn ensure_visible(&mut self, app: &App, panel: usize, size: (f32, f32)) {
+        let (_, _, _, height) = self.rect_at(app, panel, size);
+        let visible = ((height - VIEW_MENU_PADDING * 2.0) / VIEW_ROW_HEIGHT)
+            .floor()
+            .max(1.0) as usize;
+        let selected = self.selected_at(panel);
+        if selected == NO_ROW {
+            return;
+        }
+        let scroll = self.scroll_at(panel);
+        if selected < scroll {
+            self.set_scroll(panel, selected);
+        } else if selected >= scroll + visible {
+            self.set_scroll(panel, selected + 1 - visible);
+        }
+    }
+}
+
+/// What a click or key press on the View menu asks the application to do.
+enum ViewStep {
+    Keep,
+    Close,
+    Run(ViewAction, Option<usize>),
+    Unhandled,
 }
 
 impl App {
@@ -413,7 +567,7 @@ impl App {
             page: ViewPage::Root,
             selected: 0,
             scroll: 0,
-            parent: Vec::new(),
+            flyouts: Vec::new(),
         });
         self.activity_bar_menu = None;
         self.adjust_view_menu_position(height);
@@ -421,7 +575,7 @@ impl App {
 
     fn adjust_view_menu_position(&mut self, height: f32) {
         if let Some(snapshot) = &self.view_menu {
-            let count = snapshot.rows(self).len();
+            let count = snapshot.rows_at(self, 0).len();
             let popup_height = count as f32 * VIEW_ROW_HEIGHT + VIEW_MENU_PADDING * 2.0;
             let menu = self.view_menu.as_mut().unwrap();
             menu.y = menu.y.min((height - popup_height.min(height)).max(0.0));
@@ -432,11 +586,39 @@ impl App {
         self.view_menu = None;
     }
 
+    fn view_window_size(&self) -> (f32, f32) {
+        self.gpu.as_ref().map_or((1200.0, 760.0), |gpu| {
+            let (width, height) = gpu.renderer.size();
+            (width as f32, height as f32)
+        })
+    }
+
+    /// Runs `f` on the open View menu with read access to the rest of the application.
+    fn with_view_menu<R>(&mut self, f: impl FnOnce(&mut ViewMenuState, &App) -> R) -> Option<R> {
+        let mut menu = self.view_menu.take()?;
+        let result = f(&mut menu, self);
+        self.view_menu = Some(menu);
+        Some(result)
+    }
+
+    fn finish_view_step(&mut self, step: Option<ViewStep>) -> bool {
+        match step {
+            Some(ViewStep::Close) => self.close_view_menu(),
+            Some(ViewStep::Run(action, extension_index)) => {
+                self.execute_view_action(action, extension_index);
+                self.close_view_menu();
+            }
+            Some(ViewStep::Keep) | None => {}
+            Some(ViewStep::Unhandled) => return false,
+        }
+        true
+    }
+
     pub(crate) fn view_menu_accessible_rows(&self) -> Vec<(String, bool, bool, bool)> {
         self.view_menu
             .as_ref()
             .map(|menu| {
-                menu.rows(self)
+                menu.rows_at(self, menu.depth())
                     .into_iter()
                     .map(|row| {
                         let label = row
@@ -455,247 +637,215 @@ impl App {
     }
 
     pub(crate) fn activate_view_menu_accessibility_item(&mut self, index: usize) {
-        let Some(menu) = self.view_menu.clone() else {
-            return;
-        };
-        let Some(row) = menu.rows(self).get(index).copied() else {
-            return;
-        };
-        if !row.enabled || row.separator {
-            return;
-        }
-        if let Some(page) = row.submenu {
-            let state = self.view_menu.as_mut().unwrap();
-            state.parent.push(state.page);
-            state.page = page;
-            state.selected = 0;
-        } else if let Some(action) = row.action {
-            self.execute_view_action(action, row.extension_index);
-            self.close_view_menu();
-        }
+        let step = self.with_view_menu(|menu, app| {
+            let panel = menu.depth();
+            let Some(row) = menu.rows_at(app, panel).get(index).copied() else {
+                return ViewStep::Keep;
+            };
+            if !row.enabled || row.separator {
+                return ViewStep::Keep;
+            }
+            menu.set_selected(panel, index);
+            if let Some(page) = row.submenu {
+                let first = ViewMenuState::first_selectable(app, page);
+                menu.open_flyout(panel, index, page, first);
+                ViewStep::Keep
+            } else if let Some(action) = row.action {
+                ViewStep::Run(action, row.extension_index)
+            } else {
+                ViewStep::Keep
+            }
+        });
+        self.finish_view_step(step);
     }
 
+    /// Highlights the row under the pointer and opens its submenu beside it.
     pub(crate) fn view_menu_pointer_moved(&mut self, x: f32, y: f32) {
-        let Some(snapshot) = self.view_menu.clone() else {
-            return;
-        };
-        let rows = snapshot.rows(self);
-        if x < snapshot.x || x >= snapshot.x + VIEW_MENU_WIDTH {
-            return;
-        }
-        let index = ((y - snapshot.y - VIEW_MENU_PADDING) / VIEW_ROW_HEIGHT) as isize
-            + snapshot.scroll as isize;
-        if index >= snapshot.scroll as isize
-            && (index as usize) < rows.len()
-            && !rows[index as usize].separator
-        {
-            self.view_menu.as_mut().unwrap().selected = index as usize;
-        }
+        let size = self.view_window_size();
+        self.with_view_menu(|menu, app| {
+            let Some((panel, Some(index))) = menu.hit(app, x, y, size) else {
+                return;
+            };
+            let row = menu.rows_at(app, panel)[index];
+            if row.separator {
+                return;
+            }
+            menu.set_selected(panel, index);
+            match row.submenu {
+                Some(page) if row.enabled => menu.open_flyout(panel, index, page, NO_ROW),
+                _ => menu.flyouts.truncate(panel),
+            }
+        });
     }
 
     pub(crate) fn view_menu_click(&mut self, x: f32, y: f32) -> bool {
-        let Some(snapshot) = self.view_menu.clone() else {
-            return false;
-        };
-        let rows = snapshot.rows(self);
-        let width = self
-            .gpu
-            .as_ref()
-            .map_or(1200.0, |g| g.renderer.size().0 as f32);
-        let window_height = self
-            .gpu
-            .as_ref()
-            .map_or(760.0, |gpu| gpu.renderer.size().1 as f32);
-        let visible_rows = ((window_height - snapshot.y - VIEW_MENU_PADDING * 2.0)
-            / VIEW_ROW_HEIGHT)
-            .floor()
-            .max(1.0) as usize;
-        if x < snapshot.x
-            || x >= snapshot.x + VIEW_MENU_WIDTH
-            || y < snapshot.y
-            || y >= snapshot.y
-                + visible_rows.min(rows.len().saturating_sub(snapshot.scroll)) as f32
-                    * VIEW_ROW_HEIGHT
-                + VIEW_MENU_PADDING * 2.0
-        {
-            self.close_view_menu();
-            return true;
-        }
-        let index = snapshot.scroll
-            + ((y - snapshot.y - VIEW_MENU_PADDING) / VIEW_ROW_HEIGHT).max(0.0) as usize;
-        let Some(row) = rows.get(index).copied() else {
-            return true;
-        };
-        if !row.enabled || row.separator {
-            return true;
-        }
-        if let Some(page) = row.submenu {
-            if let Some(menu) = &mut self.view_menu {
-                menu.parent.push(menu.page);
-                menu.page = page;
-                menu.selected = 0;
-                menu.scroll = 0;
+        let size = self.view_window_size();
+        let step = self.with_view_menu(|menu, app| {
+            let Some((panel, index)) = menu.hit(app, x, y, size) else {
+                return ViewStep::Close;
+            };
+            let Some(index) = index else {
+                return ViewStep::Keep;
+            };
+            let row = menu.rows_at(app, panel)[index];
+            if !row.enabled || row.separator {
+                return ViewStep::Keep;
             }
-        } else if let Some(action) = row.action {
-            self.execute_view_action(action, row.extension_index);
-            self.close_view_menu();
-        }
-        let _ = width;
+            menu.set_selected(panel, index);
+            if let Some(page) = row.submenu {
+                let first = ViewMenuState::first_selectable(app, page);
+                menu.open_flyout(panel, index, page, first);
+                ViewStep::Keep
+            } else if let Some(action) = row.action {
+                ViewStep::Run(action, row.extension_index)
+            } else {
+                ViewStep::Keep
+            }
+        });
+        self.finish_view_step(step);
         true
     }
 
     pub(crate) fn view_menu_key(&mut self, key: &Key) -> bool {
-        let Some(snapshot) = self.view_menu.clone() else {
-            return false;
-        };
-        let indices = snapshot.selectable_rows(self);
-        match key {
-            Key::Named(NamedKey::Escape) => {
-                if let Some(parent) = self.view_menu.as_mut().and_then(|m| m.parent.pop()) {
-                    let menu = self.view_menu.as_mut().unwrap();
-                    menu.page = parent;
-                    menu.selected = 0;
-                } else {
-                    self.close_view_menu();
+        let size = self.view_window_size();
+        let step = self.with_view_menu(|menu, app| {
+            let panel = menu.depth();
+            let rows = menu.rows_at(app, panel);
+            match key {
+                Key::Named(NamedKey::Escape) | Key::Named(NamedKey::ArrowLeft) => {
+                    if panel == 0 {
+                        return ViewStep::Close;
+                    }
+                    menu.flyouts.pop();
                 }
-            }
-            Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowUp) => {
-                let current = indices
-                    .iter()
-                    .position(|i| *i == snapshot.selected)
-                    .unwrap_or(0);
-                let next = if matches!(key, Key::Named(NamedKey::ArrowDown)) {
-                    (current + 1) % indices.len().max(1)
-                } else {
-                    (current + indices.len().saturating_sub(1)) % indices.len().max(1)
-                };
-                self.view_menu.as_mut().unwrap().selected = indices.get(next).copied().unwrap_or(0);
-                self.view_menu_ensure_selected_visible();
-            }
-            Key::Named(NamedKey::ArrowRight)
-            | Key::Named(NamedKey::Enter)
-            | Key::Named(NamedKey::Space) => {
-                let row = snapshot.rows(self).get(snapshot.selected).copied();
-                if let Some(row) = row {
+                Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowUp) => {
+                    let indices: Vec<usize> = rows
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, row)| (!row.separator).then_some(index))
+                        .collect();
+                    if indices.is_empty() {
+                        return ViewStep::Keep;
+                    }
+                    let down = matches!(key, Key::Named(NamedKey::ArrowDown));
+                    let current = indices
+                        .iter()
+                        .position(|index| *index == menu.selected_at(panel));
+                    let next = match (current, down) {
+                        (Some(at), true) => (at + 1) % indices.len(),
+                        (Some(at), false) => (at + indices.len() - 1) % indices.len(),
+                        (None, true) => 0,
+                        (None, false) => indices.len() - 1,
+                    };
+                    menu.set_selected(panel, indices[next]);
+                    menu.ensure_visible(app, panel, size);
+                }
+                Key::Named(NamedKey::ArrowRight)
+                | Key::Named(NamedKey::Enter)
+                | Key::Named(NamedKey::Space) => {
+                    let index = menu.selected_at(panel);
+                    let Some(row) = rows.get(index).copied().filter(|row| row.enabled) else {
+                        return ViewStep::Keep;
+                    };
                     if let Some(page) = row.submenu {
-                        let menu = self.view_menu.as_mut().unwrap();
-                        menu.parent.push(menu.page);
-                        menu.page = page;
-                        menu.selected = 0;
-                        menu.scroll = 0;
-                    } else if row.enabled {
-                        if let Some(action) = row.action {
-                            self.execute_view_action(action, row.extension_index);
-                            self.close_view_menu();
-                        }
+                        let first = ViewMenuState::first_selectable(app, page);
+                        menu.open_flyout(panel, index, page, first);
+                    } else if let Some(action) = row.action {
+                        return ViewStep::Run(action, row.extension_index);
                     }
                 }
+                _ => return ViewStep::Unhandled,
             }
-            Key::Named(NamedKey::ArrowLeft) => {
-                if let Some(parent) = self.view_menu.as_mut().and_then(|m| m.parent.pop()) {
-                    let menu = self.view_menu.as_mut().unwrap();
-                    menu.page = parent;
-                    menu.selected = 0;
-                } else {
-                    self.close_view_menu();
-                }
-            }
-            _ => return false,
+            ViewStep::Keep
+        });
+        match step {
+            Some(step) => self.finish_view_step(Some(step)),
+            None => false,
         }
-        true
     }
 
     pub(crate) fn draw_view_menu(&self, renderer: &mut Renderer) {
         let Some(menu) = &self.view_menu else { return };
-        let rows = menu.rows(self);
         let visible_extensions = self.visible_extension_activities();
-        let width = VIEW_MENU_WIDTH.min(renderer.size().0 as f32);
-        let height = (rows.len() as f32 * VIEW_ROW_HEIGHT + VIEW_MENU_PADDING * 2.0)
-            .min(renderer.size().1 as f32 - menu.y);
+        let (window_width, window_height) = renderer.size();
+        let size = (window_width as f32, window_height as f32);
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
-        renderer.draw_rect(menu.x, menu.y, width, height, border);
-        renderer.draw_rect(
-            menu.x + 1.0,
-            menu.y + 1.0,
-            width - 2.0,
-            height - 2.0,
-            background,
-        );
-        renderer.set_clip(Some([menu.x, menu.y, menu.x + width, menu.y + height]));
-        let visible_rows = ((height - VIEW_MENU_PADDING * 2.0) / VIEW_ROW_HEIGHT).ceil() as usize;
-        for (index, row) in rows.iter().enumerate().skip(menu.scroll).take(visible_rows) {
-            let y = menu.y + VIEW_MENU_PADDING + (index - menu.scroll) as f32 * VIEW_ROW_HEIGHT;
-            if row.separator {
-                renderer.draw_rect(
-                    menu.x + 1.0,
-                    y + VIEW_ROW_HEIGHT * 0.5,
-                    width - 2.0,
-                    1.0,
-                    border,
-                );
-                continue;
+        for panel in 0..=menu.depth() {
+            let rows = menu.rows_at(self, panel);
+            let (left, top, width, height) = menu.rect_at(self, panel, size);
+            renderer.draw_rect(left, top, width, height, border);
+            renderer.draw_rect(left + 1.0, top + 1.0, width - 2.0, height - 2.0, background);
+            renderer.set_clip(Some([left, top, left + width, top + height]));
+            let visible_rows =
+                ((height - VIEW_MENU_PADDING * 2.0) / VIEW_ROW_HEIGHT).ceil() as usize;
+            let scroll = menu.scroll_at(panel);
+            let selected = menu.selected_at(panel);
+            for (index, row) in rows.iter().enumerate().skip(scroll).take(visible_rows) {
+                let y = top + VIEW_MENU_PADDING + (index - scroll) as f32 * VIEW_ROW_HEIGHT;
+                if row.separator {
+                    renderer.draw_rect(left + 1.0, y + VIEW_ROW_HEIGHT * 0.5, width - 2.0, 1.0, border);
+                    continue;
+                }
+                if selected == index {
+                    renderer.draw_rect(
+                        left + 2.0,
+                        y,
+                        width - 4.0,
+                        VIEW_ROW_HEIGHT,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0x3f3f46)),
+                    );
+                }
+                let color = rgb(Theme::color(
+                    if row.enabled { Theme::TEXT } else { Theme::DIM },
+                    if row.enabled { 0xd4d4d4 } else { 0x777777 },
+                ));
+                if row.checked {
+                    renderer.draw_text("✓", left + 8.0, y + 4.0, color);
+                }
+                let label = row
+                    .extension_index
+                    .and_then(|index| {
+                        visible_extensions
+                            .get(index)
+                            .map(|entry| entry.title.as_str())
+                    })
+                    .unwrap_or_else(|| self.t(row.label));
+                renderer.draw_text(label, left + 28.0, y + 4.0, color);
+                if !row.shortcut.is_empty() {
+                    renderer.draw_text(
+                        row.shortcut,
+                        left + width
+                            - row.shortcut.chars().count() as f32 * renderer.char_width()
+                            - 12.0,
+                        y + 4.0,
+                        color,
+                    );
+                }
+                if row.submenu.is_some() {
+                    renderer.draw_text("›", left + width - 16.0, y + 4.0, color);
+                }
             }
-            if menu.selected == index {
-                renderer.draw_rect(
-                    menu.x + 2.0,
-                    y,
-                    width - 4.0,
-                    VIEW_ROW_HEIGHT,
-                    rgb(Theme::color(Theme::ACTIVE_ROW, 0x3f3f46)),
-                );
-            }
-            let color = rgb(Theme::color(
-                if row.enabled { Theme::TEXT } else { Theme::DIM },
-                if row.enabled { 0xd4d4d4 } else { 0x777777 },
-            ));
-            if row.checked {
-                renderer.draw_text("✓", menu.x + 8.0, y + 4.0, color);
-            }
-            let label = row
-                .extension_index
-                .and_then(|index| {
-                    visible_extensions
-                        .get(index)
-                        .map(|entry| entry.title.as_str())
-                })
-                .unwrap_or_else(|| self.t(row.label));
-            renderer.draw_text(label, menu.x + 28.0, y + 4.0, color);
-            if !row.shortcut.is_empty() {
-                renderer.draw_text(
-                    row.shortcut,
-                    menu.x + width
-                        - row.shortcut.chars().count() as f32 * renderer.char_width()
-                        - 12.0,
-                    y + 4.0,
-                    color,
-                );
-            }
-            if row.submenu.is_some() {
-                renderer.draw_text("›", menu.x + width - 16.0, y + 4.0, color);
-            }
+            renderer.set_clip(None);
         }
-        renderer.set_clip(None);
     }
 
-    fn view_menu_ensure_selected_visible(&mut self) {
-        let height = self
-            .gpu
-            .as_ref()
-            .map_or(760.0, |gpu| gpu.renderer.size().1 as f32);
-        let Some(snapshot) = self.view_menu.clone() else {
-            return;
-        };
-        let visible = ((height - snapshot.y - VIEW_MENU_PADDING * 2.0) / VIEW_ROW_HEIGHT)
-            .floor()
-            .max(1.0) as usize;
-        if let Some(menu) = &mut self.view_menu {
-            if menu.selected < menu.scroll {
-                menu.scroll = menu.selected;
-            } else if menu.selected >= menu.scroll + visible {
-                menu.scroll = menu.selected + 1 - visible;
-            }
-        }
+    /// Center of a row of an open panel, for tests that drive the pointer.
+    #[cfg(test)]
+    pub(crate) fn view_menu_row_point(&self, panel: usize, row: usize) -> Option<(f32, f32)> {
+        let menu = self.view_menu.as_ref()?;
+        let (left, top, width, _) = menu.rect_at(self, panel, self.view_window_size());
+        let scroll = menu.scroll_at(panel);
+        Some((
+            left + width / 2.0,
+            top + VIEW_MENU_PADDING + (row - scroll) as f32 * VIEW_ROW_HEIGHT + VIEW_ROW_HEIGHT / 2.0,
+        ))
+    }
+
+    /// The page shown by the innermost open panel.
+    #[cfg(test)]
+    pub(crate) fn view_menu_open_page(&self) -> Option<ViewPage> {
+        self.view_menu.as_ref().map(|menu| menu.page_at(menu.depth()))
     }
 
     fn save_view_preferences(&mut self) {
@@ -946,19 +1096,32 @@ impl App {
 mod tests {
     use super::*;
 
+    fn open_menu(app: &mut App) {
+        app.open_view_menu(10.0, 40.0, 1200.0, 760.0);
+    }
+
+    fn state_with_appearance(selected: usize) -> ViewMenuState {
+        ViewMenuState {
+            x: 0.0,
+            y: 0.0,
+            page: ViewPage::Root,
+            selected: 3,
+            scroll: 0,
+            flyouts: vec![Flyout {
+                page: ViewPage::Appearance,
+                from_row: 3,
+                selected,
+                scroll: 0,
+            }],
+        }
+    }
+
     #[test]
     fn appearance_toggle_is_saved_to_the_active_profile() {
         let profile = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(profile.path().to_path_buf(), None, true);
         app.profile_root = profile.path().to_path_buf();
-        app.view_menu = Some(ViewMenuState {
-            x: 0.0,
-            y: 0.0,
-            page: ViewPage::Appearance,
-            selected: 18,
-            scroll: 0,
-            parent: vec![ViewPage::Root],
-        });
+        app.view_menu = Some(state_with_appearance(18));
         let rows = app.view_menu_accessible_rows();
         assert_eq!(rows[18].0, app.t("view.minimap"));
         assert!(rows[18].1 && !rows[18].2);
@@ -978,15 +1141,88 @@ mod tests {
         assert!(root[12].1);
         assert_eq!(root[13].0, app.t("view.browser"));
         assert!(!root[13].1);
-        app.view_menu.as_mut().unwrap().page = ViewPage::Appearance;
-        app.view_menu.as_mut().unwrap().parent = vec![ViewPage::Root];
-        app.view_menu.as_mut().unwrap().selected = 25;
-        app.view_menu.as_mut().unwrap().y = 700.0;
-        app.view_menu_ensure_selected_visible();
-        assert!(app.view_menu.as_ref().unwrap().scroll > 0);
+        app.view_menu.as_mut().unwrap().selected = 3;
+        assert!(app.view_menu_key(&Key::Named(NamedKey::ArrowRight)));
+        assert_eq!(app.view_menu_open_page(), Some(ViewPage::Appearance));
+        app.view_menu.as_mut().unwrap().flyouts[0].selected = 25;
+        // A window too short for the whole Appearance page scrolls to keep the row visible.
+        app.with_view_menu(|menu, app| menu.ensure_visible(app, 1, (900.0, 300.0)));
+        assert!(app.view_menu.as_ref().unwrap().flyouts[0].scroll > 0);
         assert!(app.view_menu_key(&Key::Named(NamedKey::Escape)));
-        assert!(app.view_menu.is_some());
+        assert_eq!(app.view_menu_open_page(), Some(ViewPage::Root));
         assert!(app.view_menu_key(&Key::Named(NamedKey::Escape)));
+        assert!(app.view_menu.is_none());
+    }
+
+    #[test]
+    fn hovering_a_submenu_row_opens_it_beside_that_row() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        open_menu(&mut app);
+        let (x, y) = app.view_menu_row_point(0, 3).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        assert_eq!(app.view_menu_open_page(), Some(ViewPage::Appearance));
+        let size = app.view_window_size();
+        let menu = app.view_menu.as_ref().unwrap();
+        let (root_x, _, root_width, _) = menu.rect_at(&app, 0, size);
+        let (flyout_x, flyout_y, _, flyout_height) = menu.rect_at(&app, 1, size);
+        assert_eq!(flyout_x, root_x + root_width);
+        assert!(flyout_y >= 0.0 && flyout_y + flyout_height <= size.1);
+        // The submenu is level with the hovered row, not with the top of the menu.
+        let (_, hovered_row_y) = app.view_menu_row_point(0, 3).unwrap();
+        assert!(flyout_y <= hovered_row_y && flyout_y + flyout_height > hovered_row_y);
+    }
+
+    #[test]
+    fn hovering_inside_a_flyout_keeps_it_and_nested_submenus_cascade() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        open_menu(&mut app);
+        let (x, y) = app.view_menu_row_point(0, 3).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        let (x, y) = app.view_menu_row_point(1, 11).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        assert_eq!(app.view_menu.as_ref().unwrap().depth(), 2);
+        assert_eq!(app.view_menu_open_page(), Some(ViewPage::ActivityPosition));
+        // Moving over a plain row of the first flyout closes the nested one only.
+        let (x, y) = app.view_menu_row_point(1, 0).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        assert_eq!(app.view_menu.as_ref().unwrap().depth(), 1);
+        // A plain root row closes every flyout.
+        let (x, y) = app.view_menu_row_point(0, 0).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        assert_eq!(app.view_menu.as_ref().unwrap().depth(), 0);
+    }
+
+    #[test]
+    fn a_flyout_opens_to_the_left_when_there_is_no_room_on_the_right() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.open_view_menu(900.0, 40.0, 1200.0, 760.0);
+        let (x, y) = app.view_menu_row_point(0, 3).unwrap();
+        app.view_menu_pointer_moved(x, y);
+        let size = app.view_window_size();
+        let menu = app.view_menu.as_ref().unwrap();
+        let (root_x, _, _, _) = menu.rect_at(&app, 0, size);
+        let (flyout_x, _, flyout_width, _) = menu.rect_at(&app, 1, size);
+        assert_eq!(flyout_x + flyout_width, root_x);
+    }
+
+    #[test]
+    fn clicking_outside_every_panel_closes_the_menu_and_an_action_closes_it_too() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        open_menu(&mut app);
+        assert!(app.view_menu_click(1100.0, 700.0));
+        assert!(app.view_menu.is_none());
+        open_menu(&mut app);
+        let (x, y) = app.view_menu_row_point(0, 3).unwrap();
+        assert!(app.view_menu_click(x, y));
+        assert_eq!(app.view_menu_open_page(), Some(ViewPage::Appearance));
+        let before = app.view_preferences.minimap_visible;
+        let (x, y) = app.view_menu_row_point(1, 18).unwrap();
+        app.view_menu_click(x, y);
+        assert_eq!(app.view_preferences.minimap_visible, !before);
         assert!(app.view_menu.is_none());
     }
 }

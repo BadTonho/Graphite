@@ -18,7 +18,7 @@ The Editor Layout submenu supports splitting up, down, left, or right; Single, t
 
 ## Keyboard and accessibility
 
-Use Up and Down to move through menu items, Right or Enter to open a submenu, Left to return, and Escape to close the current menu level. Menu items expose checked and unavailable states to accessibility clients. The menu labels and descriptions are localized in English and Brazilian Portuguese.
+Submenus open beside their row as you hover over it (or click it) and cascade to any depth; a submenu that does not fit on the right opens on the left and is kept inside the window. Use Up and Down to move through menu items, Right or Enter to open a submenu, Left to return, and Escape to close the current menu level. Menu items expose checked and unavailable states to accessibility clients. The menu labels and descriptions are localized in English and Brazilian Portuguese.
 
 ## Layout buttons in the title bar
 

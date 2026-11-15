@@ -18,3 +18,5 @@ O Graphite aceita arquivos `.code-workspace` no formato padrão, com uma lista `
 **Preferências** abre as configurações, atalhos, snippets, painel de extensões, configuração de tarefas e opções de tema do perfil. Configurações e atalhos são arquivos JSON editáveis. Tarefas abrem `.vscode/tasks.json`; se o arquivo não existir, o Graphite cria um arquivo vazio compatível com o VS Code. **Nova Janela com Perfil** inicia outro processo do Graphite com o perfil escolhido sem alterar o perfil ativo na janela atual.
 
 Compartilhamento e sincronização online não fazem parte deste menu local.
+
+Os submenus abrem ao lado da linha a que pertencem, assim que o mouse passa por ela, e podem se aninhar: **Perfis** e **Temas** abrem ao lado de **Preferências** sem substituí-lo. Esquerda ou Esc fecham um nível por vez; um submenu que não cabe à direita abre à esquerda.

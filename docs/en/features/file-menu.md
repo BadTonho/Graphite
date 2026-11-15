@@ -18,3 +18,5 @@ Graphite accepts standard `.code-workspace` files with a `folders` array. Folder
 **Preferences** opens the profile's settings, keybindings, snippets, extension view, task configuration, and theme choices. Settings and keybindings are editable JSON files. Tasks open `.vscode/tasks.json`; when absent, Graphite creates an empty VS Code-compatible task file. **New Window with Profile** starts a separate Graphite process using that profile without changing the active profile in the current window.
 
 Share and online synchronization are not included in this local menu.
+
+Submenus open beside the row that owns them, as soon as the pointer is over it, and can nest: **Profiles** and **Themes** open to the side of **Preferences** without replacing it. Left or Escape closes one level at a time; a submenu that does not fit on the right opens on the left.

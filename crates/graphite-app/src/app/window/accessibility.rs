@@ -642,7 +642,7 @@ impl App {
         }
         if self.workbench_menu == Some(super::menu_bar::WorkbenchMenu::File) {
             use super::file_menu::FileMenuRow;
-            let rows = self.file_menu_rows(self.file_menu_submenu);
+            let rows = self.file_menu_rows(self.file_menu_innermost());
             let mut menu = Node::new(Role::Menu);
             menu.set_label(self.t("menubar.file"));
             let mut item_children = Vec::new();
@@ -885,7 +885,7 @@ impl App {
                 item.set_selected(
                     self.view_menu
                         .as_ref()
-                        .is_some_and(|state| state.selected == index),
+                        .is_some_and(|state| state.active_selected() == index),
                 );
                 if enabled {
                     item.add_action(Action::Click);
