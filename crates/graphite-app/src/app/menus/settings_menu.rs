@@ -33,6 +33,7 @@ pub(crate) enum SettingsSubcommand {
     CreateProfile,
     DarkTheme,
     LightTheme,
+    ColorTheme(String),
     FileIconTheme,
     ProductIconTheme,
     DensityDefault,
@@ -325,39 +326,57 @@ impl App {
                 });
                 rows
             }
-            SettingsSubmenu::Themes => vec![
-                I {
-                    command: C::DarkTheme,
-                    label: self.t("settings_menu.theme_dark").into(),
-                    shortcut: String::new(),
-                    enabled: true,
-                    checked: crate::app::theme::DARK_THEME
-                        .load(std::sync::atomic::Ordering::Relaxed),
-                },
-                I {
-                    command: C::LightTheme,
-                    label: self.t("settings_menu.theme_light").into(),
-                    shortcut: String::new(),
-                    enabled: true,
-                    checked: !crate::app::theme::DARK_THEME
-                        .load(std::sync::atomic::Ordering::Relaxed),
-                },
-                S,
-                I {
+            SettingsSubmenu::Themes => {
+                let dark = crate::app::theme::DARK_THEME.load(std::sync::atomic::Ordering::Relaxed);
+                let selected = config::selected_color_theme(
+                    &self.profile_root,
+                    self.tree.root(),
+                    &self.translator,
+                );
+                let installed = config::list_color_themes(&self.profile_root);
+                let mut rows = vec![
+                    I {
+                        command: C::DarkTheme,
+                        label: self.t("settings_menu.theme_dark").into(),
+                        shortcut: String::new(),
+                        enabled: true,
+                        checked: selected.is_none() && dark,
+                    },
+                    I {
+                        command: C::LightTheme,
+                        label: self.t("settings_menu.theme_light").into(),
+                        shortcut: String::new(),
+                        enabled: true,
+                        checked: selected.is_none() && !dark,
+                    },
+                ];
+                if !installed.is_empty() {
+                    rows.push(S);
+                    rows.extend(installed.into_iter().map(|theme| I {
+                        checked: selected.as_deref() == Some(theme.name.as_str()),
+                        command: C::ColorTheme(theme.name.clone()),
+                        label: theme.name,
+                        shortcut: String::new(),
+                        enabled: true,
+                    }));
+                }
+                rows.push(S);
+                rows.push(I {
                     command: C::FileIconTheme,
                     label: self.t("settings_menu.file_icon_theme").into(),
                     shortcut: String::new(),
                     enabled: true,
                     checked: false,
-                },
-                I {
+                });
+                rows.push(I {
                     command: C::ProductIconTheme,
                     label: self.t("settings_menu.product_icon_theme").into(),
                     shortcut: String::new(),
                     enabled: false,
                     checked: false,
-                },
-            ],
+                });
+                rows
+            }
             SettingsSubmenu::Density => vec![
                 I {
                     command: C::DensityDefault,
@@ -801,8 +820,9 @@ impl App {
                     }
                 }
             }
-            SettingsSubcommand::DarkTheme => self.set_theme(true),
-            SettingsSubcommand::LightTheme => self.set_theme(false),
+            SettingsSubcommand::DarkTheme => self.select_builtin_theme(true),
+            SettingsSubcommand::LightTheme => self.select_builtin_theme(false),
+            SettingsSubcommand::ColorTheme(name) => self.select_color_theme(&name),
             SettingsSubcommand::FileIconTheme => self.open_icon_theme_picker(),
             SettingsSubcommand::ProductIconTheme => {}
             SettingsSubcommand::DensityDefault => {
@@ -1025,9 +1045,64 @@ mod tests {
     }
 
     #[test]
+    fn theme_submenu_lists_graphite_simple_and_selecting_it_applies_and_persists() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
+        config::install_bundled_themes(&app.profile_root);
+        let simple = SettingsSubcommand::ColorTheme("Graphite Simple".into());
+        let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
+        assert!(rows.iter().any(|row| matches!(
+            row,
+            SettingsSubmenuRow::Item { command, checked: false, .. } if *command == simple
+        )));
+        app.execute_settings_subcommand(simple.clone());
+        let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
+        let checked: Vec<_> = rows
+            .iter()
+            .filter_map(|row| match row {
+                SettingsSubmenuRow::Item {
+                    command,
+                    checked: true,
+                    ..
+                } => Some(command.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(checked, [simple]);
+        assert!(std::fs::read_to_string(app.profile_root.join("settings.json"))
+            .unwrap()
+            .contains("Graphite Simple"));
+        app.execute_settings_subcommand(SettingsSubcommand::DarkTheme);
+        assert!(!std::fs::read_to_string(app.profile_root.join("settings.json"))
+            .unwrap()
+            .contains("Graphite Simple"));
+        let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
+        assert!(matches!(
+            rows[0],
+            SettingsSubmenuRow::Item {
+                command: SettingsSubcommand::DarkTheme,
+                checked: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn selecting_an_unknown_color_theme_reports_it_and_keeps_settings() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
+        app.execute_settings_subcommand(SettingsSubcommand::ColorTheme("Nope".into()));
+        assert!(app.status.contains("Nope"), "{}", app.status);
+        assert!(!app.profile_root.join("settings.json").exists());
+    }
+
+    #[test]
     fn theme_submenu_offers_file_icon_themes_but_not_product_icons() {
         let temp = crate::test_support::TempDir::new();
-        let app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.profile_root = temp.path().join("profile");
         let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
         assert!(matches!(
             rows[3],

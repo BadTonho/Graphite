@@ -1,0 +1,20 @@
+{
+  "name": "graphite-simple",
+  "displayName": "Graphite Simple",
+  "description": "A clean, neutral dark theme for Graphite with a charcoal editor and a blue status bar.",
+  "version": "1.0.0",
+  "publisher": "graphite",
+  "license": "MIT",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "id": "graphite-simple",
+        "label": "Graphite Simple",
+        "uiTheme": "vs-dark",
+        "path": "./themes/graphite-simple-color-theme.json"
+      }
+    ]
+  }
+}

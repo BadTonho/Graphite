@@ -1,0 +1,23 @@
+{
+  "name": "Graphite Simple",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#1e1e1e",
+    "editor.foreground": "#d4d4d4",
+    "editorLineNumber.foreground": "#858585",
+    "editorCursor.foreground": "#aeafad",
+    "editor.lineHighlightBackground": "#37373d",
+    "sideBar.background": "#252526",
+    "activityBar.background": "#333333",
+    "statusBar.background": "#007acc"
+  },
+  "tokenColors": [
+    { "scope": ["keyword", "keyword.control", "storage"], "settings": { "foreground": "#569cd6" } },
+    { "scope": ["entity.name.function", "support.function"], "settings": { "foreground": "#dcdcaa" } },
+    { "scope": ["entity.name.type", "entity.name.class", "support.type"], "settings": { "foreground": "#4ec9b0" } },
+    { "scope": ["string"], "settings": { "foreground": "#ce9178" } },
+    { "scope": ["constant.numeric", "constant"], "settings": { "foreground": "#b5cea8" } },
+    { "scope": ["comment"], "settings": { "foreground": "#6a9955" } },
+    { "scope": ["variable", "variable.other.property"], "settings": { "foreground": "#9cdcfe" } }
+  ]
+}

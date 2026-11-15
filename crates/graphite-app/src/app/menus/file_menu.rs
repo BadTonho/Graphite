@@ -496,8 +496,8 @@ impl App {
             C::ConfigureSnippets => self.open_snippet_configuration(),
             C::Tasks => self.open_task_configuration(),
             C::Themes => self.file_menu_submenu = Some(FileMenuSubmenu::Themes),
-            C::DarkTheme => self.set_theme(true),
-            C::LightTheme => self.set_theme(false),
+            C::DarkTheme => self.select_builtin_theme(true),
+            C::LightTheme => self.select_builtin_theme(false),
             C::RecentPath(index) => self.open_recent_workspace(index),
             C::SwitchProfile(index) => {
                 if let Ok(profiles) = self.user_profiles() {

@@ -139,7 +139,7 @@ pub(super) fn resolve_theme_colors(
     Ok(colors)
 }
 
-fn collect_theme_files(dir: &Path, files: &mut Vec<PathBuf>) {
+pub(super) fn collect_theme_files(dir: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };

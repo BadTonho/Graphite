@@ -335,7 +335,9 @@ struct App {
     /// Pages of extension webview views hosted over the side bar, by webview handle.
     sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
     /// Gutter icon images of decorations by file; `None` for a file that could not be read.
-    decoration_icons: std::cell::RefCell<std::collections::HashMap<PathBuf, Option<std::sync::Arc<graphite_render::Image>>>>,
+    decoration_icons: std::cell::RefCell<
+        std::collections::HashMap<PathBuf, Option<std::sync::Arc<graphite_render::Image>>>,
+    >,
     /// Grammars contributed by extensions, for the files tree-sitter does not cover.
     textmate: Option<app::textmate::TextMate>,
     /// Pages of extension custom editors hosted over editor groups, by webview handle.
@@ -468,6 +470,7 @@ impl App {
                 config::load_high_contrast_from(&profile_root),
                 Ordering::Relaxed,
             );
+            config::install_bundled_themes(&profile_root);
             match config::imported_theme_colors_in(&profile_root, &root, &translator) {
                 Ok(colors) => Theme::set_imported_colors(colors),
                 Err(error) => settings_error = Some(error),

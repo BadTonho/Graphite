@@ -138,6 +138,7 @@ fn import_entries(
 ) {
     let mut seen = HashSet::new();
     let mut catalog = Map::new();
+    let mut labels: Vec<String> = Vec::new();
     for (id, label, relative) in entries {
         let source = root.join(relative);
         let path = match fs::canonicalize(&source) {
@@ -167,12 +168,18 @@ fn import_entries(
         for name in [id, label].into_iter().flatten() {
             catalog.insert((*name).to_owned(), Value::String(relative.clone()));
         }
+        // The label is what the Themes menu shows; the id is only an alias.
+        if let Some(name) = label.or(*id) {
+            if !labels.iter().any(|known| known == name) {
+                labels.push(name.to_owned());
+            }
+        }
     }
     if !catalog.is_empty() {
         let result = fs::create_dir_all(destination).and_then(|_| {
             fs::write(
                 destination.join(".graphite-theme-catalog.json"),
-                serde_json::json!({"graphiteThemes":catalog}).to_string(),
+                serde_json::json!({"graphiteThemes":catalog,"graphiteThemeLabels":labels}).to_string(),
             )
         });
         if let Err(error) = result {

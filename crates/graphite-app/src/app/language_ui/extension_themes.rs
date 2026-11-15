@@ -103,9 +103,37 @@ impl App {
         self.sync_icon_theme();
     }
 
+    /// Chooses the built-in Dark or Light palette and clears any selected color theme.
+    pub(crate) fn select_builtin_theme(&mut self, dark: bool) {
+        if let Err(error) = config::set_color_theme(&self.profile_root, None) {
+            self.status = error;
+        }
+        self.set_theme(dark);
+        self.apply_selected_theme();
+    }
+
+    /// Selects an installed color theme by name, matching its brightness for unthemed colors.
+    pub(crate) fn select_color_theme(&mut self, name: &str) {
+        let Some(theme) = config::list_color_themes(&self.profile_root)
+            .into_iter()
+            .find(|theme| theme.name == name)
+        else {
+            self.status = self
+                .translator
+                .format("config.theme.not_found", &[("name", &name)]);
+            return;
+        };
+        if let Err(error) = config::set_color_theme(&self.profile_root, Some(name)) {
+            self.status = error;
+            return;
+        }
+        self.set_theme(theme.dark);
+        self.apply_selected_theme();
+    }
+
     /// Resolves `workbench.colorTheme` again after the available themes changed. A selection
     /// that is not available (yet) leaves the current colors alone.
-    fn apply_selected_theme(&mut self) {
+    pub(crate) fn apply_selected_theme(&mut self) {
         let workspace = self.tree.root().to_path_buf();
         if let Ok(colors) =
             config::imported_theme_colors_in(&self.profile_root, &workspace, &self.translator)

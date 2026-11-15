@@ -1,3 +1,4 @@
+mod color_themes;
 mod import;
 mod import_themes;
 mod language;
@@ -22,6 +23,9 @@ pub use settings::{
     editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
     workspace_configuration_in,
 };
+pub(crate) use color_themes::{
+    install_bundled_themes, list_color_themes, selected_color_theme, set_color_theme, ColorTheme,
+};
 pub(crate) use settings_edit::set_user_setting;
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
 pub(crate) use sidebar_layout::{
@@ -29,7 +33,6 @@ pub(crate) use sidebar_layout::{
     ActivityBarPreferences, ActivityBarSize, LayoutDensity,
 };
 pub(crate) use sidebar_layout::{load_sidebar_width, save_sidebar_width};
-pub(crate) use view_layout::NotificationPosition;
 pub(crate) use sidebar_layout::{
     DEFAULT_WIDTH as DEFAULT_SIDEBAR_WIDTH, MAX_PERSISTED_WIDTH as MAX_PERSISTED_SIDEBAR_WIDTH,
     MIN_WIDTH as MIN_SIDEBAR_WIDTH,
@@ -38,6 +41,7 @@ pub(crate) use sidebar_layout::{
 use snippets::expand_snippet;
 pub(crate) use snippets::parse_snippet_file;
 pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
+pub(crate) use view_layout::NotificationPosition;
 
 /// Imports the themes a VSIX contributes (`contributes.themes`) from its extracted `package`
 /// folder into `destination`, where `workbench.colorTheme` can select them by label or id.
@@ -481,6 +485,52 @@ mod tests {
             colors.get("editor.foreground").map(String::as_str),
             Some("#eeeeee")
         );
+    }
+
+    #[test]
+    fn bundled_graphite_simple_theme_imports_and_resolves_the_dark_palette() {
+        let bundled =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/themes/graphite-simple");
+        let temp = crate::test_support::TempDir::new();
+        let source = temp.path().join("user");
+        let target = temp.path().join("imported");
+        let extensions = temp.path().join("extensions");
+        let package = extensions.join("graphite.graphite-simple");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(package.join("themes")).unwrap();
+        fs::write(
+            source.join("settings.json"),
+            r#"{"workbench.colorTheme":"Graphite Simple"}"#,
+        )
+        .unwrap();
+        for file in ["package.json", "themes/graphite-simple-color-theme.json"] {
+            fs::copy(bundled.join(file), package.join(file)).unwrap();
+        }
+        let report = import_from_with(
+            &source,
+            &target,
+            Some(&extensions),
+            |_| {},
+            &Translator::english(),
+        );
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let settings = serde_json::json!({"workbench.colorTheme":"Graphite Simple"});
+        let colors =
+            themes::resolve_theme_colors(&settings, &target.join("themes"), &Translator::english())
+                .unwrap();
+        let expected = [
+            ("editor.background", "#1e1e1e"),
+            ("editor.foreground", "#d4d4d4"),
+            ("sideBar.background", "#252526"),
+            ("activityBar.background", "#333333"),
+            ("statusBar.background", "#007acc"),
+            ("syntax.keyword", "#569cd6"),
+            ("syntax.string", "#ce9178"),
+            ("syntax.comment", "#6a9955"),
+        ];
+        for (key, value) in expected {
+            assert_eq!(colors.get(key).map(String::as_str), Some(value), "{key}");
+        }
     }
 
     #[test]
