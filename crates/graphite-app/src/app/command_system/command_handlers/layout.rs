@@ -52,6 +52,46 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         toggle_secondary_sidebar,
     );
+    add(
+        registry,
+        "workbench.action.increaseViewSize",
+        "Increase current view size",
+        "View",
+        ALL,
+        "true",
+        None,
+        increase_view_size,
+    );
+    add(
+        registry,
+        "workbench.action.decreaseViewSize",
+        "Decrease current view size",
+        "View",
+        ALL,
+        "true",
+        None,
+        decrease_view_size,
+    );
+    add(
+        registry,
+        "workbench.action.resetViewLocations",
+        "Reset view locations",
+        "View",
+        ALL,
+        "true",
+        None,
+        reset_view_locations,
+    );
+    add(
+        registry,
+        "notifications.togglePosition",
+        "Toggle notifications position",
+        "Notifications",
+        ALL,
+        "true",
+        None,
+        toggle_notifications_position,
+    );
 }
 
 fn customize_layout(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
@@ -93,6 +133,51 @@ fn toggle_secondary_sidebar(
 ) -> Result<(), CommandError> {
     app.view_preferences.secondary_sidebar_visible =
         !app.view_preferences.secondary_sidebar_visible;
+    app.save_view_preferences_for_command();
+    Ok(())
+}
+
+fn adjust_view_size(app: &mut App, step: i16) {
+    if app.terminal_focused {
+        app.view_preferences.panel_height_delta =
+            (app.view_preferences.panel_height_delta + step).clamp(-160, 320);
+    } else {
+        app.view_preferences.sidebar_width_delta =
+            (app.view_preferences.sidebar_width_delta + step).clamp(-160, 320);
+    }
+    app.save_view_preferences_for_command();
+}
+
+fn increase_view_size(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    adjust_view_size(app, 24);
+    Ok(())
+}
+
+fn decrease_view_size(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    adjust_view_size(app, -24);
+    Ok(())
+}
+
+fn reset_view_locations(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.view_preferences.sidebar_width_delta = 0;
+    app.view_preferences.panel_height_delta = 0;
+    app.view_preferences.panel_position = crate::config::PanelPosition::Bottom;
+    app.view_preferences.notifications_position = crate::config::NotificationPosition::BottomRight;
+    app.save_view_preferences_for_command();
+    Ok(())
+}
+
+fn toggle_notifications_position(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    use crate::config::NotificationPosition;
+    app.view_preferences.notifications_position = match app.view_preferences.notifications_position
+    {
+        NotificationPosition::BottomRight => NotificationPosition::BottomLeft,
+        NotificationPosition::BottomLeft => NotificationPosition::TopRight,
+        NotificationPosition::TopRight => NotificationPosition::BottomRight,
+    };
     app.save_view_preferences_for_command();
     Ok(())
 }

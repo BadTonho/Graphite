@@ -67,9 +67,9 @@ Items that were left out because they depend on something the application does n
 
 **Workbench shell**
 - Keyboard focus for the activity bar (`workbench.action.focusActivityBar`) and status bar (`workbench.action.focusStatusBar`) is implemented; banner and panel sub-views remain.
-- Moving and resizing views, and the notifications position.
+- Moving and resizing views (`workbench.action.increaseViewSize`, `decreaseViewSize`, `resetViewLocations`) and notifications position (`notifications.togglePosition`) are implemented.
 - Navigable breadcrumbs (`breadcrumbs.focusAndSelect` opens symbol navigation; per-segment stepping remains).
-- List commands for search results, the source control list and other lists; type to find; multi-selection.
+- List commands (`list.selectAll`, `list.clear`, `list.expandSelectionDown`, `list.expandSelectionUp`, `list.toggleFilterOnType`, `list.find`) are implemented for explorer lists; search/SCM list parity remains.
 
 **Daily tools**
 - Output channels, compound logs (`workbench.output.action.clearOutput` is implemented).

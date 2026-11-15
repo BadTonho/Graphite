@@ -27,6 +27,15 @@ pub(crate) enum MultiCursorModifier {
     Alt,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum NotificationPosition {
+    #[default]
+    BottomRight,
+    BottomLeft,
+    TopRight,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub(crate) struct ViewLayoutPreferences {
@@ -48,6 +57,9 @@ pub(crate) struct ViewLayoutPreferences {
     pub zoom_percent: u16,
     pub multi_cursor_modifier: MultiCursorModifier,
     pub column_selection_mode: bool,
+    pub notifications_position: NotificationPosition,
+    pub sidebar_width_delta: i16,
+    pub panel_height_delta: i16,
 }
 
 impl Default for ViewLayoutPreferences {
@@ -71,6 +83,9 @@ impl Default for ViewLayoutPreferences {
             zoom_percent: 100,
             multi_cursor_modifier: MultiCursorModifier::Control,
             column_selection_mode: false,
+            notifications_position: NotificationPosition::BottomRight,
+            sidebar_width_delta: 0,
+            panel_height_delta: 0,
         }
     }
 }
@@ -78,6 +93,8 @@ impl Default for ViewLayoutPreferences {
 impl ViewLayoutPreferences {
     pub(crate) fn normalize(&mut self) {
         self.zoom_percent = self.zoom_percent.clamp(50, 200);
+        self.sidebar_width_delta = self.sidebar_width_delta.clamp(-160, 320);
+        self.panel_height_delta = self.panel_height_delta.clamp(-160, 320);
     }
 }
 

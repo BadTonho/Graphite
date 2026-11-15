@@ -113,6 +113,9 @@ struct App {
     explorer_clipboard: Option<(PathBuf, bool)>,
     /// Whether the explorer, rather than the editor, has keyboard focus.
     explorer_focused: bool,
+    explorer_multi_selected: std::collections::BTreeSet<PathBuf>,
+    explorer_type_filter: String,
+    explorer_filter_on_type: bool,
     /// Whether the activity bar has keyboard focus.
     activity_bar_focused: bool,
     /// Whether the status bar has keyboard focus.
@@ -637,6 +640,9 @@ impl App {
             explorer_selected: None,
             explorer_clipboard: None,
             explorer_focused: false,
+            explorer_multi_selected: std::collections::BTreeSet::new(),
+            explorer_type_filter: String::new(),
+            explorer_filter_on_type: false,
             activity_bar_focused: false,
             status_bar_focused: false,
             explorer_scroll: 0,

@@ -29,6 +29,7 @@ pub(crate) use sidebar_layout::{
     ActivityBarPreferences, ActivityBarSize, LayoutDensity,
 };
 pub(crate) use sidebar_layout::{load_sidebar_width, save_sidebar_width};
+pub(crate) use view_layout::NotificationPosition;
 pub(crate) use sidebar_layout::{
     DEFAULT_WIDTH as DEFAULT_SIDEBAR_WIDTH, MAX_PERSISTED_WIDTH as MAX_PERSISTED_SIDEBAR_WIDTH,
     MIN_WIDTH as MIN_SIDEBAR_WIDTH,

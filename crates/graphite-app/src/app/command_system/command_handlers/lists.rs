@@ -108,8 +108,47 @@ fn list_18(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn list_select_all(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_select_all();
+    Ok(())
+}
+
+fn list_clear(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_clear_selection();
+    Ok(())
+}
+
+fn list_expand_selection_down(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_expand_selection(true);
+    Ok(())
+}
+
+fn list_expand_selection_up(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_expand_selection(false);
+    Ok(())
+}
+
+fn list_toggle_filter_on_type(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.explorer_filter_on_type = !app.explorer_filter_on_type;
+    Ok(())
+}
+
+fn list_find(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if let Some(query) = invocation
+        .request
+        .arguments
+        .get(0)
+        .and_then(|v| v.as_str())
+    {
+        app.explorer_type_find(query);
+    } else {
+        app.explorer_filter_on_type = true;
+    }
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 19] = [
+    let commands: [(&'static str, &'static str, Handler); 25] = [
         ("list.focusUp", "Focus previous item", list_0),
         ("list.focusDown", "Focus next item", list_1),
         ("list.focusAnyUp", "Focus previous item (any list)", list_2),
@@ -133,6 +172,24 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
         ("list.scrollUp", "Scroll up", list_17),
         ("list.scrollDown", "Scroll down", list_18),
+        ("list.selectAll", "Select all items", list_select_all),
+        ("list.clear", "Clear list selection", list_clear),
+        (
+            "list.expandSelectionDown",
+            "Expand selection down",
+            list_expand_selection_down,
+        ),
+        (
+            "list.expandSelectionUp",
+            "Expand selection up",
+            list_expand_selection_up,
+        ),
+        (
+            "list.toggleFilterOnType",
+            "Toggle filter on type",
+            list_toggle_filter_on_type,
+        ),
+        ("list.find", "Find in list", list_find),
     ];
     for (id, title, handler) in commands {
         add(registry, id, title, "List", ALL, "true", None, handler);

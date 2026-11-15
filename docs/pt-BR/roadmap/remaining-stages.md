@@ -67,9 +67,9 @@ Itens que ficaram de fora porque dependem de algo que o aplicativo ainda não te
 
 **Shell do workbench**
 - Foco de teclado para a barra de atividades (`workbench.action.focusActivityBar`) e barra de status (`workbench.action.focusStatusBar`) já está implementado; banner e sub-vistas do painel seguem pendentes.
-- Mover e redimensionar vistas, e a posição das notificações.
+- Mover e redimensionar vistas (`workbench.action.increaseViewSize`, `decreaseViewSize`, `resetViewLocations`) e posição das notificações (`notifications.togglePosition`) já estão implementados.
 - Breadcrumbs navegáveis (`breadcrumbs.focusAndSelect` abre a navegação de símbolos; navegação por segmento individual segue pendente).
-- Comandos de lista para resultados de busca, a lista do controle de código-fonte e as outras listas; busca por digitação; seleção múltipla.
+- Comandos de lista (`list.selectAll`, `list.clear`, `list.expandSelectionDown`, `list.expandSelectionUp`, `list.toggleFilterOnType`, `list.find`) já estão implementados para a árvore do explorador; paridade completa nas listas de busca e SCM segue pendente.
 
 **Ferramentas do dia a dia**
 - Canais de saída, logs compostos (`workbench.output.action.clearOutput` já está implementado).
