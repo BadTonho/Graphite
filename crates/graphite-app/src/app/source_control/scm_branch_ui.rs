@@ -21,6 +21,20 @@ pub(crate) enum BranchPickerAction {
     Delete,
     /// Delete the local branch even if it is not fully merged.
     DeleteForce,
+    /// Delete a branch on its remote.
+    DeleteRemoteBranch,
+    /// Delete a tag.
+    DeleteTag,
+    /// Create a branch starting at the chosen branch, remote branch or tag.
+    CreateBranchFrom,
+    /// Apply a stash entry and keep it.
+    StashApply,
+    /// Apply a stash entry and remove it.
+    StashPop,
+    /// Remove a stash entry.
+    StashDrop,
+    /// Remove a remote.
+    RemoveRemote,
 }
 
 impl BranchPickerAction {
@@ -33,6 +47,13 @@ impl BranchPickerAction {
             Self::RebaseInteractive => "scm.branch.prompt_rebase_interactive",
             Self::Delete => "scm.branch.prompt_delete",
             Self::DeleteForce => "scm.branch.prompt_delete_force",
+            Self::DeleteRemoteBranch => "scm.branch.prompt_delete_remote",
+            Self::DeleteTag => "scm.branch.prompt_delete_tag",
+            Self::CreateBranchFrom => "scm.branch.prompt_create_from",
+            Self::StashApply => "scm.branch.prompt_stash_apply",
+            Self::StashPop => "scm.branch.prompt_stash_pop",
+            Self::StashDrop => "scm.branch.prompt_stash_drop",
+            Self::RemoveRemote => "scm.branch.prompt_remove_remote",
         }
     }
 }
@@ -59,6 +80,12 @@ pub(crate) enum NameTarget {
     TagHead,
     /// The new name of the checked out branch.
     RenameBranch,
+    /// A new branch starting at this branch, remote branch or tag.
+    BranchFrom(String),
+    /// The URL of a remote to add; the name is asked next.
+    RemoteUrl,
+    /// The name of the remote with this URL.
+    RemoteName(String),
 }
 
 /// The branch or tag name being typed.
@@ -97,16 +124,44 @@ impl App {
                 entries.extend(snapshot.remote_branches.iter().cloned());
                 entries
             }
+            BranchPickerAction::DeleteRemoteBranch => snapshot.remote_branches.clone(),
+            BranchPickerAction::CreateBranchFrom => {
+                let mut entries = snapshot.branches.clone();
+                entries.extend(snapshot.remote_branches.iter().cloned());
+                entries.extend(self.branch_picker_items.iter().cloned());
+                entries
+            }
+            BranchPickerAction::DeleteTag
+            | BranchPickerAction::StashApply
+            | BranchPickerAction::StashPop
+            | BranchPickerAction::StashDrop
+            | BranchPickerAction::RemoveRemote => self.branch_picker_items.clone(),
         }
     }
 
     /// Opens the branch picker for `action`.
     pub(crate) fn open_branch_picker_for(&mut self, action: BranchPickerAction) {
+        let root = self.scm_workspace_root();
+        // Tags, stashes and remotes are not part of the snapshot; read them when the list opens.
+        self.branch_picker_items = match action {
+            BranchPickerAction::DeleteTag | BranchPickerAction::CreateBranchFrom => {
+                crate::scm_refs::tags(&root)
+            }
+            BranchPickerAction::StashApply
+            | BranchPickerAction::StashPop
+            | BranchPickerAction::StashDrop => crate::scm_refs::stashes(&root),
+            BranchPickerAction::RemoveRemote => crate::scm_refs::remotes(&root),
+            _ => Vec::new(),
+        };
         self.open_branch_picker();
         self.branch_picker_action = action;
         // The list is not the plain branch list any more, so start from its top.
         if action != BranchPickerAction::Checkout {
             self.branch_selected = 0;
+        }
+        if self.branch_picker_entries().is_empty() {
+            self.close_branch_picker();
+            self.status = self.t("scm.picker.nothing_to_choose").into();
         }
     }
 
@@ -127,7 +182,7 @@ impl App {
                 self.begin_interactive_rebase(branch);
             }
             _ => {
-                let Some(branch) = self
+                let Some(entry) = self
                     .branch_picker_entries()
                     .get(self.branch_selected)
                     .cloned()
@@ -136,12 +191,33 @@ impl App {
                 };
                 self.branch_picker = false;
                 self.branch_picker_action = BranchPickerAction::Checkout;
-                self.run_scm_remote(match action {
-                    BranchPickerAction::Merge => RemoteOp::Merge(branch),
-                    BranchPickerAction::Rebase => RemoteOp::Rebase(branch),
-                    BranchPickerAction::Delete => RemoteOp::DeleteBranch(branch, false),
-                    _ => RemoteOp::DeleteBranch(branch, true),
-                });
+                self.branch_picker_items.clear();
+                let operation = match action {
+                    BranchPickerAction::Merge => RemoteOp::Merge(entry),
+                    BranchPickerAction::Rebase => RemoteOp::Rebase(entry),
+                    BranchPickerAction::Delete => RemoteOp::DeleteBranch(entry, false),
+                    BranchPickerAction::DeleteForce => RemoteOp::DeleteBranch(entry, true),
+                    BranchPickerAction::DeleteRemoteBranch => RemoteOp::DeleteRemoteBranch(entry),
+                    BranchPickerAction::DeleteTag => RemoteOp::DeleteTag(entry),
+                    BranchPickerAction::StashApply => {
+                        RemoteOp::StashApply(crate::scm_refs::stash_ref(&entry).to_owned())
+                    }
+                    BranchPickerAction::StashPop => {
+                        RemoteOp::StashPop(crate::scm_refs::stash_ref(&entry).to_owned())
+                    }
+                    BranchPickerAction::StashDrop => {
+                        RemoteOp::StashDrop(crate::scm_refs::stash_ref(&entry).to_owned())
+                    }
+                    BranchPickerAction::RemoveRemote => RemoteOp::RemoveRemote(entry),
+                    BranchPickerAction::CreateBranchFrom => {
+                        self.open_name_prompt(NameTarget::BranchFrom(entry));
+                        return;
+                    }
+                    BranchPickerAction::Checkout | BranchPickerAction::RebaseInteractive => {
+                        return;
+                    }
+                };
+                self.run_scm_remote(operation);
             }
         }
     }
@@ -150,6 +226,7 @@ impl App {
     pub(crate) fn close_branch_picker(&mut self) {
         self.branch_picker = false;
         self.branch_picker_action = BranchPickerAction::Checkout;
+        self.branch_picker_items.clear();
     }
 
     /// Writes the plan of an interactive rebase onto `onto` to a file in the profile and opens it
@@ -253,7 +330,18 @@ impl App {
                     self.status = self.t("scm.prompt.branch_empty").into();
                 } else {
                     self.branch_name_prompt = None;
+                    if target == NameTarget::RemoteUrl {
+                        // The URL is only half of a remote: ask for its name next.
+                        self.branch_name_prompt = Some(BranchNamePrompt {
+                            value: "origin".into(),
+                            target: NameTarget::RemoteName(name),
+                        });
+                        return true;
+                    }
                     self.run_scm_remote(match target {
+                        NameTarget::BranchFrom(start) => RemoteOp::CreateBranchFrom(name, start),
+                        NameTarget::RemoteUrl => return true,
+                        NameTarget::RemoteName(url) => RemoteOp::AddRemote(name, url),
                         NameTarget::Branch => RemoteOp::CreateBranch(name),
                         NameTarget::BranchAt(hash) => RemoteOp::CreateBranchAt(name, hash),
                         NameTarget::TagAt(hash) => RemoteOp::CreateTag(name, hash),
@@ -324,6 +412,8 @@ impl App {
         let title = match prompt.target {
             NameTarget::TagAt(_) | NameTarget::TagHead => "scm.prompt.new_tag",
             NameTarget::RenameBranch => "scm.prompt.rename_branch",
+            NameTarget::RemoteUrl => "scm.prompt.remote_url",
+            NameTarget::RemoteName(_) => "scm.prompt.remote_name",
             _ => "scm.prompt.new_branch",
         };
         renderer.draw_text(self.t(title), x + 16.0, y + 18.0, text);
@@ -616,9 +706,113 @@ mod tests {
     }
 
     #[test]
+    fn the_new_pickers_list_what_they_act_on_and_have_headings_in_both_languages() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.branch_picker_items = vec!["v1".into(), "v2".into()];
+        app.branch_picker_action = BranchPickerAction::DeleteTag;
+        assert_eq!(app.branch_picker_entries(), ["v1", "v2"]);
+        app.branch_picker_action = BranchPickerAction::StashDrop;
+        assert_eq!(app.branch_picker_entries(), ["v1", "v2"]);
+        app.branch_picker_action = BranchPickerAction::DeleteRemoteBranch;
+        assert_eq!(app.branch_picker_entries(), ["origin/main", "origin/topic"]);
+        app.branch_picker_action = BranchPickerAction::CreateBranchFrom;
+        assert_eq!(
+            app.branch_picker_entries(),
+            ["main", "topic", "origin/main", "origin/topic", "v1", "v2"],
+            "branches, remote branches and tags"
+        );
+
+        let english = graphite_i18n::Translator::english();
+        let pt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../locales/pt-BR/scm.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        for action in [
+            BranchPickerAction::DeleteRemoteBranch,
+            BranchPickerAction::DeleteTag,
+            BranchPickerAction::CreateBranchFrom,
+            BranchPickerAction::StashApply,
+            BranchPickerAction::StashPop,
+            BranchPickerAction::StashDrop,
+            BranchPickerAction::RemoveRemote,
+        ] {
+            assert!(english.has(action.prompt_key()), "{action:?}");
+            assert!(pt.get(action.prompt_key()).is_some(), "{action:?} in pt-BR");
+        }
+    }
+
+    #[test]
+    fn an_empty_list_does_not_open_a_picker() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_branch_picker_for(BranchPickerAction::DeleteTag);
+        assert!(!app.branch_picker);
+        assert_eq!(app.status, app.t("scm.picker.nothing_to_choose"));
+        assert_eq!(app.branch_picker_action, BranchPickerAction::Checkout);
+    }
+
+    #[test]
+    fn choosing_in_a_picker_starts_the_matching_operation_or_asks_for_a_name() {
+        let dir = TempDir::new();
+        let mut app = app_with_remote_branches(&dir);
+        app.branch_picker_items = vec!["stash@{0}: On main: wip".into()];
+        for action in [
+            BranchPickerAction::StashPop,
+            BranchPickerAction::DeleteRemoteBranch,
+        ] {
+            app.branch_picker = true;
+            app.branch_picker_action = action;
+            app.branch_selected = 0;
+            app.status.clear();
+            app.confirm_branch_picker();
+            assert!(!app.branch_picker, "{action:?} closes the picker");
+            // With no event loop the operation stops at this message, which shows it started.
+            assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{action:?}");
+        }
+
+        app.branch_picker = true;
+        app.branch_picker_action = BranchPickerAction::CreateBranchFrom;
+        app.branch_selected = 1;
+        app.confirm_branch_picker();
+        assert_eq!(
+            app.branch_name_prompt.as_ref().unwrap().target,
+            NameTarget::BranchFrom("topic".into())
+        );
+    }
+
+    #[test]
+    fn adding_a_remote_asks_for_the_url_and_then_the_name() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_name_prompt(NameTarget::RemoteUrl);
+        app.handle_branch_name_prompt_key(
+            &Key::Character("u".into()),
+            Some("https://example.invalid/a.git"),
+        );
+        app.handle_branch_name_prompt_key(&Key::Named(NamedKey::Enter), None);
+        let next = app.branch_name_prompt.as_ref().expect("the name is asked next");
+        assert_eq!(
+            next.target,
+            NameTarget::RemoteName("https://example.invalid/a.git".into())
+        );
+        assert_eq!(next.value, "origin", "suggested");
+        app.status.clear();
+        app.handle_branch_name_prompt_key(&Key::Named(NamedKey::Enter), None);
+        assert!(app.branch_name_prompt.is_none());
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+    }
+
+    #[test]
     fn deleting_never_needs_saved_documents() {
         assert!(!RemoteOp::DeleteBranch("topic".into(), false).needs_saved_documents());
         assert!(!RemoteOp::DeleteBranch("topic".into(), true).needs_saved_documents());
+        assert!(RemoteOp::StashPop("stash@{0}".into()).needs_saved_documents());
+        assert!(!RemoteOp::DeleteTag("v1".into()).needs_saved_documents());
     }
 
     /// A workspace that is a git repository with `main` and a `work` branch of three commits.

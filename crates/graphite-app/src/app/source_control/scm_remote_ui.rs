@@ -19,6 +19,17 @@ pub(crate) enum RemoteOp {
     /// Remove the last commit and keep its changes staged.
     UndoLastCommit,
     RenameBranch(String),
+    DeleteTag(String),
+    /// Delete a branch on its remote (`origin/feature`).
+    DeleteRemoteBranch(String),
+    StashApply(String),
+    StashPop(String),
+    StashDrop(String),
+    StashDropAll,
+    AddRemote(String, String),
+    RemoveRemote(String),
+    /// Create a branch (name) at a branch, remote branch or tag (start) and switch to it.
+    CreateBranchFrom(String, String),
     /// Throw away the working tree changes of these files.
     Discard(Vec<crate::scm_discard::DiscardTarget>),
     /// Amend the last commit, with a new message when one is given.
@@ -54,6 +65,19 @@ impl RemoteOp {
             RemoteOp::StashApplyLatest => crate::scm_stash::apply_latest(root),
             RemoteOp::StashPopLatest => crate::scm_stash::pop_latest(root),
             RemoteOp::UndoLastCommit => branches::undo_last_commit(root),
+            RemoteOp::DeleteTag(name) => crate::scm_refs::delete_tag(root, name),
+            RemoteOp::DeleteRemoteBranch(name) => {
+                crate::scm_refs::delete_remote_branch(root, name)
+            }
+            RemoteOp::StashApply(entry) => crate::scm_refs::stash_apply(root, entry),
+            RemoteOp::StashPop(entry) => crate::scm_refs::stash_pop(root, entry),
+            RemoteOp::StashDrop(entry) => crate::scm_refs::stash_drop(root, entry),
+            RemoteOp::StashDropAll => crate::scm_refs::stash_drop_all(root),
+            RemoteOp::AddRemote(name, url) => crate::scm_refs::add_remote(root, name, url),
+            RemoteOp::RemoveRemote(name) => crate::scm_refs::remove_remote(root, name),
+            RemoteOp::CreateBranchFrom(name, start) => {
+                branches::create_branch_from(root, name, start)
+            }
             RemoteOp::Discard(targets) => crate::scm_discard::discard(root, targets),
             RemoteOp::RenameBranch(name) => branches::rename_branch(root, name),
             RemoteOp::Push => scm_remote::push(root),
@@ -88,6 +112,8 @@ impl RemoteOp {
                 | RemoteOp::ContinueOperation
                 | RemoteOp::PullRebase
                 | RemoteOp::Discard(_)
+                | RemoteOp::StashApply(_)
+                | RemoteOp::StashPop(_)
                 | RemoteOp::StashApplyLatest
                 | RemoteOp::StashPopLatest
                 | RemoteOp::CheckoutCommit(_)

@@ -17,7 +17,7 @@ use documents::{document, document_store, file_format};
 mod explorer;
 use explorer::{file_icons, file_nesting, icon_theme, tree};
 mod vcs;
-use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_commit, scm_discard, scm_ignore, scm_remote, scm_stash};
+use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_commit, scm_discard, scm_ignore, scm_refs, scm_remote, scm_stash};
 mod language;
 use language::{json_schema, lsp, semantic_tokens};
 mod tooling;
@@ -292,6 +292,8 @@ struct App {
     branch_picker: bool,
     branch_selected: usize,
     branch_picker_action: app::scm_branch_ui::BranchPickerAction,
+    /// Tags, stash entries or remotes listed by the picker, which the snapshot does not hold.
+    branch_picker_items: Vec<String>,
     /// The plan of an interactive rebase that is open for editing.
     interactive_rebase: Option<app::scm_branch_ui::InteractiveRebase>,
     branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
@@ -848,6 +850,7 @@ impl App {
             branch_picker: false,
             branch_selected: 0,
             branch_picker_action: Default::default(),
+            branch_picker_items: Vec::new(),
             interactive_rebase: None,
             branch_name_prompt: None,
             scm_commit_message: String::new(),

@@ -142,6 +142,23 @@ pub(crate) fn create_branch_at(root: &Path, name: &str, hash: &str) -> Result<St
     Ok(format!("Switched to new branch '{name}'"))
 }
 
+/// Creates `name` at the branch, tag or remote branch `start` and switches to it.
+pub(crate) fn create_branch_from(root: &Path, name: &str, start: &str) -> Result<String, String> {
+    if !plain_ref(start) {
+        return Err(format!("'{start}' is not a valid starting point"));
+    }
+    let name = name.trim();
+    if !plain_ref(name) {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    let check = git(root, &["check-ref-format", "--branch", name], false)?;
+    if !check.success {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    run(root, &["switch", "-c", name, start, "--"], false)?;
+    Ok(format!("Switched to new branch '{name}'"))
+}
+
 /// Renames the checked out branch.
 pub(crate) fn rename_branch(root: &Path, name: &str) -> Result<String, String> {
     let name = name.trim();
@@ -552,6 +569,27 @@ mod tests {
         revert_commit(root, &sh(root, &["rev-parse", "HEAD"])).unwrap();
         assert!(head_message(root).starts_with("Revert"));
         assert!(!root.join("extra.txt").exists());
+    }
+
+    #[test]
+    fn a_branch_can_start_at_a_branch_a_tag_or_a_remote_ref() {
+        let dir = repository();
+        let root = dir.path();
+        let base = sh(root, &["rev-parse", "HEAD"]);
+        sh(root, &["tag", "v1"]);
+        write(root, "more.txt", "more\n");
+        commit(root, "more");
+        create_branch_from(root, "from-tag", "v1").unwrap();
+        assert_eq!(current_branch(root), "from-tag");
+        assert_eq!(sh(root, &["rev-parse", "HEAD"]), base);
+        create_branch_from(root, "from-main", "main").unwrap();
+        assert_eq!(current_branch(root), "from-main");
+        assert_ne!(sh(root, &["rev-parse", "HEAD"]), base);
+
+        assert!(create_branch_from(root, "x", "--all").is_err());
+        assert!(create_branch_from(root, "x", "no-such-ref").is_err());
+        assert!(create_branch_from(root, "bad name", "main").is_err());
+        assert!(create_branch_from(root, "from-tag", "main").is_err(), "the name exists");
     }
 
     #[test]

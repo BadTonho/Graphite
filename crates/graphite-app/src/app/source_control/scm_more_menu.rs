@@ -40,6 +40,15 @@ pub(crate) enum MoreCommand {
     RenameBranch,
     DeleteBranch,
     DeleteBranchForce,
+    CreateBranchFrom,
+    DeleteRemoteBranch,
+    StashApplyPick,
+    StashPopPick,
+    StashDropPick,
+    StashDropAll,
+    DeleteTag,
+    AddRemote,
+    RemoveRemote,
     Stash,
     StashUntracked,
     StashStaged,
@@ -236,9 +245,11 @@ pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
                 N::leaf("scm.more.rebase", C::Rebase),
                 N::Separator,
                 N::leaf("scm.more.create_branch", C::CreateBranch),
+                N::leaf("scm.more.create_branch_from", C::CreateBranchFrom),
                 N::leaf("scm.more.rename_branch", C::RenameBranch),
                 N::leaf("scm.more.delete_branch", C::DeleteBranch),
                 N::leaf("scm.more.delete_branch_force", C::DeleteBranchForce),
+                N::leaf("scm.more.delete_remote_branch", C::DeleteRemoteBranch),
             ],
         ),
         N::submenu(
@@ -250,11 +261,27 @@ pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
                 N::Separator,
                 N::leaf("scm.more.stash_apply_latest", C::StashApplyLatest),
                 N::leaf("scm.more.stash_pop_latest", C::StashPopLatest),
+                N::Separator,
+                N::leaf("scm.more.stash_apply", C::StashApplyPick),
+                N::leaf("scm.more.stash_pop", C::StashPopPick),
+                N::Separator,
+                N::leaf("scm.more.stash_drop", C::StashDropPick),
+                N::leaf("scm.more.stash_drop_all", C::StashDropAll),
             ],
         ),
         N::submenu(
             "scm.more.tags",
-            vec![N::leaf("scm.more.create_tag", C::CreateTag)],
+            vec![
+                N::leaf("scm.more.create_tag", C::CreateTag),
+                N::leaf("scm.more.delete_tag", C::DeleteTag),
+            ],
+        ),
+        N::submenu(
+            "scm.more.remote",
+            vec![
+                N::leaf("scm.more.add_remote", C::AddRemote),
+                N::leaf("scm.more.remove_remote", C::RemoveRemote),
+            ],
         ),
     ]
 }
@@ -805,6 +832,17 @@ impl App {
             C::RenameBranch => self.open_name_prompt(NameTarget::RenameBranch),
             C::DeleteBranch => self.open_branch_picker_for(BranchPickerAction::Delete),
             C::DeleteBranchForce => self.open_branch_picker_for(BranchPickerAction::DeleteForce),
+            C::CreateBranchFrom => self.open_branch_picker_for(BranchPickerAction::CreateBranchFrom),
+            C::DeleteRemoteBranch => {
+                self.open_branch_picker_for(BranchPickerAction::DeleteRemoteBranch)
+            }
+            C::StashApplyPick => self.open_branch_picker_for(BranchPickerAction::StashApply),
+            C::StashPopPick => self.open_branch_picker_for(BranchPickerAction::StashPop),
+            C::StashDropPick => self.open_branch_picker_for(BranchPickerAction::StashDrop),
+            C::StashDropAll => self.confirm_drop_all_stashes(),
+            C::DeleteTag => self.open_branch_picker_for(BranchPickerAction::DeleteTag),
+            C::AddRemote => self.open_name_prompt(NameTarget::RemoteUrl),
+            C::RemoveRemote => self.open_branch_picker_for(BranchPickerAction::RemoveRemote),
             C::Stash => self.run_scm_remote(RemoteOp::StashWith(StashMode::Tracked)),
             C::StashUntracked => {
                 self.run_scm_remote(RemoteOp::StashWith(StashMode::WithUntracked))
@@ -1021,7 +1059,7 @@ mod tests {
         // Up from the first row wraps to the last one.
         let mut menu = self::menu(&tree);
         menu.step(&tree, false);
-        assert_eq!(menu.selected[0], index_of(&tree, "scm.more.tags"));
+        assert_eq!(menu.selected[0], index_of(&tree, "scm.more.remote"));
         assert_eq!(menu.activate(&tree), None, "Enter on a group opens it");
         assert_eq!(menu.open.len(), 1);
     }
@@ -1044,6 +1082,9 @@ mod tests {
     fn commands_open_pickers_and_prompts_or_start_the_operation() {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        // The pickers need something to list.
+        app.scm_snapshot.branch = Some("main".into());
+        app.scm_snapshot.branches = vec!["main".into(), "topic".into()];
         app.run_more_command(MoreCommand::Merge);
         assert_eq!(app.branch_picker_action, BranchPickerAction::Merge);
         app.close_branch_picker();

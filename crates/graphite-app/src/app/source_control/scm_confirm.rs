@@ -8,12 +8,16 @@ use crate::scm_discard::DiscardTarget;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ScmConfirmAction {
     Discard(Vec<DiscardTarget>),
+    DropAllStashes,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ScmConfirm {
     pub message: String,
     pub action: ScmConfirmAction,
+    /// Locale keys of the title and of the button that confirms.
+    pub title_key: &'static str,
+    pub confirm_key: &'static str,
 }
 
 type Rect = (f32, f32, f32, f32);
@@ -67,6 +71,18 @@ impl App {
         self.scm_confirm = Some(ScmConfirm {
             message,
             action: ScmConfirmAction::Discard(targets),
+            title_key: "scm.confirm.title",
+            confirm_key: "scm.confirm.discard",
+        });
+    }
+
+    /// Asks before removing every stash entry.
+    pub(crate) fn confirm_drop_all_stashes(&mut self) {
+        self.scm_confirm = Some(ScmConfirm {
+            message: self.t("scm.confirm.drop_stashes").into(),
+            action: ScmConfirmAction::DropAllStashes,
+            title_key: "scm.confirm.drop_stashes_title",
+            confirm_key: "scm.confirm.drop",
         });
     }
 
@@ -101,6 +117,7 @@ impl App {
         };
         match confirm.action {
             ScmConfirmAction::Discard(targets) => self.run_scm_remote(RemoteOp::Discard(targets)),
+            ScmConfirmAction::DropAllStashes => self.run_scm_remote(RemoteOp::StashDropAll),
         }
     }
 
@@ -149,7 +166,7 @@ impl App {
             (panel_height - 2.0).max(0.0),
             bg,
         );
-        renderer.draw_text(self.t("scm.confirm.title"), x + 16.0, y + 14.0, text);
+        renderer.draw_text(self.t(confirm.title_key), x + 16.0, y + 14.0, text);
         let clipped = Self::help_menu_visible_label(
             &confirm.message,
             cw,
@@ -165,7 +182,7 @@ impl App {
             renderer,
             accept,
             rgb(0xb42318),
-            self.t("scm.confirm.discard"),
+            self.t(confirm.confirm_key),
             rgb(0xffffff),
         );
         button(
@@ -239,6 +256,20 @@ mod tests {
         assert_ne!(tracked, untracked);
         app.confirm_discard(app.discard_all_targets());
         assert!(app.scm_confirm.clone().unwrap().message.contains('2'));
+    }
+
+    #[test]
+    fn dropping_every_stash_asks_first_and_names_its_own_action() {
+        let dir = TempDir::new();
+        let mut app = app(&dir);
+        app.confirm_drop_all_stashes();
+        let confirm = app.scm_confirm.clone().unwrap();
+        assert_eq!(confirm.action, ScmConfirmAction::DropAllStashes);
+        assert_ne!(confirm.title_key, "scm.confirm.title");
+        assert_eq!(confirm.message, app.t("scm.confirm.drop_stashes"));
+        app.status.clear();
+        app.handle_scm_confirm_key(&Key::Named(NamedKey::Enter));
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
 
     #[test]

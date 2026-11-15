@@ -39,9 +39,12 @@ The button opens a menu with submenus that open on hover or with the right arrow
 - **Commit** (above)
 - **Changes**: Stage All, Unstage All, **Discard All Changes** (asks first)
 - **Pull, Push**: Sync, Pull, Pull (Rebase), Push, Fetch
-- **Branch**: Merge, Rebase, Create, **Rename**, Delete, Delete (Force)
-- **Stash**: Stash, Stash (Include Untracked), Stash Staged, Apply Latest Stash, Pop Latest Stash
-- **Tags**: Create Tag (on HEAD)
+- **Branch**: Merge, Rebase, Create, **Create From...**, **Rename**, Delete, Delete (Force), **Delete Remote Branch...**
+- **Stash**: Stash, Stash (Include Untracked), Stash Staged, Apply Latest Stash, Pop Latest Stash, **Apply Stash...**, **Pop Stash...**, **Drop Stash...** and **Drop All Stashes** (asks first)
+- **Tags**: Create Tag (on HEAD), **Delete Tag...**
+- **Remote**: **Add Remote...** (asks for the URL, then the name, suggesting `origin`) and **Remove Remote...**
+
+Entries ending in `...` open a list to choose from (the same list as the branch picker): branches, remote branches, tags, stash entries or remotes. A list with nothing to choose from does not open and says so in the status bar. **Create From...** lists branches, remote branches and tags, then asks for the new branch name.
 
 The `Git:` commands are still listed in the command palette.
 
@@ -59,4 +62,4 @@ Commit ids passed to git are checked to be hexadecimal, and branch and tag names
 
 ## Limits
 
-No tooltips yet; the list is not shown as a tree; **Clone**, remotes management and applying a chosen (not the latest) stash are not available yet.
+No tooltips yet; the list is not shown as a tree; **Clone** is not available yet.

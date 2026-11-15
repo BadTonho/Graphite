@@ -39,9 +39,12 @@ O botão abre um menu com submenus que abrem ao passar o mouse ou com a seta par
 - **Commit** (acima)
 - **Alterações**: Preparar Todas, Remover Todas do Stage, **Descartar Todas as Alterações** (pergunta antes)
 - **Pull, Push**: Sincronizar, Pull, Pull (Rebase), Push, Fetch
-- **Branch**: Merge, Rebase, Criar, **Renomear**, Excluir, Excluir (Forçado)
-- **Stash**: Stash, Stash (Incluir Não Rastreados), Stash dos Preparados, Aplicar Último Stash, Aplicar e Remover Último Stash
-- **Tags**: Criar Tag (no HEAD)
+- **Branch**: Merge, Rebase, Criar, **Criar a Partir de...**, **Renomear**, Excluir, Excluir (Forçado), **Excluir Branch Remota...**
+- **Stash**: Stash, Stash (Incluir Não Rastreados), Stash dos Preparados, Aplicar Último Stash, Aplicar e Remover Último Stash, **Aplicar Stash...**, **Aplicar e Remover Stash...**, **Descartar Stash...** e **Descartar Todos os Stashes** (pergunta antes)
+- **Tags**: Criar Tag (no HEAD), **Excluir Tag...**
+- **Remoto**: **Adicionar Remoto...** (pede a URL e depois o nome, sugerindo `origin`) e **Remover Remoto...**
+
+As entradas terminadas em `...` abrem uma lista para escolher (a mesma lista do seletor de branch): branches, branches remotas, tags, entradas de stash ou remotos. Uma lista sem nada para escolher não abre e avisa na barra de status. **Criar a Partir de...** lista branches, branches remotas e tags e depois pede o nome da nova branch.
 
 Os comandos `Git:` continuam listados na paleta de comandos.
 
@@ -59,4 +62,4 @@ Os ids de commit passados ao git são conferidos como hexadecimais, e nomes de b
 
 ## Limites
 
-Ainda sem dicas (tooltips); a lista não aparece como árvore; **Clone**, gerenciamento de remotos e aplicar um stash escolhido (e não o último) ainda não existem.
+Ainda sem dicas (tooltips); a lista não aparece como árvore; **Clone** ainda não existe.
