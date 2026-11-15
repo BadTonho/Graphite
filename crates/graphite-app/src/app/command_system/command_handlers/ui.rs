@@ -480,7 +480,9 @@ fn window_cancel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
 }
 fn commit(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.scm_commit_prompt = false;
-    app.perform_scm_action(crate::app::scm_ui::ScmAction::Commit);
+    app.perform_scm_action(crate::app::scm_ui::ScmAction::Commit(
+        crate::scm_commit::CommitOptions::PLAIN,
+    ));
     Ok(())
 }
 fn stage_hunk(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

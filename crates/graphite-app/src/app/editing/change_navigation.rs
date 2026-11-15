@@ -93,7 +93,9 @@ impl App {
         }
         let message = self.scm_commit_message.trim().to_owned();
         self.record_scm_commit_history(&message);
-        self.perform_scm_action(super::scm_ui::ScmAction::Commit);
+        self.perform_scm_action(super::scm_ui::ScmAction::Commit(
+            crate::scm_commit::CommitOptions::PLAIN,
+        ));
     }
 
     pub(crate) fn scm_clear_input(&mut self) {

@@ -255,6 +255,15 @@ impl App {
                     self.scm_extension_input = None;
                     return;
                 }
+                if self.scm_primary_action() == ScmPrimaryAction::Commit
+                    && super::scm_ui::commit_arrow(layout.commit_button)
+                        .contains(local_x, local_y)
+                {
+                    let arrow = super::scm_ui::commit_arrow(layout.commit_button);
+                    let (anchor_x, anchor_y) = (mx - (local_x - arrow.x), my + (arrow.y + arrow.height - local_y));
+                    self.open_scm_commit_menu((anchor_x, anchor_y));
+                    return;
+                }
                 if layout.commit_button.contains(local_x, local_y) {
                     match self.scm_primary_action() {
                         ScmPrimaryAction::PublishRepository => {

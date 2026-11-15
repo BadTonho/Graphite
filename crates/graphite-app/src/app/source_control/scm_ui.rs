@@ -89,6 +89,15 @@ pub(crate) fn changes_header_buttons(action: ScmRect, cell_width: f32) -> (ScmRe
     (history, stash)
 }
 
+/// The arrow at the right end of the commit button.
+pub(crate) fn commit_arrow(commit_button: ScmRect) -> ScmRect {
+    ScmRect {
+        x: commit_button.x + commit_button.width - commit_button.height,
+        width: commit_button.height,
+        ..commit_button
+    }
+}
+
 /// The discard button of a file row, left of its stage button.
 pub(crate) fn discard_button(action: ScmRect, cell_width: f32) -> ScmRect {
     ScmRect {
@@ -878,20 +887,22 @@ impl App {
                 .filter(|file| file.staged)
                 .map(|file| file.path.clone())
                 .collect::<Vec<_>>(),
-            ScmAction::Commit if !self.scm_snapshot.files.iter().any(|file| file.staged) => self
-                .scm_snapshot
-                .files
-                .iter()
-                .filter(|file| file.unstaged || file.untracked)
-                .map(|file| file.path.clone())
-                .collect::<Vec<_>>(),
             _ => Vec::new(),
         };
-        let has_any_changes = !self.scm_snapshot.files.is_empty();
-        if matches!(action, ScmAction::Commit) {
-            self.scm_commit_pending = true;
-        }
-        let message = self.scm_commit_message.clone();
+        let commit_request = match action {
+            ScmAction::Commit(options) => match self.build_commit_request(options) {
+                Ok(request) => {
+                    self.scm_commit_pending = true;
+                    Some(request)
+                }
+                Err(error) => {
+                    self.status = error;
+                    self.fail_current_command(CommandError::Failed(self.status.clone()));
+                    return;
+                }
+            },
+            _ => None,
+        };
         let line = self.editor().cursor_line_col().0;
         self.status = self.t("scm.status.running").into();
         let translator = self.translator;
@@ -926,25 +937,10 @@ impl App {
                             crate::scm::unstage_file(&root, &path, &translator)
                                 .map(|_| translator.text("scm.status.file_unstaged").to_owned())
                         }),
-                    ScmAction::Commit => {
-                        if !has_any_changes {
-                            Err(translator.text("scm.error.nothing_to_commit").to_owned())
-                        } else {
-                            let staged = if batch_paths.is_empty() {
-                                Ok(())
-                            } else {
-                                crate::scm::stage_files(&root, &batch_paths, &translator)
-                            };
-                            staged.and_then(|()| {
-                                crate::scm::commit(&root, &message, &translator).map(|id| {
-                                    translator.format(
-                                        "scm.status.commit_created",
-                                        &[("id", &&id[..id.len().min(8)])],
-                                    )
-                                })
-                            })
-                        }
-                    }
+                    ScmAction::Commit(_) => commit_request
+                        .as_ref()
+                        .ok_or_else(|| translator.text("scm.error.nothing_to_commit").to_owned())
+                        .and_then(|request| crate::scm_commit::commit(&root, request)),
                     ScmAction::StageCursorLine => selected
                         .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
                         .and_then(|path| {
@@ -1477,6 +1473,24 @@ impl App {
             },
         );
         // The icon and the label are centered together as one group.
+        if primary == ScmPrimaryAction::Commit {
+            let arrow = commit_arrow(layout.commit_button);
+            renderer.draw_rect(
+                arrow.x,
+                arrow.y + row_h * 0.2,
+                1.0,
+                row_h * 0.6,
+                if commit_enabled { rgb(0x7fb4d8) } else { dim },
+            );
+            let size = (row_h * 0.65).round();
+            renderer.draw_icon(
+                crate::file_icons::CHEVRON_DOWN,
+                arrow.x + (arrow.width - size) * 0.5,
+                arrow.y + (arrow.height - size) * 0.5,
+                size,
+                if commit_enabled { rgb(0xffffff) } else { dim },
+            );
+        }
         let commit_label = match primary {
             ScmPrimaryAction::Commit => self.t("scm.sidebar.commit").to_owned(),
             ScmPrimaryAction::PublishRepository | ScmPrimaryAction::PublishBranch => {
@@ -2097,7 +2111,7 @@ pub(crate) enum ScmAction {
     Unstage,
     StageAll,
     UnstageAll,
-    Commit,
+    Commit(crate::scm_commit::CommitOptions),
     StageCursorLine,
     RevertCursorLine,
     StageHunk(usize),

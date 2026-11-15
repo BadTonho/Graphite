@@ -17,7 +17,7 @@ use documents::{document, document_store, file_format};
 mod explorer;
 use explorer::{file_icons, file_nesting, icon_theme, tree};
 mod vcs;
-use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_discard, scm_ignore, scm_remote, scm_stash};
+use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_commit, scm_discard, scm_ignore, scm_remote, scm_stash};
 mod language;
 use language::{json_schema, lsp, semantic_tokens};
 mod tooling;

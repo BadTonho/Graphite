@@ -144,6 +144,16 @@
   "scm.file.copy_relative_path": "Copiar Caminho Relativo",
   "scm.file.ignored": "Adicionado ao .gitignore",
   "scm.file.already_ignored": "Já está no .gitignore",
+  "scm.more.commit_push": "Commit e Push",
+  "scm.more.commit_sync": "Commit e Sincronizar",
+  "scm.more.commit_staged": "Commit dos Preparados",
+  "scm.more.commit_all": "Commit de Tudo",
+  "scm.more.commit_amend": "Commit (Amend)",
+  "scm.more.commit_staged_amend": "Commit dos Preparados (Amend)",
+  "scm.more.commit_all_amend": "Commit de Tudo (Amend)",
+  "scm.more.commit_signed": "Commit (Com Signed-off-by)",
+  "scm.more.commit_staged_signed": "Commit dos Preparados (Com Signed-off-by)",
+  "scm.more.commit_all_signed": "Commit de Tudo (Com Signed-off-by)",
   "scm.graph.title": "Grafo",
   "scm.welcome.intro": "A pasta aberta no momento não possui um repositório Git. Você pode inicializar um repositório para habilitar os recursos de controle de código com Git.",
   "scm.welcome.initialize": "Inicializar Repositório",
@@ -160,5 +170,6 @@
   "scm.publish.running": "Publicando repositório no GitHub...",
   "scm.publish.done": "Publicado no GitHub: {url}",
   "scm.publish.sign_in_required": "Faça login no GitHub primeiro para publicar este repositório",
+  "scm.error.nothing_staged": "Não há alterações preparadas (staged) para commit",
   "scm.error.nothing_to_commit": "Não há alterações para fazer commit"
 }

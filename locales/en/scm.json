@@ -135,6 +135,16 @@
   "scm.file.copy_relative_path": "Copy Relative Path",
   "scm.file.ignored": "Added to .gitignore",
   "scm.file.already_ignored": "Already in .gitignore",
+  "scm.more.commit_push": "Commit & Push",
+  "scm.more.commit_sync": "Commit & Sync",
+  "scm.more.commit_staged": "Commit Staged",
+  "scm.more.commit_all": "Commit All",
+  "scm.more.commit_amend": "Commit (Amend)",
+  "scm.more.commit_staged_amend": "Commit Staged (Amend)",
+  "scm.more.commit_all_amend": "Commit All (Amend)",
+  "scm.more.commit_signed": "Commit (Signed Off)",
+  "scm.more.commit_staged_signed": "Commit Staged (Signed Off)",
+  "scm.more.commit_all_signed": "Commit All (Signed Off)",
   "scm.graph.title": "Graph",
   "scm.prompt.new_tag": "New tag name:",
   "scm.graph.menu.checkout": "Checkout (Detached)",
@@ -160,5 +170,6 @@
   "scm.publish.running": "Publishing repository to GitHub...",
   "scm.publish.done": "Published to GitHub: {url}",
   "scm.publish.sign_in_required": "Sign in to GitHub first to publish this repository",
+  "scm.error.nothing_staged": "There are no staged changes to commit",
   "scm.error.nothing_to_commit": "There are no changes to commit"
 }

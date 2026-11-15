@@ -9,6 +9,7 @@ use super::scm_remote_ui::RemoteOp;
 use super::scm_ui::ScmAction;
 use super::*;
 use crate::app::explorer_context_menu::place_context_menu;
+use crate::scm_commit::{CommitOptions, CommitScope, PostCommit};
 use crate::scm_stash::StashMode;
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -20,6 +21,8 @@ const ARROW_ROOM: f32 = 34.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MoreCommand {
+    /// Commit with these options.
+    Commit(CommitOptions),
     Pull,
     PullRebase,
     Push,
@@ -59,6 +62,8 @@ pub(crate) enum MoreMenuKind {
     Actions,
     /// The file at this index of the snapshot, in the staged or the unstaged list.
     File { index: usize, staged: bool },
+    /// The arrow of the commit button.
+    CommitOptions,
 }
 
 #[derive(Clone, Debug)]
@@ -110,7 +115,45 @@ pub(crate) fn menu_tree(kind: MoreMenuKind) -> Vec<MoreNode> {
     match kind {
         MoreMenuKind::Actions => more_menu_tree(),
         MoreMenuKind::File { staged, .. } => file_menu_tree(staged),
+        MoreMenuKind::CommitOptions => commit_button_tree(),
     }
+}
+
+fn commit_options(scope: CommitScope, amend: bool, signoff: bool) -> MoreCommand {
+    MoreCommand::Commit(CommitOptions {
+        scope,
+        amend,
+        signoff,
+        post: PostCommit::Nothing,
+    })
+}
+
+/// The menu of the arrow of the commit button.
+fn commit_button_tree() -> Vec<MoreNode> {
+    use MoreNode as N;
+    let then = |post| {
+        MoreCommand::Commit(CommitOptions {
+            post,
+            ..CommitOptions::PLAIN
+        })
+    };
+    vec![
+        N::Item {
+            label: "scm.more.commit",
+            command: Some(MoreCommand::Commit(CommitOptions::PLAIN)),
+            children: Vec::new(),
+        },
+        N::Item {
+            label: "scm.more.commit_push",
+            command: Some(then(PostCommit::Push)),
+            children: Vec::new(),
+        },
+        N::Item {
+            label: "scm.more.commit_sync",
+            command: Some(then(PostCommit::Sync)),
+            children: Vec::new(),
+        },
+    ]
 }
 
 fn file_menu_tree(staged: bool) -> Vec<MoreNode> {
@@ -149,8 +192,19 @@ pub(crate) fn more_menu_tree() -> Vec<MoreNode> {
         N::submenu(
             "scm.more.commit",
             vec![
+                N::leaf("scm.more.commit", C::Commit(CommitOptions::PLAIN)),
+                N::leaf("scm.more.commit_staged", commit_options(CommitScope::Staged, false, false)),
+                N::leaf("scm.more.commit_all", commit_options(CommitScope::All, false, false)),
                 N::leaf("scm.more.undo_last_commit", C::UndoLastCommit),
                 N::leaf("scm.more.abort_operation", C::AbortOperation),
+                N::Separator,
+                N::leaf("scm.more.commit_amend", commit_options(CommitScope::Smart, true, false)),
+                N::leaf("scm.more.commit_staged_amend", commit_options(CommitScope::Staged, true, false)),
+                N::leaf("scm.more.commit_all_amend", commit_options(CommitScope::All, true, false)),
+                N::Separator,
+                N::leaf("scm.more.commit_signed", commit_options(CommitScope::Smart, false, true)),
+                N::leaf("scm.more.commit_staged_signed", commit_options(CommitScope::Staged, false, true)),
+                N::leaf("scm.more.commit_all_signed", commit_options(CommitScope::All, false, true)),
             ],
         ),
         N::submenu(
@@ -553,6 +607,26 @@ impl App {
         self.scm_more_menu = Some(menu);
     }
 
+    /// The arrow of the commit button: opens its menu under the button, `anchor` being the
+    /// bottom left corner of the button.
+    pub(crate) fn open_scm_commit_menu(&mut self, anchor: (f32, f32)) {
+        let (window_width, window_height, lh, cw) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| {
+                let (w, h) = gpu.renderer.size();
+                (w, h, gpu.renderer.line_height(), gpu.renderer.char_width())
+            })
+            .unwrap_or((1200.0, 760.0, 18.0, 8.0));
+        self.open_more_menu(
+            MoreMenuKind::CommitOptions,
+            anchor,
+            (window_width, window_height),
+            lh,
+            cw,
+        );
+    }
+
     /// The "…" button: opens the menu below the pointer.
     pub(crate) fn open_scm_more_menu(&mut self) {
         let (window_width, window_height, lh, cw) = self
@@ -652,7 +726,7 @@ impl App {
     fn menu_file(&self, kind: MoreMenuKind) -> Option<crate::scm::FileStatus> {
         match kind {
             MoreMenuKind::File { index, .. } => self.scm_snapshot.files.get(index).cloned(),
-            MoreMenuKind::Actions => None,
+            MoreMenuKind::Actions | MoreMenuKind::CommitOptions => None,
         }
     }
 
@@ -713,6 +787,7 @@ impl App {
             _ => {}
         }
         match command {
+            C::Commit(options) => self.perform_scm_action(ScmAction::Commit(options)),
             C::Pull => self.run_scm_remote(RemoteOp::Pull),
             C::PullRebase => self.run_scm_remote(RemoteOp::PullRebase),
             C::Push => self.run_scm_remote(RemoteOp::Push),
@@ -846,6 +921,7 @@ mod tests {
         walk(&more_menu_tree(), &mut keys);
         walk(&file_menu_tree(true), &mut keys);
         walk(&file_menu_tree(false), &mut keys);
+        walk(&commit_button_tree(), &mut keys);
         let english = graphite_i18n::Translator::english();
         for key in keys {
             assert!(english.has(key), "{key} is missing in English");
@@ -862,6 +938,7 @@ mod tests {
         walk(&more_menu_tree(), &mut keys);
         walk(&file_menu_tree(true), &mut keys);
         walk(&file_menu_tree(false), &mut keys);
+        walk(&commit_button_tree(), &mut keys);
         for key in keys {
             assert!(pt.get(key).is_some(), "{key} is missing in pt-BR");
         }
@@ -934,8 +1011,10 @@ mod tests {
         );
         assert!(menu.enter_submenu(&tree));
         assert_eq!(menu.open.len(), 1);
-        menu.step(&tree, true);
-        assert_eq!(menu.selected[1], 1);
+        for _ in 0..4 {
+            menu.step(&tree, true);
+        }
+        assert_eq!(menu.selected[1], 4);
         assert_eq!(menu.activate(&tree), Some(MoreCommand::AbortOperation));
         assert!(menu.leave_submenu());
         assert!(!menu.leave_submenu());
@@ -1097,6 +1176,90 @@ mod tests {
         );
         assert_eq!(app.scm_selected, 0);
         // Without an event loop the operation stops at this message, which shows it was started.
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
+    }
+
+    fn commit_commands(rows: &[MoreNode]) -> Vec<CommitOptions> {
+        fn walk(rows: &[MoreNode], out: &mut Vec<CommitOptions>) {
+            for row in rows {
+                if let MoreNode::Item {
+                    command, children, ..
+                } = row
+                {
+                    if let Some(MoreCommand::Commit(options)) = command {
+                        out.push(*options);
+                    }
+                    walk(children, out);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(rows, &mut out);
+        out
+    }
+
+    #[test]
+    fn the_commit_submenu_offers_every_scope_with_amend_and_sign_off() {
+        let options = commit_commands(&more_menu_tree());
+        assert_eq!(options.len(), 9, "{options:?}");
+        for scope in [CommitScope::Smart, CommitScope::Staged, CommitScope::All] {
+            for (amend, signoff) in [(false, false), (true, false), (false, true)] {
+                assert_eq!(
+                    options
+                        .iter()
+                        .filter(|o| o.scope == scope && o.amend == amend && o.signoff == signoff)
+                        .count(),
+                    1,
+                    "{scope:?} amend={amend} signoff={signoff}"
+                );
+            }
+        }
+        assert!(options.iter().all(|o| o.post == PostCommit::Nothing));
+    }
+
+    #[test]
+    fn the_commit_button_menu_commits_and_then_pushes_or_syncs() {
+        let options = commit_commands(&commit_button_tree());
+        assert_eq!(
+            options.iter().map(|o| o.post).collect::<Vec<_>>(),
+            [PostCommit::Nothing, PostCommit::Push, PostCommit::Sync]
+        );
+        assert!(options.iter().all(|o| !o.amend && !o.signoff));
+    }
+
+    #[test]
+    fn the_commit_arrow_sits_at_the_right_end_of_the_button() {
+        use super::super::scm_ui::{commit_arrow, ScmRect};
+        let button = ScmRect {
+            x: 40.0,
+            y: 100.0,
+            width: 240.0,
+            height: 22.0,
+        };
+        let arrow = commit_arrow(button);
+        assert_eq!(arrow.x + arrow.width, button.x + button.width);
+        assert_eq!((arrow.y, arrow.height), (button.y, button.height));
+        assert!(arrow.contains(button.x + button.width - 3.0, button.y + 5.0));
+        assert!(!arrow.contains(button.x + 10.0, button.y + 5.0));
+    }
+
+    #[test]
+    fn picking_a_commit_in_the_menu_commits_with_those_options() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_scm_commit_menu((40.0, 40.0));
+        assert_eq!(
+            app.scm_more_menu.as_ref().unwrap().kind,
+            MoreMenuKind::CommitOptions
+        );
+        let tree = app.open_more_tree();
+        let menu = app.scm_more_menu.as_ref().unwrap();
+        let (x, y) = point(menu, &tree, 0, index_of(&tree, "scm.more.commit_push"));
+        app.status.clear();
+        app.scm_commit_message.clear();
+        app.scm_more_menu_click(x, y);
+        assert!(app.scm_more_menu.is_none());
+        // The choice reached the commit action; without an event loop it stops at this message.
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
 

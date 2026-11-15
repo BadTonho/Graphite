@@ -461,6 +461,7 @@ pub(crate) fn unstage_files(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn commit(
     root: &Path,
     message: &str,
