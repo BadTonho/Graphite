@@ -62,6 +62,10 @@ The Graph draws commits as circles (a ring for the checked out one) and keeps lo
 
 Commit ids passed to git are checked to be hexadecimal, and branch and tag names are validated before git runs, so nothing the user types can be read as a git option.
 
+## Tooltips
+
+Every icon button of the view (repository row, commit arrow, file rows, Changes and Graph headers) shows its name in a small card when the pointer rests on it.
+
 ## Limits
 
-Buttons have no tooltips yet; the list is not shown as a tree; **Clone** is not available yet.
+The list is not shown as a tree; **Clone** is not available yet.

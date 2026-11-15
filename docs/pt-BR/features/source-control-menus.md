@@ -62,6 +62,10 @@ O Grafo desenha os commits como círculos (um anel para o commit em uso) e conti
 
 Os ids de commit passados ao git são conferidos como hexadecimais, e nomes de branch e tag são validados antes de o git rodar, então nada digitado pode ser lido como opção do git.
 
+## Dicas
+
+Todo botão de ícone da visão (linha do repositório, seta do commit, linhas de arquivo, cabeçalhos de Alterações e do Grafo) mostra o nome num pequeno cartão quando o mouse para sobre ele.
+
 ## Limites
 
-Os botões ainda não têm dicas; a lista não aparece como árvore; **Clone** ainda não existe.
+A lista não aparece como árvore; **Clone** ainda não existe.

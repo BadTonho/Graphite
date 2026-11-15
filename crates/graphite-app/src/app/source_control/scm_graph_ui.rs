@@ -233,56 +233,6 @@ impl App {
         })
     }
 
-    /// The hover card of the commit under the pointer.
-    pub(crate) fn draw_scm_graph_tooltip(&self, renderer: &mut Renderer) {
-        if self.scm_graph_menu.is_some()
-            || self.scm_more_menu.is_some()
-            || self.scm_confirm.is_some()
-            || self.explorer_context_menu.is_some()
-            || self.scm_graph_resize_dragging
-        {
-            return;
-        }
-        let (width, height) = renderer.size();
-        let (cw, lh) = (renderer.char_width().max(4.0), renderer.line_height());
-        let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
-        let Some(commit) = self
-            .scm_graph_commit_at(mx, my, (width, height), lh, cw)
-            .and_then(|index| self.scm_graph_rows.get(index))
-        else {
-            return;
-        };
-        let lines = scm_graph::tooltip_lines(&commit.commit);
-        let longest = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
-        let box_width = ((longest as f32 * cw) + 20.0).min((width - 16.0).max(60.0));
-        let box_height = lines.len() as f32 * lh + 12.0;
-        let x = if mx + 14.0 + box_width <= width - 4.0 {
-            mx + 14.0
-        } else {
-            (mx - box_width - 6.0).max(4.0)
-        };
-        let y = if my + 18.0 + box_height <= height - 4.0 {
-            my + 18.0
-        } else {
-            (my - box_height - 6.0).max(4.0)
-        };
-        let border = rgb(Theme::color(Theme::DIM, 0x454545));
-        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
-        let text = rgb(Theme::color(Theme::TEXT, 0xcccccc));
-        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
-        renderer.draw_rect(x, y, box_width, box_height, border);
-        renderer.draw_rect(x + 1.0, y + 1.0, box_width - 2.0, box_height - 2.0, bg);
-        for (index, line) in lines.iter().enumerate() {
-            let clipped = Self::help_menu_visible_label(line, cw, (box_width - 20.0).max(0.0));
-            renderer.draw_text(
-                &clipped,
-                x + 10.0,
-                y + 6.0 + index as f32 * lh,
-                if index == 0 { text } else { dim },
-            );
-        }
-    }
-
     pub(crate) fn scroll_scm_graph(&mut self, lines: i32) {
         let max_scroll = self.scm_graph_rows.len().saturating_sub(2);
         self.scm_graph_scroll =
