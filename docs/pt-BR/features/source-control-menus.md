@@ -42,6 +42,7 @@ O botão abre um menu com submenus que abrem ao passar o mouse ou com a seta par
 - **Branch**: Merge, Rebase, Criar, **Criar a Partir de...**, **Renomear**, Excluir, Excluir (Forçado), **Excluir Branch Remota...**
 - **Stash**: Stash, Stash (Incluir Não Rastreados), Stash dos Preparados, Aplicar Último Stash, Aplicar e Remover Último Stash, **Aplicar Stash...**, **Aplicar e Remover Stash...**, **Descartar Stash...** e **Descartar Todos os Stashes** (pergunta antes)
 - **Tags**: Criar Tag (no HEAD), **Excluir Tag...**
+- **Mostrar Saída do Git**: abre uma view somente leitura com os comandos git que alteraram algo (commit, push, checkout, stash...) com a hora e o resultado de cada um; leituras como status ficam de fora. As últimas 1000 linhas são mantidas; execute de novo para atualizar a mesma aba.
 - **Remoto**: **Adicionar Remoto...** (pede a URL e depois o nome, sugerindo `origin`) e **Remover Remoto...**
 
 As entradas terminadas em `...` abrem uma lista para escolher (a mesma lista do seletor de branch): branches, branches remotas, tags, entradas de stash ou remotos. Uma lista sem nada para escolher não abre e avisa na barra de status. **Criar a Partir de...** lista branches, branches remotas e tags e depois pede o nome da nova branch.

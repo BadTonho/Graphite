@@ -38,6 +38,7 @@ pub(crate) enum MoreCommand {
     DiscardAll,
     /// Show the changes lists as a folder tree (`true`) or as a flat list.
     ViewAsTree(bool),
+    ShowOutput,
     Merge,
     Rebase,
     CreateBranch,
@@ -295,6 +296,8 @@ pub(crate) fn more_menu_tree(as_tree: bool) -> Vec<MoreNode> {
                 N::leaf("scm.more.remove_remote", C::RemoveRemote),
             ],
         ),
+        N::Separator,
+        N::leaf("scm.more.show_output", C::ShowOutput),
     ]
 }
 
@@ -844,6 +847,7 @@ impl App {
             C::UnstageAll => self.perform_scm_action(ScmAction::UnstageAll),
             C::DiscardAll => self.confirm_discard(self.discard_all_targets()),
             C::ViewAsTree(tree) => self.scm_view_as_tree = tree,
+            C::ShowOutput => self.open_scm_output(),
             C::Merge => self.open_branch_picker_for(BranchPickerAction::Merge),
             C::Rebase => self.open_branch_picker_for(BranchPickerAction::Rebase),
             C::CreateBranch => self.open_create_branch_prompt(),
@@ -1078,6 +1082,10 @@ mod tests {
         assert!(!menu.leave_submenu());
         // Up from the first row wraps to the last one.
         let mut menu = self::menu(&tree);
+        menu.step(&tree, false);
+        assert_eq!(menu.selected[0], index_of(&tree, "scm.more.show_output"));
+        assert_eq!(menu.activate(&tree), Some(MoreCommand::ShowOutput));
+        // Two rows up is the Remote group (a separator in between): Enter opens it.
         menu.step(&tree, false);
         assert_eq!(menu.selected[0], index_of(&tree, "scm.more.remote"));
         assert_eq!(menu.activate(&tree), None, "Enter on a group opens it");

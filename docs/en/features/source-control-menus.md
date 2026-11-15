@@ -42,6 +42,7 @@ The button opens a menu with submenus that open on hover or with the right arrow
 - **Branch**: Merge, Rebase, Create, **Create From...**, **Rename**, Delete, Delete (Force), **Delete Remote Branch...**
 - **Stash**: Stash, Stash (Include Untracked), Stash Staged, Apply Latest Stash, Pop Latest Stash, **Apply Stash...**, **Pop Stash...**, **Drop Stash...** and **Drop All Stashes** (asks first)
 - **Tags**: Create Tag (on HEAD), **Delete Tag...**
+- **Show Git Output**: opens a read-only view with the git commands that changed something (commit, push, checkout, stash...) with the time and result of each; reads such as status are left out. The last 1000 lines are kept; run it again to refresh the same tab.
 - **Remote**: **Add Remote...** (asks for the URL, then the name, suggesting `origin`) and **Remove Remote...**
 
 Entries ending in `...` open a list to choose from (the same list as the branch picker): branches, remote branches, tags, stash entries or remotes. A list with nothing to choose from does not open and says so in the status bar. **Create From...** lists branches, remote branches and tags, then asks for the new branch name.

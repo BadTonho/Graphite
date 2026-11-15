@@ -7,6 +7,7 @@
   "command.graphite.scm.sync": "Git: Sincronizar",
   "command.graphite.scm.stash": "Git: Stash",
   "command.graphite.scm.viewHistory": "Git: Ver histórico",
+  "command.graphite.scm.showOutput": "Git: Mostrar saída do Git",
   "command.graphite.scm.createPullRequest": "Git: Criar pull request",
   "command.graphite.scm.moreActions": "Git: Mais ações...",
   "command.graphite.scm.amend": "Git: Corrigir último commit (amend)",

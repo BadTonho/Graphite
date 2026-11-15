@@ -147,6 +147,11 @@ fn scm_stash(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn scm_show_output(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_scm_output();
+    Ok(())
+}
+
 fn scm_view_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.open_scm_history();
     Ok(())
@@ -194,12 +199,17 @@ fn scm_continue_operation(app: &mut App, _: &CommandInvocation) -> Result<(), Co
 
 /// The `Git:` commands of the palette (and of the SCM view's "…" button).
 pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 20] = [
+    let commands: [(&'static str, &'static str, Handler); 21] = [
         ("graphite.scm.pull", "Git: Pull", scm_pull),
         ("graphite.scm.push", "Git: Push", scm_push),
         ("graphite.scm.fetch", "Git: Fetch", scm_fetch),
         ("graphite.scm.sync", "Git: Sync", scm_sync),
         ("graphite.scm.stash", "Git: Stash", scm_stash),
+        (
+            "graphite.scm.showOutput",
+            "Git: Show Git Output",
+            scm_show_output,
+        ),
         (
             "graphite.scm.viewHistory",
             "Git: View History",

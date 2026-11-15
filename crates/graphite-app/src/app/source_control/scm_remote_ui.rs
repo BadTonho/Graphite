@@ -190,6 +190,25 @@ impl App {
         }
     }
 
+    /// **Git: Show Git Output**: the commands that changed something, in a read-only view that is
+    /// refreshed when it is already open.
+    pub(crate) fn open_scm_output(&mut self) {
+        let log = crate::scm_log::text();
+        let text = if log.is_empty() {
+            self.t("scm.output.none").to_owned()
+        } else {
+            log
+        };
+        let path = self.profile_root.join("git-output.txt");
+        match self.documents.id_for_path(&path) {
+            Some(id) => {
+                let _ = self.documents[id].buffer.reload_text(&text);
+                self.activate_editor_document(id);
+            }
+            None => self.open_read_only_view(path, &text),
+        }
+    }
+
     /// Opens the GitHub page that creates a pull request for the current branch.
     pub(crate) fn open_pull_request(&mut self) {
         let root = self.scm_workspace_root();
@@ -218,6 +237,26 @@ mod tests {
             .documents
             .id_for_path(&app.profile_root.join("git-history.txt"))
             .is_none());
+    }
+
+    #[test]
+    fn the_git_output_opens_as_a_read_only_view_and_refreshes_in_place() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.profile_root = dir.path().join("profile");
+        crate::scm_log::record(&["add", "output-view-test"], Ok("done"));
+        app.open_scm_output();
+        let id = app
+            .documents
+            .id_for_path(&app.profile_root.join("git-output.txt"))
+            .unwrap();
+        assert!(app.documents[id].buffer.is_read_only());
+        assert!(app.editor().text().contains("> git add output-view-test"));
+        let tabs = app.documents.len();
+        crate::scm_log::record(&["add", "output-view-test-2"], Ok(""));
+        app.open_scm_output();
+        assert!(app.editor().text().contains("output-view-test-2"));
+        assert_eq!(app.documents.len(), tabs, "the same tab is reused");
     }
 
     #[test]

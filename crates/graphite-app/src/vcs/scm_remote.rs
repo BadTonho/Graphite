@@ -14,7 +14,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
         .args(args)
         .output()
         .map_err(|error| error.to_string())?;
-    if output.status.success() {
+    let result = if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     } else {
         let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
@@ -23,7 +23,15 @@ pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
         } else {
             message
         })
-    }
+    };
+    super::scm_log::record(
+        args,
+        match &result {
+            Ok(text) => Ok(text.as_str()),
+            Err(reason) => Err(reason.as_str()),
+        },
+    );
+    result
 }
 
 /// Where a local branch stands against the branch it tracks.

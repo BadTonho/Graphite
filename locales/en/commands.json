@@ -8,6 +8,7 @@
   "command.graphite.scm.sync": "Git: Sync",
   "command.graphite.scm.stash": "Git: Stash",
   "command.graphite.scm.viewHistory": "Git: View History",
+  "command.graphite.scm.showOutput": "Git: Show Git Output",
   "command.graphite.scm.createPullRequest": "Git: Create Pull Request",
   "command.graphite.scm.moreActions": "Git: More Actions...",
   "command.graphite.scm.amend": "Git: Amend Last Commit",

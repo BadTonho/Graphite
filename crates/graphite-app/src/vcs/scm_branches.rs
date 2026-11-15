@@ -35,11 +35,22 @@ fn git(root: &Path, args: &[&str], editor_free: bool) -> Result<Output, String> 
             .env("GIT_SEQUENCE_EDITOR", "true");
     }
     let output = command.output().map_err(|error| error.to_string())?;
-    Ok(Output {
+    let output = Output {
         success: output.status.success(),
         stdout: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-    })
+    };
+    super::scm_log::record(
+        args,
+        if output.success {
+            Ok(&output.stdout)
+        } else if output.stderr.is_empty() {
+            Err(&output.stdout)
+        } else {
+            Err(&output.stderr)
+        },
+    );
+    Ok(output)
 }
 
 /// The message to show for a failed command. Git prints some failures (merge conflicts) on

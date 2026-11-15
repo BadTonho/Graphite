@@ -12,6 +12,7 @@ pub(crate) mod scm_commit;
 pub(crate) mod scm_discard;
 pub(crate) mod scm_graph;
 pub(crate) mod scm_ignore;
+pub(crate) mod scm_log;
 pub(crate) mod scm_refs;
 pub(crate) mod scm_remote;
 pub(crate) mod scm_stash;

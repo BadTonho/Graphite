@@ -191,6 +191,8 @@
   "scm.more.push_to": "Push to...",
   "scm.branch.prompt_pull_from": "Pull from which branch?",
   "scm.branch.prompt_push_to": "Push to which remote?",
+  "scm.more.show_output": "Show Git Output",
+  "scm.output.none": "No git command has changed anything yet.",
   "scm.graph.title": "Graph",
   "scm.prompt.new_tag": "New tag name:",
   "scm.graph.menu.checkout": "Checkout (Detached)",
