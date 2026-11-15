@@ -57,6 +57,8 @@ pub(crate) struct Snapshot {
     pub remote_branches: Vec<String>,
     pub files: Vec<FileStatus>,
     pub line_changes: BTreeMap<PathBuf, Vec<(usize, LineChange)>>,
+    pub has_commits: bool,
+    pub has_remote: bool,
     pub error: Option<String>,
 }
 
@@ -136,12 +138,16 @@ fn snapshot_inner(root: &Path) -> Result<Snapshot, String> {
     }
     let files = files.into_values().collect::<Vec<_>>();
     let line_changes = collect_line_changes(&repo, &files);
+    let has_commits = repo.head_commit().is_ok();
+    let has_remote = !repo.remote_names().is_empty();
     Ok(Snapshot {
         branch,
         branches,
         remote_branches,
         files,
         line_changes,
+        has_commits,
+        has_remote,
         error: None,
     })
 }

@@ -762,6 +762,13 @@ impl App {
         }
     }
 
+    pub(crate) fn scm_shows_publish_button(&self) -> bool {
+        self.scm_snapshot.error.is_none()
+            && self.scm_snapshot.has_commits
+            && !self.scm_snapshot.has_remote
+            && self.scm_snapshot.files.is_empty()
+    }
+
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
         let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
@@ -796,8 +803,19 @@ impl App {
                 .filter(|file| file.staged)
                 .map(|file| file.path.clone())
                 .collect::<Vec<_>>(),
+            ScmAction::Commit if !self.scm_snapshot.files.iter().any(|file| file.staged) => self
+                .scm_snapshot
+                .files
+                .iter()
+                .filter(|file| file.unstaged || file.untracked)
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
             _ => Vec::new(),
         };
+        let has_any_changes = !self.scm_snapshot.files.is_empty();
+        if matches!(action, ScmAction::Commit) {
+            self.scm_commit_pending = true;
+        }
         let message = self.scm_commit_message.clone();
         let line = self.editor().cursor_line_col().0;
         self.status = self.t("scm.status.running").into();
@@ -834,12 +852,23 @@ impl App {
                                 .map(|_| translator.text("scm.status.file_unstaged").to_owned())
                         }),
                     ScmAction::Commit => {
-                        crate::scm::commit(&root, &message, &translator).map(|id| {
-                            translator.format(
-                                "scm.status.commit_created",
-                                &[("id", &&id[..id.len().min(8)])],
-                            )
-                        })
+                        if !has_any_changes {
+                            Err(translator.text("scm.error.nothing_to_commit").to_owned())
+                        } else {
+                            let staged = if batch_paths.is_empty() {
+                                Ok(())
+                            } else {
+                                crate::scm::stage_files(&root, &batch_paths, &translator)
+                            };
+                            staged.and_then(|()| {
+                                crate::scm::commit(&root, &message, &translator).map(|id| {
+                                    translator.format(
+                                        "scm.status.commit_created",
+                                        &[("id", &&id[..id.len().min(8)])],
+                                    )
+                                })
+                            })
+                        }
                     }
                     ScmAction::StageCursorLine => selected
                         .ok_or_else(|| translator.text("scm.error.select_changed").to_owned())
@@ -1358,7 +1387,8 @@ impl App {
             );
         }
         let commit_y = layout.commit_button.y;
-        let commit_enabled = !self.scm_commit_message.trim().is_empty();
+        let show_publish = self.scm_shows_publish_button();
+        let commit_enabled = show_publish || !self.scm_commit_message.trim().is_empty();
         renderer.draw_rect(
             left,
             commit_y,
@@ -1370,8 +1400,12 @@ impl App {
                 rgb(Theme::color(0x3c3c3c, 0xe5e5e5))
             },
         );
-        // The check icon and the label are centered together as one group.
-        let commit_label = self.t("scm.sidebar.commit");
+        // The icon and the label are centered together as one group.
+        let commit_label = if show_publish {
+            self.t("scm.sidebar.publish")
+        } else {
+            self.t("scm.sidebar.commit")
+        };
         let commit_color = if commit_enabled { rgb(0xffffff) } else { dim };
         let check_size = (row_h * 0.72).round().max(12.0);
         let label_gap = cell_width * 0.4;
@@ -1379,7 +1413,11 @@ impl App {
         let group_x = left + ((field_width - check_size - label_gap - label_width) * 0.5).max(0.0);
         draw_scm_icon(
             renderer,
-            ScmIcon::Check,
+            if show_publish {
+                ScmIcon::Push
+            } else {
+                ScmIcon::Check
+            },
             ScmRect {
                 x: group_x,
                 y: commit_y,

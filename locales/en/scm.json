@@ -95,5 +95,15 @@
   "scm.welcome.initialize": "Initialize Repository",
   "scm.welcome.docs": "To learn more about how to use Git and source control in Graphite, read our docs.",
   "scm.welcome.publish_intro": "You can directly publish this folder to a GitHub repository. Once published, you'll have access to source control features powered by Git and GitHub.",
-  "scm.welcome.publish_github": "Publish to GitHub"
+  "scm.welcome.publish_github": "Publish to GitHub",
+  "scm.sidebar.publish": "Publish Branch",
+  "scm.publish.title": "Publish to GitHub",
+  "scm.publish.subtitle": "Choose repository visibility for \"{name}\":",
+  "scm.publish.public": "Publish to GitHub public repository",
+  "scm.publish.private": "Publish to GitHub private repository",
+  "scm.publish.cancel": "Cancel",
+  "scm.publish.running": "Publishing repository to GitHub...",
+  "scm.publish.done": "Published to GitHub: {url}",
+  "scm.publish.sign_in_required": "Sign in to GitHub first to publish this repository",
+  "scm.error.nothing_to_commit": "There are no changes to commit"
 }

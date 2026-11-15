@@ -74,6 +74,9 @@ impl App {
         }
         self.column_selection_anchor = None;
 
+        if self.click_scm_publish_modal(mx, my, window_width as f32, window_height as f32) {
+            return;
+        }
         if self.click_explorer_delete_confirm(mx, my, window_width as f32, window_height as f32) {
             return;
         }
@@ -239,11 +242,15 @@ impl App {
                     self.scm_extension_input = None;
                     return;
                 }
-                if layout.commit_button.contains(local_x, local_y)
-                    && !self.scm_commit_message.trim().is_empty()
-                {
-                    self.run_ui_command("graphite.scm.commit");
-                    return;
+                if layout.commit_button.contains(local_x, local_y) {
+                    if self.scm_shows_publish_button() {
+                        self.open_publish_repo_modal();
+                        return;
+                    }
+                    if !self.scm_commit_message.trim().is_empty() {
+                        self.run_ui_command("graphite.scm.commit");
+                        return;
+                    }
                 }
                 self.scm_commit_prompt = false;
                 self.scm_extension_input = None;

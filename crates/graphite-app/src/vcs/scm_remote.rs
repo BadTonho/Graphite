@@ -30,6 +30,53 @@ pub(crate) fn init_repository(root: &Path) -> Result<String, String> {
     run_git(root, &["init"])
 }
 
+pub(crate) fn publish_github_repository(
+    root: &Path,
+    token: &str,
+    name: &str,
+    branch: &str,
+    is_private: bool,
+) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let body = serde_json::json!({
+        "name": name,
+        "private": is_private,
+    });
+    let response = client
+        .post("https://api.github.com/user/repos")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Graphite")
+        .body(body.to_string())
+        .send()
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    let text = response.text().map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        let message = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| format!("GitHub API error ({status})"));
+        return Err(message);
+    }
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let clone_url = json["clone_url"]
+        .as_str()
+        .ok_or_else(|| "GitHub response missing clone_url".to_owned())?;
+    let html_url = json["html_url"].as_str().unwrap_or(clone_url).to_owned();
+    if run_git(root, &["remote", "get-url", "origin"]).is_ok() {
+        run_git(root, &["remote", "set-url", "origin", clone_url])?;
+    } else {
+        run_git(root, &["remote", "add", "origin", clone_url])?;
+    }
+    run_git(root, &["push", "-u", "origin", branch])?;
+    Ok(html_url)
+}
+
 pub(crate) fn pull(root: &Path) -> Result<String, String> {
     run_git(root, &["pull", "--no-rebase"])
 }

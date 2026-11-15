@@ -733,6 +733,15 @@ impl App {
             }
             UserEvent::ScmOperationCompleted { message, snapshot } => {
                 self.status = message;
+                if self.scm_commit_pending {
+                    self.scm_commit_pending = false;
+                    if snapshot
+                        .as_ref()
+                        .is_some_and(|s| s.has_commits && !s.files.iter().any(|f| f.staged))
+                    {
+                        self.scm_commit_message.clear();
+                    }
+                }
                 if let Some(snapshot) = snapshot {
                     self.accept_scm_snapshot(snapshot);
                 }

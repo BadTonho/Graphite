@@ -95,5 +95,15 @@
   "scm.welcome.initialize": "Inicializar Repositório",
   "scm.welcome.docs": "Para saber mais sobre como usar Git e controle de código no Graphite, consulte a documentação.",
   "scm.welcome.publish_intro": "Você pode publicar esta pasta diretamente em um repositório do GitHub. Após publicar, terá acesso aos recursos de controle de código com Git e GitHub.",
-  "scm.welcome.publish_github": "Publicar no GitHub"
+  "scm.welcome.publish_github": "Publicar no GitHub",
+  "scm.sidebar.publish": "Publicar Branch",
+  "scm.publish.title": "Publicar no GitHub",
+  "scm.publish.subtitle": "Escolha a visibilidade do repositório \"{name}\":",
+  "scm.publish.public": "Publicar em repositório público no GitHub",
+  "scm.publish.private": "Publicar em repositório privado no GitHub",
+  "scm.publish.cancel": "Cancelar",
+  "scm.publish.running": "Publicando repositório no GitHub...",
+  "scm.publish.done": "Publicado no GitHub: {url}",
+  "scm.publish.sign_in_required": "Faça login no GitHub primeiro para publicar este repositório",
+  "scm.error.nothing_to_commit": "Não há alterações para fazer commit"
 }
