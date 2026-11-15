@@ -140,7 +140,7 @@ fn toggle_secondary_sidebar(
 fn adjust_view_size(app: &mut App, step: i16) {
     if app.terminal_focused {
         app.view_preferences.panel_height_delta =
-            (app.view_preferences.panel_height_delta + step).clamp(-160, 320);
+            (app.view_preferences.panel_height_delta + step).clamp(-180, 800);
     } else {
         app.view_preferences.sidebar_width_delta =
             (app.view_preferences.sidebar_width_delta + step).clamp(-160, 320);

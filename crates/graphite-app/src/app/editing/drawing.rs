@@ -736,6 +736,18 @@ impl App {
         }
         if !self.zen_mode && self.view_preferences.panel_visible && self.terminal_visible {
             self.draw_terminal_panel(r, w, h, lh, cw);
+            let bounds = self.panel_bounds(w, h, lh);
+            let hovered = !self.panel_resize_dragging
+                && self.is_over_terminal_resize_handle(self.mouse.x as f32, self.mouse.y as f32);
+            if hovered || self.panel_resize_dragging {
+                r.draw_rect(
+                    bounds.x,
+                    bounds.y - 1.5,
+                    bounds.width,
+                    3.0,
+                    rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                );
+            }
         }
         if self.zen_mode {
             r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));

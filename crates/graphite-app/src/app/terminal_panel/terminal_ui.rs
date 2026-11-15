@@ -268,4 +268,73 @@ impl App {
         }
         self.terminal_size = (rows, columns);
     }
+
+    pub(crate) fn terminal_resize_handle_bounds(&self) -> Option<(f32, f32, f32)> {
+        if self.zen_mode || !self.view_preferences.panel_visible || !self.terminal_visible {
+            return None;
+        }
+        let gpu = self.gpu.as_ref()?;
+        let (width, height) = gpu.renderer.size();
+        let bounds = self.panel_bounds(width, height, gpu.renderer.line_height());
+        Some((bounds.x, bounds.y, bounds.width))
+    }
+
+    pub(crate) fn is_over_terminal_resize_handle(&self, mx: f32, my: f32) -> bool {
+        let Some((panel_x, panel_y, panel_width)) = self.terminal_resize_handle_bounds() else {
+            return false;
+        };
+        mx >= panel_x && mx <= panel_x + panel_width && (my - panel_y).abs() <= 4.0
+    }
+
+    pub(crate) fn resize_terminal_panel_from_pointer(&mut self, pointer_y: f32) {
+        let Some(gpu) = &self.gpu else {
+            return;
+        };
+        let (_, height) = gpu.renderer.size();
+        let line_height = gpu.renderer.line_height();
+        self.resize_terminal_panel_for_window(pointer_y, height, line_height);
+    }
+
+    pub(crate) fn resize_terminal_panel_for_window(
+        &mut self,
+        pointer_y: f32,
+        window_height: f32,
+        line_height: f32,
+    ) {
+        let max_height = (window_height * 0.85).max(300.0);
+        let desired_height = (window_height - line_height - pointer_y).clamp(120.0, max_height);
+        let base = (window_height * 0.32).clamp(150.0, 300.0);
+        self.view_preferences.panel_height_delta =
+            ((desired_height - base).round() as i16).clamp(-180, 800);
+        self.resize_terminal();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dragging_terminal_resize_handle_increases_and_clamps_panel_height() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.view_preferences.panel_visible = true;
+        app.terminal_visible = true;
+
+        // Drag upward to y = 200 on a 900px tall window -> ~680px tall terminal.
+        app.resize_terminal_panel_for_window(200.0, 900.0, 20.0);
+        let grown = drawing_helpers::terminal_panel_height_with_delta(
+            900.0,
+            app.view_preferences.panel_height_delta,
+        );
+        assert!(grown > 600.0);
+
+        // Dragging near the bottom clamps to at least 120px.
+        app.resize_terminal_panel_for_window(880.0, 900.0, 20.0);
+        let shrunk = drawing_helpers::terminal_panel_height_with_delta(
+            900.0,
+            app.view_preferences.panel_height_delta,
+        );
+        assert_eq!(shrunk, 120.0);
+    }
 }

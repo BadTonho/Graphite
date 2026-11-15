@@ -14,7 +14,7 @@ pub(crate) fn terminal_panel_height(height: f32) -> f32 {
 
 pub(crate) fn terminal_panel_height_with_delta(height: f32, delta: i16) -> f32 {
     let base = (height * 0.32).clamp(150.0, 300.0);
-    (base + delta as f32).clamp(120.0, (height * 0.75).max(300.0))
+    (base + delta as f32).clamp(120.0, (height * 0.85).max(300.0))
 }
 
 pub(crate) fn utf16_column_to_chars(line: &str, units: u32) -> usize {

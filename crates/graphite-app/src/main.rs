@@ -107,6 +107,7 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    panel_resize_dragging: bool,
     /// Explorer entry selected by the last click; target of F2 and Delete.
     explorer_selected: Option<PathBuf>,
     /// Staged explorer entry for Cut/Copy/Paste: `(source_path, is_cut)`.
@@ -644,6 +645,7 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
+            panel_resize_dragging: false,
             explorer_selected: None,
             explorer_clipboard: None,
             explorer_focused: false,

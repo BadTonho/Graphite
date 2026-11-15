@@ -94,7 +94,7 @@ impl ViewLayoutPreferences {
     pub(crate) fn normalize(&mut self) {
         self.zoom_percent = self.zoom_percent.clamp(50, 200);
         self.sidebar_width_delta = self.sidebar_width_delta.clamp(-160, 320);
-        self.panel_height_delta = self.panel_height_delta.clamp(-160, 320);
+        self.panel_height_delta = self.panel_height_delta.clamp(-180, 800);
     }
 }
 

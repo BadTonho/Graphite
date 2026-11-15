@@ -194,6 +194,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::CursorMoved { position, .. } => {
                 let previous_x = self.mouse.x as f32;
+                let previous_y = self.mouse.y as f32;
                 self.mouse = position;
                 if let Some(window_width) = self.gpu.as_ref().map(|gpu| gpu.renderer.size().0) {
                     self.workbench_menu_pointer_moved(position.x as f32, position.y as f32);
@@ -226,8 +227,14 @@ impl ApplicationHandler<UserEvent> for App {
                     return;
                 }
                 let pointer_x = position.x as f32;
+                let pointer_y = position.y as f32;
                 if self.sidebar_resize_dragging {
                     self.resize_sidebar_from_pointer(pointer_x);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                } else if self.panel_resize_dragging {
+                    self.resize_terminal_panel_from_pointer(pointer_y);
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
                     }
@@ -235,18 +242,25 @@ impl ApplicationHandler<UserEvent> for App {
                     let separator_x = self.sidebar_width_px();
                     let over_separator = !self.zen_mode
                         && (pointer_x - separator_x).abs() <= 4.0
-                        && (position.y as f32)
+                        && pointer_y
                             < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
                                 gpu.renderer.size().1 as f32 - gpu.renderer.line_height()
                             });
+                    let over_panel_separator = self.is_over_terminal_resize_handle(pointer_x, pointer_y);
+                    let was_over_panel_separator =
+                        self.is_over_terminal_resize_handle(previous_x, previous_y);
                     if let Some(gpu) = &self.gpu {
-                        gpu.window.set_cursor(if over_separator {
+                        gpu.window.set_cursor(if over_panel_separator {
+                            winit::window::CursorIcon::RowResize
+                        } else if over_separator {
                             winit::window::CursorIcon::ColResize
                         } else {
                             winit::window::CursorIcon::Default
                         });
                         if over_separator
                             || (previous_x - separator_x).abs() <= 4.0
+                            || over_panel_separator
+                            || was_over_panel_separator
                             || self.activity_bar_menu.is_some()
                         {
                             gpu.window.request_redraw();
@@ -273,6 +287,11 @@ impl ApplicationHandler<UserEvent> for App {
                 let separator_x = self.sidebar_width_px();
                 if !self.zen_mode && (self.mouse.x as f32 - separator_x).abs() <= 4.0 {
                     self.sidebar_resize_dragging = true;
+                    self.selecting = false;
+                    return;
+                }
+                if self.is_over_terminal_resize_handle(self.mouse.x as f32, self.mouse.y as f32) {
+                    self.panel_resize_dragging = true;
                     self.selecting = false;
                     return;
                 }
@@ -346,6 +365,13 @@ impl ApplicationHandler<UserEvent> for App {
                     self.finish_explorer_drag(row);
                 }
                 if self.titlebar_pointer_released() {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(winit::window::CursorIcon::Default);
+                        gpu.window.request_redraw();
+                    }
+                } else if self.panel_resize_dragging {
+                    self.panel_resize_dragging = false;
+                    self.save_view_preferences_for_command();
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
                         gpu.window.request_redraw();
