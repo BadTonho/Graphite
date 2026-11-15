@@ -458,6 +458,75 @@ mod scm_sidebar_layout_tests {
     }
 
     #[test]
+    fn primary_button_follows_the_branch_state() {
+        use crate::scm::{FileStatus, Snapshot};
+        let base = Snapshot {
+            branch: Some("main".into()),
+            has_commits: true,
+            has_remote: true,
+            upstream: Some("origin/main".into()),
+            ..Default::default()
+        };
+        assert_eq!(scm_primary_action_for(&base), ScmPrimaryAction::Commit);
+
+        let ahead = Snapshot {
+            ahead: 1,
+            ..base.clone()
+        };
+        assert_eq!(
+            scm_primary_action_for(&ahead),
+            ScmPrimaryAction::Sync {
+                ahead: 1,
+                behind: 0
+            }
+        );
+        let behind = Snapshot {
+            behind: 2,
+            ..base.clone()
+        };
+        assert_eq!(
+            scm_primary_action_for(&behind),
+            ScmPrimaryAction::Sync {
+                ahead: 0,
+                behind: 2
+            }
+        );
+
+        let dirty = Snapshot {
+            ahead: 1,
+            files: vec![FileStatus::default()],
+            ..base.clone()
+        };
+        assert_eq!(scm_primary_action_for(&dirty), ScmPrimaryAction::Commit);
+
+        let untracked_branch = Snapshot {
+            upstream: None,
+            ..base.clone()
+        };
+        assert_eq!(
+            scm_primary_action_for(&untracked_branch),
+            ScmPrimaryAction::PublishBranch
+        );
+
+        let no_remote = Snapshot {
+            has_remote: false,
+            upstream: None,
+            ..base.clone()
+        };
+        assert_eq!(
+            scm_primary_action_for(&no_remote),
+            ScmPrimaryAction::PublishRepository
+        );
+
+        let detached = Snapshot {
+            branch: None,
+            upstream: None,
+            ..base
+        };
+        assert_eq!(scm_primary_action_for(&detached), ScmPrimaryAction::Commit);
+    }
+
+    #[test]
     fn file_name_starts_after_the_icon_and_its_gap() {
         let icon_x = 64.0;
         let icon_size = 14.0;
@@ -762,11 +831,13 @@ impl App {
         }
     }
 
+    /// What the big button under the commit message does right now.
+    pub(crate) fn scm_primary_action(&self) -> ScmPrimaryAction {
+        scm_primary_action_for(&self.scm_snapshot)
+    }
+
     pub(crate) fn scm_shows_publish_button(&self) -> bool {
-        self.scm_snapshot.error.is_none()
-            && self.scm_snapshot.has_commits
-            && !self.scm_snapshot.has_remote
-            && self.scm_snapshot.files.is_empty()
+        self.scm_primary_action() == ScmPrimaryAction::PublishRepository
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
@@ -1387,8 +1458,9 @@ impl App {
             );
         }
         let commit_y = layout.commit_button.y;
-        let show_publish = self.scm_shows_publish_button();
-        let commit_enabled = show_publish || !self.scm_commit_message.trim().is_empty();
+        let primary = self.scm_primary_action();
+        let commit_enabled =
+            primary != ScmPrimaryAction::Commit || !self.scm_commit_message.trim().is_empty();
         renderer.draw_rect(
             left,
             commit_y,
@@ -1401,10 +1473,21 @@ impl App {
             },
         );
         // The icon and the label are centered together as one group.
-        let commit_label = if show_publish {
-            self.t("scm.sidebar.publish")
-        } else {
-            self.t("scm.sidebar.commit")
+        let commit_label = match primary {
+            ScmPrimaryAction::Commit => self.t("scm.sidebar.commit").to_owned(),
+            ScmPrimaryAction::PublishRepository | ScmPrimaryAction::PublishBranch => {
+                self.t("scm.sidebar.publish").to_owned()
+            }
+            ScmPrimaryAction::Sync { ahead, behind } => {
+                let mut label = self.t("scm.sidebar.sync").to_owned();
+                if behind > 0 {
+                    label.push_str(&format!(" {behind}↓"));
+                }
+                if ahead > 0 {
+                    label.push_str(&format!(" {ahead}↑"));
+                }
+                label
+            }
         };
         let commit_color = if commit_enabled { rgb(0xffffff) } else { dim };
         let check_size = (row_h * 0.72).round().max(12.0);
@@ -1413,10 +1496,12 @@ impl App {
         let group_x = left + ((field_width - check_size - label_gap - label_width) * 0.5).max(0.0);
         draw_scm_icon(
             renderer,
-            if show_publish {
-                ScmIcon::Push
-            } else {
-                ScmIcon::Check
+            match primary {
+                ScmPrimaryAction::Commit => ScmIcon::Check,
+                ScmPrimaryAction::PublishRepository | ScmPrimaryAction::PublishBranch => {
+                    ScmIcon::Push
+                }
+                ScmPrimaryAction::Sync { .. } => ScmIcon::Sync,
             },
             ScmRect {
                 x: group_x,
@@ -1427,7 +1512,7 @@ impl App {
             commit_color,
         );
         renderer.draw_text(
-            commit_label,
+            &commit_label,
             group_x + check_size + label_gap,
             commit_y + (row_h - line_height) * 0.5 + row_h * 0.08,
             commit_color,
@@ -1964,6 +2049,40 @@ impl App {
             }
         }
     }
+}
+
+/// The state of the main button of the source control view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScmPrimaryAction {
+    Commit,
+    /// There is no remote yet: create one and publish.
+    PublishRepository,
+    /// A remote exists but the branch does not track anything yet.
+    PublishBranch,
+    /// Nothing to commit and the branch differs from its upstream.
+    Sync { ahead: usize, behind: usize },
+}
+
+pub(crate) fn scm_primary_action_for(snapshot: &crate::scm::Snapshot) -> ScmPrimaryAction {
+    if snapshot.error.is_some() || !snapshot.has_commits || !snapshot.files.is_empty() {
+        return ScmPrimaryAction::Commit;
+    }
+    if !snapshot.has_remote {
+        return ScmPrimaryAction::PublishRepository;
+    }
+    if snapshot.branch.is_none() {
+        return ScmPrimaryAction::Commit;
+    }
+    if snapshot.upstream.is_none() {
+        return ScmPrimaryAction::PublishBranch;
+    }
+    if snapshot.ahead > 0 || snapshot.behind > 0 {
+        return ScmPrimaryAction::Sync {
+            ahead: snapshot.ahead,
+            behind: snapshot.behind,
+        };
+    }
+    ScmPrimaryAction::Commit
 }
 
 #[derive(Clone, Copy)]

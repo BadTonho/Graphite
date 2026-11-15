@@ -1,4 +1,5 @@
-use super::scm_ui::{ScmAction, ScmListRowKind};
+use super::scm_remote_ui::RemoteOp;
+use super::scm_ui::{ScmAction, ScmListRowKind, ScmPrimaryAction};
 use super::terminal_panel::terminal_drawing::{
     TerminalHeaderTab, TerminalToolbarAction, TERMINAL_HEADER_HEIGHT,
 };
@@ -243,9 +244,20 @@ impl App {
                     return;
                 }
                 if layout.commit_button.contains(local_x, local_y) {
-                    if self.scm_shows_publish_button() {
-                        self.open_publish_repo_modal();
-                        return;
+                    match self.scm_primary_action() {
+                        ScmPrimaryAction::PublishRepository => {
+                            self.open_publish_repo_modal();
+                            return;
+                        }
+                        ScmPrimaryAction::PublishBranch => {
+                            self.run_scm_remote(RemoteOp::Push);
+                            return;
+                        }
+                        ScmPrimaryAction::Sync { .. } => {
+                            self.run_scm_remote(RemoteOp::Sync);
+                            return;
+                        }
+                        ScmPrimaryAction::Commit => {}
                     }
                     if !self.scm_commit_message.trim().is_empty() {
                         self.run_ui_command("graphite.scm.commit");

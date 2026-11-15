@@ -97,6 +97,7 @@
   "scm.welcome.publish_intro": "You can directly publish this folder to a GitHub repository. Once published, you'll have access to source control features powered by Git and GitHub.",
   "scm.welcome.publish_github": "Publish to GitHub",
   "scm.sidebar.publish": "Publish Branch",
+  "scm.sidebar.sync": "Sync Changes",
   "scm.publish.title": "Publish to GitHub",
   "scm.publish.subtitle": "Choose repository visibility for \"{name}\":",
   "scm.publish.public": "Publish to GitHub public repository",

@@ -59,6 +59,12 @@ pub(crate) struct Snapshot {
     pub line_changes: BTreeMap<PathBuf, Vec<(usize, LineChange)>>,
     pub has_commits: bool,
     pub has_remote: bool,
+    /// Short name of the branch the current branch tracks, such as `origin/main`.
+    pub upstream: Option<String>,
+    /// Commits the current branch has that its upstream lacks.
+    pub ahead: usize,
+    /// Commits the upstream has that the current branch lacks.
+    pub behind: usize,
     pub error: Option<String>,
 }
 
@@ -140,7 +146,16 @@ fn snapshot_inner(root: &Path) -> Result<Snapshot, String> {
     let line_changes = collect_line_changes(&repo, &files);
     let has_commits = repo.head_commit().is_ok();
     let has_remote = !repo.remote_names().is_empty();
+    let tracking = match (&branch, has_remote && has_commits) {
+        (Some(branch), true) => {
+            super::scm_remote::upstream_status(repo.workdir().unwrap_or(root), branch)
+        }
+        _ => Default::default(),
+    };
     Ok(Snapshot {
+        upstream: tracking.name.filter(|_| !tracking.gone),
+        ahead: tracking.ahead,
+        behind: tracking.behind,
         branch,
         branches,
         remote_branches,

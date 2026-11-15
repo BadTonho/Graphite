@@ -97,6 +97,7 @@
   "scm.welcome.publish_intro": "Você pode publicar esta pasta diretamente em um repositório do GitHub. Após publicar, terá acesso aos recursos de controle de código com Git e GitHub.",
   "scm.welcome.publish_github": "Publicar no GitHub",
   "scm.sidebar.publish": "Publicar Branch",
+  "scm.sidebar.sync": "Sincronizar Alterações",
   "scm.publish.title": "Publicar no GitHub",
   "scm.publish.subtitle": "Escolha a visibilidade do repositório \"{name}\":",
   "scm.publish.public": "Publicar em repositório público no GitHub",

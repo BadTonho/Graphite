@@ -26,6 +26,50 @@ pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// Where a local branch stands against the branch it tracks.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct UpstreamStatus {
+    /// Short name of the tracked branch, such as `origin/main`.
+    pub name: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
+    /// The tracked branch was configured but no longer exists on the remote.
+    pub gone: bool,
+}
+
+/// Reads the tracking state of `branch` with one `git` call.
+pub(crate) fn upstream_status(root: &Path, branch: &str) -> UpstreamStatus {
+    let reference = format!("refs/heads/{branch}");
+    run_git(
+        root,
+        &[
+            "for-each-ref",
+            "--format=%(upstream:short)|%(upstream:track,nobracket)",
+            &reference,
+        ],
+    )
+    .map(|line| parse_upstream_status(&line))
+    .unwrap_or_default()
+}
+
+fn parse_upstream_status(line: &str) -> UpstreamStatus {
+    let (name, track) = line.split_once('|').unwrap_or((line, ""));
+    let mut status = UpstreamStatus {
+        name: (!name.is_empty()).then(|| name.to_owned()),
+        ..UpstreamStatus::default()
+    };
+    for part in track.split(',').map(str::trim) {
+        if part == "gone" {
+            status.gone = true;
+        } else if let Some(count) = part.strip_prefix("ahead ") {
+            status.ahead = count.parse().unwrap_or(0);
+        } else if let Some(count) = part.strip_prefix("behind ") {
+            status.behind = count.parse().unwrap_or(0);
+        }
+    }
+    status
+}
+
 pub(crate) fn init_repository(root: &Path) -> Result<String, String> {
     run_git(root, &["init"])
 }
@@ -184,6 +228,54 @@ mod tests {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn tracking_output_is_parsed_into_ahead_and_behind() {
+        assert_eq!(parse_upstream_status(""), UpstreamStatus::default());
+        assert_eq!(
+            parse_upstream_status("origin/main|"),
+            UpstreamStatus {
+                name: Some("origin/main".into()),
+                ..Default::default()
+            }
+        );
+        let both = parse_upstream_status("origin/main|ahead 2, behind 3");
+        assert_eq!((both.ahead, both.behind, both.gone), (2, 3, false));
+        let behind = parse_upstream_status("origin/main|behind 1");
+        assert_eq!((behind.ahead, behind.behind), (0, 1));
+        assert!(parse_upstream_status("origin/main|gone").gone);
+    }
+
+    #[test]
+    fn upstream_status_follows_commits_and_pushes() {
+        let dir = crate::test_support::TempDir::new();
+        let remote = dir.path().join("remote.git");
+        let work = dir.path().join("work");
+        fs::create_dir_all(&work).unwrap();
+        git(
+            dir.path(),
+            &["init", "--bare", "-b", "main", remote.to_str().unwrap()],
+        );
+        git(&work, &["init", "-b", "main"]);
+        git(
+            &work,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        fs::write(work.join("a.txt"), "one").unwrap();
+        git(&work, &["add", "a.txt"]);
+        git(&work, &["commit", "-m", "first"]);
+        assert_eq!(upstream_status(&work, "main").name, None);
+
+        push(&work).unwrap();
+        let pushed = upstream_status(&work, "main");
+        assert_eq!(pushed.name.as_deref(), Some("origin/main"));
+        assert_eq!((pushed.ahead, pushed.behind), (0, 0));
+
+        fs::write(work.join("a.txt"), "two").unwrap();
+        git(&work, &["commit", "-am", "second"]);
+        let ahead = upstream_status(&work, "main");
+        assert_eq!((ahead.ahead, ahead.behind), (1, 0));
     }
 
     #[test]
