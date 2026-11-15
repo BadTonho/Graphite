@@ -28,6 +28,9 @@ impl App {
         ) {
             return;
         }
+        if self.handle_explorer_delete_key(&event.logical_key) {
+            return;
+        }
         if self.handle_explorer_prompt_key(
             &event.logical_key,
             (!self.modifiers.control_key() && !self.modifiers.alt_key())
@@ -59,6 +62,9 @@ impl App {
             return;
         }
         if self.terminal_toolbar_menu_key(&event.logical_key) {
+            return;
+        }
+        if self.explorer_context_menu_key(&event.logical_key) {
             return;
         }
         if self.settings_menu_key(&event.logical_key) {

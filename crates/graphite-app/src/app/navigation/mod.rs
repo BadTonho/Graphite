@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+pub(crate) mod explorer_context_menu;
 pub(crate) mod explorer_files;
 pub(crate) mod explorer_nav;
 pub(crate) mod local_search;

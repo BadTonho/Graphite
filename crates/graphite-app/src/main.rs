@@ -127,6 +127,7 @@ struct App {
     /// Entry pressed in the explorer, moved if the mouse is released on a folder.
     explorer_drag: Option<PathBuf>,
     explorer_prompt: Option<app::explorer_files::ExplorerPrompt>,
+    explorer_delete_confirm: Option<PathBuf>,
     /// Signed-in GitHub account of this profile, if any.
     github_session: Option<graphite_auth::Session>,
     /// A GitHub sign-in is waiting for the user to confirm the code.
@@ -141,6 +142,7 @@ struct App {
     settings_menu: Option<app::settings_menu::SettingsMenu>,
     profile_menu: Option<app::profile_menu::ProfileMenu>,
     terminal_toolbar_menu: Option<app::terminal_panel::terminal_toolbar_menu::TerminalToolbarMenu>,
+    explorer_context_menu: Option<app::explorer_context_menu::ExplorerContextMenu>,
     view_preferences: config::ViewLayoutPreferences,
     view_menu: Option<app::view_menu::ViewMenuState>,
     workbench_menu: Option<app::menu_bar::WorkbenchMenu>,
@@ -664,6 +666,7 @@ impl App {
             explorer_scroll: 0,
             explorer_drag: None,
             explorer_prompt: None,
+            explorer_delete_confirm: None,
             github_session,
             github_sign_in_pending: false,
             github_code_dialog: None,
@@ -675,6 +678,7 @@ impl App {
             settings_menu: None,
             profile_menu: None,
             terminal_toolbar_menu: None,
+            explorer_context_menu: None,
             view_preferences,
             view_menu: None,
             workbench_menu: None,

@@ -74,6 +74,17 @@ impl App {
         }
         self.column_selection_anchor = None;
 
+        if self.click_explorer_delete_confirm(mx, my, window_width as f32, window_height as f32) {
+            return;
+        }
+        if self.explorer_context_menu.is_some() {
+            if self.explorer_context_menu_contains(mx, my) {
+                self.explorer_context_menu_click(mx, my);
+                return;
+            }
+            self.explorer_context_menu = None;
+        }
+
         if self.activity_bar_menu.is_some() {
             self.handle_activity_bar_menu_click(mx, my, window_width as f32);
             return;

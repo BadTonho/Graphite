@@ -216,6 +216,8 @@ impl App {
                 .unwrap_or_else(|| self.tree.root().to_path_buf()),
             None => self.tree.root().to_path_buf(),
         };
+        self.tree.set_expanded(&parent, true);
+        self.tree.refresh();
         self.explorer_prompt = Some(ExplorerPrompt {
             path: parent,
             value: String::new(),
@@ -356,27 +358,132 @@ impl App {
         Ok(())
     }
 
-    /// Asks before deleting the selected entry. Deletion is permanent.
+    /// Asks before deleting the selected entry using a non-blocking in-app confirmation modal.
     pub(crate) fn explorer_delete(&mut self) {
         let Some(path) = self.explorer_selected.clone() else {
             return;
         };
+        let norm_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if self.tree.roots().iter().any(|root| {
+            std::fs::canonicalize(root).unwrap_or_else(|_| root.clone()) == norm_path
+        }) {
+            return;
+        }
+        self.explorer_delete_confirm = Some(path);
+    }
+
+    pub(crate) fn confirm_explorer_delete(&mut self) {
+        let Some(path) = self.explorer_delete_confirm.take() else {
+            return;
+        };
+        match self.remove_explorer_entry(&path) {
+            Ok(()) => self.status = self.t("explorer.delete.done").into(),
+            Err(error) => self.status = error,
+        }
+    }
+
+    pub(crate) fn handle_explorer_delete_key(&mut self, key: &Key) -> bool {
+        if self.explorer_delete_confirm.is_none() {
+            return false;
+        }
+        match key {
+            Key::Named(NamedKey::Enter) => self.confirm_explorer_delete(),
+            Key::Named(NamedKey::Escape) => self.explorer_delete_confirm = None,
+            _ => {}
+        }
+        true
+    }
+
+    fn explorer_delete_modal_rects(
+        width: f32,
+        height: f32,
+    ) -> ((f32, f32, f32, f32), (f32, f32, f32, f32), (f32, f32, f32, f32)) {
+        let panel_width = (width * 0.6)
+            .clamp(340.0, 520.0)
+            .min((width - 24.0).max(0.0));
+        let panel_height = 128.0;
+        let x = ((width - panel_width) * 0.5).max(12.0);
+        let y = ((height - panel_height) * 0.5).max(12.0);
+        let btn_w = 104.0;
+        let btn_h = 28.0;
+        let btn_y = y + panel_height - btn_h - 16.0;
+        let cancel_x = x + panel_width - btn_w - 16.0;
+        let confirm_x = cancel_x - btn_w - 10.0;
+        (
+            (x, y, panel_width, panel_height),
+            (confirm_x, btn_y, btn_w, btn_h),
+            (cancel_x, btn_y, btn_w, btn_h),
+        )
+    }
+
+    pub(crate) fn click_explorer_delete_confirm(
+        &mut self,
+        mx: f32,
+        my: f32,
+        width: f32,
+        height: f32,
+    ) -> bool {
+        if self.explorer_delete_confirm.is_none() {
+            return false;
+        }
+        let (panel, confirm, cancel) = Self::explorer_delete_modal_rects(width, height);
+        let in_rect = |r: (f32, f32, f32, f32)| {
+            mx >= r.0 && mx < r.0 + r.2 && my >= r.1 && my < r.1 + r.3
+        };
+        if in_rect(confirm) {
+            self.confirm_explorer_delete();
+        } else if in_rect(cancel) || !in_rect(panel) {
+            self.explorer_delete_confirm = None;
+        }
+        true
+    }
+
+    pub(crate) fn draw_explorer_delete_confirm(&self, renderer: &mut Renderer) {
+        let Some(path) = &self.explorer_delete_confirm else {
+            return;
+        };
+        let (width, height) = renderer.size();
+        let cw = renderer.char_width();
+        let ((x, y, panel_width, panel_height), confirm, cancel) =
+            Self::explorer_delete_modal_rects(width, height);
+        let border = rgb(Theme::color(Theme::DIM, 0x454545));
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
+        let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
+        let dim = rgb(Theme::color(Theme::DIM, 0x858585));
+        let danger_bg = rgb(0xb42318);
+        let cancel_bg = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
+        let btn_fg = rgb(0xffffff);
+
+        renderer.draw_rect(x, y, panel_width, panel_height, border);
+        renderer.draw_rect(
+            x + 1.0,
+            y + 1.0,
+            (panel_width - 2.0).max(0.0),
+            (panel_height - 2.0).max(0.0),
+            bg,
+        );
+        renderer.draw_text(self.t("explorer.delete.title"), x + 16.0, y + 14.0, text);
+
         let name = path
             .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
+            .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let confirmed = rfd::MessageDialog::new()
-            .set_title(self.t("explorer.delete.title"))
-            .set_description(self.tf("explorer.delete.confirm", &[("name", &name)]))
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show()
-            == rfd::MessageDialogResult::Yes;
-        if confirmed {
-            match self.remove_explorer_entry(&path) {
-                Ok(()) => self.status = self.t("explorer.delete.done").into(),
-                Err(error) => self.status = error,
-            }
-        }
+        let message = self.tf("explorer.delete.confirm", &[("name", &name)]);
+        let clipped =
+            Self::help_menu_visible_label(&message, cw, (panel_width - 32.0).max(0.0));
+        renderer.draw_text(&clipped, x + 16.0, y + 44.0, dim);
+
+        renderer.draw_rect(confirm.0, confirm.1, confirm.2, confirm.3, danger_bg);
+        let confirm_label = self.t("explorer.delete.title");
+        let confirm_tx =
+            confirm.0 + (confirm.2 - confirm_label.chars().count() as f32 * cw).max(0.0) * 0.5;
+        renderer.draw_text(confirm_label, confirm_tx, confirm.1 + 5.0, btn_fg);
+
+        renderer.draw_rect(cancel.0, cancel.1, cancel.2, cancel.3, cancel_bg);
+        let cancel_label = self.t("explorer.delete.cancel");
+        let cancel_tx =
+            cancel.0 + (cancel.2 - cancel_label.chars().count() as f32 * cw).max(0.0) * 0.5;
+        renderer.draw_text(cancel_label, cancel_tx, cancel.1 + 5.0, text);
     }
 
     /// Deletes an entry on disk after the user confirmed it.
@@ -445,8 +552,76 @@ impl App {
         }
     }
 
-    /// Draws the explorer rename prompt above the window, like the LSP rename prompt.
+    pub(crate) fn explorer_inline_prompt_active(&self) -> bool {
+        self.explorer_prompt.is_some()
+            && !self.zen_mode
+            && self.view_preferences.primary_sidebar_visible
+            && self.active_activity() == crate::app::activity_bar::Activity::Explorer
+            && self.active_plugin_activity.is_none()
+    }
+
+    pub(crate) fn explorer_inline_insert_index(&self) -> Option<(usize, usize)> {
+        let prompt = self.explorer_prompt.as_ref()?;
+        if prompt.kind == ExplorerPromptKind::Rename {
+            return None;
+        }
+        let norm_parent =
+            std::fs::canonicalize(&prompt.path).unwrap_or_else(|_| prompt.path.clone());
+        if let Some((idx, row)) = self.tree.rows.iter().enumerate().find(|(_, row)| {
+            std::fs::canonicalize(&row.entry.path)
+                .unwrap_or_else(|_| row.entry.path.clone())
+                == norm_parent
+        }) {
+            Some((idx + 1, row.depth + 1))
+        } else {
+            Some((0, 0))
+        }
+    }
+
+    pub(crate) fn explorer_inline_rename_match(&self, path: &Path) -> bool {
+        let Some(prompt) = &self.explorer_prompt else {
+            return false;
+        };
+        if prompt.kind != ExplorerPromptKind::Rename {
+            return false;
+        }
+        let norm_prompt =
+            std::fs::canonicalize(&prompt.path).unwrap_or_else(|_| prompt.path.clone());
+        let norm_row = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        norm_prompt == norm_row
+    }
+
+    pub(crate) fn draw_explorer_inline_input(
+        &self,
+        renderer: &mut Renderer,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        cw: f32,
+        value: &str,
+    ) {
+        let focus_border = rgb(Theme::color(Theme::STATUS, 0x007fd4));
+        let input_bg = rgb(Theme::color(Theme::BG, 0x1e1e1e));
+        let text = rgb(Theme::color(Theme::TEXT, 0xcccccc));
+        renderer.draw_rect(x, y + 1.0, width, (height - 2.0).max(4.0), focus_border);
+        renderer.draw_rect(
+            x + 1.0,
+            y + 2.0,
+            (width - 2.0).max(0.0),
+            (height - 4.0).max(2.0),
+            input_bg,
+        );
+        let max_w = (width - 10.0).max(0.0);
+        let visible = Self::help_menu_visible_label(&format!("{value}▏"), cw, max_w);
+        renderer.draw_text(&visible, x + 5.0, y + 1.0, text);
+    }
+
+    /// Draws the explorer rename prompt above the window when the Explorer sidebar is hidden.
     pub(crate) fn draw_explorer_prompt(&self, renderer: &mut Renderer) {
+        if self.explorer_inline_prompt_active() {
+            return;
+        }
         let Some(prompt) = &self.explorer_prompt else {
             return;
         };
@@ -608,5 +783,52 @@ mod tests {
         app.explorer_paste().unwrap();
         assert!(!dir.path().join("a copy.txt").exists());
         assert!(src.join("a copy.txt").exists());
+    }
+
+    #[test]
+    fn new_entry_and_rename_use_inline_explorer_rows_when_sidebar_is_visible() {
+        let (dir, mut app) = app_with_files();
+        app.view_preferences.primary_sidebar_visible = true;
+        app.explorer_new_entry(false);
+        assert!(app.explorer_inline_prompt_active());
+        assert_eq!(app.explorer_inline_insert_index(), Some((0, 0)));
+
+        let src = dir.path().join("src");
+        app.explorer_select(src.clone());
+        app.explorer_new_entry(true);
+        let src_row = app
+            .tree
+            .rows
+            .iter()
+            .position(|row| row.entry.name == "src")
+            .unwrap();
+        assert_eq!(app.explorer_inline_insert_index(), Some((src_row + 1, 1)));
+
+        app.explorer_select(dir.path().join("a.txt"));
+        app.explorer_rename();
+        assert_eq!(app.explorer_inline_insert_index(), None);
+        assert!(app.explorer_inline_rename_match(&dir.path().join("a.txt")));
+    }
+
+    #[test]
+    fn explorer_delete_uses_non_blocking_modal_and_confirms_or_cancels() {
+        let (dir, mut app) = app_with_files();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+
+        app.explorer_select(a.clone());
+        app.explorer_delete();
+        assert_eq!(app.explorer_delete_confirm.as_deref(), Some(a.as_path()));
+        assert!(a.exists());
+
+        assert!(app.handle_explorer_delete_key(&Key::Named(NamedKey::Escape)));
+        assert!(app.explorer_delete_confirm.is_none());
+        assert!(a.exists());
+
+        app.explorer_select(b.clone());
+        app.explorer_delete();
+        assert!(app.handle_explorer_delete_key(&Key::Named(NamedKey::Enter)));
+        assert!(app.explorer_delete_confirm.is_none());
+        assert!(!b.exists());
     }
 }

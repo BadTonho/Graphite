@@ -68,14 +68,53 @@ impl App {
                 lh * 0.25,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
-            for (i, row) in self
-                .tree
-                .rows
-                .iter()
-                .enumerate()
-                .skip(self.explorer_scroll)
-                .map(|(i, row)| (i - self.explorer_scroll, row))
-            {
+            let inline_insert = self
+                .explorer_inline_prompt_active()
+                .then(|| self.explorer_inline_insert_index())
+                .flatten();
+            let draw_inline_new_row = |r: &mut Renderer, visual_i: usize, depth: usize| {
+                let Some(prompt) = &self.explorer_prompt else {
+                    return;
+                };
+                let y = sidebar_lh * 1.5 + visual_i as f32 * sidebar_lh;
+                if y > h {
+                    return;
+                }
+                let indent = ACTIVITY_BAR_WIDTH + PAD + depth as f32 * cw * 2.0;
+                let chevron_slot = cw * 1.8;
+                let icon_slot = sidebar_lh;
+                let icon_size = (sidebar_lh * 0.85).round();
+                let icon_x = indent + chevron_slot;
+                let is_folder =
+                    prompt.kind == crate::app::navigation::explorer_files::ExplorerPromptKind::NewFolder;
+                let icon = crate::icon_theme::for_entry(&prompt.value, is_folder, false, false);
+                crate::icon_theme::draw(
+                    r,
+                    &icon,
+                    icon_x + (icon_slot - icon_size) * 0.5,
+                    y + (sidebar_lh - icon_size) * 0.5,
+                    icon_size,
+                    |color| color,
+                );
+                let box_x = icon_x + icon_slot + 2.0;
+                let box_w = (sidebar_width - 8.0 - box_x).max(40.0);
+                self.draw_explorer_inline_input(r, box_x, y, box_w, sidebar_lh, cw, &prompt.value);
+            };
+
+            if let Some((0, depth)) = inline_insert {
+                if self.explorer_scroll == 0 {
+                    draw_inline_new_row(r, 0, depth);
+                }
+            }
+            for (raw_i, row) in self.tree.rows.iter().enumerate() {
+                let shifted_i = match inline_insert {
+                    Some((insert_idx, _)) if raw_i >= insert_idx => raw_i + 1,
+                    _ => raw_i,
+                };
+                if shifted_i < self.explorer_scroll {
+                    continue;
+                }
+                let i = shifted_i - self.explorer_scroll;
                 let y = sidebar_lh * 1.5 + i as f32 * sidebar_lh;
                 if y > h {
                     break;
@@ -124,12 +163,35 @@ impl App {
                     icon_size,
                     |color| color,
                 );
-                r.draw_text(
-                    &row.entry.name,
-                    icon_x + icon_slot + 4.0,
-                    y,
-                    rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-                );
+                if self.explorer_inline_prompt_active()
+                    && self.explorer_inline_rename_match(&row.entry.path)
+                {
+                    if let Some(prompt) = &self.explorer_prompt {
+                        let box_x = icon_x + icon_slot + 2.0;
+                        let box_w = (sidebar_width - 8.0 - box_x).max(40.0);
+                        self.draw_explorer_inline_input(
+                            r,
+                            box_x,
+                            y,
+                            box_w,
+                            sidebar_lh,
+                            cw,
+                            &prompt.value,
+                        );
+                    }
+                } else {
+                    r.draw_text(
+                        &row.entry.name,
+                        icon_x + icon_slot + 4.0,
+                        y,
+                        rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+                    );
+                }
+                if let Some((insert_idx, depth)) = inline_insert {
+                    if raw_i + 1 == insert_idx && insert_idx >= self.explorer_scroll {
+                        draw_inline_new_row(r, insert_idx - self.explorer_scroll, depth);
+                    }
+                }
             }
             self.draw_virtual_explorer_rows(r, sidebar_lh, cw, h);
         }
@@ -786,6 +848,7 @@ impl App {
         }
 
         self.draw_terminal_toolbar_menu(r);
+        self.draw_explorer_context_menu(r);
         self.draw_workbench_menu(r);
         self.draw_help_modal(r);
 
