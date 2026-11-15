@@ -359,6 +359,8 @@ pub(crate) enum UserEvent {
         message: String,
         snapshot: Option<crate::scm::Snapshot>,
     },
+    /// A clone finished: the new folder, or why it failed.
+    CloneCompleted(Result<PathBuf, String>),
     BranchCheckoutCompleted {
         message: String,
         snapshot: crate::scm::Snapshot,

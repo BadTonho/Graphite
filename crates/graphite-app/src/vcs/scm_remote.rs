@@ -163,6 +163,32 @@ fn split_remote_branch(remote_branch: &str) -> Result<(&str, &str), String> {
         .ok_or_else(|| format!("'{remote_branch}' is not a remote branch"))
 }
 
+/// The folder name git would use for `url`: its last part without `.git`.
+pub(crate) fn clone_folder_name(url: &str) -> Option<String> {
+    let name = url
+        .trim()
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\', ':'])
+        .next()?
+        .trim_end_matches(".git");
+    (!name.is_empty() && name != "." && name != "..").then(|| name.to_owned())
+}
+
+/// Clones `url` into a new folder inside `parent` and returns that folder.
+pub(crate) fn clone(parent: &Path, url: &str) -> Result<std::path::PathBuf, String> {
+    let url = url.trim();
+    if url.is_empty() || url.starts_with('-') || url.chars().any(char::is_control) {
+        return Err("Type the address of a repository".into());
+    }
+    let name = clone_folder_name(url).ok_or_else(|| format!("Cannot tell a folder name from '{url}'"))?;
+    let target = parent.join(&name);
+    if target.exists() && target.read_dir().map_or(true, |mut entries| entries.next().is_some()) {
+        return Err(format!("'{}' already exists and is not empty", target.display()));
+    }
+    run_git(parent, &["clone", "--", url, &name])?;
+    Ok(target)
+}
+
 /// Pulls `remote_branch` (such as `origin/main`) into the current branch.
 pub(crate) fn pull_from(root: &Path, remote_branch: &str) -> Result<String, String> {
     let (remote, branch) = split_remote_branch(remote_branch)?;
@@ -320,6 +346,52 @@ mod tests {
         git(&work, &["commit", "-am", "second"]);
         let ahead = upstream_status(&work, "main");
         assert_eq!((ahead.ahead, ahead.behind), (1, 0));
+    }
+
+    #[test]
+    fn the_clone_folder_is_named_like_git_does() {
+        for (url, name) in [
+            ("https://github.com/user/repo.git", "repo"),
+            ("https://github.com/user/repo", "repo"),
+            ("https://github.com/user/repo/", "repo"),
+            ("git@github.com:user/repo.git", "repo"),
+            ("git@host:repo.git", "repo"),
+            ("C:\\repos\\thing.git", "thing"),
+            ("/srv/git/thing.git", "thing"),
+        ] {
+            assert_eq!(clone_folder_name(url).as_deref(), Some(name), "{url}");
+        }
+        for bad in ["", "   ", "/", "..", ".git"] {
+            assert_eq!(clone_folder_name(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn cloning_creates_the_folder_and_refuses_bad_or_busy_targets() {
+        let dir = crate::test_support::TempDir::new();
+        let source = dir.path().join("source.git");
+        let work = dir.path().join("work");
+        let parent = dir.path().join("parent");
+        fs::create_dir_all(&work).unwrap();
+        fs::create_dir_all(&parent).unwrap();
+        git(dir.path(), &["init", "--bare", "-b", "main", source.to_str().unwrap()]);
+        git(&work, &["init", "-b", "main"]);
+        git(&work, &["remote", "add", "origin", source.to_str().unwrap()]);
+        fs::write(work.join("a.txt"), "a").unwrap();
+        git(&work, &["add", "a.txt"]);
+        git(&work, &["commit", "-m", "first"]);
+        git(&work, &["push", "origin", "main"]);
+
+        let cloned = clone(&parent, source.to_str().unwrap()).unwrap();
+        assert_eq!(cloned, parent.join("source"));
+        assert!(cloned.join("a.txt").exists());
+        assert!(
+            clone(&parent, source.to_str().unwrap()).unwrap_err().contains("already exists"),
+            "a busy folder is not overwritten"
+        );
+        assert!(clone(&parent, "--upload-pack=evil").is_err());
+        assert!(clone(&parent, "  ").is_err());
+        assert!(clone(&parent, "/no/such/place.git").is_err());
     }
 
     #[test]

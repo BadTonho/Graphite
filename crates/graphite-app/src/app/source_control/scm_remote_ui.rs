@@ -190,6 +190,43 @@ impl App {
         }
     }
 
+    /// Asks where to put the clone, then clones on a worker thread.
+    pub(crate) fn choose_clone_folder_and_start(&mut self, url: String) {
+        let Some(parent) = rfd::FileDialog::new()
+            .set_title(self.t("scm.clone.choose_folder"))
+            .set_directory(self.tree.root())
+            .pick_folder()
+        else {
+            return;
+        };
+        self.start_clone(url, parent);
+    }
+
+    pub(crate) fn start_clone(&mut self, url: String, parent: PathBuf) {
+        let Some(proxy) = self.event_proxy.clone() else {
+            self.status = self.t("scm.error.actions_need_loop").into();
+            return;
+        };
+        self.status = self.t("scm.clone.running").into();
+        std::thread::spawn(move || {
+            let _ = proxy.send_event(UserEvent::CloneCompleted(scm_remote::clone(&parent, &url)));
+        });
+    }
+
+    /// The clone is ready: open it as the workspace, or say why it failed.
+    pub(crate) fn finish_clone(&mut self, result: Result<PathBuf, String>) {
+        match result {
+            Ok(folder) => {
+                let done = self.tf("scm.clone.done", &[("folder", &folder.display())]);
+                self.remember_recent_workspace(folder.clone());
+                self.replace_workspace_roots(vec![folder], None);
+                // Opening the workspace writes its own status; the result of the clone comes last.
+                self.status = done;
+            }
+            Err(error) => self.status = self.tf("scm.remote.failed", &[("error", &error)]),
+        }
+    }
+
     /// **Git: Show Git Output**: the commands that changed something, in a read-only view that is
     /// refreshed when it is already open.
     pub(crate) fn open_scm_output(&mut self) {
@@ -237,6 +274,28 @@ mod tests {
             .documents
             .id_for_path(&app.profile_root.join("git-history.txt"))
             .is_none());
+    }
+
+    #[test]
+    fn a_failed_clone_is_reported_and_a_good_one_opens_the_folder() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.finish_clone(Err("could not resolve host".into()));
+        assert!(app.status.contains("could not resolve host"));
+
+        let cloned = dir.path().join("cloned");
+        std::fs::create_dir_all(&cloned).unwrap();
+        app.finish_clone(Ok(cloned.clone()));
+        assert_eq!(
+            std::fs::canonicalize(app.tree.root()).unwrap(),
+            std::fs::canonicalize(&cloned).unwrap()
+        );
+        assert!(app.status.contains("cloned"));
+
+        // Without an event loop starting a clone stops with this message.
+        app.status.clear();
+        app.start_clone("https://example.invalid/r.git".into(), dir.path().to_path_buf());
+        assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
 
     #[test]

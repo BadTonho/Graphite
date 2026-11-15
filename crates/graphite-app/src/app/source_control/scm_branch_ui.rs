@@ -92,6 +92,8 @@ pub(crate) enum NameTarget {
     RemoteUrl,
     /// The name of the remote with this URL.
     RemoteName(String),
+    /// The address of a repository to clone.
+    CloneUrl,
 }
 
 /// The branch or tag name being typed.
@@ -343,6 +345,10 @@ impl App {
                     self.status = self.t("scm.prompt.branch_empty").into();
                 } else {
                     self.branch_name_prompt = None;
+                    if target == NameTarget::CloneUrl {
+                        self.choose_clone_folder_and_start(name);
+                        return true;
+                    }
                     if target == NameTarget::RemoteUrl {
                         // The URL is only half of a remote: ask for its name next.
                         self.branch_name_prompt = Some(BranchNamePrompt {
@@ -353,7 +359,7 @@ impl App {
                     }
                     self.run_scm_remote(match target {
                         NameTarget::BranchFrom(start) => RemoteOp::CreateBranchFrom(name, start),
-                        NameTarget::RemoteUrl => return true,
+                        NameTarget::RemoteUrl | NameTarget::CloneUrl => return true,
                         NameTarget::RemoteName(url) => RemoteOp::AddRemote(name, url),
                         NameTarget::Branch => RemoteOp::CreateBranch(name),
                         NameTarget::BranchAt(hash) => RemoteOp::CreateBranchAt(name, hash),
@@ -426,6 +432,7 @@ impl App {
             NameTarget::TagAt(_) | NameTarget::TagHead => "scm.prompt.new_tag",
             NameTarget::RenameBranch => "scm.prompt.rename_branch",
             NameTarget::RemoteUrl => "scm.prompt.remote_url",
+            NameTarget::CloneUrl => "scm.prompt.clone_url",
             NameTarget::RemoteName(_) => "scm.prompt.remote_name",
             _ => "scm.prompt.new_branch",
         };
@@ -822,6 +829,18 @@ mod tests {
             app.branch_name_prompt.as_ref().unwrap().target,
             NameTarget::BranchFrom("topic".into())
         );
+    }
+
+    #[test]
+    fn cloning_asks_for_the_address_first() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.run_more_command(crate::app::scm_more_menu::MoreCommand::Clone);
+        assert_eq!(app.branch_name_prompt.as_ref().unwrap().target, NameTarget::CloneUrl);
+        // A blank address keeps the prompt open instead of asking for a folder.
+        app.handle_branch_name_prompt_key(&Key::Named(NamedKey::Enter), None);
+        assert!(app.branch_name_prompt.is_some());
+        assert_eq!(app.status, app.t("scm.prompt.branch_empty"));
     }
 
     #[test]

@@ -35,7 +35,7 @@ O submenu **⋯ → Commit** tem todas as variantes:
 
 O botão abre um menu com submenus que abrem ao passar o mouse ou com a seta para a direita. As setas movem, Enter escolhe, Esquerda fecha um submenu e Escape fecha o menu.
 
-- **Pull**, **Push**, **Checkout para...**, **Fetch**
+- **Pull**, **Push**, **Clonar...** (pede o endereço e depois a pasta onde clonar; o clone abre como área de trabalho ao terminar), **Checkout para...**, **Fetch**
 - **Commit** (acima)
 - **Alterações**: Preparar Todas, Remover Todas do Stage, **Descartar Todas as Alterações** (pergunta antes)
 - **Pull, Push**: Sincronizar, Pull, Pull (Rebase), **Pull de...** (escolha uma branch remota), Push, **Push para...** (escolha um remoto; a branch passa a rastreá-lo), Fetch
@@ -70,4 +70,4 @@ Todo botão de ícone da visão (linha do repositório, seta do commit, linhas d
 
 ## Limites
 
-**Clone** ainda não existe.
+A mensagem de commit é sempre digitada na caixa sob o botão.

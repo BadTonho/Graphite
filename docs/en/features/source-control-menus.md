@@ -35,7 +35,7 @@ The **⋯ → Commit** submenu has every variant:
 
 The button opens a menu with submenus that open on hover or with the right arrow key. Arrow keys move, Enter chooses, Left closes a submenu and Escape closes the menu.
 
-- **Pull**, **Push**, **Checkout to...**, **Fetch**
+- **Pull**, **Push**, **Clone...** (asks for the address, then the folder to clone into; the clone opens as the workspace when it finishes), **Checkout to...**, **Fetch**
 - **Commit** (above)
 - **Changes**: Stage All, Unstage All, **Discard All Changes** (asks first)
 - **Pull, Push**: Sync, Pull, Pull (Rebase), **Pull from...** (choose a remote branch), Push, **Push to...** (choose a remote; the branch then tracks it there), Fetch
@@ -70,4 +70,4 @@ Every icon button of the view (repository row, commit arrow, file rows, Changes 
 
 ## Limits
 
-**Clone** is not available yet.
+The commit message is always typed in the box under the button.

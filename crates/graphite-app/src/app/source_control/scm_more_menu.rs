@@ -39,6 +39,7 @@ pub(crate) enum MoreCommand {
     /// Show the changes lists as a folder tree (`true`) or as a flat list.
     ViewAsTree(bool),
     ShowOutput,
+    Clone,
     Merge,
     Rebase,
     CreateBranch,
@@ -200,6 +201,7 @@ pub(crate) fn more_menu_tree(as_tree: bool) -> Vec<MoreNode> {
     vec![
         N::leaf("scm.more.pull", C::Pull),
         N::leaf("scm.more.push", C::Push),
+        N::leaf("scm.more.clone", C::Clone),
         N::leaf("scm.more.checkout_to", C::CheckoutTo),
         N::leaf("scm.more.fetch", C::Fetch),
         N::Separator,
@@ -848,6 +850,7 @@ impl App {
             C::DiscardAll => self.confirm_discard(self.discard_all_targets()),
             C::ViewAsTree(tree) => self.scm_view_as_tree = tree,
             C::ShowOutput => self.open_scm_output(),
+            C::Clone => self.open_name_prompt(NameTarget::CloneUrl),
             C::Merge => self.open_branch_picker_for(BranchPickerAction::Merge),
             C::Rebase => self.open_branch_picker_for(BranchPickerAction::Rebase),
             C::CreateBranch => self.open_create_branch_prompt(),
@@ -1062,8 +1065,8 @@ mod tests {
     fn the_keyboard_walks_levels_with_the_arrows_and_skips_separators() {
         let tree = more_menu_tree(false);
         let mut menu = menu(&tree);
-        // Pull, Push, Checkout to, Fetch, (separator), View as Tree, (separator), Commit...
-        for _ in 0..5 {
+        // Pull, Push, Clone, Checkout to, Fetch, (separator), View as Tree, (separator), Commit...
+        for _ in 0..6 {
             menu.step(&tree, true);
         }
         assert_eq!(

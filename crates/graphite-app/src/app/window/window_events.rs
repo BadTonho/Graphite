@@ -773,6 +773,12 @@ impl App {
                     gpu.window.request_redraw();
                 }
             }
+            UserEvent::CloneCompleted(result) => {
+                self.finish_clone(result);
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
             UserEvent::BranchCheckoutCompleted {
                 message,
                 snapshot,
