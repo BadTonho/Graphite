@@ -260,8 +260,66 @@ fn even_editor_widths(app: &mut App, _: &CommandInvocation) -> Result<(), Comman
     Ok(())
 }
 
+fn hide_sidebars(app: &mut App) {
+    app.view_preferences.primary_sidebar_visible = false;
+    app.view_preferences.secondary_sidebar_visible = false;
+    app.save_view_preferences_for_command();
+}
+
+fn maximize_editor_hide_sidebar(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if app.editor_groups.toggle_maximize_group() {
+        hide_sidebars(app);
+    }
+    Ok(())
+}
+
+fn minimize_other_editors(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.editor_groups.maximize_focused_group();
+    Ok(())
+}
+
+fn minimize_other_editors_hide_sidebar(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    app.editor_groups.maximize_focused_group();
+    hide_sidebars(app);
+    Ok(())
+}
+
+fn split_editor_orthogonal(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    let direction = app.editor_groups.split_direction_orthogonal();
+    app.split_editor_group(direction);
+    Ok(())
+}
+
+fn move_active_group(app: &mut App, direction: GoSubcommand) -> Result<(), CommandError> {
+    if let Some(target) = app.adjacent_group(direction) {
+        let focused = app.editor_groups.focused();
+        app.editor_groups.swap_groups(focused, target);
+    }
+    Ok(())
+}
+
+handler!(move_active_group_left, |app| move_active_group(
+    app,
+    GoSubcommand::GroupLeft
+));
+handler!(move_active_group_right, |app| move_active_group(
+    app,
+    GoSubcommand::GroupRight
+));
+handler!(move_active_group_up, |app| move_active_group(
+    app,
+    GoSubcommand::GroupAbove
+));
+handler!(move_active_group_down, |app| move_active_group(
+    app,
+    GoSubcommand::GroupBelow
+));
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, Handler); 33] = [
+    let commands: [(&'static str, &'static str, Handler); 42] = [
         (
             "workbench.action.toggleMaximizeEditorGroup",
             "Toggle Maximize Editor Group",
@@ -426,6 +484,51 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.focusLastEditorGroup",
             "Focus last editor group",
             focus_last_group,
+        ),
+        (
+            "workbench.action.toggleEditorWidths",
+            "Toggle Editor Group Sizes",
+            toggle_maximize_group,
+        ),
+        (
+            "workbench.action.maximizeEditorHideSidebar",
+            "Maximize Editor Group and Hide Side Bar",
+            maximize_editor_hide_sidebar,
+        ),
+        (
+            "workbench.action.minimizeOtherEditors",
+            "Minimize Other Editor Groups",
+            minimize_other_editors,
+        ),
+        (
+            "workbench.action.minimizeOtherEditorsHideSidebar",
+            "Minimize Other Editor Groups and Hide Side Bar",
+            minimize_other_editors_hide_sidebar,
+        ),
+        (
+            "workbench.action.splitEditorOrthogonal",
+            "Split Editor Orthogonal",
+            split_editor_orthogonal,
+        ),
+        (
+            "workbench.action.moveActiveEditorGroupLeft",
+            "Move Editor Group Left",
+            move_active_group_left,
+        ),
+        (
+            "workbench.action.moveActiveEditorGroupRight",
+            "Move Editor Group Right",
+            move_active_group_right,
+        ),
+        (
+            "workbench.action.moveActiveEditorGroupUp",
+            "Move Editor Group Up",
+            move_active_group_up,
+        ),
+        (
+            "workbench.action.moveActiveEditorGroupDown",
+            "Move Editor Group Down",
+            move_active_group_down,
         ),
     ];
     for (id, title, handler) in commands {
@@ -615,5 +718,37 @@ mod tests {
         assert_eq!(app.editor_groups.focused(), groups[1]);
         app.run_ui_command("workbench.action.focusActiveEditorGroup");
         assert_eq!(app.editor_groups.focused(), groups[1]);
+    }
+
+    #[test]
+    fn maximize_minimize_orthogonal_and_move_group_commands_work() {
+        let (mut app, _dir) = app_with_three_tabs();
+        app.run_ui_command("workbench.action.splitEditorOrthogonal");
+        assert_eq!(app.editor_groups.group_count(), 2);
+
+        let before = app.editor_groups.ordered_group_ids();
+        let focused = app.editor_groups.focused();
+        assert_eq!(focused, before[1]);
+
+        app.run_ui_command("workbench.action.moveActiveEditorGroupLeft");
+        let after = app.editor_groups.ordered_group_ids();
+        assert_eq!(after[0], focused);
+
+        app.run_ui_command("workbench.action.moveActiveEditorGroupRight");
+        let restored = app.editor_groups.ordered_group_ids();
+        assert_eq!(restored[1], focused);
+
+        app.view_preferences.primary_sidebar_visible = true;
+        app.view_preferences.secondary_sidebar_visible = true;
+        app.run_ui_command("workbench.action.maximizeEditorHideSidebar");
+        assert!(app.editor_groups.is_group_maximized());
+        assert!(!app.view_preferences.primary_sidebar_visible);
+        assert!(!app.view_preferences.secondary_sidebar_visible);
+
+        app.run_ui_command("workbench.action.toggleEditorWidths");
+        assert!(!app.editor_groups.is_group_maximized());
+
+        app.run_ui_command("workbench.action.minimizeOtherEditors");
+        assert!(app.editor_groups.is_group_maximized());
     }
 }

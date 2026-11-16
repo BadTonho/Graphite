@@ -73,8 +73,91 @@ fn show_about(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> 
     Ok(())
 }
 
+fn toggle_maximized_panel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if !app.view_preferences.panel_visible {
+        app.view_preferences.panel_visible = true;
+    }
+    app.view_preferences.panel_height_delta = if app.view_preferences.panel_height_delta > 0 {
+        0
+    } else {
+        220
+    };
+    app.save_view_preferences_for_command();
+    app.resize_terminal();
+    Ok(())
+}
+
+fn cycle_panel_view(app: &mut App, reverse: bool) {
+    app.view_preferences.panel_visible = true;
+    app.terminal_visible = true;
+    // Order: 0 = Problems, 1 = Output, 2 = DebugConsole, 3 = Terminal, 4 = Ports
+    let current = if app.terminal_problems {
+        0
+    } else if app.debug_panel_visible {
+        2
+    } else {
+        3
+    };
+    let next = if reverse {
+        (current + 4) % 5
+    } else {
+        (current + 1) % 5
+    };
+    app.terminal_problems = false;
+    app.terminal_focused = false;
+    app.debug_panel_visible = false;
+    match next {
+        0 => app.terminal_problems = true,
+        1 => app.run_ui_command("workbench.action.showOutputChannels"),
+        2 => app.debug_panel_visible = true,
+        3 => app.terminal_focused = true,
+        _ => app.run_ui_command("graphite.ports.open"),
+    }
+    app.save_view_preferences_for_command();
+}
+
+fn next_panel_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    cycle_panel_view(app, false);
+    Ok(())
+}
+
+fn previous_panel_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    cycle_panel_view(app, true);
+    Ok(())
+}
+
+fn cycle_auxiliary_bar_view(app: &mut App) {
+    use crate::app::chat::state::ChatSurface;
+    app.view_preferences.secondary_sidebar_visible = true;
+    let in_chat = app.chat.visible && app.chat.surface == ChatSurface::SideBar;
+    if in_chat {
+        app.chat.visible = false;
+        app.chat.focused = false;
+        app.outline_visible = true;
+    } else {
+        app.outline_visible = false;
+        app.open_chat_sidebar();
+    }
+    app.save_view_preferences_for_command();
+}
+
+fn next_auxiliary_bar_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    cycle_auxiliary_bar_view(app);
+    Ok(())
+}
+
+fn change_eol(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_ui_command("graphite.editor.toggleLineEnding");
+    Ok(())
+}
+
+fn change_encoding(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.run_ui_command("graphite.editor.nextEncoding");
+    Ok(())
+}
+
 pub(super) fn register(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Handler); 12] = [
+    let commands: [(&'static str, &'static str, &'static str, Handler); 19] = [
         (
             "workbench.action.closeSidebar",
             "Close primary side bar",
@@ -146,6 +229,48 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "About",
             "Help",
             show_about,
+        ),
+        (
+            "workbench.action.toggleMaximizedPanel",
+            "Toggle Maximized Panel",
+            "View",
+            toggle_maximized_panel,
+        ),
+        (
+            "workbench.action.nextPanelView",
+            "Next Panel View",
+            "View",
+            next_panel_view,
+        ),
+        (
+            "workbench.action.previousPanelView",
+            "Previous Panel View",
+            "View",
+            previous_panel_view,
+        ),
+        (
+            "workbench.action.nextAuxiliaryBarView",
+            "Next Secondary Side Bar View",
+            "View",
+            next_auxiliary_bar_view,
+        ),
+        (
+            "workbench.action.previousAuxiliaryBarView",
+            "Previous Secondary Side Bar View",
+            "View",
+            next_auxiliary_bar_view,
+        ),
+        (
+            "workbench.action.editor.changeEOL",
+            "Change End of Line Sequence",
+            "File",
+            change_eol,
+        ),
+        (
+            "workbench.action.editor.changeEncoding",
+            "Change File Encoding",
+            "File",
+            change_encoding,
         ),
     ];
     for (id, title, category, handler) in commands {
@@ -260,11 +385,72 @@ mod tests {
             "workbench.action.toggleCenteredLayout",
             "workbench.action.toggleFullScreen",
             "workbench.action.showAboutDialog",
+            "workbench.action.toggleMaximizedPanel",
+            "workbench.action.nextPanelView",
+            "workbench.action.previousPanelView",
+            "workbench.action.nextAuxiliaryBarView",
+            "workbench.action.previousAuxiliaryBarView",
+            "workbench.action.editor.changeEOL",
+            "workbench.action.editor.changeEncoding",
+            "workbench.action.setNotificationsPosition.bottomLeft",
+            "workbench.action.setNotificationsPosition.bottomRight",
+            "workbench.action.setNotificationsPosition.topRight",
         ] {
             assert!(
                 crate::app::command_registry::registry().get(id).is_some(),
                 "{id}"
             );
         }
+    }
+
+    #[test]
+    fn toggle_maximized_panel_and_cycle_views_work() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.view_preferences.panel_height_delta = 0;
+
+        app.run_ui_command("workbench.action.toggleMaximizedPanel");
+        assert!(app.view_preferences.panel_visible);
+        assert!(app.view_preferences.panel_height_delta > 0);
+
+        app.run_ui_command("workbench.action.toggleMaximizedPanel");
+        assert_eq!(app.view_preferences.panel_height_delta, 0);
+
+        app.terminal_problems = true;
+        app.run_ui_command("workbench.action.previousPanelView");
+        assert!(!app.terminal_problems);
+
+        app.view_preferences.secondary_sidebar_visible = false;
+        app.outline_visible = false;
+        app.run_ui_command("workbench.action.nextAuxiliaryBarView");
+        assert!(app.view_preferences.secondary_sidebar_visible);
+        assert!(app.chat.visible);
+
+        app.run_ui_command("workbench.action.previousAuxiliaryBarView");
+        assert!(app.outline_visible);
+
+        app.run_ui_command("workbench.action.setNotificationsPosition.bottomLeft");
+        assert_eq!(
+            app.view_preferences.notifications_position,
+            crate::config::NotificationPosition::BottomLeft
+        );
+        app.run_ui_command("workbench.action.setNotificationsPosition.topRight");
+        assert_eq!(
+            app.view_preferences.notifications_position,
+            crate::config::NotificationPosition::TopRight
+        );
+        app.run_ui_command("workbench.action.setNotificationsPosition.bottomRight");
+        assert_eq!(
+            app.view_preferences.notifications_position,
+            crate::config::NotificationPosition::BottomRight
+        );
+
+        let before_eol = app.documents[app.active_document()].line_ending;
+        app.run_ui_command("workbench.action.editor.changeEOL");
+        assert_ne!(app.documents[app.active_document()].line_ending, before_eol);
+
+        let before_enc = app.documents[app.active_document()].encoding;
+        app.run_ui_command("workbench.action.editor.changeEncoding");
+        assert_ne!(app.documents[app.active_document()].encoding, before_enc);
     }
 }

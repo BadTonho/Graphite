@@ -492,9 +492,36 @@ impl EditorGroups {
         }
     }
 
+    /// Maximizes the currently focused editor group.
+    pub(crate) fn maximize_focused_group(&mut self) {
+        self.maximized_group = Some(self.focused);
+    }
+
+    /// Returns whether any editor group is currently maximized.
+    pub(crate) fn is_group_maximized(&self) -> bool {
+        self.maximized_group.is_some()
+    }
+
     /// Restores equal group sizes and exits maximized group mode.
     pub(crate) fn even_group_widths(&mut self) {
         self.maximized_group = None;
+    }
+
+    /// Returns the split direction orthogonal to the focused group's parent split.
+    pub(crate) fn split_direction_orthogonal(&self) -> SplitDirection {
+        match self.layout.parent_direction(self.focused) {
+            Some(SplitDirection::Vertical) => SplitDirection::Horizontal,
+            Some(SplitDirection::Horizontal) | None => SplitDirection::Vertical,
+        }
+    }
+
+    /// Swaps the positions of two editor groups in the layout tree.
+    pub(crate) fn swap_groups(&mut self, a: u64, b: u64) -> bool {
+        if a == b || self.group(a).is_none() || self.group(b).is_none() {
+            return false;
+        }
+        self.layout.swap_leaves(a, b);
+        true
     }
 }
 
@@ -718,6 +745,40 @@ impl Layout {
                 }
                 first.rectangles(a, out);
                 second.rectangles(b, out);
+            }
+        }
+    }
+    fn parent_direction(&self, target: u64) -> Option<SplitDirection> {
+        match self {
+            Self::Leaf(_) => None,
+            Self::Split {
+                direction,
+                first,
+                second,
+            } => {
+                if matches!(first.as_ref(), Self::Leaf(id) if *id == target)
+                    || matches!(second.as_ref(), Self::Leaf(id) if *id == target)
+                {
+                    return Some(*direction);
+                }
+                first
+                    .parent_direction(target)
+                    .or_else(|| second.parent_direction(target))
+            }
+        }
+    }
+    fn swap_leaves(&mut self, a: u64, b: u64) {
+        match self {
+            Self::Leaf(id) => {
+                if *id == a {
+                    *id = b;
+                } else if *id == b {
+                    *id = a;
+                }
+            }
+            Self::Split { first, second, .. } => {
+                first.swap_leaves(a, b);
+                second.swap_leaves(a, b);
             }
         }
     }

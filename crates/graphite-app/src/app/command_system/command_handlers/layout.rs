@@ -92,6 +92,36 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         toggle_notifications_position,
     );
+    add(
+        registry,
+        "workbench.action.setNotificationsPosition.bottomLeft",
+        "Set Notifications Position: Bottom Left",
+        "Notifications",
+        ALL,
+        "true",
+        None,
+        set_notifications_bottom_left,
+    );
+    add(
+        registry,
+        "workbench.action.setNotificationsPosition.bottomRight",
+        "Set Notifications Position: Bottom Right",
+        "Notifications",
+        ALL,
+        "true",
+        None,
+        set_notifications_bottom_right,
+    );
+    add(
+        registry,
+        "workbench.action.setNotificationsPosition.topRight",
+        "Set Notifications Position: Top Right",
+        "Notifications",
+        ALL,
+        "true",
+        None,
+        set_notifications_top_right,
+    );
 }
 
 fn customize_layout(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
@@ -176,5 +206,28 @@ fn toggle_notifications_position(app: &mut App, _: &CommandInvocation) -> Result
         NotificationPosition::TopRight => NotificationPosition::BottomRight,
     };
     app.save_view_preferences_for_command();
+    Ok(())
+}
+
+fn set_notifications_position(app: &mut App, pos: crate::config::NotificationPosition) {
+    app.view_preferences.notifications_position = pos;
+    app.save_view_preferences_for_command();
+}
+
+fn set_notifications_bottom_left(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    set_notifications_position(app, crate::config::NotificationPosition::BottomLeft);
+    Ok(())
+}
+
+fn set_notifications_bottom_right(
+    app: &mut App,
+    _: &CommandInvocation,
+) -> Result<(), CommandError> {
+    set_notifications_position(app, crate::config::NotificationPosition::BottomRight);
+    Ok(())
+}
+
+fn set_notifications_top_right(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    set_notifications_position(app, crate::config::NotificationPosition::TopRight);
     Ok(())
 }
