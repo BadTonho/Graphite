@@ -109,6 +109,7 @@ pub(crate) struct MergeEditor {
     pub format: MergeFormat,
     /// A close request already warned about decisions that were not written.
     pub close_armed: bool,
+    ancestor: Option<String>,
     rows: Vec<Row>,
     visible: Vec<usize>,
 }
@@ -126,6 +127,7 @@ impl MergeEditor {
             focused_input: 0,
             format: MergeFormat::default(),
             close_armed: false,
+            ancestor: None,
             rows: Vec::new(),
             visible: Vec::new(),
         };
@@ -135,10 +137,20 @@ impl MergeEditor {
         editor
     }
 
+    /// Sets the common ancestor text (e.g. from Git index stage 1) and fills missing 2-way bases.
+    pub(crate) fn set_ancestor(&mut self, ancestor: String) {
+        self.state.populate_base_from_ancestor(&ancestor);
+        self.ancestor = Some(ancestor);
+        self.refresh();
+    }
+
     /// Re-parses the file after it was edited. Decisions made for conflicts whose text did not
     /// change are kept.
     pub(crate) fn reload(&mut self, text: &str) {
         self.state.reload(text);
+        if let Some(ancestor) = self.ancestor.as_deref() {
+            self.state.populate_base_from_ancestor(ancestor);
+        }
         self.refresh();
         if self.active.is_some_and(|index| index >= self.state.len()) {
             self.active = self.state.next_unresolved(None);

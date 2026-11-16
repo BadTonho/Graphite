@@ -63,6 +63,26 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         generate_color_theme,
     );
+    add(
+        registry,
+        "workbench.action.previewColorTheme",
+        "Preview Color Theme",
+        "Preferences",
+        ALL,
+        "true",
+        None,
+        preview_color_theme,
+    );
+    add(
+        registry,
+        "workbench.action.tryNewDefaultThemes",
+        "Try New Default Themes",
+        "Preferences",
+        ALL,
+        "true",
+        None,
+        try_new_default_themes,
+    );
 }
 
 fn focus_next_region(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
@@ -124,6 +144,44 @@ fn generate_color_theme(app: &mut App, _: &CommandInvocation) -> Result<(), Comm
     Ok(())
 }
 
+fn preview_color_theme(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if let Some(name) = invocation
+        .request
+        .arguments
+        .as_str()
+        .or_else(|| invocation.request.arguments.get(0).and_then(|v| v.as_str()))
+    {
+        app.select_color_theme(name);
+        return Ok(());
+    }
+    let themes = crate::config::list_color_themes(&app.profile_root);
+    if themes.is_empty() {
+        let dark = crate::config::load_dark_theme_from(&app.profile_root);
+        app.select_builtin_theme(!dark);
+        return Ok(());
+    }
+    let current =
+        crate::config::selected_color_theme(&app.profile_root, app.tree.root(), &app.translator);
+    let next_index = current
+        .as_deref()
+        .and_then(|name| themes.iter().position(|t| t.name == name))
+        .map_or(0, |index| (index + 1) % themes.len());
+    let next_name = themes[next_index].name.clone();
+    app.select_color_theme(&next_name);
+    Ok(())
+}
+
+fn try_new_default_themes(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    crate::config::install_bundled_themes(&app.profile_root);
+    let themes = crate::config::list_color_themes(&app.profile_root);
+    if let Some(first) = themes.first() {
+        app.select_color_theme(&first.name.clone());
+    } else {
+        app.select_builtin_theme(true);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +196,25 @@ mod tests {
         assert_eq!(app.documents.len(), initial_docs + 1);
         let text = app.documents[app.command_document()].buffer.text();
         assert!(text.contains("\"editor.background\""));
+    }
+
+    #[test]
+    fn preview_and_try_default_themes_commands_switch_themes() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.run_ui_command("workbench.action.tryNewDefaultThemes");
+        assert_eq!(
+            crate::config::selected_color_theme(&app.profile_root, dir.path(), &app.translator)
+                .as_deref(),
+            Some("Graphite Simple")
+        );
+
+        app.run_ui_command("workbench.action.previewColorTheme");
+        assert!(crate::config::selected_color_theme(
+            &app.profile_root,
+            dir.path(),
+            &app.translator
+        )
+        .is_some());
     }
 }

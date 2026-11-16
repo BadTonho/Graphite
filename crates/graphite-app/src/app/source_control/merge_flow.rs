@@ -26,9 +26,19 @@ impl App {
     /// Opens the merge editor on a file that has conflict markers.
     pub(crate) fn open_merge_editor(&mut self, path: PathBuf) -> Result<(), String> {
         let (text, format) = self.merge_source(&path)?;
-        let mut editor = MergeEditor::new(path, &text);
+        let mut editor = MergeEditor::new(path.clone(), &text);
         if editor.state.is_empty() {
             return Err(self.t("merge.error.no_conflicts").into());
+        }
+        if editor
+            .state
+            .parsed()
+            .conflicts()
+            .any(|block| block.base.is_none())
+        {
+            if let Some(ancestor) = git_stage1_base(&path) {
+                editor.set_ancestor(ancestor);
+            }
         }
         editor.format = format;
         let count = editor.state.len();
@@ -199,4 +209,38 @@ impl App {
             gpu.window.request_redraw();
         }
     }
+}
+
+/// Reads the common ancestor (index stage 1) for `path` from Git when 2-way conflict markers
+/// lack an embedded `|||||||` base section.
+fn git_stage1_base(path: &Path) -> Option<String> {
+    let parent = path.parent()?;
+    let top = std::process::Command::new("git")
+        .arg("-C")
+        .arg(parent)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !top.status.success() {
+        return None;
+    }
+    let root = PathBuf::from(String::from_utf8_lossy(&top.stdout).trim());
+    let canon_root = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+    let canon_file = std::fs::canonicalize(path).ok()?;
+    let rel = canon_file
+        .strip_prefix(&canon_root)
+        .ok()?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let show = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .arg("show")
+        .arg(format!(":1:{rel}"))
+        .output()
+        .ok()?;
+    if !show.status.success() {
+        return None;
+    }
+    String::from_utf8(show.stdout).ok()
 }

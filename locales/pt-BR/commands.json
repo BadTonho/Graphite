@@ -935,5 +935,7 @@
   "command.workbench.action.setNotificationsPosition.bottomRight": "Definir Posição das Notificações: Inferior Direita",
   "command.workbench.action.setNotificationsPosition.topRight": "Definir Posição das Notificações: Superior Direita",
   "command.workbench.action.editor.changeEOL": "Alterar Sequência de Fim de Linha",
-  "command.workbench.action.editor.changeEncoding": "Alterar Codificação do Arquivo"
+  "command.workbench.action.editor.changeEncoding": "Alterar Codificação do Arquivo",
+  "command.workbench.action.previewColorTheme": "Pré-visualizar Tema de Cores",
+  "command.workbench.action.tryNewDefaultThemes": "Experimentar Novos Temas Padrão"
 }

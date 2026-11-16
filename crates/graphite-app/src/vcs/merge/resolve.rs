@@ -100,6 +100,57 @@ impl MergeState {
         *self = fresh;
     }
 
+    /// Populates missing `base` sections on 2-way conflict blocks from a common ancestor text
+    /// (such as Git index stage 1) by matching surrounding plain-text segments in order.
+    pub(crate) fn populate_base_from_ancestor(&mut self, ancestor: &str) {
+        let mut cursor = 0usize;
+        let len = self.parsed.segments.len();
+        for index in 0..len {
+            let before = if index > 0 {
+                match &self.parsed.segments[index - 1] {
+                    Segment::Text(text) => Some(text.clone()),
+                    Segment::Conflict(_) => None,
+                }
+            } else {
+                None
+            };
+            let after = if index + 1 < len {
+                match &self.parsed.segments[index + 1] {
+                    Segment::Text(text) => Some(text.clone()),
+                    Segment::Conflict(_) => None,
+                }
+            } else {
+                None
+            };
+
+            let Segment::Conflict(block) = &mut self.parsed.segments[index] else {
+                continue;
+            };
+            if block.base.is_some() {
+                continue;
+            }
+            let Some(start) = (match before.as_deref() {
+                None => Some(cursor),
+                Some(text) if text.is_empty() => Some(cursor),
+                Some(text) => find_anchor_end(ancestor, cursor, text),
+            }) else {
+                continue;
+            };
+            let Some(end) = (match after.as_deref() {
+                None if index + 1 >= len => Some(ancestor.len()),
+                None => continue,
+                Some(text) if text.is_empty() => Some(ancestor.len()),
+                Some(text) => find_anchor_start(ancestor, start, text),
+            }) else {
+                continue;
+            };
+            if start <= end {
+                block.base = Some(ancestor[start..end].to_owned());
+                cursor = end;
+            }
+        }
+    }
+
     pub(crate) fn parsed(&self) -> &Parsed {
         &self.parsed
     }
@@ -418,4 +469,75 @@ mod tests {
         assert_eq!(state.side_text(Side::Incoming), "head\ni1\nmid\ni2\ntail\n");
         assert_eq!(state.side_text(Side::Base), "head\nmid\nb2\ntail\n");
     }
+
+    #[test]
+    fn populate_base_from_ancestor_fills_two_way_conflicts_and_keeps_three_way() {
+        let conflict = "\
+head
+<<<<<<< current
+c1
+=======
+i1
+>>>>>>> incoming
+mid
+<<<<<<< current
+c2
+||||||| base
+explicit-base
+=======
+i2
+>>>>>>> incoming
+tail
+";
+        let ancestor = "head\nb1\nmid\nother-base\ntail\n";
+        let mut state = MergeState::new(conflict);
+        state.populate_base_from_ancestor(ancestor);
+        assert_eq!(state.block(0).unwrap().base.as_deref(), Some("b1\n"));
+        assert_eq!(
+            state.block(1).unwrap().base.as_deref(),
+            Some("explicit-base\n")
+        );
+        assert_eq!(
+            state.side_text(Side::Base),
+            "head\nb1\nmid\nexplicit-base\ntail\n"
+        );
+    }
+}
+
+fn find_anchor_end(haystack: &str, from: usize, needle: &str) -> Option<usize> {
+    if let Some(pos) = haystack[from..].find(needle) {
+        return Some(from + pos + needle.len());
+    }
+    let tail: String = needle
+        .lines()
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|line| format!("{line}\n"))
+        .collect();
+    if !tail.is_empty() {
+        if let Some(pos) = haystack[from..].find(&tail) {
+            return Some(from + pos + tail.len());
+        }
+    }
+    None
+}
+
+fn find_anchor_start(haystack: &str, from: usize, needle: &str) -> Option<usize> {
+    if let Some(pos) = haystack[from..].find(needle) {
+        return Some(from + pos);
+    }
+    let head: String = needle
+        .lines()
+        .take(3)
+        .map(|line| format!("{line}\n"))
+        .collect();
+    if !head.is_empty() {
+        if let Some(pos) = haystack[from..].find(&head) {
+            return Some(from + pos);
+        }
+    }
+    None
 }

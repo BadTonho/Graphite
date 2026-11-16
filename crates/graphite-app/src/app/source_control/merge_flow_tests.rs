@@ -109,3 +109,56 @@ fn the_palette_command_opens_the_active_file() {
     app.run_ui_command("graphite.merge.open");
     assert!(app.merge_editor.is_some());
 }
+
+#[test]
+fn opening_a_two_way_git_conflict_populates_base_from_index_stage_one() {
+    let dir = crate::test_support::TempDir::new();
+    let root = dir.path();
+    let run_git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    run_git(&["init", "-b", "main"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test User"]);
+
+    let file = root.join("conflict.txt");
+    std::fs::write(&file, "head\nbase line\ntail\n").unwrap();
+    run_git(&["add", "conflict.txt"]);
+    run_git(&["commit", "-m", "base"]);
+
+    run_git(&["checkout", "-b", "incoming"]);
+    std::fs::write(&file, "head\nincoming line\ntail\n").unwrap();
+    run_git(&["commit", "-am", "incoming"]);
+
+    run_git(&["checkout", "main"]);
+    std::fs::write(&file, "head\ncurrent line\ntail\n").unwrap();
+    run_git(&["commit", "-am", "current"]);
+
+    // Force 2-way conflict markers (default merge.conflictStyle = merge).
+    let merge = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["-c", "merge.conflictStyle=merge", "merge", "incoming"])
+        .output()
+        .unwrap();
+    assert!(!merge.status.success());
+
+    let mut app = App::new_with_options(root.to_path_buf(), None, true);
+    app.open_merge_editor(file).unwrap();
+    let editor = app.merge_editor.as_ref().unwrap();
+    assert_eq!(
+        editor.state.block(0).unwrap().base.as_deref(),
+        Some("base line\n")
+    );
+}
