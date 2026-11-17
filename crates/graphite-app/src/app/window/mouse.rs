@@ -106,6 +106,14 @@ impl App {
             return;
         }
 
+        if self.handle_commit_hover_click(mx, my) {
+            return;
+        }
+
+        if self.handle_commit_hover_click(mx, my) {
+            return;
+        }
+
         if self.multi_diff.is_some() {
             self.multi_diff_click(mx, my);
             return;
@@ -256,11 +264,13 @@ impl App {
                     return;
                 }
                 if self.scm_primary_action() == ScmPrimaryAction::Commit
-                    && super::scm_ui::commit_arrow(layout.commit_button)
-                        .contains(local_x, local_y)
+                    && super::scm_ui::commit_arrow(layout.commit_button).contains(local_x, local_y)
                 {
                     let arrow = super::scm_ui::commit_arrow(layout.commit_button);
-                    let (anchor_x, anchor_y) = (mx - (local_x - arrow.x), my + (arrow.y + arrow.height - local_y));
+                    let (anchor_x, anchor_y) = (
+                        mx - (local_x - arrow.x),
+                        my + (arrow.y + arrow.height - local_y),
+                    );
                     self.open_scm_commit_menu((anchor_x, anchor_y));
                     return;
                 }

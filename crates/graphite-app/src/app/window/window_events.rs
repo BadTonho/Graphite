@@ -254,9 +254,11 @@ impl ApplicationHandler<UserEvent> for App {
                             < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
                                 gpu.renderer.size().1 as f32 - gpu.renderer.line_height()
                             });
-                    let over_panel_separator = self.is_over_terminal_resize_handle(pointer_x, pointer_y)
+                    let over_panel_separator = self
+                        .is_over_terminal_resize_handle(pointer_x, pointer_y)
                         || self.is_over_scm_graph_resize_handle(pointer_x, pointer_y);
-                    let was_over_panel_separator = self.is_over_terminal_resize_handle(previous_x, previous_y)
+                    let was_over_panel_separator = self
+                        .is_over_terminal_resize_handle(previous_x, previous_y)
                         || self.is_over_scm_graph_resize_handle(previous_x, previous_y);
                     // The hover card of a Graph commit follows the pointer from row to row.
                     let graph_hover_changed = self.gpu.as_ref().is_some_and(|gpu| {
@@ -275,6 +277,8 @@ impl ApplicationHandler<UserEvent> for App {
                             winit::window::CursorIcon::RowResize
                         } else if over_separator {
                             winit::window::CursorIcon::ColResize
+                        } else if self.commit_hover_link_at(pointer_x, pointer_y) {
+                            winit::window::CursorIcon::Pointer
                         } else {
                             winit::window::CursorIcon::Default
                         });

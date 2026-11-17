@@ -128,6 +128,156 @@ pub(crate) fn tooltip_lines(commit: &GraphCommit) -> Vec<String> {
     lines
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CommitDiffStats {
+    pub files_changed: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+}
+
+/// Parses `git show --shortstat --format=` output into file, insertion, and deletion counts.
+pub(crate) fn parse_shortstat(output: &str) -> Option<CommitDiffStats> {
+    let line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| line.contains("file changed") || line.contains("files changed"))?;
+    let mut stats = CommitDiffStats::default();
+    for part in line.split(',').map(str::trim) {
+        let count = part
+            .split_whitespace()
+            .next()
+            .and_then(|num| num.parse::<usize>().ok())
+            .unwrap_or(0);
+        if part.contains("file") {
+            stats.files_changed = count;
+        } else if part.contains("insertion") {
+            stats.insertions = count;
+        } else if part.contains("deletion") {
+            stats.deletions = count;
+        }
+    }
+    Some(stats)
+}
+
+/// Loads `--shortstat` counts for `hash` in `root`.
+pub(crate) fn load_commit_shortstat(root: &Path, hash: &str) -> Option<CommitDiffStats> {
+    if !is_valid_commit_hash(hash) {
+        return None;
+    }
+    let output = run_git(root, &["show", "--shortstat", "--format=", hash]).ok()?;
+    parse_shortstat(&output)
+}
+
+/// Returns `https://github.com/{owner}/{repo}` when `origin` points to GitHub.
+pub(crate) fn github_repo_base_url(root: &Path) -> Option<String> {
+    let remote = run_git(root, &["remote", "get-url", "origin"]).ok()?;
+    let (owner, repo) = super::scm_remote::parse_github_remote(&remote)?;
+    Some(format!("https://github.com/{owner}/{repo}"))
+}
+
+/// Builds the GitHub commit URL from a repository base URL and commit hash.
+pub(crate) fn commit_github_url(base_url: &str, hash: &str) -> String {
+    format!("{}/commit/{hash}", base_url.trim_end_matches('/'))
+}
+
+fn is_valid_commit_hash(hash: &str) -> bool {
+    !hash.is_empty() && hash.len() <= 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Parses `YYYY-MM-DD HH:MM:SS +ZZZZ` into Unix epoch seconds.
+pub(crate) fn parse_git_date_unix(date_str: &str) -> Option<i64> {
+    let mut parts = date_str.split_whitespace();
+    let ymd = parts.next()?;
+    let hms = parts.next()?;
+    let tz = parts.next().unwrap_or("+0000");
+
+    let mut d = ymd.split('-');
+    let year: i64 = d.next()?.parse().ok()?;
+    let month: i64 = d.next()?.parse().ok()?;
+    let day: i64 = d.next()?.parse().ok()?;
+
+    let mut t = hms.split(':');
+    let hour: i64 = t.next()?.parse().ok()?;
+    let min: i64 = t.next()?.parse().ok()?;
+    let sec: i64 = t.next()?.parse().ok()?;
+
+    let tz_sign = if tz.starts_with('-') { -1i64 } else { 1i64 };
+    let tz_digits = tz.trim_start_matches(['+', '-']);
+    let tz_offset = if tz_digits.len() == 4 {
+        let h = tz_digits[..2].parse::<i64>().ok()?;
+        let m = tz_digits[2..].parse::<i64>().ok()?;
+        tz_sign * (h * 3600 + m * 60)
+    } else {
+        0
+    };
+
+    // Howard Hinnant's days_from_civil algorithm (UTC days since 1970-01-01).
+    let y = year - if month <= 2 { 1 } else { 0 };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    let utc = days * 86400 + hour * 3600 + min * 60 + sec - tz_offset;
+    Some(utc)
+}
+
+/// Formats relative time + readable date (`YYYY-MM-DD HH:MM`) for the commit hover card.
+pub(crate) fn format_commit_when(
+    date_str: &str,
+    now_unix: i64,
+    translator: &graphite_i18n::Translator,
+) -> String {
+    let trimmed = date_str.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let short_dt = trimmed.get(..16).unwrap_or(trimmed);
+    let Some(ts) = parse_git_date_unix(trimmed) else {
+        return short_dt.to_owned();
+    };
+    let diff = (now_unix - ts).max(0);
+    let rel = if diff < 60 {
+        translator.text("scm.tip.time.just_now").to_owned()
+    } else if diff < 3600 {
+        let mins = diff / 60;
+        if mins == 1 {
+            translator.text("scm.tip.time.minute_ago").to_owned()
+        } else {
+            translator.format("scm.tip.time.minutes_ago", &[("count", &mins)])
+        }
+    } else if diff < 86400 {
+        let hours = diff / 3600;
+        if hours == 1 {
+            translator.text("scm.tip.time.hour_ago").to_owned()
+        } else {
+            translator.format("scm.tip.time.hours_ago", &[("count", &hours)])
+        }
+    } else if diff < 86400 * 30 {
+        let days = diff / 86400;
+        if days == 1 {
+            translator.text("scm.tip.time.day_ago").to_owned()
+        } else {
+            translator.format("scm.tip.time.days_ago", &[("count", &days)])
+        }
+    } else if diff < 86400 * 365 {
+        let months = (diff / (86400 * 30)).max(1);
+        if months == 1 {
+            translator.text("scm.tip.time.month_ago").to_owned()
+        } else {
+            translator.format("scm.tip.time.months_ago", &[("count", &months)])
+        }
+    } else {
+        let years = (diff / (86400 * 365)).max(1);
+        if years == 1 {
+            translator.text("scm.tip.time.year_ago").to_owned()
+        } else {
+            translator.format("scm.tip.time.years_ago", &[("count", &years)])
+        }
+    };
+    format!("{rel} ({short_dt})")
+}
+
 #[derive(Clone, Debug)]
 struct ActiveLane {
     expected_hash: String,
@@ -239,10 +389,10 @@ pub(crate) fn assign_graph_lanes(commits: Vec<GraphCommit>) -> Vec<GraphRow> {
         }
 
         for parent in commit.parents.iter().skip(1) {
-            if let Some(existing_col) = active.iter().position(|slot| {
-                slot.as_ref()
-                    .is_some_and(|l| &l.expected_hash == parent)
-            }) {
+            if let Some(existing_col) = active
+                .iter()
+                .position(|slot| slot.as_ref().is_some_and(|l| &l.expected_hash == parent))
+            {
                 let p_color = active[existing_col]
                     .as_ref()
                     .map_or(color_index, |l| l.color_index);
@@ -275,7 +425,10 @@ pub(crate) fn assign_graph_lanes(commits: Vec<GraphCommit>) -> Vec<GraphRow> {
                 continue;
             }
             if let Some(l) = slot {
-                if !lower_edges.iter().any(|e| e.from_col == col && e.to_col == col) {
+                if !lower_edges
+                    .iter()
+                    .any(|e| e.from_col == col && e.to_col == col)
+                {
                     lower_edges.push(GraphEdge {
                         from_col: col,
                         to_col: col,
@@ -383,9 +536,15 @@ mod tests {
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].lane, 0);
         // Merge commit c3 opens a second lane for c1.
-        assert!(rows[0].lower_edges.iter().any(|e| e.from_col == 0 && e.to_col == 1));
+        assert!(rows[0]
+            .lower_edges
+            .iter()
+            .any(|e| e.from_col == 0 && e.to_col == 1));
         // c1 merges back into lane 0 for shared parent c0.
-        assert!(rows[2].lower_edges.iter().any(|e| e.from_col == 1 && e.to_col == 0));
+        assert!(rows[2]
+            .lower_edges
+            .iter()
+            .any(|e| e.from_col == 1 && e.to_col == 0));
         assert_eq!(rows[3].lane, 0);
     }
 
@@ -404,9 +563,45 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(rows[0].commit.is_head);
         assert_eq!(rows[0].commit.subject, "first commit");
-        assert!(rows[0].commit.date.starts_with("20"), "{}", rows[0].commit.date);
+        assert!(
+            rows[0].commit.date.starts_with("20"),
+            "{}",
+            rows[0].commit.date
+        );
         assert!(commit_details(root, &rows[0].commit.hash)
             .unwrap()
             .contains("first commit"));
+    }
+
+    #[test]
+    fn parses_shortstat_and_formats_commit_when_and_github_url() {
+        assert_eq!(
+            parse_shortstat(" 7 files changed, 316 insertions(+), 3 deletions(-)\n"),
+            Some(CommitDiffStats {
+                files_changed: 7,
+                insertions: 316,
+                deletions: 3,
+            })
+        );
+        assert_eq!(
+            parse_shortstat(" 1 file changed, 4 insertions(+)\n"),
+            Some(CommitDiffStats {
+                files_changed: 1,
+                insertions: 4,
+                deletions: 0,
+            })
+        );
+        assert_eq!(parse_shortstat(""), None);
+
+        assert_eq!(
+            commit_github_url("https://github.com/owner/repo", "abc1234"),
+            "https://github.com/owner/repo/commit/abc1234"
+        );
+
+        let ts = parse_git_date_unix("2026-11-16 20:41:26 -0300").unwrap();
+        let translator = graphite_i18n::Translator::english();
+        let when = format_commit_when("2026-11-16 20:41:26 -0300", ts + 480, &translator);
+        assert!(when.contains("8 minutes ago"), "{when}");
+        assert!(when.contains("2026-11-16 20:41"), "{when}");
     }
 }
