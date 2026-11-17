@@ -933,14 +933,14 @@ mod tests {
     #[test]
     fn clean_terminal_cwd_strips_windows_verbatim_and_provider_prefixes() {
         assert_eq!(
-            clean_terminal_cwd(Path::new(r"\\?\D:\code\ProjetosCode\Graphite")),
-            PathBuf::from(r"D:\code\ProjetosCode\Graphite")
+            clean_terminal_cwd(Path::new(r"\\?\C:\workspace\graphite")),
+            PathBuf::from(r"C:\workspace\graphite")
         );
         assert_eq!(
             clean_terminal_cwd(Path::new(
-                r"Microsoft.PowerShell.Core\FileSystem::\\?\D:\code\ProjetosCode\Graphite"
+                r"Microsoft.PowerShell.Core\FileSystem::\\?\C:\workspace\graphite"
             )),
-            PathBuf::from(r"D:\code\ProjetosCode\Graphite")
+            PathBuf::from(r"C:\workspace\graphite")
         );
         assert_eq!(
             clean_terminal_cwd(Path::new(r"\\?\UNC\server\share\repo")),
