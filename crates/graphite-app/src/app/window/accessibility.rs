@@ -1404,6 +1404,11 @@ impl App {
                     super::profile_menu::ProfileMenuRow::SyncTurnOn => {
                         (self.t("sync_menu.turn_on").to_owned(), false, false)
                     }
+                    super::profile_menu::ProfileMenuRow::SyncTurnOnRepository => (
+                        self.t("sync_menu.turn_on_repository").to_owned(),
+                        false,
+                        false,
+                    ),
                     super::profile_menu::ProfileMenuRow::SyncNow => {
                         (self.t("sync_menu.sync_now").to_owned(), false, false)
                     }

@@ -16,6 +16,8 @@ pub use transport::{ReqwestTransport, Transport};
 pub const SCOPE: &str = "read:user";
 /// Scope requested when User Data Sync pushes/pulls private GitHub Gists.
 pub const SCOPE_GIST: &str = "read:user gist";
+/// Scope requested when User Data Sync uses a private repository.
+pub const SCOPE_REPO: &str = "read:user repo";
 pub const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 pub const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 pub const USER_URL: &str = "https://api.github.com/user";

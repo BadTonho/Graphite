@@ -815,7 +815,7 @@
   "unsaved_modal.commit_save_failed": "Commit not made, saving failed: {error}",
   "unsaved_modal.commit_save": "Save and commit (S)",
   "unsaved_modal.commit_anyway": "Commit anyway (D)",
-  "sync_menu.turn_on": "Turn on settings sync...",
+  "sync_menu.turn_on": "Turn on sync with a private Gist...",
   "sync_menu.sync_now": "Sync now",
   "sync_menu.turn_off": "Turn off settings sync",
   "sync_menu.syncing": "Syncing...",
@@ -825,5 +825,8 @@
   "sync_menu.just_now": "Synced just now",
   "sync_menu.minutes_ago": "Synced {count} min ago",
   "sync_menu.hours_ago": "Synced {count} h ago",
-  "sync_menu.days_ago": "Synced {count} d ago"
+  "sync_menu.days_ago": "Synced {count} d ago",
+  "sync_menu.turn_on_repository": "Turn on sync with a private repository...",
+  "sync_menu.backend_gist": "Private Gist",
+  "sync_menu.backend_repository": "Private repository"
 }

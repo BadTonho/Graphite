@@ -76,12 +76,45 @@ pub(crate) struct SyncConflict {
     pub resolved: Option<ConflictChoice>,
 }
 
+/// Where the synced data is kept on GitHub.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SyncBackend {
+    /// A secret Gist.
+    #[default]
+    Gist,
+    /// A private repository named `graphite-sync`.
+    Repository,
+}
+
+impl SyncBackend {
+    /// The OAuth scope the backend needs.
+    pub(crate) fn required_scope(self) -> &'static str {
+        match self {
+            Self::Gist => "gist",
+            Self::Repository => "repo",
+        }
+    }
+
+    /// The scopes to request when signing in for the backend.
+    pub(crate) fn sign_in_scope(self) -> &'static str {
+        match self {
+            Self::Gist => graphite_auth::SCOPE_GIST,
+            Self::Repository => graphite_auth::SCOPE_REPO,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct PersistedSyncData {
+    /// Backend in use; a file written before this existed means a Gist.
+    #[serde(default)]
+    pub backend: SyncBackend,
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
-    pub gist_id: Option<String>,
+    /// Gist id, or `owner/repository` for the repository backend.
+    #[serde(default, alias = "gist_id")]
+    pub remote_id: Option<String>,
     #[serde(default)]
     pub last_sync_epoch_s: Option<u64>,
     #[serde(default)]
@@ -96,6 +129,8 @@ pub(crate) struct PersistedSyncData {
 pub(crate) struct SyncState {
     pub persisted: PersistedSyncData,
     pub turning_on: bool,
+    /// Backend the pending sign-in is for.
+    pub turning_on_backend: SyncBackend,
     pub syncing: bool,
     pub isolated: bool,
     pub last_error: Option<String>,
@@ -107,10 +142,24 @@ impl Default for SyncState {
         Self {
             persisted: PersistedSyncData::default(),
             turning_on: false,
+            turning_on_backend: SyncBackend::default(),
             syncing: false,
             isolated: false,
             last_error: None,
             last_summary: None,
+        }
+    }
+}
+
+impl PersistedSyncData {
+    /// Chooses the backend. The remote and the merge base belong to the backend they came from,
+    /// so changing it starts afresh.
+    pub(crate) fn use_backend(&mut self, backend: SyncBackend) {
+        if self.backend != backend {
+            self.backend = backend;
+            self.remote_id = None;
+            self.last_base = None;
+            self.conflicts.clear();
         }
     }
 }

@@ -184,6 +184,6 @@ mod tests {
         assert!(!app.sync.persisted.enabled);
 
         app.run_ui_command("workbench.actions.syncData.reset");
-        assert!(app.sync.persisted.gist_id.is_none());
+        assert!(app.sync.persisted.remote_id.is_none());
     }
 }

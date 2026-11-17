@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::user_data_sync::state::SyncBackend;
 
 const ROW_HEIGHT: f32 = 27.0;
 const SEPARATOR_HEIGHT: f32 = 9.0;
@@ -26,6 +27,7 @@ pub(crate) enum ProfileMenuRow {
         text: String,
     },
     SyncTurnOn,
+    SyncTurnOnRepository,
     SyncNow,
     SyncTurnOff,
 }
@@ -126,6 +128,7 @@ impl App {
                 rows.push(ProfileMenuRow::SyncTurnOff);
             } else {
                 rows.push(ProfileMenuRow::SyncTurnOn);
+                rows.push(ProfileMenuRow::SyncTurnOnRepository);
             }
         }
 
@@ -148,6 +151,9 @@ impl App {
                     }
                     ProfileMenuRow::SyncStatus { text } => text.clone(),
                     ProfileMenuRow::SyncTurnOn => self.t("sync_menu.turn_on").to_owned(),
+                    ProfileMenuRow::SyncTurnOnRepository => {
+                        self.t("sync_menu.turn_on_repository").to_owned()
+                    }
                     ProfileMenuRow::SyncNow => self.t("sync_menu.sync_now").to_owned(),
                     ProfileMenuRow::SyncTurnOff => self.t("sync_menu.turn_off").to_owned(),
                 };
@@ -308,7 +314,11 @@ impl App {
             }
             ProfileMenuRow::SyncTurnOn => {
                 self.profile_menu = None;
-                self.turn_on_sync();
+                self.turn_on_sync_with(SyncBackend::Gist);
+            }
+            ProfileMenuRow::SyncTurnOnRepository => {
+                self.profile_menu = None;
+                self.turn_on_sync_with(SyncBackend::Repository);
             }
             ProfileMenuRow::SyncNow => {
                 self.profile_menu = None;
@@ -416,6 +426,7 @@ impl App {
                     renderer.draw_text(text, x + 14.0, top + 5.0, dim);
                 }
                 ProfileMenuRow::SyncTurnOn
+                | ProfileMenuRow::SyncTurnOnRepository
                 | ProfileMenuRow::SyncNow
                 | ProfileMenuRow::SyncTurnOff => {
                     if menu.selected == index {
@@ -429,6 +440,7 @@ impl App {
                     }
                     let key = match row {
                         ProfileMenuRow::SyncTurnOn => "sync_menu.turn_on",
+                        ProfileMenuRow::SyncTurnOnRepository => "sync_menu.turn_on_repository",
                         ProfileMenuRow::SyncNow => "sync_menu.sync_now",
                         _ => "sync_menu.turn_off",
                     };
@@ -640,5 +652,38 @@ mod tests {
         // Not enabled yet: it waits for the new sign-in to finish.
         assert!(!app.sync.persisted.enabled);
         assert!(app.sync.turning_on);
+    }
+
+    #[test]
+    fn sync_off_offers_the_gist_and_the_private_repository_as_separate_options() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user");
+        let rows = menu_rows(&mut app);
+        assert!(rows.contains(&ProfileMenuRow::SyncTurnOn));
+        assert!(rows.contains(&ProfileMenuRow::SyncTurnOnRepository));
+    }
+
+    #[test]
+    fn choosing_the_repository_with_the_repo_permission_enables_that_backend() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user repo");
+        menu_rows(&mut app);
+        app.execute_profile_menu_row(ProfileMenuRow::SyncTurnOnRepository);
+        assert!(app.sync.persisted.enabled);
+        assert_eq!(app.sync.persisted.backend, SyncBackend::Repository);
+        assert!(app.profile_menu.is_none());
+    }
+
+    #[test]
+    fn choosing_the_repository_with_only_the_gist_permission_asks_for_repo_first() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user gist");
+        menu_rows(&mut app);
+        app.execute_profile_menu_row(ProfileMenuRow::SyncTurnOnRepository);
+        assert!(!app.sync.persisted.enabled);
+        assert!(app.sync.turning_on);
+        assert_eq!(app.sync.turning_on_backend, SyncBackend::Repository);
+        // Nothing is switched until the new sign-in finishes.
+        assert_eq!(app.sync.persisted.backend, SyncBackend::Gist);
     }
 }

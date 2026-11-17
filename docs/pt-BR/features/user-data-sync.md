@@ -30,3 +30,14 @@ O botão do perfil, na parte de baixo da barra de atividades, abre um menu que a
 - **Ativar sincronização...** (sincronização desligada): entra na conta se for preciso e faz a primeira sincronização.
 - Com a sincronização ligada, uma linha de estado (`Sincronizando...`, `Sincronizado há 5 min`, `A última sincronização falhou` ou o número de conflitos para revisar), **Sincronizar agora** e **Desativar sincronização**.
 - Se a sessão do GitHub foi criada sem a permissão de Gist, ativar a sincronização pede essa permissão com um novo login, mantendo as permissões já concedidas.
+
+## Backend de repositório privado
+
+Além do Gist, os dados podem ficar em um **repositório privado**. No menu do perfil, com a sincronização desligada, as duas opções são separadas: **Ativar sincronização com Gist privado...** e **Ativar sincronização com repositório privado...**. A linha de estado mostra qual está em uso.
+
+- **Onde:** um repositório chamado `graphite-sync` na conta logada, com um único arquivo, `graphite-sync.json`. Ele é criado privado (com um primeiro commit) quando não existe. Cada sincronização é um commit, então o repositório guarda o histórico dos dados sincronizados.
+- **Permissão:** o repositório precisa do escopo `repo` do GitHub, que dá acesso a todos os repositórios privados da conta (o GitHub não oferece um escopo mais estreito para um token pessoal). O Graphite só lê e grava o repositório `graphite-sync`. Se a sessão não tiver o escopo, ativar a opção pede esse escopo com um novo login que mantém as permissões já concedidas.
+- **Nunca público:** se `graphite-sync` existir e for público, o Graphite se recusa a ler ou gravar nele e avisa; torne-o privado ou apague-o.
+- **Reset:** *Reset Synced Data* remove o `graphite-sync.json` do repositório. O repositório em si nunca é apagado.
+- **Troca:** escolher o outro backend recomeça do zero: o destino guardado e a base de mesclagem do anterior são esquecidos, então a primeira sincronização com o novo backend compara os dados locais com o que ele já tiver. Arquivos de estado de antes desta mudança continuam funcionando como Gist.
+- **Falhas:** uma sincronização que falha fica registrada em `<app_config_dir>/logs/errors/medium.jsonl`.
