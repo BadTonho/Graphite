@@ -11,7 +11,7 @@ The title bar's **File** menu provides local file, editor, window, profile, and 
 
 ## Workspaces
 
-Graphite accepts standard `.code-workspace` files with a `folders` array. Folder paths can be absolute or relative to the workspace file. Use **Add Folder to Workspace**, **Remove Folder from Workspace** (removes the active file's root, or the last root if no file is active), **Save Workspace As**, or **Duplicate Workspace** to manage multi-root workspaces. Explorer, quick open, and text search include all roots. A workspace switch asks how to handle unsaved documents before replacing the current roots. Recent workspace paths are stored in the active profile.
+Graphite accepts standard `.code-workspace` files with a `folders` array. Folder paths can be absolute or relative to the workspace file. Use **Add Folder to Workspace**, **Remove Folder from Workspace** (removes the active file's root, or the last root if no file is active), **Save Workspace As**, or **Duplicate Workspace** to manage multi-root workspaces. Explorer, quick open, and text search include all roots. A workspace switch opens a centered dialog that lists the documents with unsaved changes and asks how to handle them before replacing the current roots: **Save all** (`S`), **Discard** (`D`) or **Cancel** (`Esc`), also available as buttons. The same dialog appears when closing the window or reverting a file with unsaved changes. Recent workspace paths are stored in the active profile.
 
 ## Preferences and profiles
 

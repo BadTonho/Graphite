@@ -799,5 +799,14 @@
   "settings_editor.search_placeholder": "Search settings...",
   "settings_editor.scope_user": "User",
   "settings_editor.scope_workspace": "Workspace",
-  "settings_editor.opened": "Opened Settings editor"
+  "settings_editor.opened": "Opened Settings editor",
+  "unsaved_modal.title_workspace": "Unsaved changes before switching folder",
+  "unsaved_modal.title_close": "Unsaved changes before closing",
+  "unsaved_modal.title_revert": "Unsaved changes in this file",
+  "unsaved_modal.subtitle": "{count} file(s) have changes that were not saved:",
+  "unsaved_modal.more": "...and {count} more",
+  "unsaved_modal.untitled": "Untitled",
+  "unsaved_modal.save_all": "Save all (S)",
+  "unsaved_modal.discard": "Discard (D)",
+  "unsaved_modal.cancel": "Cancel (Esc)"
 }

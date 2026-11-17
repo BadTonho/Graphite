@@ -799,5 +799,14 @@
   "settings_editor.search_placeholder": "Buscar configurações...",
   "settings_editor.scope_user": "Usuário",
   "settings_editor.scope_workspace": "Workspace",
-  "settings_editor.opened": "Editor de Configurações aberto"
+  "settings_editor.opened": "Editor de Configurações aberto",
+  "unsaved_modal.title_workspace": "Alterações não salvas antes de trocar de pasta",
+  "unsaved_modal.title_close": "Alterações não salvas antes de fechar",
+  "unsaved_modal.title_revert": "Alterações não salvas neste arquivo",
+  "unsaved_modal.subtitle": "{count} arquivo(s) com alterações não salvas:",
+  "unsaved_modal.more": "...e mais {count}",
+  "unsaved_modal.untitled": "Sem título",
+  "unsaved_modal.save_all": "Salvar tudo (S)",
+  "unsaved_modal.discard": "Descartar (D)",
+  "unsaved_modal.cancel": "Cancelar (Esc)"
 }

@@ -19,6 +19,9 @@ impl App {
             return;
         };
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+        if self.click_unsaved_modal(mx, my, window_width, window_height) {
+            return;
+        }
         if self.handle_github_dialog_click(mx, my, window_width, window_height, cw) {
             return;
         }

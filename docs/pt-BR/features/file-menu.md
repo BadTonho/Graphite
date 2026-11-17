@@ -11,7 +11,7 @@ O menu **Arquivo** da barra de título oferece ações locais para arquivos, edi
 
 ## Workspaces
 
-O Graphite aceita arquivos `.code-workspace` no formato padrão, com uma lista `folders`. Os caminhos podem ser absolutos ou relativos ao arquivo do workspace. Use **Adicionar Pasta ao Workspace**, **Remover Pasta do Workspace** (remove a raiz do arquivo ativo ou, se não houver arquivo ativo, a última raiz), **Salvar Workspace Como** ou **Duplicar Workspace** para gerenciar workspaces com várias raízes. Explorador, abertura rápida e busca percorrem todas as raízes. Ao trocar de workspace, o Graphite pergunta o que fazer com documentos não salvos antes de substituir as pastas. Os caminhos recentes ficam no perfil ativo.
+O Graphite aceita arquivos `.code-workspace` no formato padrão, com uma lista `folders`. Os caminhos podem ser absolutos ou relativos ao arquivo do workspace. Use **Adicionar Pasta ao Workspace**, **Remover Pasta do Workspace** (remove a raiz do arquivo ativo ou, se não houver arquivo ativo, a última raiz), **Salvar Workspace Como** ou **Duplicar Workspace** para gerenciar workspaces com várias raízes. Explorador, abertura rápida e busca percorrem todas as raízes. Ao trocar de workspace, abre-se uma janela centralizada que lista os documentos com alterações não salvas e pergunta o que fazer antes de substituir as pastas: **Salvar tudo** (`S`), **Descartar** (`D`) ou **Cancelar** (`Esc`), também disponíveis como botões. A mesma janela aparece ao fechar a janela do app ou reverter um arquivo com alterações não salvas. Os caminhos recentes ficam no perfil ativo.
 
 ## Preferências e perfis
 

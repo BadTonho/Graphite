@@ -6,6 +6,7 @@ use std::sync::{mpsc, Arc};
 mod coordinator;
 mod lifecycle;
 mod participants;
+mod unsaved_modal;
 mod writer;
 pub(super) use lifecycle::DiscardAction;
 #[cfg(test)]
