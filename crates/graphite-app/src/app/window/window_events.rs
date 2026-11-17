@@ -115,7 +115,14 @@ impl ApplicationHandler<UserEvent> for App {
                         .with_visible(false)
                         .with_inner_size(LogicalSize::new(1200.0, 760.0)),
                 )
-                .expect("failed to create window"),
+                .unwrap_or_else(|err| {
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Critical,
+                        "window.create",
+                        format!("failed to create window: {err}"),
+                    );
+                    panic!("failed to create window: {err}");
+                }),
         );
         self.startup_metrics.push(self.tf(
             "startup.window_creation",
@@ -130,7 +137,14 @@ impl ApplicationHandler<UserEvent> for App {
             window.clone(),
             self.font_size * scale * f32::from(self.view_preferences.zoom_percent) / 100.0,
         )
-        .expect("failed to init renderer");
+        .unwrap_or_else(|err| {
+            crate::app::error_log::record(
+                crate::app::error_log::ErrorSeverity::Critical,
+                "renderer.init",
+                format!("failed to init renderer: {err}"),
+            );
+            panic!("failed to init renderer: {err}");
+        });
         self.startup_metrics.push(self.tf(
             "startup.renderer_init",
             &[(

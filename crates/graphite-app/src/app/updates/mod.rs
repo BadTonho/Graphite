@@ -262,6 +262,11 @@ impl App {
                     }
                     Ok(None) => {}
                     Err(err) => {
+                        crate::app::error_log::record(
+                            crate::app::error_log::ErrorSeverity::High,
+                            "updates.apply",
+                            &err,
+                        );
                         self.updates.status = UpdateStatus::Error(err.clone());
                         self.status = err;
                         return;
@@ -356,6 +361,11 @@ impl App {
                 self.status = format!("Graphite v{} is up to date", self.updates.current_version);
             }
             UpdateUiEvent::CheckCompleted(Err(err)) => {
+                crate::app::error_log::record(
+                    crate::app::error_log::ErrorSeverity::Medium,
+                    "updates.check",
+                    &err,
+                );
                 self.updates.status = UpdateStatus::Error(err.clone());
                 self.status = format!("Update check failed: {err}");
             }
@@ -382,11 +392,22 @@ impl App {
                     };
                 }
             }
-            UpdateUiEvent::BackgroundCheckCompleted(Err(_)) => {}
+            UpdateUiEvent::BackgroundCheckCompleted(Err(err)) => {
+                crate::app::error_log::record(
+                    crate::app::error_log::ErrorSeverity::Low,
+                    "updates.background_check",
+                    err,
+                );
+            }
             UpdateUiEvent::DownloadCompleted { release, result } => match result {
                 Ok(bytes) => {
                     if bytes.is_empty() {
                         let msg = "Downloaded update package is empty".to_owned();
+                        crate::app::error_log::record(
+                            crate::app::error_log::ErrorSeverity::High,
+                            "updates.download",
+                            &msg,
+                        );
                         self.updates.status = UpdateStatus::Error(msg.clone());
                         self.status = msg;
                         return;
@@ -395,6 +416,11 @@ impl App {
                         release.asset.as_ref().and_then(|a| a.sha256.as_ref())
                     {
                         if let Err(err) = verify_sha256(&bytes, expected_sha) {
+                            crate::app::error_log::record(
+                                crate::app::error_log::ErrorSeverity::High,
+                                "updates.verify",
+                                &err,
+                            );
                             self.updates.status = UpdateStatus::Error(err.clone());
                             self.status = err;
                             return;
@@ -412,6 +438,11 @@ impl App {
                         .join(release.tag_name.replace(['/', '\\', ':'], "_"));
                     if let Err(err) = std::fs::create_dir_all(&stage_dir) {
                         let msg = format!("Failed creating staging directory: {err}");
+                        crate::app::error_log::record(
+                            crate::app::error_log::ErrorSeverity::High,
+                            "updates.stage",
+                            &msg,
+                        );
                         self.updates.status = UpdateStatus::Error(msg.clone());
                         self.status = msg;
                         return;
@@ -419,6 +450,11 @@ impl App {
                     let staged_path = stage_dir.join(asset_name);
                     if let Err(err) = std::fs::write(&staged_path, &bytes) {
                         let msg = format!("Failed staging update artifact: {err}");
+                        crate::app::error_log::record(
+                            crate::app::error_log::ErrorSeverity::High,
+                            "updates.stage",
+                            &msg,
+                        );
                         self.updates.status = UpdateStatus::Error(msg.clone());
                         self.status = msg;
                         return;
@@ -435,6 +471,11 @@ impl App {
                     };
                 }
                 Err(err) => {
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::High,
+                        "updates.download",
+                        &err,
+                    );
                     self.updates.status = UpdateStatus::Error(err.clone());
                     self.status = format!("Update download failed: {err}");
                 }

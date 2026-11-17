@@ -953,6 +953,7 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 }
 
 fn main() {
+    app::error_log::init(config::app_config_dir().join("logs").join("errors"));
     let cwd = std::env::current_dir().expect("no current directory");
     if let Ok(exe) = std::env::current_exe() {
         let config_root = config::app_config_dir();
@@ -1016,6 +1017,12 @@ fn main() {
         match result {
             Ok(message) => println!("{message}"),
             Err(error) => {
+                app::error_log::record(app::error_log::ErrorSeverity::High, "cli.plugin", &error);
+                app::error_log::record(
+                    app::error_log::ErrorSeverity::High,
+                    "cli.plugin",
+                    &error,
+                );
                 eprintln!("{error}");
                 std::process::exit(2);
             }
@@ -1027,6 +1034,7 @@ fn main() {
     let request = match cli::parse_args(args, cwd.clone(), &cli_translator) {
         Ok(request) => request,
         Err(error) => {
+            app::error_log::record(app::error_log::ErrorSeverity::High, "cli.args", &error);
             eprintln!("{error}");
             std::process::exit(2);
         }

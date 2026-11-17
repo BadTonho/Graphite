@@ -52,3 +52,14 @@ These rules are mandatory for all development, file operations, documentation, a
 - Changelogs live in the root `changelog/` folder, one subfolder per version named exactly like the version (for example `changelog/0.2.0/`). Each subfolder contains one file per language: `en.md` (English) and `pt-BR.md` (Portuguese), kept in sync.
 - Every changelog is split into three categories, in this order: `New features`, `Improvements` and `Fixes` (`Novas funcionalidades`, `Melhorias` and `Correções` in Portuguese). Omit a category that has no entries.
 - Keep the changelog up to date as you work: any change a user can notice (new behavior, better behavior or a bug fix) must add an entry to the changelog of the version in progress, in both languages, in the same change. Changelogs of already released versions are never rewritten.
+
+---
+
+## 10. Four-Tier Error Logging
+- Every runtime error, unhandled panic, and subsystem failure must be persisted under `<app_config_dir>/logs/errors/` in **four separate severity-level files**:
+  1. **`critical` (`critical.jsonl`) — Highest:** App crashes, unhandled panics, GPU/window initialization failures, or unrecoverable startup errors.
+  2. **`high` (`high.jsonl`) — High:** Core workflow failures (file open/save failure, corrupted workspace/settings load, failed update download/apply/SHA-256 verification, extension host crash).
+  3. **`medium` (`medium.jsonl`) — Medium:** Subsystem degradation where the editor continues running (LSP server failure, Git/SCM command error, terminal/debugger spawn failure, plugin/VSIX load failure, manual update-check network error).
+  4. **`low` (`low.jsonl`) — Lowest:** Non-critical / minor feature failures or stalls (secondary UI preview/tooltip glitch, optional metadata/schema fetch timeout, silent background task/check failure).
+- **Security & Privacy:** Never log tokens, API keys, credentials, auth headers, or raw user file contents; all error messages must pass through sanitization before being written to disk.
+- **Compliance:** Any new or modified error path in code must record the failure through `app::error_log` at the appropriate severity tier.
