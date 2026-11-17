@@ -220,7 +220,7 @@ fn disconnected_provider_fails_the_command_instead_of_leaking_a_ticket() {
 
 fn host_executable() -> PathBuf {
     let current = std::env::current_exe().unwrap();
-    current
+    let path = current
         .parent()
         .unwrap()
         .parent()
@@ -229,7 +229,13 @@ fn host_executable() -> PathBuf {
             "graphite-extension-host.exe"
         } else {
             "graphite-extension-host"
-        })
+        });
+    assert!(
+        path.is_file(),
+        "build graphite-extension-host before running host tests (missing {})",
+        path.display()
+    );
+    path
 }
 fn pump_host(app: &mut crate::App, wakes: &Receiver<()>, done: impl Fn(&crate::App) -> bool) {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);

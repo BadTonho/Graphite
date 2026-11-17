@@ -48,8 +48,30 @@ jobs:
             libsoup-3.0-dev \
             pkg-config
 
+      - name: Install Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Build workspace
         run: cargo build --workspace
+
+      - name: Build test helper binaries
+        run: |
+          cargo build -p graphite-app --bin graphite-test-lsp
+          cargo build -p graphite-extension-host --bin graphite-extension-host
+
+      - name: Verify test helper binaries
+        shell: bash
+        run: |
+          for bin in graphite-test-lsp graphite-extension-host; do
+            found=$(ls target/debug/$bin target/debug/$bin.exe 2>/dev/null || true)
+            if [ -z "$found" ]; then
+              echo "::error::missing test helper binary: $bin"
+              ls -la target/debug || true
+              exit 1
+            fi
+          done
 
       - name: Run workspace tests
         run: cargo test --workspace -- --test-threads=4
