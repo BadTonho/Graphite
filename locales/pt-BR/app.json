@@ -782,5 +782,12 @@
   "titlebar.update.downloading": "Baixando...",
   "titlebar.update.restart": "Reiniciar ({tag})",
   "titlebar.update.tip_available": "Baixar atualização {tag}",
-  "titlebar.update.tip_restart": "Reiniciar para aplicar atualização {tag}"
+  "titlebar.update.tip_restart": "Reiniciar para aplicar atualização {tag}",
+  "error_notification.view_full": "Olhar erro completo",
+  "error_notification.report_issue": "Enviar erro",
+  "error_notification.opened_issue_page": "Página de Issues do repositório aberta no navegador",
+  "error_notification.severity.critical": "CRÍTICO",
+  "error_notification.severity.high": "ALTO",
+  "error_notification.severity.medium": "MÉDIO",
+  "error_notification.severity.low": "BAIXO"
 }

@@ -313,7 +313,7 @@ impl WebviewHost {
     }
 }
 
-fn open_external_https(target: &str) {
+pub(crate) fn open_external_https(target: &str) {
     let Some(target) = external_https_url(target) else {
         return;
     };

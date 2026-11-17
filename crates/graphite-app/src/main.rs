@@ -394,6 +394,7 @@ struct App {
     remote: app::remote::RemoteState,
     updates: app::updates::UpdateState,
     troubleshooting: app::issue_reporter::TroubleshootingSession,
+    error_notifications: app::error_notification::ErrorNotificationState,
 }
 
 impl App {
@@ -928,6 +929,7 @@ impl App {
             remote,
             updates,
             troubleshooting: app::issue_reporter::TroubleshootingSession::default(),
+            error_notifications: app::error_notification::ErrorNotificationState::default(),
         }
     }
 }
@@ -1018,11 +1020,7 @@ fn main() {
             Ok(message) => println!("{message}"),
             Err(error) => {
                 app::error_log::record(app::error_log::ErrorSeverity::High, "cli.plugin", &error);
-                app::error_log::record(
-                    app::error_log::ErrorSeverity::High,
-                    "cli.plugin",
-                    &error,
-                );
+                app::error_log::record(app::error_log::ErrorSeverity::High, "cli.plugin", &error);
                 eprintln!("{error}");
                 std::process::exit(2);
             }
@@ -1094,6 +1092,7 @@ fn main() {
         .expect("failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
+    app::error_log::set_event_proxy(proxy.clone());
     let _ = cli::start_ipc_server(proxy.clone());
     let mut app = App::new(root, Some(proxy));
     app.initial_cli_request = Some(request);

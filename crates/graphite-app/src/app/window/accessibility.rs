@@ -344,6 +344,8 @@ pub(crate) enum UserEvent {
     Sync(crate::app::user_data_sync::SyncUiEvent),
     /// Application update check and download notifications.
     Update(crate::app::updates::UpdateUiEvent),
+    /// Newly recorded runtime error to display in the bottom-right notification toast.
+    ErrorRecorded(crate::app::error_log::ErrorNotificationItem),
     /// Re-checks open documents against disk after recently written files settle.
     ExternalChangeCheck,
     /// A notebook kernel has events to collect.

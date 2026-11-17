@@ -322,6 +322,12 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                if self.error_notification_click(self.mouse.x as f32, self.mouse.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.titlebar_handle_press(self.mouse.x as f32, self.mouse.y as f32) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
@@ -755,6 +761,7 @@ impl App {
             UserEvent::Chat(event) => self.handle_chat_ui_event(event),
             UserEvent::Sync(event) => self.handle_sync_event(event),
             UserEvent::Update(event) => self.handle_update_event(event),
+            UserEvent::ErrorRecorded(item) => self.push_error_notification(item),
             UserEvent::ScmSnapshot(root, snapshot) => {
                 // A result for a folder that is no longer the one shown is out of date.
                 if root == self.scm_workspace_root() {

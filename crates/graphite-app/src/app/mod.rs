@@ -43,6 +43,7 @@ pub(crate) use utilities::{phase4_tools, phase5, phase6_drawing};
 
 pub(crate) mod chat;
 pub(crate) mod error_log;
+pub(crate) mod error_notification;
 pub(crate) mod issue_reporter;
 pub(crate) mod plugins;
 pub(crate) mod remote;

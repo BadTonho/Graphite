@@ -782,5 +782,12 @@
   "titlebar.update.downloading": "Updating...",
   "titlebar.update.restart": "Restart ({tag})",
   "titlebar.update.tip_available": "Download update {tag}",
-  "titlebar.update.tip_restart": "Restart to apply update {tag}"
+  "titlebar.update.tip_restart": "Restart to apply update {tag}",
+  "error_notification.view_full": "View Full Error",
+  "error_notification.report_issue": "Report Error",
+  "error_notification.opened_issue_page": "Opened repository Issues page in your browser",
+  "error_notification.severity.critical": "CRITICAL",
+  "error_notification.severity.high": "HIGH",
+  "error_notification.severity.medium": "MEDIUM",
+  "error_notification.severity.low": "LOW"
 }

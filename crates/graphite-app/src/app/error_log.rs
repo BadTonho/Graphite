@@ -61,6 +61,18 @@ pub(crate) struct ErrorLogger {
 
 static GLOBAL_LOGGER: OnceLock<ErrorLogger> = OnceLock::new();
 static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
+static EVENT_PROXY: OnceLock<
+    winit::event_loop::EventLoopProxy<crate::app::accessibility::UserEvent>,
+> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ErrorNotificationItem {
+    pub severity: ErrorSeverity,
+    pub source: String,
+    pub message: String,
+    pub timestamp_unix_ms: u64,
+    pub log_file: PathBuf,
+}
 
 impl ErrorLogger {
     pub(crate) fn new(log_dir: PathBuf) -> Self {
@@ -71,31 +83,44 @@ impl ErrorLogger {
     }
 
     /// Writes one sanitized JSON line into `<log_dir>/<severity>.jsonl`, rotating at 5 MB.
-    pub(crate) fn record(&self, severity: ErrorSeverity, source: &str, message: &str) {
+    pub(crate) fn record(
+        &self,
+        severity: ErrorSeverity,
+        source: &str,
+        message: &str,
+    ) -> ErrorNotificationItem {
         let timestamp_unix_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
+        let sanitized = sanitize_message(message);
+        let target = self.log_dir.join(severity.file_name());
+        let notification = ErrorNotificationItem {
+            severity,
+            source: source.to_owned(),
+            message: sanitized.clone(),
+            timestamp_unix_ms,
+            log_file: target.clone(),
+        };
         let entry = ErrorLogEntry {
             timestamp_unix_ms,
             severity,
             source,
-            message: sanitize_message(message),
+            message: sanitized,
             os: std::env::consts::OS,
             version: env!("CARGO_PKG_VERSION"),
         };
         let Ok(mut line) = serde_json::to_string(&entry) else {
-            return;
+            return notification;
         };
         line.push('\n');
 
         let Ok(_guard) = self.write_lock.lock() else {
-            return;
+            return notification;
         };
         if fs::create_dir_all(&self.log_dir).is_err() {
-            return;
+            return notification;
         }
-        let target = self.log_dir.join(severity.file_name());
         rotate_if_oversized(
             &target,
             &self.log_dir.join(severity.rotated_file_name()),
@@ -104,6 +129,7 @@ impl ErrorLogger {
         if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&target) {
             let _ = file.write_all(line.as_bytes());
         }
+        notification
     }
 }
 
@@ -154,10 +180,26 @@ pub(crate) fn init(log_dir: PathBuf) {
     });
 }
 
+/// Registers the event-loop proxy so recorded errors surface as UI notifications.
+pub(crate) fn set_event_proxy(
+    proxy: winit::event_loop::EventLoopProxy<crate::app::accessibility::UserEvent>,
+) {
+    let _ = EVENT_PROXY.set(proxy);
+}
+
+fn should_notify_ui(severity: ErrorSeverity, source: &str) -> bool {
+    !(severity == ErrorSeverity::Low && source == "updates.background_check")
+}
+
 /// Records an error into the global four-tier error log if initialized.
 pub(crate) fn record(severity: ErrorSeverity, source: &str, message: impl AsRef<str>) {
     if let Some(logger) = GLOBAL_LOGGER.get() {
-        logger.record(severity, source, message.as_ref());
+        let item = logger.record(severity, source, message.as_ref());
+        if should_notify_ui(severity, source) {
+            if let Some(proxy) = EVENT_PROXY.get() {
+                let _ = proxy.send_event(crate::app::accessibility::UserEvent::ErrorRecorded(item));
+            }
+        }
     }
 }
 
