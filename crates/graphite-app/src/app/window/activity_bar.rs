@@ -1171,6 +1171,9 @@ impl App {
                     );
                 }
             }
+            if matches!(entry, VisibleActivityItem::Builtin(Activity::SourceControl)) {
+                self.draw_scm_activity_badge(renderer, (item.x, item.y, item.width, item.height));
+            }
         }
         let gear_hovered = gear.contains(self.mouse.x as f32, self.mouse.y as f32);
         let gear_color = if gear_hovered {

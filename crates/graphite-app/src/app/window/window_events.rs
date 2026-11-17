@@ -90,6 +90,13 @@ impl ApplicationHandler<UserEvent> for App {
                 ControlFlow::WaitUntil(
                     std::time::Instant::now() + std::time::Duration::from_millis(10),
                 )
+            } else if self.scm_busy_state().is_some() {
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+                ControlFlow::WaitUntil(
+                    std::time::Instant::now() + crate::app::scm_progress::SPINNER_STEP,
+                )
             } else if let Some(deadline) = autosave_deadline {
                 ControlFlow::WaitUntil(deadline)
             } else {
@@ -803,6 +810,7 @@ impl App {
                 }
             }
             UserEvent::ScmOperationCompleted { message, snapshot } => {
+                self.end_scm_busy();
                 self.status = message;
                 if self.scm_commit_pending {
                     self.scm_commit_pending = false;

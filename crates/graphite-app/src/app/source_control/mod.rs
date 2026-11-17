@@ -30,6 +30,7 @@ pub(crate) mod scm_graph_menu;
 pub(crate) mod scm_graph_ui;
 pub(crate) mod scm_icons;
 pub(crate) mod scm_more_menu;
+pub(crate) mod scm_progress;
 pub(crate) mod scm_publish;
 pub(crate) mod scm_remote_ui;
 pub(crate) mod scm_tooltips;

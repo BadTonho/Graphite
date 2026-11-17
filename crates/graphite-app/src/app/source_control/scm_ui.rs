@@ -959,6 +959,7 @@ impl App {
                 );
             });
         if let Err(error) = spawned {
+            self.end_scm_busy();
             self.fail_current_command(CommandError::Failed(error.to_string()));
         }
     }
@@ -1047,6 +1048,7 @@ impl App {
             ScmAction::Commit(options) => match self.build_commit_request(options) {
                 Ok(request) => {
                     self.scm_commit_pending = true;
+                    self.begin_scm_busy(super::scm_progress::ScmBusyKind::Commit);
                     Some(request)
                 }
                 Err(error) => {
@@ -1669,28 +1671,49 @@ impl App {
                 label
             }
         };
-        let commit_color = if commit_enabled { rgb(0xffffff) } else { dim };
+        let busy = self.scm_busy_state();
+        let commit_label = match busy {
+            Some((kind, _)) => self.scm_busy_label(kind).to_owned(),
+            None => commit_label,
+        };
+        let commit_color = if commit_enabled || busy.is_some() {
+            rgb(0xffffff)
+        } else {
+            dim
+        };
         let check_size = (row_h * 0.72).round().max(12.0);
         let label_gap = cell_width * 0.4;
         let label_width = commit_label.chars().count() as f32 * cell_width;
         let group_x = left + ((field_width - check_size - label_gap - label_width) * 0.5).max(0.0);
-        draw_scm_icon(
-            renderer,
-            match primary {
-                ScmPrimaryAction::Commit => ScmIcon::Check,
-                ScmPrimaryAction::PublishRepository | ScmPrimaryAction::PublishBranch => {
-                    ScmIcon::Push
-                }
-                ScmPrimaryAction::Sync { .. } => ScmIcon::Sync,
-            },
-            ScmRect {
-                x: group_x,
-                y: commit_y,
-                width: check_size,
-                height: row_h,
-            },
-            commit_color,
-        );
+        if let Some((_, elapsed)) = busy {
+            super::scm_progress::draw_spinner(
+                renderer,
+                group_x,
+                commit_y + (row_h - check_size) * 0.5,
+                check_size,
+                0xffffff,
+                Theme::color(Theme::STATUS, 0x0e639c),
+                super::scm_progress::spinner_head(elapsed),
+            );
+        } else {
+            draw_scm_icon(
+                renderer,
+                match primary {
+                    ScmPrimaryAction::Commit => ScmIcon::Check,
+                    ScmPrimaryAction::PublishRepository | ScmPrimaryAction::PublishBranch => {
+                        ScmIcon::Push
+                    }
+                    ScmPrimaryAction::Sync { .. } => ScmIcon::Sync,
+                },
+                ScmRect {
+                    x: group_x,
+                    y: commit_y,
+                    width: check_size,
+                    height: row_h,
+                },
+                commit_color,
+            );
+        }
         renderer.draw_text(
             &commit_label,
             group_x + check_size + label_gap,

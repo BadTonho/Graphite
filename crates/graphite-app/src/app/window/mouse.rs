@@ -277,6 +277,9 @@ impl App {
                     return;
                 }
                 if layout.commit_button.contains(local_x, local_y) {
+                    if self.scm_busy_state().is_some() {
+                        return;
+                    }
                     match self.scm_primary_action() {
                         ScmPrimaryAction::PublishRepository => {
                             self.open_publish_repo_modal();

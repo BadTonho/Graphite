@@ -28,8 +28,8 @@ pub(crate) use navigation::{
 mod source_control;
 pub(crate) use source_control::{
     github_auth, github_dialog, merge_editor, scm_branch_ui, scm_confirm, scm_graph_menu,
-    scm_graph_ui, scm_more_menu, scm_publish, scm_remote_ui, scm_tooltips, scm_tree, scm_ui,
-    scm_workspace,
+    scm_graph_ui, scm_more_menu, scm_progress, scm_publish, scm_remote_ui, scm_tooltips, scm_tree,
+    scm_ui, scm_workspace,
 };
 mod debug_ui;
 pub(crate) use debug_ui::{debug_adapters, debug_inline, debug_panel, debugging};

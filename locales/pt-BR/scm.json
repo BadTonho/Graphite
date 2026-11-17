@@ -245,5 +245,9 @@
   "scm.tip.commit.open_github": "Abrir no GitHub",
   "scm.tip.commit.copied_sha": "ID do commit {hash} copiado",
   "scm.diff.toggle_layout": "Lado a lado / linha",
-  "scm.diff.no_changes": "Sem diferenças: os dois lados são iguais ou estão vazios."
+  "scm.diff.no_changes": "Sem diferenças: os dois lados são iguais ou estão vazios.",
+  "scm.sidebar.syncing": "Sincronizando...",
+  "scm.sidebar.publishing": "Publicando...",
+  "scm.sidebar.committing": "Commitando...",
+  "scm.sidebar.working": "Trabalhando..."
 }

@@ -142,6 +142,11 @@ impl App {
         };
         let root = self.scm_workspace_root();
         self.status = self.t("scm.status.running").into();
+        self.begin_scm_busy(if matches!(op, RemoteOp::Sync) {
+            super::scm_progress::ScmBusyKind::Sync
+        } else {
+            super::scm_progress::ScmBusyKind::Other
+        });
         std::thread::spawn(move || {
             let message = match op.run(&root) {
                 Ok(output) if output.is_empty() => "Done".to_owned(),

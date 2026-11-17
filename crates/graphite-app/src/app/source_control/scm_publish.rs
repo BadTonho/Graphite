@@ -44,6 +44,7 @@ impl App {
         let root = self.scm_workspace_root();
         let translator = self.translator;
         self.status = self.t("scm.publish.running").into();
+        self.begin_scm_busy(super::scm_progress::ScmBusyKind::Publish);
         std::thread::Builder::new()
             .name("graphite-scm-publish".into())
             .spawn(move || {

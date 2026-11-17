@@ -57,3 +57,8 @@ Not supported: `reword`, `edit`, `exec`, `break`, keeping merge commits (`--reba
 
 - **Commit with unsaved files.** A commit records what is on disk, so text that is only in the editor would be left out. When open documents inside the repository have unsaved changes, a dialog in the middle of the window lists them and asks: **Save and commit** (`S`), **Commit anyway** (`D`) or **Cancel** (`Esc`). If saving fails, no commit is made.
 - **Diff view.** The comparison opens in the editor area only: the menu bar, activity bar, sidebar and status bar stay visible and clickable. The header has a **×** button (also `Esc`) to close it and a button that switches between side by side and inline (also `Tab`). Clicking in the sidebar closes the comparison. When both sides are identical or empty, the view says so instead of staying blank.
+
+## Progress and change count
+
+- **Working indicator.** While Sync, Publish, Commit, Push, Pull or another Git operation runs, the main button replaces its icon with a spinning ring of dots and its label with "Syncing...", "Publishing...", "Committing..." or "Working...". Clicking the button again is ignored until the operation ends. The indicator clears itself when the operation reports back, or after ten minutes at most.
+- **Change badge.** The Source Control icon in the activity bar shows how many files have pending changes (staged, unstaged or untracked), up to `99+`. It is hidden when there are none or when the repository cannot be read.

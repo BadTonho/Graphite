@@ -323,6 +323,8 @@ struct App {
     branch_name_prompt: Option<app::scm_branch_ui::BranchNamePrompt>,
     scm_commit_message: String,
     scm_commit_pending: bool,
+    /// Source control operation in progress, for the animated button.
+    scm_busy: Option<(crate::app::scm_progress::ScmBusyKind, std::time::Instant)>,
     scm_publish_modal: Option<app::scm_publish::ScmPublishModal>,
     scm_commit_prompt: bool,
     scm_commit_history: Vec<String>,
@@ -883,6 +885,7 @@ impl App {
             branch_name_prompt: None,
             scm_commit_message: String::new(),
             scm_commit_pending: false,
+            scm_busy: None,
             scm_publish_modal: None,
             scm_commit_prompt: false,
             scm_commit_history: Vec::new(),

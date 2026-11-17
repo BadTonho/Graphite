@@ -57,3 +57,8 @@ Não suportado: `reword`, `edit`, `exec`, `break`, manter commits de merge (`--r
 
 - **Commit com arquivos não salvos.** O commit registra o que está no disco, então o texto que só existe no editor ficaria de fora. Quando documentos abertos dentro do repositório têm alterações não salvas, uma janela no meio da tela os lista e pergunta: **Salvar e commitar** (`S`), **Commitar assim mesmo** (`D`) ou **Cancelar** (`Esc`). Se o salvamento falhar, nenhum commit é feito.
 - **Visualização de diferenças.** A comparação abre só na área do editor: a barra de menus, a barra de atividades, a barra lateral e a barra de status continuam visíveis e clicáveis. O cabeçalho tem um botão **×** (ou `Esc`) para fechar e um botão que alterna entre lado a lado e em linha (ou `Tab`). Clicar na barra lateral fecha a comparação. Quando os dois lados são iguais ou estão vazios, a tela avisa em vez de ficar em branco.
+
+## Progresso e contagem de alterações
+
+- **Indicador de trabalho.** Enquanto Sincronizar, Publicar, Commit, Push, Pull ou outra operação do Git está rodando, o botão principal troca o ícone por um anel de pontos girando e o texto por "Sincronizando...", "Publicando...", "Commitando..." ou "Trabalhando...". Clicar de novo no botão é ignorado até a operação terminar. O indicador some sozinho quando a operação responde, ou no máximo depois de dez minutos.
+- **Selo de alterações.** O ícone do Controle de Código na barra de atividades mostra quantos arquivos têm alterações pendentes (em stage, fora do stage ou novos), até `99+`. Ele fica oculto quando não há nenhuma ou quando o repositório não pode ser lido.
