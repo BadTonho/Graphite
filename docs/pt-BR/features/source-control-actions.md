@@ -56,3 +56,4 @@ Não suportado: `reword`, `edit`, `exec`, `break`, manter commits de merge (`--r
 ## Arquivos não salvos e a visualização de diferenças
 
 - **Commit com arquivos não salvos.** O commit registra o que está no disco, então o texto que só existe no editor ficaria de fora. Quando documentos abertos dentro do repositório têm alterações não salvas, uma janela no meio da tela os lista e pergunta: **Salvar e commitar** (`S`), **Commitar assim mesmo** (`D`) ou **Cancelar** (`Esc`). Se o salvamento falhar, nenhum commit é feito.
+- **Visualização de diferenças.** A comparação abre só na área do editor: a barra de menus, a barra de atividades, a barra lateral e a barra de status continuam visíveis e clicáveis. O cabeçalho tem um botão **×** (ou `Esc`) para fechar e um botão que alterna entre lado a lado e em linha (ou `Tab`). Clicar na barra lateral fecha a comparação. Quando os dois lados são iguais ou estão vazios, a tela avisa em vez de ficar em branco.

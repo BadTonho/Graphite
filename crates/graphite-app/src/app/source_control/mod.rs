@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+pub(crate) mod diff_view_ui;
 pub(crate) mod extension_scm_ui;
 pub(crate) mod github_auth;
 pub(crate) mod github_dialog;

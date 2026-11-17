@@ -125,10 +125,7 @@ impl App {
             self.merge_handle_click(mx, my);
             return;
         }
-        if self.diff_view.is_some() {
-            if my < lh * 1.5 {
-                self.run_ui_command("graphite.diff.toggleLayout");
-            }
+        if self.click_diff_view(mx, my, window_width as f32, window_height as f32, lh, cw) {
             return;
         }
         if self.view_preferences.status_bar_visible && !self.zen_mode && my >= window_height - lh {

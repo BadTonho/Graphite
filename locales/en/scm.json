@@ -243,5 +243,7 @@
   "scm.tip.stat.deletion": "1 deletion(-)",
   "scm.tip.stat.deletions": "{count} deletions(-)",
   "scm.tip.commit.open_github": "Open on GitHub",
-  "scm.tip.commit.copied_sha": "Copied commit ID {hash}"
+  "scm.tip.commit.copied_sha": "Copied commit ID {hash}",
+  "scm.diff.toggle_layout": "Side by side / inline",
+  "scm.diff.no_changes": "No differences: both sides are identical or empty."
 }

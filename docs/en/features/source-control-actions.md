@@ -56,3 +56,4 @@ Not supported: `reword`, `edit`, `exec`, `break`, keeping merge commits (`--reba
 ## Unsaved files and the diff view
 
 - **Commit with unsaved files.** A commit records what is on disk, so text that is only in the editor would be left out. When open documents inside the repository have unsaved changes, a dialog in the middle of the window lists them and asks: **Save and commit** (`S`), **Commit anyway** (`D`) or **Cancel** (`Esc`). If saving fails, no commit is made.
+- **Diff view.** The comparison opens in the editor area only: the menu bar, activity bar, sidebar and status bar stay visible and clickable. The header has a **×** button (also `Esc`) to close it and a button that switches between side by side and inline (also `Tab`). Clicking in the sidebar closes the comparison. When both sides are identical or empty, the view says so instead of staying blank.
