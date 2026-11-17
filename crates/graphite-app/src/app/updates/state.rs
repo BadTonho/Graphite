@@ -108,7 +108,14 @@ fn compare_prerelease(a: &str, b: &str) -> Ordering {
 pub(crate) struct ReleaseAsset {
     pub name: String,
     pub download_url: String,
+    /// Digest declared in the release notes (<hex>  <asset>), if any.
     pub sha256: Option<String>,
+    /// Companion <asset>.sha256 file, used when the notes do not declare a digest.
+    #[serde(default)]
+    pub sha256_url: Option<String>,
+    /// Companion <asset>.sig Ed25519 signature file (mandatory for installation).
+    #[serde(default)]
+    pub signature_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,7 +150,6 @@ pub(crate) enum UpdateStatus {
         release: ReleaseInfo,
         staged_path: PathBuf,
     },
-    Cancelling,
     UpToDate {
         checked_version: String,
     },
@@ -176,12 +182,11 @@ impl UpdateConfig {
             .unwrap_or_default()
     }
 
-    pub(crate) fn save(&self, profile_root: &Path) {
-        let _ = std::fs::create_dir_all(profile_root);
+    pub(crate) fn save(&self, profile_root: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(profile_root)?;
         let path = profile_root.join("updates-config.json");
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(path, json);
-        }
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
+        std::fs::write(path, json)
     }
 }
 
@@ -208,29 +213,56 @@ pub(crate) fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<(), Stri
     Ok(())
 }
 
+fn is_sha256_hex(token: &str) -> bool {
+    token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Parses a checksum document (`<hex>  <file>` lines, sha256sum style, or a bare digest) and
+/// returns the digest declared for `asset_name`. Lines naming another file are never used.
 pub(crate) fn extract_asset_sha256_from_notes(notes: &str, asset_name: &str) -> Option<String> {
+    let mut bare_candidates: Vec<String> = Vec::new();
     for line in notes.lines() {
-        let trimmed = line.trim();
-        if let Some(hex) = trimmed.strip_prefix("sha256:") {
-            let token = hex.split_whitespace().next()?;
-            if token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return Some(token.to_ascii_lowercase());
-            }
-        }
+        let trimmed = line.trim().trim_start_matches(['-', '*', '`']).trim();
         let mut parts = trimmed.split_whitespace();
-        if let (Some(hash), Some(file)) = (parts.next(), parts.next()) {
-            let file_clean = file.trim_start_matches('*');
-            if hash.len() == 64
-                && hash.bytes().all(|b| b.is_ascii_hexdigit())
-                && file_clean == asset_name
+        let Some(first) = parts.next() else {
+            continue;
+        };
+        if let Some(hex) = first.strip_prefix("sha256:") {
+            // `sha256:<hex> [file]` or `sha256: <hex> [file]`
+            let (digest, file) = if hex.is_empty() {
+                (parts.next().unwrap_or(""), parts.next())
+            } else {
+                (hex, parts.next())
+            };
+            if !is_sha256_hex(digest) {
+                continue;
+            }
+            match file.map(|f| f.trim_matches(['*', '`'])) {
+                Some(name) if name == asset_name => return Some(digest.to_ascii_lowercase()),
+                Some(_) => {}
+                None => bare_candidates.push(digest.to_ascii_lowercase()),
+            }
+            continue;
+        }
+        if is_sha256_hex(first) {
+            match parts
+                .next()
+                .map(|f| f.trim_start_matches('*').trim_matches('`'))
             {
-                return Some(hash.to_ascii_lowercase());
+                Some(name) if name == asset_name => return Some(first.to_ascii_lowercase()),
+                Some(_) => {}
+                None => bare_candidates.push(first.to_ascii_lowercase()),
             }
         }
     }
-    None
+    // A bare digest is only trusted when it is the single one declared (unambiguous).
+    bare_candidates.dedup();
+    if bare_candidates.len() == 1 {
+        bare_candidates.pop()
+    } else {
+        None
+    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +287,54 @@ mod tests {
             extract_asset_sha256_from_notes(&notes, "graphite-windows-x64.zip").as_deref(),
             Some(valid.as_str())
         );
+    }
+
+    #[test]
+    fn checksum_parser_never_uses_a_digest_declared_for_another_file() {
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let notes = format!("{a}  graphite-linux-x64.tar.gz\n{b} *graphite-windows-x64.zip\n");
+        assert_eq!(
+            extract_asset_sha256_from_notes(&notes, "graphite-windows-x64.zip").as_deref(),
+            Some(b.as_str())
+        );
+        assert_eq!(
+            extract_asset_sha256_from_notes(&notes, "graphite-macos.zip"),
+            None
+        );
+
+        // `sha256:` lines naming another file are skipped; a malformed line does not abort.
+        let notes = format!("sha256:zzzz\nsha256:{a} other.zip\nsha256: {b} mine.zip\n");
+        assert_eq!(
+            extract_asset_sha256_from_notes(&notes, "mine.zip").as_deref(),
+            Some(b.as_str())
+        );
+        assert_eq!(extract_asset_sha256_from_notes(&notes, "third.zip"), None);
+
+        // A bare digest is accepted only when unambiguous.
+        assert_eq!(
+            extract_asset_sha256_from_notes(&format!("sha256:{a}"), "x.zip").as_deref(),
+            Some(a.as_str())
+        );
+        assert_eq!(
+            extract_asset_sha256_from_notes(&format!("sha256:{a}\nsha256:{b}"), "x.zip"),
+            None
+        );
+    }
+
+    #[test]
+    fn config_save_reports_failures_and_round_trips() {
+        let dir = crate::test_support::TempDir::new();
+        let mut config = UpdateConfig::default();
+        config.channel = UpdateChannel::Prerelease;
+        config.save(dir.path()).unwrap();
+        assert_eq!(
+            UpdateConfig::load_or_default(dir.path()).channel,
+            UpdateChannel::Prerelease
+        );
+
+        let file_as_root = dir.path().join("occupied");
+        std::fs::write(&file_as_root, b"x").unwrap();
+        assert!(config.save(&file_as_root).is_err());
     }
 }

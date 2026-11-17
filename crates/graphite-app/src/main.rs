@@ -966,7 +966,9 @@ fn main() {
             .as_ref()
             .and_then(|profiles| profiles.path(profiles.active()).ok())
             .unwrap_or(config_root);
-        let _ = app::updates::apply::apply_pending_update_in(&profile_root, &exe);
+        if let Err(err) = app::updates::apply::apply_pending_update_in(&profile_root, &exe) {
+            app::error_log::record(app::error_log::ErrorSeverity::High, "updates.apply", &err);
+        }
     }
     let cli_translator = graphite_i18n::Translator::new(config::language_selection(&cwd).language);
     let mut args = std::env::args_os()

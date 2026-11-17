@@ -6,9 +6,16 @@ Graphite includes an application update manager backed by GitHub Releases and a 
 
 - **Channels (`state.rs`)**: Supports `stable` (`/releases/latest`) and `prerelease` (`/releases`), configured via `<profile>/updates-config.json`.
 - **Semantic Version Comparison (`SemVer`)**: Compares `major.minor.patch` and prerelease tags strictly before marking an update available.
-- **SHA-256 Verification**: Verifies downloaded release packages with `ring::digest::SHA256` against digests declared in release notes before staging into `<profile>/updates/<tag>/`.
+- **Mandatory integrity (`signature.rs`, `mod.rs`)**: A package is installed only if the release ships `<asset>.sig` (Ed25519 signature by a key in `TRUSTED_UPDATE_KEYS`) over `graphite-update-v1\n<tag>\n<asset>\n<sha256>\n` **and** the downloaded bytes hash (streamed SHA-256) to that digest. The digest comes from the release notes (`<hex>  <asset>`) or the `<asset>.sha256` file. Unsigned releases, missing digests, untrusted keys and replayed signatures are rejected before staging. The signature is checked before the package is downloaded.
+- **Streaming download (`transport.rs`)**: Packages stream to `<asset>.part` with live progress, a size cap, truncation detection and cancellation; they get their final name only after verification.
+- **Asset selection**: Matches OS and CPU architecture (`windows`/`linux`/`macos`, `x64`/`arm64`). There is no cross-platform fallback.
+- **Installer (`apply.rs`)**: Re-checks the staged file's SHA-256, requires it to live in `<profile>/updates/`, validates the executable header (PE/ELF/Mach-O), keeps the old binary as `.old` and rolls back if the new one cannot start. A bad marker is discarded, never retried forever.
+- **Cancellation and polling**: Cancelling bumps a generation so late results are ignored while the background poller keeps working. The poller reads the current channel/`auto_check` each cycle and backs off (10 min up to 1 h) after failures; GitHub rate limits produce a clear message. The prerelease channel picks the highest semantic version.
 - **Background Transport (`transport.rs`)**: Uses `GitHubReleasesTransport` on a background thread and reports results over `UserEvent::Update`.
 
+### Signing a release
+1. One time: `cargo run -p graphite-app --example update_signer -- keygen <private-key-file>`, keep the private key secret (never commit it) and paste the printed public key into `TRUSTED_UPDATE_KEYS`. To rotate, add the new key first.
+2. Per release asset: `cargo run -p graphite-app --example update_signer -- sign <private-key-file> <tag> <asset-file>`; upload the asset together with the generated `<asset>.sig` and `<asset>.sha256`.
 ### Update Commands
 - `update.check` / `update.checkForUpdate`: Checks for a newer release.
 - `update.downloadNow` / `update.downloadUpdate`: Downloads and SHA-256 verifies the platform release archive.
