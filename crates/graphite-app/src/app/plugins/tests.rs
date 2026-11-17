@@ -1184,11 +1184,13 @@ export async function activate(_context, g) {
   });
   await g.commands.registerCommand('local.rich.openPanel', async () => {
     const panel = await g.window.createWebviewPanel('rich.view', 'Rich Preview', { html: '<h1>Boot</h1>' });
-    await panel.webview.setHtml('<h1>Updated</h1>');
-    await panel.setTitle('Updated Preview');
+    // Register the listener before any update the host can observe: the host waits for
+    // the "Updated" title and then sends a message, which must already have a listener.
     panel.webview.onDidReceiveMessage(async msg => {
       await panel.webview.postMessage({ echo: msg });
     });
+    await panel.webview.setHtml('<h1>Updated</h1>');
+    await panel.setTitle('Updated Preview');
     await g.storage.global.set('openedViaShortcut', true);
     return 'panel-open';
   });
