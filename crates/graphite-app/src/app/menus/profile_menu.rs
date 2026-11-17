@@ -21,6 +21,13 @@ pub(crate) enum ProfileMenuRow {
         login: String,
     },
     GitHubSignOut,
+    /// What the sync is doing or did last; informational, not selectable.
+    SyncStatus {
+        text: String,
+    },
+    SyncTurnOn,
+    SyncNow,
+    SyncTurnOff,
 }
 
 impl ProfileMenuRow {
@@ -31,6 +38,7 @@ impl ProfileMenuRow {
             ProfileMenuRow::Separator
                 | ProfileMenuRow::Unavailable
                 | ProfileMenuRow::GitHubAccount { .. }
+                | ProfileMenuRow::SyncStatus { .. }
         )
     }
 }
@@ -109,6 +117,16 @@ impl App {
                 }
                 None => rows.push(ProfileMenuRow::GitHubSignIn),
             }
+            rows.push(ProfileMenuRow::Separator);
+            if self.sync.persisted.enabled {
+                rows.push(ProfileMenuRow::SyncStatus {
+                    text: self.sync_status_text(),
+                });
+                rows.push(ProfileMenuRow::SyncNow);
+                rows.push(ProfileMenuRow::SyncTurnOff);
+            } else {
+                rows.push(ProfileMenuRow::SyncTurnOn);
+            }
         }
 
         let char_width = self
@@ -128,6 +146,10 @@ impl App {
                     ProfileMenuRow::GitHubAccount { login } => {
                         self.tf("github.signed_in_as", &[("login", login)])
                     }
+                    ProfileMenuRow::SyncStatus { text } => text.clone(),
+                    ProfileMenuRow::SyncTurnOn => self.t("sync_menu.turn_on").to_owned(),
+                    ProfileMenuRow::SyncNow => self.t("sync_menu.sync_now").to_owned(),
+                    ProfileMenuRow::SyncTurnOff => self.t("sync_menu.turn_off").to_owned(),
                 };
                 48.0 + label.chars().count() as f32 * char_width
             })
@@ -284,9 +306,26 @@ impl App {
                 self.profile_menu = None;
                 self.sign_out_github();
             }
+            ProfileMenuRow::SyncTurnOn => {
+                self.profile_menu = None;
+                self.turn_on_sync();
+            }
+            ProfileMenuRow::SyncNow => {
+                self.profile_menu = None;
+                if self.github_session.is_some() {
+                    self.sync_now();
+                } else {
+                    self.start_sync_sign_in();
+                }
+            }
+            ProfileMenuRow::SyncTurnOff => {
+                self.profile_menu = None;
+                self.turn_off_sync();
+            }
             ProfileMenuRow::Separator
             | ProfileMenuRow::Unavailable
-            | ProfileMenuRow::GitHubAccount { .. } => {}
+            | ProfileMenuRow::GitHubAccount { .. }
+            | ProfileMenuRow::SyncStatus { .. } => {}
         }
     }
 
@@ -372,6 +411,28 @@ impl App {
                         top + 5.0,
                         dim,
                     );
+                }
+                ProfileMenuRow::SyncStatus { text } => {
+                    renderer.draw_text(text, x + 14.0, top + 5.0, dim);
+                }
+                ProfileMenuRow::SyncTurnOn
+                | ProfileMenuRow::SyncNow
+                | ProfileMenuRow::SyncTurnOff => {
+                    if menu.selected == index {
+                        renderer.draw_rect(
+                            x + 2.0,
+                            top,
+                            width - 4.0,
+                            row_h,
+                            rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+                        );
+                    }
+                    let key = match row {
+                        ProfileMenuRow::SyncTurnOn => "sync_menu.turn_on",
+                        ProfileMenuRow::SyncNow => "sync_menu.sync_now",
+                        _ => "sync_menu.turn_off",
+                    };
+                    renderer.draw_text(self.t(key), x + 32.0, top + 5.0, text);
                 }
             }
             top += row_h;
@@ -497,5 +558,87 @@ mod tests {
             winit::keyboard::NamedKey::Escape,
         ));
         assert!(app.profile_menu.is_none());
+    }
+
+    fn signed_in_app(dir: &crate::test_support::TempDir, scope: &str) -> App {
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let profiles = crate::app::phase5::Profiles::open(dir.path()).unwrap();
+        app.profile_root = profiles.path(profiles.active()).unwrap();
+        app.profiles = Some(profiles);
+        app.github_session = Some(graphite_auth::Session {
+            token: "gho_secret".into(),
+            login: "octocat".into(),
+            scope: scope.into(),
+            ..Default::default()
+        });
+        app
+    }
+
+    fn menu_rows(app: &mut App) -> Vec<ProfileMenuRow> {
+        app.open_profile_menu((0.0, 700.0, 48.0, 48.0), 900.0, 800.0);
+        app.profile_menu.as_ref().unwrap().rows.clone()
+    }
+
+    #[test]
+    fn sync_off_offers_only_to_turn_it_on() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user gist");
+        let rows = menu_rows(&mut app);
+        assert!(rows.contains(&ProfileMenuRow::SyncTurnOn));
+        assert!(!rows.contains(&ProfileMenuRow::SyncNow));
+        assert!(!rows.contains(&ProfileMenuRow::SyncTurnOff));
+        assert!(!rows
+            .iter()
+            .any(|row| matches!(row, ProfileMenuRow::SyncStatus { .. })));
+    }
+
+    #[test]
+    fn sync_on_shows_its_status_and_the_sync_and_turn_off_actions() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user gist");
+        app.sync.persisted.enabled = true;
+        let rows = menu_rows(&mut app);
+        assert!(rows.contains(&ProfileMenuRow::SyncNow));
+        assert!(rows.contains(&ProfileMenuRow::SyncTurnOff));
+        assert!(!rows.contains(&ProfileMenuRow::SyncTurnOn));
+        let status = rows
+            .iter()
+            .position(|row| matches!(row, ProfileMenuRow::SyncStatus { .. }))
+            .expect("a status line");
+        // The status line is information only: the keyboard never lands on it.
+        assert!(!rows[status].is_selectable());
+        assert!(rows[status + 1].is_selectable());
+    }
+
+    #[test]
+    fn choosing_turn_off_disables_the_sync_and_closes_the_menu() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user gist");
+        app.sync.persisted.enabled = true;
+        menu_rows(&mut app);
+        app.execute_profile_menu_row(ProfileMenuRow::SyncTurnOff);
+        assert!(!app.sync.persisted.enabled);
+        assert!(app.profile_menu.is_none());
+    }
+
+    #[test]
+    fn choosing_turn_on_with_the_gist_permission_enables_the_sync() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user gist");
+        menu_rows(&mut app);
+        app.execute_profile_menu_row(ProfileMenuRow::SyncTurnOn);
+        assert!(app.sync.persisted.enabled);
+        assert!(app.profile_menu.is_none());
+    }
+
+    #[test]
+    fn choosing_turn_on_without_the_gist_permission_asks_for_it_first() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = signed_in_app(&dir, "read:user");
+        menu_rows(&mut app);
+        app.execute_profile_menu_row(ProfileMenuRow::SyncTurnOn);
+        // Not enabled yet: it waits for the new sign-in to finish.
+        assert!(!app.sync.persisted.enabled);
+        assert!(app.sync.turning_on);
     }
 }

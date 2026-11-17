@@ -74,18 +74,77 @@ pub(crate) fn execute_sync_round(
     })
 }
 
+/// Whether a space-separated list of OAuth scopes includes `scope`.
+fn has_scope(scopes: &str, scope: &str) -> bool {
+    scopes.split_whitespace().any(|granted| granted == scope)
+}
+
+/// The scopes in `first` followed by those of `second` that are not there yet.
+fn merge_scopes(first: &str, second: &str) -> String {
+    let mut merged: Vec<&str> = first.split_whitespace().collect();
+    for scope in second.split_whitespace() {
+        if !merged.contains(&scope) {
+            merged.push(scope);
+        }
+    }
+    merged.join(" ")
+}
+
+/// Text key and number for "synced N units ago".
+fn relative_age(seconds: u64) -> (&'static str, u64) {
+    match seconds {
+        0..=59 => ("sync_menu.just_now", 0),
+        60..=3599 => ("sync_menu.minutes_ago", seconds / 60),
+        3600..=86_399 => ("sync_menu.hours_ago", seconds / 3600),
+        _ => ("sync_menu.days_ago", seconds / 86_400),
+    }
+}
+
 impl App {
     pub(crate) fn start_sync_sign_in(&mut self) {
         self.sync.turning_on = true;
-        if self.github_session.is_some() {
-            self.finish_turning_on_sync();
-            return;
+        let existing = self
+            .github_session
+            .as_ref()
+            .map(|session| session.scope.clone());
+        match existing {
+            Some(scope) if has_scope(&scope, "gist") => self.finish_turning_on_sync(),
+            // Signed in without the Gist permission: ask again, keeping what was already granted.
+            Some(scope) => {
+                let wanted = merge_scopes(&scope, graphite_auth::SCOPE_GIST);
+                self.start_github_sign_in_with_scope(&wanted);
+            }
+            None => self.start_github_sign_in_with_scope(graphite_auth::SCOPE_GIST),
         }
-        self.start_github_sign_in_with_scope(graphite_auth::SCOPE_GIST);
+    }
+
+    /// One line for the profile menu: what the sync is doing, or when it last finished.
+    pub(crate) fn sync_status_text(&self) -> String {
+        if self.sync.syncing {
+            return self.t("sync_menu.syncing").to_owned();
+        }
+        if self.sync.last_error.is_some() {
+            return self.t("sync_menu.failed").to_owned();
+        }
+        let conflicts = self.sync.persisted.conflicts.len();
+        if conflicts > 0 {
+            return self.tf("sync_menu.conflicts", &[("count", &conflicts)]);
+        }
+        match self.sync.persisted.last_sync_epoch_s {
+            Some(at) => {
+                let (key, count) = relative_age(now_epoch_s().saturating_sub(at));
+                self.tf(key, &[("count", &count)])
+            }
+            None => self.t("sync_menu.never").to_owned(),
+        }
     }
 
     pub(crate) fn turn_on_sync(&mut self) {
-        if self.github_session.is_none() {
+        let can_sync = self
+            .github_session
+            .as_ref()
+            .is_some_and(|session| has_scope(&session.scope, "gist"));
+        if !can_sync {
             self.start_sync_sign_in();
             return;
         }
@@ -370,5 +429,47 @@ mod tests {
         app.reset_sync_data();
         assert!(!app.sync.persisted.enabled);
         assert!(app.sync.persisted.gist_id.is_none());
+    }
+
+    #[test]
+    fn scopes_are_checked_and_merged_without_losing_the_old_ones() {
+        assert!(has_scope("read:user gist", "gist"));
+        assert!(!has_scope("read:user", "gist"));
+        assert!(!has_scope("read:user gistx", "gist"));
+        assert_eq!(
+            merge_scopes("read:user repo", "read:user gist"),
+            "read:user repo gist"
+        );
+        assert_eq!(merge_scopes("", "read:user gist"), "read:user gist");
+    }
+
+    #[test]
+    fn the_age_of_the_last_sync_is_given_in_the_largest_whole_unit() {
+        assert_eq!(relative_age(5), ("sync_menu.just_now", 0));
+        assert_eq!(relative_age(60), ("sync_menu.minutes_ago", 1));
+        assert_eq!(relative_age(3599), ("sync_menu.minutes_ago", 59));
+        assert_eq!(relative_age(7200), ("sync_menu.hours_ago", 2));
+        assert_eq!(relative_age(3 * 86_400), ("sync_menu.days_ago", 3));
+    }
+
+    #[test]
+    fn the_menu_status_line_reports_syncing_failure_conflicts_or_age() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        assert_eq!(app.sync_status_text(), app.t("sync_menu.never"));
+        app.sync.persisted.last_sync_epoch_s = Some(now_epoch_s());
+        assert_eq!(app.sync_status_text(), app.t("sync_menu.just_now"));
+        app.sync.persisted.conflicts = vec![SyncConflict {
+            resource: "settings".into(),
+            key: "a".into(),
+            local_value: None,
+            remote_value: None,
+            resolved: None,
+        }];
+        assert!(app.sync_status_text().contains('1'));
+        app.sync.last_error = Some("boom".into());
+        assert_eq!(app.sync_status_text(), app.t("sync_menu.failed"));
+        app.sync.syncing = true;
+        assert_eq!(app.sync_status_text(), app.t("sync_menu.syncing"));
     }
 }

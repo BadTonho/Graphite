@@ -1398,6 +1398,18 @@ impl App {
                         false,
                         true,
                     ),
+                    super::profile_menu::ProfileMenuRow::SyncStatus { text } => {
+                        (text.clone(), false, true)
+                    }
+                    super::profile_menu::ProfileMenuRow::SyncTurnOn => {
+                        (self.t("sync_menu.turn_on").to_owned(), false, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::SyncNow => {
+                        (self.t("sync_menu.sync_now").to_owned(), false, false)
+                    }
+                    super::profile_menu::ProfileMenuRow::SyncTurnOff => {
+                        (self.t("sync_menu.turn_off").to_owned(), false, false)
+                    }
                     super::profile_menu::ProfileMenuRow::Separator => continue,
                 };
                 let mut item = Node::new(Role::MenuItem);

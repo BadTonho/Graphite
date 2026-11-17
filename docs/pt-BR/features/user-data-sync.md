@@ -22,3 +22,11 @@ O Graphite sincroniza preferências e customizações do usuário entre máquina
 - O `settings.json` usa mesclagem de 3 vias em nível de chave contra o último snapshot base sincronizado, combinando alterações independentes sem perda.
 - Chaves alteradas de forma divergente são registradas como conflitos manuais até resolução via `workbench.userDataSync.actions.acceptMerges`.
 - `workbench.actions.syncData.reset` redefine os metadados locais e remove o Gist remoto quando autenticado.
+
+## Menu do perfil
+
+O botão do perfil, na parte de baixo da barra de atividades, abre um menu que agora controla a sincronização, abaixo das linhas da conta do GitHub:
+
+- **Ativar sincronização...** (sincronização desligada): entra na conta se for preciso e faz a primeira sincronização.
+- Com a sincronização ligada, uma linha de estado (`Sincronizando...`, `Sincronizado há 5 min`, `A última sincronização falhou` ou o número de conflitos para revisar), **Sincronizar agora** e **Desativar sincronização**.
+- Se a sessão do GitHub foi criada sem a permissão de Gist, ativar a sincronização pede essa permissão com um novo login, mantendo as permissões já concedidas.

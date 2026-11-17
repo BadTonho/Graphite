@@ -814,5 +814,16 @@
   "unsaved_modal.commit_cancelled": "Commit cancelled",
   "unsaved_modal.commit_save_failed": "Commit not made, saving failed: {error}",
   "unsaved_modal.commit_save": "Save and commit (S)",
-  "unsaved_modal.commit_anyway": "Commit anyway (D)"
+  "unsaved_modal.commit_anyway": "Commit anyway (D)",
+  "sync_menu.turn_on": "Turn on settings sync...",
+  "sync_menu.sync_now": "Sync now",
+  "sync_menu.turn_off": "Turn off settings sync",
+  "sync_menu.syncing": "Syncing...",
+  "sync_menu.failed": "Last sync failed",
+  "sync_menu.conflicts": "{count} conflict(s) to review",
+  "sync_menu.never": "Sync on, not synced yet",
+  "sync_menu.just_now": "Synced just now",
+  "sync_menu.minutes_ago": "Synced {count} min ago",
+  "sync_menu.hours_ago": "Synced {count} h ago",
+  "sync_menu.days_ago": "Synced {count} d ago"
 }

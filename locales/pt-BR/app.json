@@ -814,5 +814,16 @@
   "unsaved_modal.commit_cancelled": "Commit cancelado",
   "unsaved_modal.commit_save_failed": "Commit não feito, falha ao salvar: {error}",
   "unsaved_modal.commit_save": "Salvar e commitar (S)",
-  "unsaved_modal.commit_anyway": "Commitar assim (D)"
+  "unsaved_modal.commit_anyway": "Commitar assim (D)",
+  "sync_menu.turn_on": "Ativar sincronização...",
+  "sync_menu.sync_now": "Sincronizar agora",
+  "sync_menu.turn_off": "Desativar sincronização",
+  "sync_menu.syncing": "Sincronizando...",
+  "sync_menu.failed": "A última sincronização falhou",
+  "sync_menu.conflicts": "{count} conflito(s) para revisar",
+  "sync_menu.never": "Sincronização ativa, ainda não sincronizou",
+  "sync_menu.just_now": "Sincronizado agora há pouco",
+  "sync_menu.minutes_ago": "Sincronizado há {count} min",
+  "sync_menu.hours_ago": "Sincronizado há {count} h",
+  "sync_menu.days_ago": "Sincronizado há {count} d"
 }
