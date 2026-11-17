@@ -865,6 +865,7 @@ impl App {
 
     pub(crate) fn toggle_scm(&mut self) {
         self.scm_visible = !self.scm_visible;
+        self.scm_focused = self.scm_visible;
         if self.scm_visible {
             self.close_plugins();
             self.refresh_scm_async();

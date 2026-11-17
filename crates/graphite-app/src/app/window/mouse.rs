@@ -222,6 +222,8 @@ impl App {
             }
         }
 
+        self.scm_focused = self.scm_visible
+            && self.primary_sidebar_contains(mx, my, window_width, window_height, lh);
         if self.primary_sidebar_contains(mx, my, window_width, window_height, lh) {
             if self.active_plugin_activity.is_some()
                 && self.plugin_activity_sidebar_click(mx, my, window_width, lh)

@@ -283,6 +283,8 @@ struct App {
     scm_watcher: Option<notify::RecommendedWatcher>,
     scm_snapshot: scm::Snapshot,
     scm_visible: bool,
+    /// Whether the source control list (not the editor) receives plain-key shortcuts.
+    scm_focused: bool,
     scm_selected: usize,
     scm_repositories_collapsed: bool,
     scm_staged_collapsed: bool,
@@ -845,6 +847,7 @@ impl App {
             scm_watcher,
             scm_snapshot: scm::Snapshot::default(),
             scm_visible: false,
+            scm_focused: false,
             scm_selected: 0,
             scm_repositories_collapsed: false,
             scm_staged_collapsed: false,

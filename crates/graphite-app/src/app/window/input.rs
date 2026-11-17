@@ -359,39 +359,10 @@ impl App {
             }
             return;
         }
-        if self.scm_visible && !ctrl && !self.modifiers.alt_key() {
-            match event
-                .text
-                .as_deref()
-                .unwrap_or("")
-                .to_ascii_lowercase()
-                .as_str()
-            {
-                "s" => {
-                    self.run_ui_command("graphite.scm.stage");
-                    return;
-                }
-                "u" => {
-                    self.run_ui_command("graphite.scm.unstage");
-                    return;
-                }
-                "c" => {
-                    self.run_ui_command("graphite.scm.promptCommit");
-                    return;
-                }
-                "h" => {
-                    self.run_ui_command("graphite.scm.stageHunk");
-                    return;
-                }
-                "d" => {
-                    self.run_ui_command("graphite.scm.openAllChanges");
-                    return;
-                }
-                "r" => {
-                    self.run_ui_command("graphite.scm.openConflict");
-                    return;
-                }
-                _ => {}
+        if self.scm_keys_active() && !ctrl && !self.modifiers.alt_key() {
+            if let Some(command) = Self::scm_letter_command(event.text.as_deref().unwrap_or("")) {
+                self.run_ui_command(command);
+                return;
             }
             match event.logical_key {
                 Key::Named(NamedKey::ArrowDown) => {
@@ -527,5 +498,64 @@ impl App {
                 }
             }
         }
+    }
+}
+
+impl App {
+    /// Plain-key shortcuts of the source control list apply only while that list has the focus,
+    /// so typing in the editor with the panel open is never intercepted.
+    pub(crate) fn scm_keys_active(&self) -> bool {
+        self.scm_visible && self.scm_focused
+    }
+
+    pub(crate) fn scm_letter_command(text: &str) -> Option<&'static str> {
+        match text.to_ascii_lowercase().as_str() {
+            "s" => Some("graphite.scm.stage"),
+            "u" => Some("graphite.scm.unstage"),
+            "c" => Some("graphite.scm.promptCommit"),
+            "h" => Some("graphite.scm.stageHunk"),
+            "d" => Some("graphite.scm.openAllChanges"),
+            "r" => Some("graphite.scm.openConflict"),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod scm_focus_tests {
+    use super::*;
+    use crate::test_support::TempDir;
+
+    #[test]
+    fn letters_map_to_scm_commands() {
+        assert_eq!(App::scm_letter_command("s"), Some("graphite.scm.stage"));
+        assert_eq!(
+            App::scm_letter_command("C"),
+            Some("graphite.scm.promptCommit")
+        );
+        assert_eq!(App::scm_letter_command("x"), None);
+    }
+
+    #[test]
+    fn scm_shortcuts_are_inactive_when_the_editor_has_focus() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.scm_visible = true;
+        app.scm_focused = false;
+        assert!(!app.scm_keys_active());
+        app.scm_focused = true;
+        assert!(app.scm_keys_active());
+        app.scm_visible = false;
+        assert!(!app.scm_keys_active());
+    }
+
+    #[test]
+    fn opening_the_panel_focuses_it_and_closing_releases_the_focus() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.toggle_scm();
+        assert!(app.scm_keys_active());
+        app.toggle_scm();
+        assert!(!app.scm_visible && !app.scm_focused);
     }
 }

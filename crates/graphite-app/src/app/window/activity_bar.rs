@@ -936,6 +936,7 @@ impl App {
                 } else {
                     self.close_project_search();
                     self.scm_visible = true;
+                    self.scm_focused = true;
                     self.refresh_scm_async();
                 }
             }

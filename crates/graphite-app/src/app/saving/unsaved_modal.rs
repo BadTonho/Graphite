@@ -53,7 +53,11 @@ impl App {
         }
     }
 
-    pub(crate) fn unsaved_modal_layout(width: f32, height: f32, listed: usize) -> UnsavedModalLayout {
+    pub(crate) fn unsaved_modal_layout(
+        width: f32,
+        height: f32,
+        listed: usize,
+    ) -> UnsavedModalLayout {
         let panel_w = (width * 0.62)
             .clamp(360.0, 520.0)
             .min((width - 24.0).max(0.0));
@@ -64,7 +68,14 @@ impl App {
         let y = ((height - panel_h) * 0.5).max(12.0);
         let button_y = y + panel_h - BUTTON_HEIGHT - 14.0;
         let button_w = ((panel_w - 32.0 - 16.0) / 3.0).max(40.0);
-        let button = |index: f32| (x + 16.0 + index * (button_w + 8.0), button_y, button_w, BUTTON_HEIGHT);
+        let button = |index: f32| {
+            (
+                x + 16.0 + index * (button_w + 8.0),
+                button_y,
+                button_w,
+                BUTTON_HEIGHT,
+            )
+        };
         UnsavedModalLayout {
             panel: (x, y, panel_w, panel_h),
             save: button(0.0),
@@ -75,7 +86,13 @@ impl App {
     }
 
     /// Handles a click while the modal is visible. Always consumes the click.
-    pub(crate) fn click_unsaved_modal(&mut self, mx: f32, my: f32, width: f32, height: f32) -> bool {
+    pub(crate) fn click_unsaved_modal(
+        &mut self,
+        mx: f32,
+        my: f32,
+        width: f32,
+        height: f32,
+    ) -> bool {
         if !self.unsaved_modal_visible() {
             return false;
         }
@@ -108,8 +125,19 @@ impl App {
         let button_fg = rgb(0xffffff);
 
         renderer.draw_rect(x, y, panel_w, panel_h, border);
-        renderer.draw_rect(x + 1.0, y + 1.0, (panel_w - 2.0).max(0.0), (panel_h - 2.0).max(0.0), bg);
-        renderer.draw_text(self.t(self.unsaved_modal_title_key()), x + 16.0, y + 14.0, text);
+        renderer.draw_rect(
+            x + 1.0,
+            y + 1.0,
+            (panel_w - 2.0).max(0.0),
+            (panel_h - 2.0).max(0.0),
+            bg,
+        );
+        renderer.draw_text(
+            self.t(self.unsaved_modal_title_key()),
+            x + 16.0,
+            y + 14.0,
+            text,
+        );
         let subtitle = self.tf("unsaved_modal.subtitle", &[("count", &names.len())]);
         let inner = (panel_w - 32.0).max(0.0);
         renderer.draw_text(
@@ -122,11 +150,19 @@ impl App {
         let mut row_y = y + layout.list_top;
         for name in names.iter().take(MAX_LISTED) {
             let label = format!("• {name}");
-            renderer.draw_text(&Self::help_menu_visible_label(&label, cw, inner), x + 24.0, row_y, text);
+            renderer.draw_text(
+                &Self::help_menu_visible_label(&label, cw, inner),
+                x + 24.0,
+                row_y,
+                text,
+            );
             row_y += ROW_HEIGHT;
         }
         if names.len() > MAX_LISTED {
-            let more = self.tf("unsaved_modal.more", &[("count", &(names.len() - MAX_LISTED))]);
+            let more = self.tf(
+                "unsaved_modal.more",
+                &[("count", &(names.len() - MAX_LISTED))],
+            );
             renderer.draw_text(&more, x + 24.0, row_y, dim);
         }
 
@@ -170,8 +206,14 @@ mod tests {
 
         assert!(app.unsaved_modal_visible());
         assert!(app.workspace_decision_pending());
-        assert!(app.unsaved_document_names().iter().any(|n| n == "notes.txt"));
-        assert_eq!(app.unsaved_modal_title_key(), "unsaved_modal.title_workspace");
+        assert!(app
+            .unsaved_document_names()
+            .iter()
+            .any(|n| n == "notes.txt"));
+        assert_eq!(
+            app.unsaved_modal_title_key(),
+            "unsaved_modal.title_workspace"
+        );
     }
 
     #[test]
