@@ -96,6 +96,12 @@ impl DocumentUri {
         Self(format!("untitled:document/{}", id.0))
     }
     pub fn to_path(&self) -> ServiceResult<PathBuf> {
+        // Only `file:` URIs map to local paths. `url::Url::to_file_path` does not
+        // check the scheme itself, so a virtual `scheme:/path` would otherwise
+        // produce a bogus local path on Unix.
+        if self.scheme() != "file" {
+            return Err(ServiceError::UnsupportedUri(self.0.clone()));
+        }
         url::Url::parse(&self.0)
             .map_err(|e| ServiceError::InvalidArguments(e.to_string()))?
             .to_file_path()

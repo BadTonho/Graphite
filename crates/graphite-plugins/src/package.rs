@@ -176,7 +176,7 @@ pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
             let mut file = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(out)
+                .open(&out)
                 .map_err(|e| e.to_string())?;
             let n = std::io::copy(
                 &mut entry.by_ref().take(MAX_EXPANDED - total + 1),
