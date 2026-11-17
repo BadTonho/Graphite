@@ -44,3 +44,11 @@ These rules are mandatory for all development, file operations, documentation, a
 - Run the relevant tests and `cargo test --workspace` before completing a code change; run `cargo build --workspace` when build validation is applicable. Do not claim success when a required check fails or was not run.
 - Use isolated temporary test data and preserve Windows and Linux compatibility. Testing both operating systems in the same run is not required.
 - Document-only or configuration-only changes need tests only when they change executable behavior. If a test or manual UI/GPU check cannot be performed, report the reason and the affected platform explicitly.
+
+---
+
+## 9. Changelog for Every Release
+- Version `0.1.0` is the initial release and has no changelog. Every later version must have one.
+- Changelogs live in the root `changelog/` folder, one subfolder per version named exactly like the version (for example `changelog/0.2.0/`). Each subfolder contains one file per language: `en.md` (English) and `pt-BR.md` (Portuguese), kept in sync.
+- Every changelog is split into three categories, in this order: `New features`, `Improvements` and `Fixes` (`Novas funcionalidades`, `Melhorias` and `Correções` in Portuguese). Omit a category that has no entries.
+- Keep the changelog up to date as you work: any change a user can notice (new behavior, better behavior or a bug fix) must add an entry to the changelog of the version in progress, in both languages, in the same change. Changelogs of already released versions are never rewritten.
