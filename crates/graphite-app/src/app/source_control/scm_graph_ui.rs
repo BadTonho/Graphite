@@ -65,14 +65,7 @@ fn draw_disc(renderer: &mut Renderer, cx: f32, cy: f32, radius: f32, color: Colo
     }
 }
 
-fn draw_stepped_edge(
-    renderer: &mut Renderer,
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-    color: Color,
-) {
+fn draw_stepped_edge(renderer: &mut Renderer, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) {
     let thickness = 1.6;
     if (x0 - x1).abs() < 0.5 {
         renderer.draw_rect(
@@ -108,24 +101,36 @@ fn draw_stepped_edge(
     );
 }
 
+fn compact_ref_label(label: &str, max_chars: usize) -> String {
+    if label.chars().count() <= max_chars || max_chars <= 3 {
+        label.to_owned()
+    } else {
+        let mut s: String = label.chars().take(max_chars - 2).collect();
+        s.push_str("..");
+        s
+    }
+}
+
 fn draw_ref_badge(
     renderer: &mut Renderer,
     label: &str,
     right_x: f32,
-    y: f32,
+    row_top: f32,
     row_h: f32,
     cell_width: f32,
     bg_hex: u32,
     fg_hex: u32,
 ) -> f32 {
+    let lh = renderer.line_height();
     let text_w = label.chars().count() as f32 * cell_width;
-    let pad_x = 6.0;
+    let pad_x = 5.0;
     let pill_w = text_w + pad_x * 2.0;
-    let pill_h = (row_h * 0.78).max(14.0);
+    let pill_h = (row_h * 0.72).max(15.0);
     let pill_x = right_x - pill_w;
-    let pill_y = y + (row_h - pill_h) * 0.5 - row_h * 0.08;
+    let pill_y = row_top + (row_h - pill_h) * 0.5;
+    let text_y = pill_y + (pill_h - lh) * 0.5;
     renderer.draw_rect(pill_x, pill_y, pill_w, pill_h, rgb(bg_hex));
-    renderer.draw_text(label, pill_x + pad_x, y, rgb(fg_hex));
+    renderer.draw_text(label, pill_x + pad_x, text_y, rgb(fg_hex));
     pill_x - 4.0
 }
 
@@ -136,7 +141,7 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) -> super::scm_ui::ScmPanelLayout {
-        let row_h = line_height.max(18.0);
+        let row_h = (line_height + 4.0).max(22.0);
         let sidebar_width = self.sidebar_layout_width_px();
         let visible_height =
             (window_height - self.activity_bar_vertical_offset() - line_height).max(0.0);
@@ -241,8 +246,11 @@ impl App {
         let max_scroll = self.scm_graph_rows.len().saturating_sub(2);
         self.scm_graph_scroll =
             (self.scm_graph_scroll as i32 + lines).clamp(0, max_scroll as i32) as usize;
-        if graph_needs_more(self.scm_graph_rows.len(), self.scm_graph_limit, self.scm_graph_scroll)
-        {
+        if graph_needs_more(
+            self.scm_graph_rows.len(),
+            self.scm_graph_limit,
+            self.scm_graph_scroll,
+        ) {
             self.scm_graph_limit += GRAPH_PAGE;
             self.refresh_scm_graph_async();
         }
@@ -290,7 +298,12 @@ impl App {
             icon_size,
             dim,
         );
-        renderer.draw_text(self.t("scm.graph.title"), row.chevron.x + row.chevron.width, y, text);
+        renderer.draw_text(
+            self.t("scm.graph.title"),
+            row.chevron.x + row.chevron.width,
+            y,
+            text,
+        );
 
         let [fetch, pull, push, refresh] = graph_header_buttons(row.action, cell_width);
         let mx = self.gpu.as_ref().map_or(self.mouse.x as f32, |gpu| {
@@ -386,33 +399,38 @@ impl App {
             draw_disc(renderer, node_x, cy, 3.4, node_color);
         }
 
-        // Draw ref pills on the right edge (up to 2 badges to keep the message readable).
+        let text_x = lane_x(graph_row.max_lanes.max(1)) + 8.0;
+        let min_subject_x = text_x + cell_width * 14.0;
         let mut right_x = sidebar_width - PAD;
+        let total_refs = graph_row.commit.refs.len();
+        let mut drawn_refs = 0usize;
         for reference in graph_row.commit.refs.iter().take(2).rev() {
-            let (label, bg_hex, fg_hex) = match reference {
+            let (raw_label, bg_hex, fg_hex) = match reference {
                 GraphRef::HeadBranch(name) => (name.as_str(), 0x007acc, 0xffffff),
                 GraphRef::LocalBranch(name) => (name.as_str(), 0x3a3d41, 0xcccccc),
                 GraphRef::RemoteBranch(name) => (name.as_str(), 0x6b3fa0, 0xffffff),
                 GraphRef::Tag(name) => (name.as_str(), 0x4b4b2a, 0xe5e5a0),
             };
-            if right_x - (label.chars().count() as f32 * cell_width + 16.0)
-                > lane_x(graph_row.max_lanes) + cell_width * 8.0
-            {
+            let label = compact_ref_label(raw_label, 12);
+            let pill_w = label.chars().count() as f32 * cell_width + 10.0;
+            if right_x - pill_w - 6.0 > min_subject_x {
                 right_x = draw_ref_badge(
-                    renderer,
-                    label,
-                    right_x,
-                    y,
-                    row_h,
-                    cell_width,
-                    bg_hex,
-                    fg_hex,
+                    renderer, &label, right_x, row_top, row_h, cell_width, bg_hex, fg_hex,
+                );
+                drawn_refs += 1;
+            }
+        }
+        if total_refs > drawn_refs && drawn_refs > 0 {
+            let extra = format!("+{}", total_refs - drawn_refs);
+            let extra_w = extra.chars().count() as f32 * cell_width + 10.0;
+            if right_x - extra_w - 6.0 > min_subject_x {
+                right_x = draw_ref_badge(
+                    renderer, &extra, right_x, row_top, row_h, cell_width, 0x3a3d41, 0xcccccc,
                 );
             }
         }
 
-        let text_x = lane_x(graph_row.max_lanes.max(1)) + 4.0;
-        let max_chars = ((right_x - text_x) / cell_width).floor().max(0.0) as usize;
+        let max_chars = ((right_x - 6.0 - text_x) / cell_width).floor().max(0.0) as usize;
         let subject = &graph_row.commit.subject;
         let truncated: String = if subject.chars().count() > max_chars && max_chars > 3 {
             let mut s: String = subject.chars().take(max_chars - 3).collect();
@@ -427,7 +445,8 @@ impl App {
             let _ = dim;
             text
         };
-        renderer.draw_text(&truncated, text_x, y, fg);
+        let text_y = row_top + (row_h - renderer.line_height()) * 0.5;
+        renderer.draw_text(&truncated, text_x, text_y, fg);
     }
 }
 
@@ -450,23 +469,34 @@ mod tests {
             assert!((mirrored.1 - half).abs() < 1e-4);
         }
         // A corner of the bounding square is outside the disc.
-        assert!(rows.iter().all(|(dy, half)| dy * dy + half * half <= 3.4 * 3.4 + 1e-3));
+        assert!(rows
+            .iter()
+            .all(|(dy, half)| dy * dy + half * half <= 3.4 * 3.4 + 1e-3));
     }
 
     #[test]
     fn no_commit_is_under_the_pointer_when_the_graph_is_not_shown() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        assert_eq!(app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0), None);
+        assert_eq!(
+            app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0),
+            None
+        );
         app.scm_graph_collapsed = true;
-        assert_eq!(app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0), None);
+        assert_eq!(
+            app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0),
+            None
+        );
     }
 
     #[test]
     fn more_commits_are_requested_only_near_the_end_of_a_full_page() {
         assert!(graph_needs_more(100, 100, 90));
         assert!(!graph_needs_more(100, 100, 10), "far from the end");
-        assert!(!graph_needs_more(40, 100, 35), "git has no more: the page was not full");
+        assert!(
+            !graph_needs_more(40, 100, 35),
+            "git has no more: the page was not full"
+        );
         assert!(graph_needs_more(200, 200, 188));
     }
 
@@ -502,13 +532,17 @@ mod tests {
             false,
             3,
             0,
-            None, &ScmListView::LIST,
+            None,
+            &ScmListView::LIST,
         );
         assert!(expanded.graph_divider.is_some());
-        assert!(expanded
-            .list_rows
-            .iter()
-            .any(|r| matches!(r.kind, ScmListRowKind::GraphHeader { collapsed: false, count: 3 })));
+        assert!(expanded.list_rows.iter().any(|r| matches!(
+            r.kind,
+            ScmListRowKind::GraphHeader {
+                collapsed: false,
+                count: 3
+            }
+        )));
         assert_eq!(
             expanded
                 .list_rows
@@ -533,7 +567,8 @@ mod tests {
             true,
             3,
             0,
-            None, &ScmListView::LIST,
+            None,
+            &ScmListView::LIST,
         );
         assert_eq!(
             collapsed
