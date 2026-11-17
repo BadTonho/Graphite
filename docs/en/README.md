@@ -41,6 +41,9 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Creating and installing plugins](contributing/plugins.md)
   - [Building and testing](contributing/building.md)
   - [Regression testing and coverage](contributing/testing.md)
+  - [Feature verification matrix](contributing/verification-matrix.md)
+  - [Manual verification](contributing/manual-verification.md)
+  - [Local verification results](contributing/verification-results.md)
 - **Security**
   - [Security policy](security/policy.md)
 

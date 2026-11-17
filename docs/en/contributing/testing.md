@@ -1,16 +1,20 @@
 # Regression testing
 
-The stage 5 suite consolidates document/view, command, service, host and asynchronous-save contracts. Tests use temporary directories, owned mock data and local Rust processes. They do not require a GPU, network access, personal files, Node or an installed language server.
+The stage 5 suite consolidates document/view, command, service, host and asynchronous-save contracts. Its fixtures use temporary directories, owned mock data and local Rust processes without a GPU, network access, personal files or an installed language server. The full workspace also includes native-plugin and Emmet integration tests requiring Node.js 24+, plus local process/compiler/Git tests; install the prerequisites in [building](building.md). Code OSS/network and real-ipykernel tests are explicitly ignored by default.
 
 ## Running the suite
 
 Run from the repository root:
 
 ```sh
-cargo test --workspace
-cargo build --workspace
-cargo fmt --all -- --check
+cargo run -p graphite-xtask -- verify
 ```
+
+The local verifier checks formatting, runs Clippy with warnings denied, builds the workspace (including process helpers), and runs workspace tests with four threads. It runs every step even after failure, preserves command output and prints durations and a final PASS/FAIL summary. Exit code 0 means all four automated steps passed; failures or unavailable tools return 1, and invalid arguments return 2. It does not install tools, rewrite source files, launch the app or trigger CI. Cargo may populate its normal build/dependency caches; a fully offline first build is not guaranteed.
+
+Requires the existing Rust/native build prerequisites plus the `rustfmt` and `clippy` toolchain components. Use the same command on Windows and Linux. No Python, PowerShell or additional Rust dependencies are needed by the verifier. Run it after a completed change; use filtered tests during development and the existing manual CI before releases.
+
+Ignored tests remain visible in Cargo's output and are not passes. A successful run does not validate the other operating system, real service integrations, UI/GPU or the packaged application. See the [feature verification matrix](verification-matrix.md), [manual verification checklist](manual-verification.md) and [recorded local results](verification-results.md).
 
 Workspace tests build the `graphite-test-lsp` stdio fixture through its integration target. Before running only the application unit tests, build both process helpers:
 

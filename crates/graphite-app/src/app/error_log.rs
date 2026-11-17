@@ -243,6 +243,32 @@ mod tests {
     }
 
     #[test]
+    fn every_severity_persists_sanitized_messages_and_notifications() {
+        let dir = crate::test_support::TempDir::new();
+        let logger = ErrorLogger::new(dir.path().join("logs/errors"));
+        // Synthetic test values, never real credentials.
+        let message = "request failed: Bearer fixture.token and github_pat_fixture and sk-fixture";
+        for (severity, label) in [
+            (ErrorSeverity::Critical, "critical"),
+            (ErrorSeverity::High, "high"),
+            (ErrorSeverity::Medium, "medium"),
+            (ErrorSeverity::Low, "low"),
+        ] {
+            let notification = logger.record(severity, "verification", message);
+            let persisted = fs::read_to_string(&notification.log_file).unwrap();
+            assert_eq!(persisted.lines().count(), 1);
+            let entry: serde_json::Value = serde_json::from_str(&persisted).unwrap();
+            assert_eq!(entry["severity"], label);
+            assert_eq!(entry["message"], notification.message);
+            assert_eq!(notification.message.matches("[REDACTED]").count(), 3);
+            for synthetic_secret in ["fixture.token", "github_pat_fixture", "sk-fixture"] {
+                assert!(!persisted.contains(synthetic_secret));
+                assert!(!notification.message.contains(synthetic_secret));
+            }
+        }
+    }
+
+    #[test]
     fn rotates_oversized_log_file_and_keeps_writing_valid_jsonl() {
         let dir = crate::test_support::TempDir::new();
         let target = dir.path().join(ErrorSeverity::High.file_name());

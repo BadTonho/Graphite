@@ -41,6 +41,9 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Criando e instalando plugins](contributing/plugins.md)
   - [Compilação e testes](contributing/building.md)
   - [Testes de regressão e cobertura](contributing/testing.md)
+  - [Matriz de verificação](contributing/verification-matrix.md)
+  - [Verificação manual](contributing/manual-verification.md)
+  - [Resultados de verificação local](contributing/verification-results.md)
 - **Segurança**
   - [Política de segurança](security/policy.md)
 

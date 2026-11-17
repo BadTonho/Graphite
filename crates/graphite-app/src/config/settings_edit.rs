@@ -276,6 +276,48 @@ mod tests {
     const SETTINGS: &str = "{\n    // Font\n    \"editor.fontSize\": 14,\n    \"workbench.iconTheme\": \"old\", // chosen\n    \"nested\": {\"a\": [1, {\"b\": \"}\"}]}\n}\n";
 
     #[test]
+    fn persisted_preferences_reload_and_recover_after_corruption_without_data_loss() {
+        let dir = crate::test_support::TempDir::new();
+        let profile = dir.path().join("profile");
+        let workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let translator = graphite_i18n::Translator::english();
+        set_user_setting(&profile, "editor.tabSize", Some(&json!(2))).unwrap();
+        set_user_setting(&profile, "editor.wordWrap", Some(&json!("on"))).unwrap();
+        let load =
+            || super::super::editor_prefs_for_workspace_in(&profile, &workspace, &translator);
+        let prefs = load().unwrap();
+        assert_eq!(prefs.tab_size, 2);
+        assert!(prefs.word_wrap);
+
+        let path = profile.join("settings.json");
+        let saved = std::fs::read(&path).unwrap();
+        std::fs::write(&path, "{ corrupted").unwrap();
+        assert!(load().is_err());
+        assert!(set_user_setting(&profile, "editor.tabSize", Some(&json!(8))).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ corrupted");
+
+        std::fs::write(&path, saved).unwrap();
+        assert_eq!(load().unwrap().tab_size, 2);
+        set_user_setting(&profile, "editor.tabSize", None).unwrap();
+        let prefs = load().unwrap();
+        assert_eq!(prefs.tab_size, 4);
+        assert!(prefs.word_wrap);
+    }
+
+    #[test]
+    fn settings_write_failure_preserves_existing_profile_data() {
+        let dir = crate::test_support::TempDir::new();
+        let profile = dir.path().join("profile");
+        std::fs::write(&profile, "existing file, not a directory").unwrap();
+        assert!(set_user_setting(&profile, "editor.tabSize", Some(&json!(2))).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&profile).unwrap(),
+            "existing file, not a directory"
+        );
+    }
+
+    #[test]
     fn replacing_a_value_keeps_comments_and_layout() {
         assert_eq!(
             set(SETTINGS, "workbench.iconTheme", Some(json!("new"))),

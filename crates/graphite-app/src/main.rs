@@ -89,6 +89,8 @@ fn next_document_id() -> DocumentId {
 }
 
 struct App {
+    #[cfg(test)]
+    _test_profile: Option<crate::test_support::TempDir>,
     gpu: Option<Gpu>,
     tree: FileTree,
     documents: document_store::DocumentStore,
@@ -429,6 +431,13 @@ impl App {
                 })
                 .expect("failed to create LSP event thread");
         }
+        #[cfg(test)]
+        let test_profile = isolated.then(crate::test_support::TempDir::new);
+        #[cfg(test)]
+        let config_root = test_profile
+            .as_ref()
+            .map_or_else(config::app_config_dir, |dir| dir.path().to_path_buf());
+        #[cfg(not(test))]
         let config_root = config::app_config_dir();
         let mut profiles = if isolated {
             None
@@ -614,6 +623,8 @@ impl App {
         };
         let initial_document_id = next_document_id();
         Self {
+            #[cfg(test)]
+            _test_profile: test_profile,
             gpu: None,
             tree: FileTree::new(workspace),
             documents: document_store::DocumentStore::new(
@@ -1714,5 +1725,24 @@ mod tests {
             .startup_metrics
             .iter()
             .any(|metric| metric.starts_with("App and service initialization:")));
+    }
+
+    #[test]
+    fn isolated_apps_have_independent_temporary_profiles_that_are_cleaned_up() {
+        let dir = crate::test_support::TempDir::new();
+        let first = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let second = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let first_profile = first.profile_root.clone();
+        assert_ne!(first_profile, config::app_config_dir());
+        assert_ne!(first_profile, second.profile_root);
+        fs::write(
+            first_profile.join("settings.json"),
+            r#"{"editor.tabSize":2}"#,
+        )
+        .unwrap();
+        assert!(!second.profile_root.join("settings.json").exists());
+        drop(first);
+        assert!(!first_profile.exists());
+        assert!(second.profile_root.exists());
     }
 }

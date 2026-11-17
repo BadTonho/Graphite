@@ -17,6 +17,8 @@ cargo run -p graphite-app -- <folder>   # omit <folder> to open the current dire
 cargo test --workspace
 ```
 
+For a complete local automated check, run `cargo run -p graphite-xtask -- verify`. It checks formatting, Clippy, compilation and tests, then summarizes failures. See the [verification matrix](docs/en/contributing/verification-matrix.md) for coverage and manual checks.
+
 Requires a recent stable Rust toolchain. Supported platforms: Windows and Linux.
 
 The Explorer, Quick Open list and editor tabs show colored file-type icons for programming languages, project files and common formats. See [File icons](docs/en/features/file-icons.md) for the mapping and how to add new icons.

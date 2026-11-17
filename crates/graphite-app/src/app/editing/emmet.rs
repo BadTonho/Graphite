@@ -15,7 +15,11 @@ pub(crate) struct EmmetRuntime {
 
 impl EmmetRuntime {
     pub(crate) fn start(node: &std::ffi::OsStr) -> Result<Self, String> {
-        let runtime_dir = config::app_config_dir().join("runtime");
+        Self::start_in(node, &config::app_config_dir())
+    }
+
+    fn start_in(node: &std::ffi::OsStr, config_root: &Path) -> Result<Self, String> {
+        let runtime_dir = config_root.join("runtime");
         std::fs::create_dir_all(&runtime_dir).map_err(|e| e.to_string())?;
         let bundle = runtime_dir.join("emmet.cjs");
         let worker = runtime_dir.join("emmet-worker.cjs");
@@ -158,7 +162,8 @@ mod tests {
     use super::*;
     #[test]
     fn expands_upstream_html_jsx_and_css_abbreviations_and_rejects_invalid_input() {
-        let mut runtime = EmmetRuntime::start(std::ffi::OsStr::new("node")).unwrap();
+        let dir = crate::test_support::TempDir::new();
+        let mut runtime = EmmetRuntime::start_in(std::ffi::OsStr::new("node"), dir.path()).unwrap();
         let nested = runtime.expand("ul>li.item$*2", "html").unwrap();
         assert!(nested.contains("class=\"item1\""));
         assert!(nested.contains("class=\"item2\""));

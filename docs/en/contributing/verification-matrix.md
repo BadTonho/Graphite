@@ -1,0 +1,84 @@
+# Feature verification matrix
+
+This audit maps every current `docs/en/features/*.md` document to representative source tests or an explicit evidence gap. Test presence is static evidence, not proof that all behavior in a feature works. The [execution record](verification-results.md) identifies what actually ran. This is a behavior inventory, not a code coverage percentage or a compatibility certification.
+
+## Essential contracts
+
+| Scenario | Automated evidence | Remaining validation |
+|---|---|---|
+| Open, edit, save and reopen Unicode/CRLF; failed writes preserve data | `graphite-text/tests/regressions.rs`: `save_and_reopen_preserve_unicode_crlf_and_history`, `invalid_utf8_and_failed_save_leave_existing_data_intact`; app `saving::view_tests` | OS dialogs, permissions and packaged app |
+| Undo/redo and rejected edits preserve views, history and disk | `document_view_tests`, `workspace_edit::tests`, `graphite-text/tests/regressions.rs` | Real IME, clipboard and multiwindow input |
+| Save/Discard/Cancel on close and workspace switches | `saving::lifecycle_tests`, command decision tests | Visible dialogs and responsiveness |
+| Replace across open/closed files; stale results cause no partial writes | `navigation/project_search.rs`: `replace_all_updates_open_buffers_and_closed_files_across_workspace_roots`, `replace_all_rejects_stale_results_without_partial_writes` | Search UI and large workspace performance |
+| Settings persist, reload and recover after repaired corruption; failed writes preserve data | `config/settings_edit.rs`: `persisted_preferences_reload_and_recover_after_corruption_without_data_loss`, `settings_write_failure_preserves_existing_profile_data`; `config.rs` layer validation tests | Restart and visible configuration errors |
+| Signed update stages/applies; corrupt, unsigned, misbound or missing payloads preserve original | `app/updates/mod.rs`, `apply.rs`, `signature.rs`, `state.rs` | Real distributable update/restart/rollback on each OS |
+| Four severity files persist sanitized messages and notifications | `app/error_log.rs`: `writes_each_severity_to_its_own_jsonl_file`, `every_severity_persists_sanitized_messages_and_notifications` | Every runtime producer must still be reviewed; arbitrary secrets/raw file contents are not comprehensively detected |
+| Local verifier continues after process failure and unavailable tools | `graphite-xtask/tests/runner.rs` | Native dependencies/toolchain on the other OS |
+| Headless apps use separate temporary profiles, cleaned after use | `main.rs`: `isolated_apps_have_independent_temporary_profiles_that_are_cleaned_up` | Other global configuration callers need separate review |
+
+## Documented feature inventory
+
+Source links below are representative test locations. The named test shows the concrete scenario inspected; it does not establish complete feature coverage. Some cross-cutting documents deliberately reuse evidence. **All rows retain pending interactive/packaged checks** from the [manual checklist](manual-verification.md); service-backed features additionally need live interoperability checks. A gap means no direct test was found at the selected implementation entrypoint, not that no related test exists elsewhere.
+
+| Feature | Representative source test / scenario |
+|---|---|
+| [Activity bar and title bar](../features/activity-bar.md) | [app/window/activity_bar.rs](../../../crates/graphite-app/src/app/window/activity_bar.rs)<br>`settings_gear_is_pinned_to_each_visible_activity_bar_and_hidden_with_it` |
+| [Change navigation and commit box commands](../features/change-navigation.md) | [app/editing/change_navigation.rs](../../../crates/graphite-app/src/app/editing/change_navigation.rs)<br>`consecutive_changed_lines_form_one_hunk` |
+| [Chat, Inline Chat, and Agent Sessions](../features/chat.md) | [app/chat/mod.rs](../../../crates/graphite-app/src/app/chat/mod.rs)<br>`chat_turn_events_stage_accept_discard_and_undo_edits_in_open_buffers` |
+| [Command Center](../features/command-center.md) | [app/command_system/command_center.rs](../../../crates/graphite-app/src/app/command_system/command_center.rs)<br>`prefixes_select_access_modes_and_keep_the_query` |
+| [Custom read-only views](../features/custom-editors.md) | [app/editing/custom_editors.rs](../../../crates/graphite-app/src/app/editing/custom_editors.rs)<br>`hex_dump_shows_offsets_hex_and_ascii` |
+| [Debug breakpoint and console commands](../features/debug-breakpoint-commands.md) | [app/debug_ui/debug_extra.rs](../../../crates/graphite-app/src/app/debug_ui/debug_extra.rs)<br>`the_breakpoint_commands_walk_the_breakpoints_of_the_file` |
+| [Debug panel](../features/debug-panel.md) | [app/debug_ui/debug_panel.rs](../../../crates/graphite-app/src/app/debug_ui/debug_panel.rs)<br>`the_stack_column_marks_the_selected_frame_and_lists_exception_filters` |
+| [Edit menu](../features/edit-menu.md) | [app/menus/edit_menu.rs](../../../crates/graphite-app/src/app/menus/edit_menu.rs)<br>`edit_menu_has_reference_groups_and_disables_unavailable_editor_actions` |
+| [Code folding and preview/pinned tabs](../features/editor-folding-and-tabs.md) | [app/editing/fold_commands.rs](../../../crates/graphite-app/src/app/editing/fold_commands.rs)<br>`stale_folds_from_an_earlier_revision_are_ignored` |
+| [Editor group and tab commands](../features/editor-group-commands.md) | [app/command_system/command_handlers/groups.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/groups.rs)<br>`tabs_move_along_the_strip_and_the_active_tab_follows` |
+| [Editor visual aids](../features/editor-visual-aids.md) | [app/editing/drawing_helpers.rs](../../../crates/graphite-app/src/app/editing/drawing_helpers.rs)<br>`indent_guides_follow_each_indent_level_and_skip_blank_lines` |
+| [Explorer and file commands](../features/explorer-file-commands.md) | [app/navigation/explorer_files.rs](../../../crates/graphite-app/src/app/navigation/explorer_files.rs)<br>`rename_moves_the_file_and_repoints_its_open_document` |
+| [Extension API surface](../features/extension-api.md) | [app/extension_host/tests.rs](../../../crates/graphite-app/src/app/extension_host/tests.rs)<br>`session_registrations_reject_collisions_and_validate_programmatic_enablement` |
+| [Extension commands](../features/extension-commands.md) | [app/plugins/vsix/requested_commands.rs](../../../crates/graphite-app/src/app/plugins/vsix/requested_commands.rs)<br>`counts_requests_and_lists_the_most_asked_first` |
+| [File icons](../features/file-icons.md) | [explorer/file_icons.rs](../../../crates/graphite-app/src/explorer/file_icons.rs)<br>`maps_languages_by_extension` |
+| [File management and workspace](../features/file-management.md) | [app/editing/autosave.rs](../../../crates/graphite-app/src/app/editing/autosave.rs)<br>`settings_mode_overrides_the_menu_toggle` |
+| [File menu and workspaces](../features/file-menu.md) | [app/menus/file_menu.rs](../../../crates/graphite-app/src/app/menus/file_menu.rs)<br>`file_menu_has_local_actions_with_separators_and_no_online_entries` |
+| [Keyboard focus between regions and high contrast](../features/focus-and-contrast.md) | [app/window/accessibility_actions.rs](../../../crates/graphite-app/src/app/window/accessibility_actions.rs)<br>`accessible_activity_bar_switches_views` |
+| [GitHub sign-in](../features/github-sign-in.md) | [app/source_control/github_auth.rs](../../../crates/graphite-app/src/app/source_control/github_auth.rs)<br>`finished_sign_in_sets_the_account_and_failure_keeps_it_signed_out` |
+| [Go menu](../features/go-menu.md) | [app/menus/go_menu.rs](../../../crates/graphite-app/src/app/menus/go_menu.rs)<br>`menu_rows_and_submenus_follow_the_reference_and_disable_missing_targets` |
+| [Color themes and Graphite Simple](../features/graphite-simple-theme.md) | [config/color_themes.rs](../../../crates/graphite-app/src/config/color_themes.rs)<br>`bundled_graphite_simple_is_installed_listed_and_selectable` |
+| [Help menu](../features/help-menu.md) | [app/menus/help_menu.rs](../../../crates/graphite-app/src/app/menus/help_menu.rs)<br>`help_menu_has_only_requested_actions_and_restart_is_disabled` |
+| [Interactive window and REPL](../features/interactive-window.md) | [app/notebooks/notebook_interactive_tests.rs](../../../crates/graphite-app/src/app/notebooks/notebook_interactive_tests.rs)<br>`opening_gives_an_interactive_tab_that_is_never_modified` |
+| [Supported Languages and Default LSP Discovery](../features/languages-and-lsp.md) | [language/lsp/stdio_tests.rs](../../../crates/graphite-app/src/language/lsp/stdio_tests.rs)<br>`stdio_initialization_execute_command_and_malformed_response` |
+| [Line and case commands](../features/line-and-case-commands.md) | [app/command_system/command_tests/line_commands.rs](../../../crates/graphite-app/src/app/command_system/command_tests/line_commands.rs)<br>`case_commands_change_the_word_at_the_cursor` |
+| [Keyboard navigation of lists](../features/list-navigation.md) | [app/command_system/command_handlers/lists.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/lists.rs)<br>GAP: no direct test at this entrypoint |
+| [Local history commands](../features/local-history-commands.md) | [app/editing/local_history.rs](../../../crates/graphite-app/src/app/editing/local_history.rs)<br>`utc_labels_are_calendar_correct` |
+| [Localization](../features/localization.md) | [app/utilities/i18n.rs](../../../crates/graphite-app/src/app/utilities/i18n.rs)<br>`every_builtin_command_has_titles_and_categories_in_all_locales` |
+| [Language server formatting and refactoring](../features/lsp-formatting-and-refactoring.md) | [language/lsp/command_tests.rs](../../../crates/graphite-app/src/language/lsp/command_tests.rs)<br>`completion_ticket_targets_an_inactive_view_and_returns_serializable_result` |
+| [Language server navigation](../features/lsp-navigation.md) | [app/language_ui/lsp_features.rs](../../../crates/graphite-app/src/app/language_ui/lsp_features.rs)<br>`word_at_expands_identifier_around_the_caret` |
+| [Merge editor](../features/merge-editor.md) | [app/source_control/merge_flow_tests.rs](../../../crates/graphite-app/src/app/source_control/merge_flow_tests.rs)<br>`opening_reads_the_conflicts_from_disk_and_sets_the_context_key` |
+| [More workbench commands](../features/more-workbench-commands.md) | [app/command_system/command_handlers/misc.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/misc.rs)<br>`the_activity_bar_moves_and_hides` |
+| [Multi-file diff](../features/multi-file-diff.md) | [app/source_control/multi_diff_tests.rs](../../../crates/graphite-app/src/app/source_control/multi_diff_tests.rs)<br>`all_changes_open_every_changed_file` |
+| [Notebook editor](../features/notebook-editor.md) | [app/notebooks/notebook_ui_tests.rs](../../../crates/graphite-app/src/app/notebooks/notebook_ui_tests.rs)<br>`an_ipynb_file_opens_as_a_notebook_and_a_broken_one_as_text` |
+| [Outline view](../features/outline-view.md) | [app/editing/outline.rs](../../../crates/graphite-app/src/app/editing/outline.rs)<br>`headers_split_into_kind_and_name_skipping_modifiers` |
+| [Quick open and editor history commands](../features/quick-open-commands.md) | [app/command_system/command_palette.rs](../../../crates/graphite-app/src/app/command_system/command_palette.rs)<br>`palette_filters_builtin_commands_by_title_and_identifier` |
+| [Remote Workspaces, Tunnels, and Edit Sessions](../features/remote-and-edit-sessions.md) | [app/remote/mod.rs](../../../crates/graphite-app/src/app/remote/mod.rs)<br>`store_resume_delete_and_port_cleanup_work` |
+| [Run menu](../features/run-menu.md) | [app/menus/run_menu.rs](../../../crates/graphite-app/src/app/menus/run_menu.rs)<br>`run_menu_matches_reference_order_and_marks_unsupported_features_disabled` |
+| [Selection and caret commands](../features/selection-and-caret-commands.md) | [app/command_system/command_handlers/editor.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/editor.rs)<br>`inspect_tokens_and_accessibility_commands_work` |
+| [Selection menu](../features/selection-menu.md) | [app/menus/selection_menu.rs](../../../crates/graphite-app/src/app/menus/selection_menu.rs)<br>`selection_menu_matches_reference_order_and_grouping` |
+| [Settings and keyboard shortcut file commands](../features/settings-file-commands.md) | [app/command_system/command_handlers/preferences.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/preferences.rs)<br>`the_user_settings_commands_open_and_create_the_profile_file` |
+| [Settings menu](../features/settings-gear-menu.md) | [app/menus/settings_menu.rs](../../../crates/graphite-app/src/app/menus/settings_menu.rs)<br>`menu_rows_match_local_settings_actions_and_keep_update_state` |
+| [Snippet and output commands](../features/snippet-output-commands.md) | [app/command_system/command_handlers/output_snippets.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/output_snippets.rs)<br>`insert_snippet_puts_the_text_at_the_cursor_and_refuses_empty_text` |
+| [Source Control actions](../features/source-control-actions.md) | [vcs/scm_commit.rs](../../../crates/graphite-app/src/vcs/scm_commit.rs)<br>`only_staged_changes_are_committed_unless_everything_is_staged_first` |
+| [Source Control menus, commit flow and Graph](../features/source-control-menus.md) | [app/source_control/scm_more_menu.rs](../../../crates/graphite-app/src/app/source_control/scm_more_menu.rs)<br>`every_label_of_the_menu_is_translated_in_both_languages` |
+| [Task commands](../features/task-commands.md) | [app/command_system/command_handlers/task_commands.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/task_commands.rs)<br>`a_group_picks_its_default_task_or_a_task_named_by_the_group` |
+| [Terminal menu](../features/terminal-menu.md) | [app/menus/terminal_menu.rs](../../../crates/graphite-app/src/app/menus/terminal_menu.rs)<br>`terminal_menu_lists_the_reference_groups_in_order` |
+| [Terminal: shell integration and links](../features/terminal-shell-integration.md) | [tooling/terminal_shell.rs](../../../crates/graphite-app/src/tooling/terminal_shell.rs)<br>`prompt_and_exit_code_sequences_are_detected_with_either_terminator` |
+| [TextMate grammars from extensions](../features/textmate-grammars.md) | [app/editing/textmate.rs](../../../crates/graphite-app/src/app/editing/textmate.rs)<br>`files_get_the_grammar_of_their_language_by_extension_or_name` |
+| [Timeline](../features/timeline.md) | [app/editing/timeline.rs](../../../crates/graphite-app/src/app/editing/timeline.rs)<br>`commit_lines_are_parsed_and_bad_lines_skipped` |
+| [Application Updates and Redacted Issue Reporter](../features/updates-and-issue-reporter.md) | [app/updates/mod.rs](../../../crates/graphite-app/src/app/updates/mod.rs)<br>`signed_update_downloads_verifies_stages_and_schedules_install` |
+| [User Data Sync](../features/user-data-sync.md) | [app/user_data_sync/mod.rs](../../../crates/graphite-app/src/app/user_data_sync/mod.rs)<br>`sync_round_pushes_merges_backs_up_and_resolves_conflicts` |
+| [v0.1 — Core Editor](../features/v0.1-editor.md) | [app/editing/document_view_tests.rs](../../../crates/graphite-app/src/app/editing/document_view_tests.rs)<br>`multicursor_transactions_noop_and_history_keep_peer_state_independent` |
+| [v0.2 — Editing and customization](../features/v0.2-editor.md) | [config.rs](../../../crates/graphite-app/src/config.rs)<br>`wrapping_settings_follow_layers_and_reject_unsupported_values` |
+| [v0.3 — Language services, navigation and terminal](../features/v0.3-lsp-terminal.md) | [language/lsp/stdio_tests.rs](../../../crates/graphite-app/src/language/lsp/stdio_tests.rs)<br>`stdio_initialization_execute_command_and_malformed_response` |
+| [v0.4 — Git, advanced layout and tools](../features/v0.4-git-layout.md) | [app/source_control/scm_ui.rs](../../../crates/graphite-app/src/app/source_control/scm_ui.rs)<br>`commit_label_is_centered_in_the_button` |
+| [v0.5 — Extensions and automation](../features/v0.5-extensions-automation.md) | [app/plugins/tests.rs](../../../crates/graphite-app/src/app/plugins/tests.rs)<br>`real_plugins_edit_dirty_documents_undo_dispose_cancel_and_isolate_crashes` |
+| [v0.6 — Debugging, webviews and developer tools](../features/v0.6-debug-webviews-testing.md) | [tooling/test_explorer.rs](../../../crates/graphite-app/src/tooling/test_explorer.rs)<br>`controller_tree_tracks_nested_results_and_failure_details` |
+| [View menu and workspace layout](../features/view-menu.md) | [app/menus/view_menu.rs](../../../crates/graphite-app/src/app/menus/view_menu.rs)<br>`appearance_toggle_is_saved_to_the_active_profile` |
+| [Window part commands](../features/window-part-commands.md) | [app/command_system/command_handlers/parts.rs](../../../crates/graphite-app/src/app/command_system/command_handlers/parts.rs)<br>`the_close_commands_hide_their_parts` |

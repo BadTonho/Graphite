@@ -1,16 +1,20 @@
 # Testes de regressão
 
-A suíte da etapa 5 consolida os contratos de documento/view, comandos, serviços, host e salvamento assíncrono. Os testes usam diretórios temporários, dados simulados próprios e processos Rust locais. Não exigem GPU, rede, arquivos pessoais, Node ou servidor de linguagem instalado.
+A suíte da etapa 5 consolida os contratos de documento/view, comandos, serviços, host e salvamento assíncrono. Suas fixtures usam diretórios temporários, dados simulados próprios e processos Rust locais, sem GPU, rede, arquivos pessoais ou servidor de linguagem instalado. O workspace completo também inclui testes de integração de plugins nativos e Emmet que exigem Node.js 24+, além de testes locais de processos/compilador/Git; instale os pré-requisitos de [compilação](building.md). Os testes de Code OSS/rede e ipykernel real são explicitamente ignorados por padrão.
 
 ## Executando a suíte
 
 Execute na raiz do repositório:
 
 ```sh
-cargo test --workspace
-cargo build --workspace
-cargo fmt --all -- --check
+cargo run -p graphite-xtask -- verify
 ```
+
+O verificador local confere a formatação, executa o Clippy tratando avisos como erros, compila o workspace (incluindo auxiliares de processo) e executa os testes do workspace com quatro threads. Executa todas as etapas mesmo após falhas, preserva a saída dos comandos e apresenta durações e um resumo PASS/FAIL. Código de saída 0 significa que as quatro etapas automatizadas passaram; falhas ou ferramentas indisponíveis retornam 1, e argumentos inválidos retornam 2. Não instala ferramentas, reescreve arquivos-fonte, abre o app nem aciona a CI. O Cargo pode preencher seus caches normais; a primeira compilação totalmente offline não é garantida.
+
+Exige os pré-requisitos existentes de compilação Rust/nativa e os componentes `rustfmt` e `clippy`. O comando é o mesmo no Windows e no Linux. O verificador não exige Python, PowerShell ou dependências Rust adicionais. Execute após concluir uma alteração; durante o desenvolvimento, use testes filtrados e, antes das versões, a CI manual existente.
+
+Os testes ignorados continuam visíveis na saída do Cargo e não contam como aprovados. Uma execução bem-sucedida não valida o outro sistema operacional, integrações com serviços reais, interface/GPU ou aplicativo empacotado. Consulte a [matriz de verificação](verification-matrix.md), o [roteiro de verificação manual](manual-verification.md) e os [resultados locais registrados](verification-results.md).
 
 Os testes do workspace compilam a fixture stdio `graphite-test-lsp` por seu alvo de integração. Antes de executar apenas os testes unitários da aplicação, compile os dois auxiliares de processo:
 
