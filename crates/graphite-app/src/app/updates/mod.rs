@@ -231,16 +231,27 @@ impl App {
             self.status = "No staged update ready for restart".into();
             return;
         };
-        let tag = self
-            .updates
-            .latest_release
-            .as_ref()
-            .map(|r| r.tag_name.clone())
-            .unwrap_or_else(|| "staged".into());
+        let (tag, version, notes, html_url) = match self.updates.latest_release.as_ref() {
+            Some(r) => (
+                r.tag_name.clone(),
+                r.version.clone(),
+                r.notes.clone(),
+                r.html_url.clone(),
+            ),
+            None => (
+                "staged".into(),
+                self.updates.current_version.clone(),
+                String::new(),
+                String::new(),
+            ),
+        };
         let marker_dir = self.profile_root.join("updates");
         let _ = std::fs::create_dir_all(&marker_dir);
         let marker = serde_json::json!({
             "tag": tag,
+            "version": version,
+            "notes": notes,
+            "html_url": html_url,
             "staged_path": staged_path,
         });
         let _ = std::fs::write(
@@ -275,6 +286,64 @@ impl App {
             }
         }
         self.status = format!("Update {tag} scheduled to apply on next restart");
+    }
+
+    pub(crate) fn open_pending_update_changelog(&mut self) {
+        let marker_path = self.profile_root.join("updates").join("just-updated.json");
+        let Ok(raw) = std::fs::read_to_string(&marker_path) else {
+            return;
+        };
+        let _ = std::fs::remove_file(&marker_path);
+        let Ok(marker) = serde_json::from_str::<apply::JustUpdatedMarker>(&raw) else {
+            return;
+        };
+        let version = if marker.version.trim().is_empty() {
+            marker.tag.trim_start_matches('v').to_owned()
+        } else {
+            marker.version.clone()
+        };
+        let body = self.resolve_post_update_changelog_body(&version, &marker);
+        let heading = self.tf("updates.changelog.heading", &[("tag", &marker.tag)]);
+        let mut markdown = format!("# {heading}\n\n{body}\n");
+        if !marker.html_url.trim().is_empty() {
+            let link_label = self.t("updates.changelog.release_url");
+            markdown.push_str(&format!("\n---\n\n{link_label}: {}\n", marker.html_url));
+        }
+        let tab_path = PathBuf::from(format!("CHANGELOG-{version}.md"));
+        self.open_read_only_view(tab_path, &markdown);
+        self.status = self.tf("updates.changelog.status", &[("tag", &marker.tag)]);
+    }
+
+    fn resolve_post_update_changelog_body(
+        &self,
+        version: &str,
+        marker: &apply::JustUpdatedMarker,
+    ) -> String {
+        let lang = self.translator.language().code();
+        let mut roots = vec![self.tree.root().to_path_buf()];
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                roots.push(parent.to_path_buf());
+            }
+        }
+        for root in roots {
+            for candidate_lang in [lang, "en"] {
+                let candidate = root
+                    .join("changelog")
+                    .join(version)
+                    .join(format!("{candidate_lang}.md"));
+                if let Ok(text) = std::fs::read_to_string(&candidate) {
+                    if !text.trim().is_empty() {
+                        return text.trim().to_owned();
+                    }
+                }
+            }
+        }
+        if !marker.notes.trim().is_empty() {
+            marker.notes.trim().to_owned()
+        } else {
+            self.tf("updates.changelog.empty_notes", &[("tag", &marker.tag)])
+        }
     }
 
     pub(crate) fn show_update_info(&mut self) {
@@ -594,5 +663,47 @@ mod tests {
                 .map(|r| r.tag_name.as_str()),
             Some("v0.2.0")
         );
+    }
+
+    #[test]
+    fn post_update_changelog_opens_once_on_first_launch_and_prefers_local_file() {
+        let dir = crate::test_support::TempDir::new();
+        let updates_dir = dir.path().join("updates");
+        std::fs::create_dir_all(&updates_dir).unwrap();
+        let marker_path = updates_dir.join("just-updated.json");
+        std::fs::write(
+            &marker_path,
+            serde_json::json!({
+                "tag": "v0.2.0",
+                "version": "0.2.0",
+                "notes": "Remote release notes",
+                "html_url": "https://github.com/BadTonho/Graphite/releases/tag/v0.2.0",
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let local_changelog = dir.path().join("changelog").join("0.2.0");
+        std::fs::create_dir_all(&local_changelog).unwrap();
+        std::fs::write(
+            local_changelog.join("en.md"),
+            "## New features\n- Local changelog entry",
+        )
+        .unwrap();
+
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.profile_root = dir.path().to_path_buf();
+        let initial_tabs = app.documents.len();
+
+        app.open_pending_update_changelog();
+        assert!(!marker_path.exists());
+        assert_eq!(app.documents.len(), initial_tabs + 1);
+        let text = app.editor().text();
+        assert!(text.contains("Local changelog entry"));
+        assert!(text.contains("v0.2.0"));
+
+        // Second launch must not re-open the changelog tab.
+        app.open_pending_update_changelog();
+        assert_eq!(app.documents.len(), initial_tabs + 1);
     }
 }

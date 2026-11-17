@@ -177,6 +177,7 @@ impl ApplicationHandler<UserEvent> for App {
             accessibility_actions,
         });
         self.start_background_update_poller();
+        self.open_pending_update_changelog();
         self.refresh_scm_async();
         if let Some(request) = self.initial_cli_request.take() {
             self.apply_cli_request(request, None);

@@ -789,5 +789,9 @@
   "error_notification.severity.critical": "CRITICAL",
   "error_notification.severity.high": "HIGH",
   "error_notification.severity.medium": "MEDIUM",
-  "error_notification.severity.low": "LOW"
+  "error_notification.severity.low": "LOW",
+  "updates.changelog.heading": "What's New in Graphite {tag}",
+  "updates.changelog.release_url": "Release notes",
+  "updates.changelog.empty_notes": "Graphite has been updated to {tag}.",
+  "updates.changelog.status": "Updated to {tag}"
 }

@@ -8,6 +8,23 @@ use std::path::{Path, PathBuf};
 struct PendingInstall {
     tag: String,
     staged_path: PathBuf,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    notes: Option<String>,
+    #[serde(default)]
+    html_url: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct JustUpdatedMarker {
+    pub tag: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub html_url: String,
 }
 
 fn target_binary_name() -> &'static str {
@@ -163,6 +180,18 @@ pub(crate) fn apply_pending_update_in(
         return Err(err);
     }
 
+    let just_updated = JustUpdatedMarker {
+        tag: pending.tag.clone(),
+        version: pending
+            .version
+            .unwrap_or_else(|| pending.tag.trim_start_matches('v').to_owned()),
+        notes: pending.notes.unwrap_or_default(),
+        html_url: pending.html_url.unwrap_or_default(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&just_updated) {
+        let _ = fs::write(profile_root.join("updates").join("just-updated.json"), json);
+    }
+
     let _ = fs::remove_file(&marker_path);
     Ok(Some(pending.tag))
 }
@@ -263,5 +292,39 @@ mod tests {
         assert!(err.contains("missing"));
         assert_eq!(fs::read(&target_exe).unwrap(), b"old-binary");
         assert!(!updates.join("pending-install.json").exists());
+    }
+
+    #[test]
+    fn writes_just_updated_marker_with_notes_when_update_applies() {
+        let dir = crate::test_support::TempDir::new();
+        let profile = dir.path().join("profile");
+        let updates = profile.join("updates");
+        fs::create_dir_all(&updates).unwrap();
+
+        let target_exe = dir.path().join(target_binary_name());
+        fs::write(&target_exe, b"old-binary").unwrap();
+
+        let staged = updates.join(target_binary_name());
+        fs::write(&staged, b"new-binary-v0.2.0").unwrap();
+        fs::write(
+            updates.join("pending-install.json"),
+            serde_json::json!({
+                "tag": "v0.2.0",
+                "version": "0.2.0",
+                "notes": "## New features\n- Auto update changelog",
+                "html_url": "https://github.com/BadTonho/Graphite/releases/tag/v0.2.0",
+                "staged_path": staged,
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let tag = apply_pending_update_in(&profile, &target_exe).unwrap();
+        assert_eq!(tag.as_deref(), Some("v0.2.0"));
+        let marker_raw = fs::read_to_string(updates.join("just-updated.json")).unwrap();
+        let marker: JustUpdatedMarker = serde_json::from_str(&marker_raw).unwrap();
+        assert_eq!(marker.tag, "v0.2.0");
+        assert_eq!(marker.version, "0.2.0");
+        assert!(marker.notes.contains("Auto update changelog"));
     }
 }
