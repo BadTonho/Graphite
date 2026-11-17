@@ -3,6 +3,7 @@
 //! The view covers only the editor area, so the menu bar, activity bar, sidebar and status
 //! bar stay visible and clickable. Its header carries a layout toggle and a close button.
 use super::*;
+use crate::vcs::side_by_side::{Cell, DiffModel, InlineItem, Item, RowKind};
 
 type Rect = (f32, f32, f32, f32);
 
@@ -118,6 +119,72 @@ impl App {
         false
     }
 
+    /// Rows of the open diff, cached until the texts change.
+    pub(crate) fn diff_model(&self) -> std::sync::Arc<DiffModel> {
+        use std::hash::{Hash, Hasher};
+        let Some(diff) = &self.diff_view else {
+            return std::sync::Arc::new(DiffModel::default());
+        };
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        diff.left.hash(&mut hasher);
+        diff.right.hash(&mut hasher);
+        let key = hasher.finish();
+        let mut cache = self.diff_model_cache.borrow_mut();
+        if let Some((cached, model)) = cache.as_ref() {
+            if *cached == key {
+                return model.clone();
+            }
+        }
+        let model = std::sync::Arc::new(DiffModel::build(&diff.left, &diff.right));
+        *cache = Some((key, model.clone()));
+        model
+    }
+
+    fn diff_item_count(&self) -> usize {
+        let Some(diff) = &self.diff_view else {
+            return 0;
+        };
+        let model = self.diff_model();
+        if diff.inline {
+            model.inline_rows(diff.collapse_unchanged).len()
+        } else {
+            model.items(diff.collapse_unchanged).len()
+        }
+    }
+
+    fn diff_max_scroll(&self) -> usize {
+        self.diff_item_count()
+            .saturating_sub(self.diff_visible_rows.get().max(1))
+    }
+
+    pub(crate) fn scroll_diff(&mut self, delta: isize) {
+        let max = self.diff_max_scroll() as isize;
+        self.diff_scroll = (self.diff_scroll as isize)
+            .saturating_add(delta)
+            .clamp(0, max) as usize;
+    }
+
+    /// Scrolls so the change that starts at `row` of the model is near the top.
+    pub(crate) fn scroll_diff_to_row(&mut self, row: usize) {
+        let Some(diff) = &self.diff_view else {
+            return;
+        };
+        let model = self.diff_model();
+        let position = if diff.inline {
+            // Inline lists a modified row as two lines; count what comes before the row.
+            let before = &model.rows[..row.min(model.rows.len())];
+            before
+                .iter()
+                .map(|r| if r.kind == RowKind::Modified { 2 } else { 1 })
+                .sum::<usize>()
+        } else {
+            let items = model.items(diff.collapse_unchanged);
+            model.item_index_of_row(&items, row)
+        };
+        let max = self.diff_max_scroll();
+        self.diff_scroll = position.saturating_sub(2).min(max);
+    }
+
     pub(crate) fn draw_diff_view(
         &self,
         renderer: &mut Renderer,
@@ -136,6 +203,7 @@ impl App {
         let header_bg = rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3));
         let button_bg = rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d));
         let header = diff_header_height(line_height);
+        let model = self.diff_model();
 
         renderer.draw_rect(x, y, w, h, bg);
         renderer.draw_rect(x, y, w, header, header_bg);
@@ -152,94 +220,256 @@ impl App {
                 button_bg,
             );
         }
+        let header_text_y = y + (header - line_height) * 0.5;
+        renderer.draw_text(label, layout.0 + 8.0, header_text_y, text);
+        renderer.draw_text("×", close.0 + (close.2 - cw) * 0.5, header_text_y, text);
+
+        let added = format!("+{}", model.added);
+        let removed = format!("−{}", model.removed);
+        let stats_width = (added.chars().count() + removed.chars().count() + 1) as f32 * cw;
+        let stats_x = layout.0 - PAD - stats_width;
         renderer.draw_text(
-            label,
-            layout.0 + 8.0,
-            layout.1 + (header - line_height) * 0.5,
-            text,
+            &added,
+            stats_x,
+            header_text_y,
+            rgb(Theme::color(0x4ec96b, 0x1a7f37)),
         );
         renderer.draw_text(
-            "×",
-            close.0 + (close.2 - cw) * 0.5,
-            close.1 + (header - line_height) * 0.5,
-            text,
+            &removed,
+            stats_x + (added.chars().count() + 1) as f32 * cw,
+            header_text_y,
+            rgb(Theme::color(0xf2615b, 0xcf222e)),
         );
 
         let title = self.tf("scm.diff.escape_hint", &[("title", &diff.title)]);
-        let title_room = (layout.0 - x - PAD * 2.0).max(0.0);
+        let title_room = (stats_x - x - PAD * 2.0).max(0.0);
         renderer.draw_text(
             &Self::help_menu_visible_label(&title, cw, title_room),
             x + PAD,
-            y + (header - line_height) * 0.5,
+            header_text_y,
             text,
         );
 
-        let content_top = y + header;
         let pane_width = w / 2.0;
-        let chars_per_pane = ((pane_width - PAD * 2.0) / cw).max(0.0) as usize;
-        let rows = ((h - header) / line_height) as usize;
-        renderer.draw_rect(
-            x + pane_width - 0.5,
-            content_top,
-            1.0,
-            h - header,
-            header_bg,
-        );
-        renderer.draw_text(
-            &Self::help_menu_visible_label(&diff.left_name, cw, pane_width - PAD * 2.0),
-            x + PAD,
-            content_top,
-            dim,
-        );
-        renderer.draw_text(
-            &Self::help_menu_visible_label(&diff.right_name, cw, pane_width - PAD * 2.0),
-            x + pane_width + PAD,
-            content_top,
-            dim,
-        );
+        let titles_y = y + header;
+        renderer.draw_rect(x, titles_y, w, line_height * 1.2, bg);
+        if !diff.inline {
+            renderer.draw_text(
+                &Self::help_menu_visible_label(&diff.left_name, cw, pane_width - PAD * 2.0),
+                x + PAD,
+                titles_y,
+                dim,
+            );
+            renderer.draw_text(
+                &Self::help_menu_visible_label(&diff.right_name, cw, pane_width - PAD * 2.0),
+                x + pane_width + PAD,
+                titles_y,
+                dim,
+            );
+        } else {
+            renderer.draw_text(
+                &Self::help_menu_visible_label(&diff.right_name, cw, w - PAD * 2.0),
+                x + PAD,
+                titles_y,
+                dim,
+            );
+        }
 
-        if diff.left == diff.right {
+        let rows_top = titles_y + line_height * 1.2;
+        let visible = (((y + h) - rows_top) / line_height).floor().max(0.0) as usize;
+        self.diff_visible_rows.set(visible);
+
+        if !model.has_changes() {
             renderer.draw_text(
                 self.t("scm.diff.no_changes"),
                 x + PAD,
-                content_top + line_height * 2.0,
+                rows_top + line_height,
                 dim,
             );
             return;
         }
-        let clip = |line: &str, chars: usize| line.chars().take(chars).collect::<String>();
+
+        let palette = DiffPalette::current();
+        let digits = model
+            .rows
+            .iter()
+            .flat_map(|row| row.left.iter().chain(row.right.iter()))
+            .map(|cell| cell.number)
+            .max()
+            .unwrap_or(1)
+            .to_string()
+            .len();
+        let gutter = (digits as f32 + 1.0) * cw + 6.0;
+        let sign_w = cw + 4.0;
+        let first = self.diff_scroll.min(self.diff_max_scroll());
+        let mut painter = DiffPainter {
+            renderer,
+            cw,
+            line_height,
+            gutter,
+            sign_w,
+            text,
+            dim,
+            palette,
+        };
+
         if diff.inline {
-            for (index, line) in crate::scm::diff_text(&diff.left, &diff.right)
-                .lines()
-                .take(rows)
-                .enumerate()
-            {
-                let color = if line.starts_with('+') {
-                    0x1a7f37
-                } else if line.starts_with('-') {
-                    0xcf222e
-                } else {
-                    0x1e1e1e
-                };
-                renderer.draw_text(
-                    &clip(line, ((w - PAD * 2.0) / cw).max(0.0) as usize),
-                    x + PAD,
-                    content_top + line_height * (index as f32 + 1.2),
-                    rgb(color),
-                );
-            }
-        } else {
-            for (side, origin) in [(&diff.left, x + PAD), (&diff.right, x + pane_width + PAD)] {
-                for (index, line) in side.lines().take(rows).enumerate() {
-                    renderer.draw_text(
-                        &clip(line, chars_per_pane),
-                        origin,
-                        content_top + line_height * (index as f32 + 1.2),
-                        text,
-                    );
+            let items = model.inline_rows(diff.collapse_unchanged);
+            for (slot, item) in items.iter().skip(first).take(visible).enumerate() {
+                let row_y = rows_top + slot as f32 * line_height;
+                match item {
+                    InlineItem::Folded(count) => {
+                        painter.folded(x, row_y, w, *count, self, header_bg)
+                    }
+                    InlineItem::Line { sign, cell, .. } => {
+                        let side = match sign {
+                            '-' => Side::Removed,
+                            '+' => Side::Added,
+                            _ => Side::Plain,
+                        };
+                        painter.cell(x, row_y, w, Some(cell), side, *sign);
+                    }
                 }
             }
+        } else {
+            let items = model.items(diff.collapse_unchanged);
+            for (slot, item) in items.iter().skip(first).take(visible).enumerate() {
+                let row_y = rows_top + slot as f32 * line_height;
+                match item {
+                    Item::Folded(count) => painter.folded(x, row_y, w, *count, self, header_bg),
+                    Item::Row(row) => {
+                        let (left_side, right_side) = match row.kind {
+                            RowKind::Equal => (Side::Plain, Side::Plain),
+                            RowKind::Removed => (Side::Removed, Side::Filler),
+                            RowKind::Added => (Side::Filler, Side::Added),
+                            RowKind::Modified => (Side::Removed, Side::Added),
+                        };
+                        let left_sign = if left_side == Side::Removed { '-' } else { ' ' };
+                        let right_sign = if right_side == Side::Added { '+' } else { ' ' };
+                        painter.cell(
+                            x,
+                            row_y,
+                            pane_width,
+                            row.left.as_ref(),
+                            left_side,
+                            left_sign,
+                        );
+                        painter.cell(
+                            x + pane_width,
+                            row_y,
+                            pane_width,
+                            row.right.as_ref(),
+                            right_side,
+                            right_sign,
+                        );
+                    }
+                }
+            }
+            painter.renderer.draw_rect(
+                x + pane_width - 0.5,
+                rows_top,
+                1.0,
+                h - (rows_top - y),
+                header_bg,
+            );
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Plain,
+    Removed,
+    Added,
+    /// The other side has a line here and this side has none.
+    Filler,
+}
+
+#[derive(Clone, Copy)]
+struct DiffPalette {
+    removed_line: u32,
+    removed_word: u32,
+    added_line: u32,
+    added_word: u32,
+    filler: u32,
+}
+
+impl DiffPalette {
+    fn current() -> Self {
+        Self {
+            removed_line: Theme::color(0x3b1e1e, 0xffe7e7),
+            removed_word: Theme::color(0x72282a, 0xffb8b8),
+            added_line: Theme::color(0x1e3a22, 0xe4f8e6),
+            added_word: Theme::color(0x2c6a35, 0xaaf0b4),
+            filler: Theme::color(0x262628, 0xf0f0f0),
+        }
+    }
+}
+
+struct DiffPainter<'a> {
+    renderer: &'a mut Renderer,
+    cw: f32,
+    line_height: f32,
+    gutter: f32,
+    sign_w: f32,
+    text: Color,
+    dim: Color,
+    palette: DiffPalette,
+}
+
+impl DiffPainter<'_> {
+    fn folded(&mut self, x: f32, y: f32, w: f32, count: usize, app: &App, bg: Color) {
+        self.renderer.draw_rect(x, y, w, self.line_height, bg);
+        let label = app.tf("scm.diff.folded", &[("count", &count)]);
+        let room = (w - 16.0).max(0.0);
+        let label = App::help_menu_visible_label(&label, self.cw, room);
+        let label_x = x + (w - label.chars().count() as f32 * self.cw).max(0.0) * 0.5;
+        self.renderer.draw_text(&label, label_x, y, self.dim);
+    }
+
+    /// One line in a pane that starts at `x` and is `width` wide.
+    fn cell(&mut self, x: f32, y: f32, width: f32, cell: Option<&Cell>, side: Side, sign: char) {
+        let (line, word) = match side {
+            Side::Removed => (Some(self.palette.removed_line), self.palette.removed_word),
+            Side::Added => (Some(self.palette.added_line), self.palette.added_word),
+            Side::Filler => (Some(self.palette.filler), self.palette.filler),
+            Side::Plain => (None, self.palette.filler),
+        };
+        if let Some(color) = line {
+            self.renderer
+                .draw_rect(x, y, width, self.line_height, rgb(color));
+        }
+        let Some(cell) = cell else {
+            return;
+        };
+        if side != Side::Plain {
+            self.renderer
+                .draw_rect(x, y, self.gutter, self.line_height, rgb(word));
+        }
+        let number = cell.number.to_string();
+        let number_x = x + self.gutter - 4.0 - number.chars().count() as f32 * self.cw;
+        self.renderer.draw_text(&number, number_x, y, self.dim);
+        if sign != ' ' {
+            self.renderer
+                .draw_text(&sign.to_string(), x + self.gutter + 2.0, y, self.text);
+        }
+        let text_x = x + self.gutter + self.sign_w;
+        let chars = ((width - self.gutter - self.sign_w - 6.0) / self.cw).max(0.0) as usize;
+        for range in &cell.changed {
+            if range.start >= chars {
+                continue;
+            }
+            let end = range.end.min(chars);
+            self.renderer.draw_rect(
+                text_x + range.start as f32 * self.cw,
+                y,
+                (end - range.start) as f32 * self.cw,
+                self.line_height,
+                rgb(word),
+            );
+        }
+        let shown: String = cell.text.chars().take(chars).collect();
+        self.renderer.draw_text(&shown, text_x, y, self.text);
     }
 }
 
@@ -316,5 +546,70 @@ mod tests {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         assert!(!app.click_diff_view(300.0, 300.0, 1200.0, 800.0, 20.0, 8.0));
+    }
+
+    fn numbered(count: usize, changed: &[usize]) -> (String, String) {
+        let old: String = (1..=count).map(|n| format!("line {n}\n")).collect();
+        let mut new = old.clone();
+        for n in changed {
+            new = new.replace(&format!("line {n}\n"), &format!("edited {n}\n"));
+        }
+        (old, new)
+    }
+
+    #[test]
+    fn the_model_is_cached_until_the_texts_change() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.diff_view = Some(view("a\nb\n", "a\nc\n"));
+        let first = app.diff_model();
+        assert!(std::sync::Arc::ptr_eq(&first, &app.diff_model()));
+        app.diff_view = Some(view("a\nb\n", "a\nd\n"));
+        assert!(!std::sync::Arc::ptr_eq(&first, &app.diff_model()));
+    }
+
+    #[test]
+    fn scrolling_stays_inside_the_rows() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let (old, new) = numbered(40, &[20]);
+        app.diff_view = Some(view(&old, &new));
+        app.diff_visible_rows.set(10);
+        app.scroll_diff(1000);
+        assert_eq!(app.diff_scroll, 40 - 10);
+        app.scroll_diff(-1000);
+        assert_eq!(app.diff_scroll, 0);
+    }
+
+    #[test]
+    fn next_and_previous_change_scroll_to_each_group() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let (old, new) = numbered(60, &[10, 50]);
+        app.diff_view = Some(view(&old, &new));
+        app.diff_visible_rows.set(10);
+        app.run_ui_command("workbench.action.compareEditor.nextChange");
+        let first = app.diff_scroll;
+        assert!(
+            first > 0 && first <= 10,
+            "first change at row 10, scroll {first}"
+        );
+        app.run_ui_command("workbench.action.compareEditor.nextChange");
+        assert!(app.diff_scroll > first);
+        app.run_ui_command("workbench.action.compareEditor.previousChange");
+        assert_eq!(app.diff_scroll, first);
+    }
+
+    #[test]
+    fn collapsing_unchanged_regions_shortens_the_scrollable_list() {
+        let dir = TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let (old, new) = numbered(100, &[50]);
+        let mut shown = view(&old, &new);
+        app.diff_view = Some(shown.clone());
+        let full = app.diff_item_count();
+        shown.collapse_unchanged = true;
+        app.diff_view = Some(shown);
+        assert!(app.diff_item_count() < full);
     }
 }

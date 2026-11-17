@@ -62,3 +62,13 @@ Não suportado: `reword`, `edit`, `exec`, `break`, manter commits de merge (`--r
 
 - **Indicador de trabalho.** Enquanto Sincronizar, Publicar, Commit, Push, Pull ou outra operação do Git está rodando, o botão principal troca o ícone por um anel de pontos girando e o texto por "Sincronizando...", "Publicando...", "Commitando..." ou "Trabalhando...". Clicar de novo no botão é ignorado até a operação terminar. O indicador some sozinho quando a operação responde, ou no máximo depois de dez minutos.
 - **Selo de alterações.** O ícone do Controle de Código na barra de atividades mostra quantos arquivos têm alterações pendentes (em stage, fora do stage ou novos), até `99+`. Ele fica oculto quando não há nenhuma ou quando o repositório não pode ser lido.
+
+## Lendo uma comparação
+
+A visualização de diferenças alinha os dois arquivos linha por linha. As linhas removidas ficam em vermelho à esquerda e as que entraram no lugar ficam em verde à direita; as palavras que mudaram dentro de uma linha substituída recebem uma cor mais forte. Uma linha que existe só de um lado deixa um vazio cinza do outro, então as duas colunas continuam alinhadas. Toda linha mostra o seu número, e um `-` ou `+` marca as alteradas. O cabeçalho mostra os totais (`+adicionadas` `−removidas`).
+
+- **Rolagem:** roda do mouse, `Cima` e `Baixo`, `Page Up` e `Page Down`, `Home` e `End`.
+- **Mudanças:** *Próxima Mudança* e *Mudança Anterior* pulam entre os grupos de linhas alteradas.
+- **Layout:** o botão do cabeçalho ou `Tab` troca para o layout em linha, onde cada linha alterada aparece uma sob a outra, com `-` e `+`.
+- **Regiões sem alterações:** *Recolher Todas as Regiões Sem Alterações* dobra os trechos longos de linhas iguais, mantendo três linhas ao redor de cada mudança; *Mostrar Todas as Regiões Sem Alterações* os traz de volta.
+- **Limites:** linhas mais longas que a coluna são cortadas, tabulações são desenhadas como quatro espaços e o texto não tem destaque de sintaxe.

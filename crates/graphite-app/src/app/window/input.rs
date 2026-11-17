@@ -288,6 +288,17 @@ impl App {
                 self.close_diff_view();
             } else if matches!(event.logical_key, Key::Named(NamedKey::Tab)) {
                 self.run_ui_command("graphite.diff.toggleLayout");
+            } else {
+                let page = self.diff_visible_rows.get().max(2) as isize - 1;
+                match event.logical_key {
+                    Key::Named(NamedKey::ArrowDown) => self.scroll_diff(1),
+                    Key::Named(NamedKey::ArrowUp) => self.scroll_diff(-1),
+                    Key::Named(NamedKey::PageDown) => self.scroll_diff(page),
+                    Key::Named(NamedKey::PageUp) => self.scroll_diff(-page),
+                    Key::Named(NamedKey::Home) => self.scroll_diff(isize::MIN / 2),
+                    Key::Named(NamedKey::End) => self.scroll_diff(isize::MAX / 2),
+                    _ => {}
+                }
             }
             return;
         }

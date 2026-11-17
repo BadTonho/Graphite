@@ -62,3 +62,13 @@ Not supported: `reword`, `edit`, `exec`, `break`, keeping merge commits (`--reba
 
 - **Working indicator.** While Sync, Publish, Commit, Push, Pull or another Git operation runs, the main button replaces its icon with a spinning ring of dots and its label with "Syncing...", "Publishing...", "Committing..." or "Working...". Clicking the button again is ignored until the operation ends. The indicator clears itself when the operation reports back, or after ten minutes at most.
 - **Change badge.** The Source Control icon in the activity bar shows how many files have pending changes (staged, unstaged or untracked), up to `99+`. It is hidden when there are none or when the repository cannot be read.
+
+## Reading a comparison
+
+The diff view lines the two files up row by row. Removed lines are red on the left and the lines that replace them are green on the right; the words that changed inside a replaced line get a stronger color. A line that exists on only one side leaves a gray gap on the other, so both columns stay aligned. Every line has its number, and a `-` or `+` marks the changed ones. The header shows the totals (`+added` `−removed`).
+
+- **Scrolling:** mouse wheel, `Up` and `Down`, `Page Up` and `Page Down`, `Home` and `End`.
+- **Changes:** *Next Change* and *Previous Change* jump between groups of changed lines.
+- **Layout:** the header button or `Tab` switches to the inline layout, where each changed line appears once under the other, with `-` and `+`.
+- **Unchanged regions:** *Collapse All Unchanged Regions* folds long runs of equal lines, keeping three lines around each change; *Show All Unchanged Regions* brings them back.
+- **Limits:** lines longer than their column are cut, tabs are drawn as four spaces and the text is not syntax highlighted.

@@ -489,6 +489,13 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     return;
                 }
+                if self.diff_view.is_some() {
+                    self.scroll_diff(lines.round() as isize);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.multi_diff.is_some() {
                     self.multi_diff_scroll_rows(lines.round() as isize);
                     if let Some(gpu) = &self.gpu {
@@ -853,6 +860,7 @@ impl App {
             }
             UserEvent::DiffReady(diff) => {
                 self.diff_view = Some(diff);
+                self.diff_scroll = 0;
                 self.diff_loading = false;
                 self.status = self.t("diff.opened").into();
                 self.check_cli_waiters();

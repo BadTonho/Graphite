@@ -333,6 +333,13 @@ struct App {
     scm_extension_input: Option<u64>,
     diff_view: Option<app::scm_ui::DiffView>,
     diff_loading: bool,
+    /// First visible item of the diff view.
+    diff_scroll: usize,
+    /// Items the diff view could show at its last drawing, for page scrolling.
+    diff_visible_rows: std::cell::Cell<usize>,
+    /// Rows of the open diff, rebuilt only when the texts change.
+    diff_model_cache:
+        std::cell::RefCell<Option<(u64, std::sync::Arc<crate::vcs::side_by_side::DiffModel>)>>,
     conflict_view: Option<app::scm_ui::ConflictView>,
     merge_editor: Option<app::merge_editor::MergeEditor>,
     /// Kernels found on the machine, looked up on first use.
@@ -893,6 +900,9 @@ impl App {
             scm_extension_input: None,
             diff_view: None,
             diff_loading: false,
+            diff_scroll: 0,
+            diff_visible_rows: std::cell::Cell::new(0),
+            diff_model_cache: std::cell::RefCell::new(None),
             conflict_view: None,
             merge_editor: None,
             kernel_specs: None,

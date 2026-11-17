@@ -539,43 +539,35 @@ fn diff_previous_change(app: &mut App, _: &CommandInvocation) -> Result<(), Comm
     Ok(())
 }
 fn diff_step_change(app: &mut App, forward: bool) {
-    let Some(diff) = &mut app.diff_view else {
-        return;
-    };
-    let mut changed_lines = Vec::new();
-    let mut line_index = 0usize;
-    let mut in_change = false;
-    for change in similar::TextDiff::from_lines(&diff.left, &diff.right).iter_all_changes() {
-        match change.tag() {
-            similar::ChangeTag::Equal => in_change = false,
-            similar::ChangeTag::Delete | similar::ChangeTag::Insert => {
-                if !in_change {
-                    changed_lines.push(line_index);
-                    in_change = true;
-                }
-            }
-        }
-        line_index += 1;
-    }
-    if changed_lines.is_empty() {
+    if app.diff_view.is_none() {
         return;
     }
-    let current = diff.selected_change;
+    let starts = app.diff_model().change_starts();
+    if starts.is_empty() {
+        return;
+    }
+    let current = app
+        .diff_view
+        .as_ref()
+        .map_or(0, |diff| diff.selected_change);
     let next = if forward {
-        changed_lines
+        starts
             .iter()
             .copied()
-            .find(|&l| l > current)
-            .unwrap_or(changed_lines[0])
+            .find(|&row| row > current)
+            .unwrap_or(starts[0])
     } else {
-        changed_lines
+        starts
             .iter()
             .rev()
             .copied()
-            .find(|&l| l < current)
-            .unwrap_or(*changed_lines.last().unwrap())
+            .find(|&row| row < current)
+            .unwrap_or(*starts.last().unwrap())
     };
-    diff.selected_change = next;
+    if let Some(diff) = &mut app.diff_view {
+        diff.selected_change = next;
+    }
+    app.scroll_diff_to_row(next);
 }
 fn terminal_new(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.create_terminal_tab();

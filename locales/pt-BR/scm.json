@@ -249,5 +249,6 @@
   "scm.sidebar.syncing": "Sincronizando...",
   "scm.sidebar.publishing": "Publicando...",
   "scm.sidebar.committing": "Commitando...",
-  "scm.sidebar.working": "Trabalhando..."
+  "scm.sidebar.working": "Trabalhando...",
+  "scm.diff.folded": "... {count} linhas sem alterações"
 }

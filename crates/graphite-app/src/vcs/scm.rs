@@ -505,13 +505,6 @@ pub(crate) fn commit(
     Ok(id.to_string())
 }
 
-pub(crate) fn diff_text(left: &str, right: &str) -> String {
-    TextDiff::from_lines(left, right)
-        .unified_diff()
-        .header("left", "right")
-        .to_string()
-}
-
 pub(crate) fn head_file_text(
     root: &Path,
     path: &Path,
@@ -1224,8 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_is_readable_and_reports_invalid_repository() {
-        assert!(diff_text("a\n", "b\n").contains("-a"));
+    fn an_invalid_repository_reports_an_error() {
         let dir = TempDir::new();
         assert!(snapshot(dir.path()).error.is_some());
     }

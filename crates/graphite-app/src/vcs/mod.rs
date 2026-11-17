@@ -16,3 +16,4 @@ pub(crate) mod scm_log;
 pub(crate) mod scm_refs;
 pub(crate) mod scm_remote;
 pub(crate) mod scm_stash;
+pub(crate) mod side_by_side;
