@@ -45,8 +45,28 @@ impl App {
             tab_size,
             self.wrapping_indent,
         );
+        let primary = view
+            .selection_state
+            .selections()
+            .first()
+            .copied()
+            .unwrap_or_default();
+        let cur_line = buffer
+            .rope()
+            .char_to_line(primary.head.min(buffer.len_chars()));
+        let highlight_current_line = primary.anchor == primary.head;
+        let chrome = super::drawing_helpers::editor_chrome();
         for (row_index, row) in rows.iter().enumerate() {
             let y = rect.y + lh * 1.5 + row_index as f32 * lh;
+            if highlight_current_line && row.line == cur_line {
+                r.draw_rect(
+                    text_x,
+                    y,
+                    (rect.x + rect.width - text_x).max(0.0),
+                    lh,
+                    rgb(chrome.current_line),
+                );
+            }
             let text = buffer.line(row.line);
             let start_char = buffer.line_start_char(row.line);
             let segment = &row.segment;

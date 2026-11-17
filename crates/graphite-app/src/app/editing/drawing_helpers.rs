@@ -349,3 +349,114 @@ mod guide_and_bracket_tests {
         assert_eq!(terminal_panel_height_with_delta(800.0, -200), 120.0);
     }
 }
+
+/// Surfaces that set the text of a file apart from the rest of the window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct EditorChrome {
+    /// Background of the line-number column.
+    pub gutter: u32,
+    /// Thin line between the line numbers and the text.
+    pub gutter_border: u32,
+    /// Thin line between the tab strip and the text.
+    pub tab_border: u32,
+    /// Background of the line the caret is on.
+    pub current_line: u32,
+}
+
+/// The surfaces for a theme. High contrast keeps flat black and draws visible lines instead.
+pub(crate) fn editor_chrome_for(dark: bool, high_contrast: bool) -> EditorChrome {
+    if high_contrast {
+        return EditorChrome {
+            gutter: 0x000000,
+            gutter_border: 0x6fc3df,
+            tab_border: 0x6fc3df,
+            current_line: 0x000000,
+        };
+    }
+    if dark {
+        EditorChrome {
+            gutter: 0x252526,
+            gutter_border: 0x3a3a3c,
+            tab_border: 0x3a3a3c,
+            current_line: 0x2a2a2c,
+        }
+    } else {
+        EditorChrome {
+            gutter: 0xf5f5f5,
+            gutter_border: 0xdcdcdc,
+            tab_border: 0xdcdcdc,
+            current_line: 0xf0f4fa,
+        }
+    }
+}
+
+/// The surfaces for the current theme, with any imported color overrides applied.
+pub(crate) fn editor_chrome() -> EditorChrome {
+    use crate::app::theme::{DARK_THEME, HIGH_CONTRAST};
+    use std::sync::atomic::Ordering;
+    let high_contrast = HIGH_CONTRAST.load(Ordering::Relaxed);
+    let base = editor_chrome_for(DARK_THEME.load(Ordering::Relaxed), high_contrast);
+    if high_contrast {
+        return base;
+    }
+    // Reuse the palette lookup so imported themes can recolor these surfaces.
+    EditorChrome {
+        gutter: Theme::color(base.gutter, base.gutter),
+        gutter_border: Theme::color(base.gutter_border, base.gutter_border),
+        tab_border: Theme::color(base.tab_border, base.tab_border),
+        current_line: Theme::color(base.current_line, base.current_line),
+    }
+}
+
+#[cfg(test)]
+mod chrome_tests {
+    use super::*;
+
+    fn luma(color: u32) -> i32 {
+        let (r, g, b) = ((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
+        ((r * 299 + g * 587 + b * 114) / 1000) as i32
+    }
+
+    #[test]
+    fn the_gutter_and_the_current_line_differ_from_the_editor_background() {
+        for dark in [true, false] {
+            let chrome = editor_chrome_for(dark, false);
+            let background = if dark { 0x1e1e1e } else { 0xffffff };
+            assert_ne!(chrome.gutter, background, "gutter, dark={dark}");
+            assert_ne!(chrome.current_line, background, "current line, dark={dark}");
+            assert_ne!(chrome.gutter_border, chrome.gutter, "border, dark={dark}");
+            assert_ne!(chrome.gutter_border, background);
+            assert_ne!(chrome.tab_border, background);
+        }
+    }
+
+    #[test]
+    fn the_tones_move_toward_the_text_color_not_away_from_it() {
+        // Dark themes lighten the surfaces a little; light themes darken them a little.
+        let dark = editor_chrome_for(true, false);
+        assert!(luma(dark.gutter) > luma(0x1e1e1e));
+        assert!(luma(dark.current_line) > luma(0x1e1e1e));
+        let light = editor_chrome_for(false, false);
+        assert!(luma(light.gutter) < luma(0xffffff));
+        assert!(luma(light.current_line) < luma(0xffffff));
+    }
+
+    #[test]
+    fn the_surfaces_stay_subtle_so_text_keeps_its_contrast() {
+        for dark in [true, false] {
+            let chrome = editor_chrome_for(dark, false);
+            let background = if dark { 0x1e1e1e } else { 0xffffff };
+            assert!((luma(chrome.gutter) - luma(background)).abs() <= 24);
+            assert!((luma(chrome.current_line) - luma(background)).abs() <= 24);
+        }
+    }
+
+    #[test]
+    fn high_contrast_stays_flat_black_and_uses_visible_lines() {
+        let chrome = editor_chrome_for(true, true);
+        assert_eq!(chrome.gutter, 0x000000);
+        assert_eq!(chrome.current_line, 0x000000);
+        assert!(luma(chrome.gutter_border) > 0x80);
+        assert!(luma(chrome.tab_border) > 0x80);
+    }
+}

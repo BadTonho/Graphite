@@ -237,6 +237,9 @@ impl App {
                 .unwrap_or_default();
             let cursor = primary.head.min(buffer.len_chars());
             let cur_line = buffer.rope().char_to_line(cursor);
+            // A single caret highlights its line; a selection already marks what it covers.
+            let highlight_current_line = primary.anchor == primary.head;
+            let chrome = super::drawing_helpers::editor_chrome();
             let visible = ((body_height / lh) as usize).max(1);
             let last = (view.scroll_line + visible).min(buffer.len_lines());
             let levels_end = if last < buffer.len_lines() {
@@ -259,6 +262,25 @@ impl App {
                     1.0,
                     body_height,
                     rgb(Theme::color(0x404040, 0xdddddd)),
+                );
+            }
+            // The line-number column has its own tone and a thin line against the text, and a
+            // thin line closes the tab strip, so the file reads as a surface of its own.
+            r.draw_rect(rect.x, body_y, gutter, body_height, rgb(chrome.gutter));
+            r.draw_rect(
+                text_x - 1.0,
+                body_y,
+                1.0,
+                body_height,
+                rgb(chrome.gutter_border),
+            );
+            if self.view_preferences.tabs_visible && !self.zen_mode {
+                r.draw_rect(
+                    rect.x,
+                    rect.y + tab_height,
+                    rect.width,
+                    1.0,
+                    rgb(chrome.tab_border),
                 );
             }
             if self.word_wrap {
@@ -318,6 +340,15 @@ impl App {
                     }
                     super::lens_rows::BodyRow::Line(line) => line,
                 };
+                if highlight_current_line && line == cur_line {
+                    r.draw_rect(
+                        text_x,
+                        y,
+                        (right - text_x).max(0.0),
+                        lh,
+                        rgb(chrome.current_line),
+                    );
+                }
                 let text = buffer.line(line);
                 let line_start = buffer.line_start_char(line);
                 let line_end = line_start + text.trim_end_matches(['\r', '\n']).chars().count();
