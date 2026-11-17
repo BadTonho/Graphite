@@ -231,17 +231,7 @@ fn changing_format_during_write_keeps_new_format_dirty() {
 }
 
 fn start_save_host(app: &mut App, scenario: &str) -> mpsc::Receiver<()> {
-    let executable = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(if cfg!(windows) {
-            "graphite-extension-host.exe"
-        } else {
-            "graphite-extension-host"
-        });
+    let executable = crate::test_support::test_binary("graphite-extension-host");
     let (tx, wakes) = mpsc::channel();
     app.extension_host.enabled = true;
     app.extension_host.supervisor = Some(

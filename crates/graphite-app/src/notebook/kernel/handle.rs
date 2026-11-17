@@ -668,7 +668,17 @@ mod tests {
     fn an_error_in_the_code_arrives_as_an_error_output_and_a_failed_reply() {
         let (handle, _kernel) = connected();
         let id = handle.execute("raise");
-        let events = wait_for(&handle, |events| finished(events, &id));
+        // The reply (shell channel) and the error output (IOPub) can arrive in either order,
+        // so wait for both instead of stopping at the first one.
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["ename"] == "Boom"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "Boom"
