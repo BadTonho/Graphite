@@ -145,7 +145,9 @@ impl App {
                 AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
                 AfterSave::Close { execution, .. } => Some(*execution),
                 AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
-                AfterSave::Workspace | AfterSave::OpenEditorWindow { .. } => None,
+                AfterSave::Workspace
+                | AfterSave::OpenEditorWindow { .. }
+                | AfterSave::Commit(_) => None,
             };
             if owner.is_some_and(|id| !self.command_runtime.pending.contains_key(&id)) {
                 continue;
@@ -280,6 +282,16 @@ impl App {
                         self.status = self.tf("save.cannot_close", &[("error", error)]);
                     }
                 }
+                AfterSave::Commit(options) => match result {
+                    Ok(_) => {
+                        self.scm_commit_save_checked = true;
+                        self.perform_scm_action(super::scm_ui::ScmAction::Commit(options));
+                    }
+                    Err(error) => {
+                        self.status =
+                            self.tf("unsaved_modal.commit_save_failed", &[("error", &error)]);
+                    }
+                },
                 AfterSave::Revert {
                     document,
                     execution,

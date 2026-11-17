@@ -404,6 +404,10 @@ fn quit(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandErro
     Ok(())
 }
 fn resolve_window(app: &mut App, save: bool, cancel: bool) -> Result<(), CommandError> {
+    if app.pending_commit_save.is_some() {
+        app.resolve_commit_save(save, cancel);
+        return Ok(());
+    }
     if let Some(document) = app.pending_revert_confirmation.take() {
         app.close_window_confirm = false;
         let execution = app.command_runtime.pending_window_close.take();

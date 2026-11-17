@@ -52,3 +52,7 @@ No plano você pode reordenar as linhas e trocar a primeira palavra por `pick` (
 O Git recebe o plano conferido por `GIT_SEQUENCE_EDITOR` (um `cp` do plano sobre a lista de tarefas, executado pelo shell do próprio git) e `GIT_EDITOR=true`, então nenhum editor abre e os commits fundidos ficam com a mensagem combinada. Um conflito deixa o rebase em andamento, como em **Git: Rebase sobre branch...**: resolva e use **Git: Continuar merge ou rebase**, ou **Git: Abortar merge ou rebase**.
 
 Não suportado: `reword`, `edit`, `exec`, `break`, manter commits de merge (`--rebase-merges`) e editar a mensagem de um squash.
+
+## Arquivos não salvos e a visualização de diferenças
+
+- **Commit com arquivos não salvos.** O commit registra o que está no disco, então o texto que só existe no editor ficaria de fora. Quando documentos abertos dentro do repositório têm alterações não salvas, uma janela no meio da tela os lista e pergunta: **Salvar e commitar** (`S`), **Commitar assim mesmo** (`D`) ou **Cancelar** (`Esc`). Se o salvamento falhar, nenhum commit é feito.

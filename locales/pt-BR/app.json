@@ -808,5 +808,11 @@
   "unsaved_modal.untitled": "Sem título",
   "unsaved_modal.save_all": "Salvar tudo (S)",
   "unsaved_modal.discard": "Descartar (D)",
-  "unsaved_modal.cancel": "Cancelar (Esc)"
+  "unsaved_modal.cancel": "Cancelar (Esc)",
+  "unsaved_modal.title_commit": "Alterações não salvas não entrarão no commit",
+  "unsaved_modal.commit_prompt": "Arquivos não salvos: S salvar e commitar, D commitar assim mesmo, Esc cancelar",
+  "unsaved_modal.commit_cancelled": "Commit cancelado",
+  "unsaved_modal.commit_save_failed": "Commit não feito, falha ao salvar: {error}",
+  "unsaved_modal.commit_save": "Salvar e commitar (S)",
+  "unsaved_modal.commit_anyway": "Commitar assim (D)"
 }

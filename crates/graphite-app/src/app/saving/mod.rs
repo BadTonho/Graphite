@@ -66,6 +66,8 @@ pub(super) enum AfterSave {
         document: DocumentId,
         execution: Option<u64>,
     },
+    /// Commit once every listed document is on disk.
+    Commit(crate::scm_commit::CommitOptions),
 }
 struct Batch {
     documents: Vec<DocumentId>,
@@ -247,14 +249,16 @@ impl App {
                     )])
                 })
                 .unwrap_or_default(),
-            AfterSave::Close { .. } | AfterSave::OpenEditorWindow { .. } => documents
-                .iter()
-                .filter_map(|id| {
-                    self.documents
-                        .get(*id)
-                        .map(|d| (*id, (d.buffer.revision(), (d.encoding, d.line_ending))))
-                })
-                .collect(),
+            AfterSave::Close { .. } | AfterSave::OpenEditorWindow { .. } | AfterSave::Commit(_) => {
+                documents
+                    .iter()
+                    .filter_map(|id| {
+                        self.documents
+                            .get(*id)
+                            .map(|d| (*id, (d.buffer.revision(), (d.encoding, d.line_ending))))
+                    })
+                    .collect()
+            }
             _ => HashMap::new(),
         };
         let reason = match &action {
@@ -272,13 +276,16 @@ impl App {
                 }
             }
             AfterSave::Service { reason, .. } => *reason,
+            AfterSave::Commit(_) => graphite_core_api::SaveReason::Manual,
             _ => graphite_core_api::SaveReason::Close,
         };
         let owner = match &action {
             AfterSave::Command(job) | AfterSave::Service { job, .. } => Some(job.id),
             AfterSave::Close { execution, .. } => Some(*execution),
             AfterSave::Window { execution } | AfterSave::Revert { execution, .. } => *execution,
-            AfterSave::Workspace | AfterSave::OpenEditorWindow { .. } => None,
+            AfterSave::Workspace | AfterSave::OpenEditorWindow { .. } | AfterSave::Commit(_) => {
+                None
+            }
         };
         let requests: Vec<_> = documents
             .iter()

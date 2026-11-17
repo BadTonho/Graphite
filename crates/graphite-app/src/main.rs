@@ -285,6 +285,10 @@ struct App {
     scm_visible: bool,
     /// Whether the source control list (not the editor) receives plain-key shortcuts.
     scm_focused: bool,
+    /// Commit waiting for the user to decide about documents with unsaved changes.
+    pending_commit_save: Option<crate::scm_commit::CommitOptions>,
+    /// Set once the unsaved-documents check has been answered, so the commit goes through.
+    scm_commit_save_checked: bool,
     scm_selected: usize,
     scm_repositories_collapsed: bool,
     scm_staged_collapsed: bool,
@@ -848,6 +852,8 @@ impl App {
             scm_snapshot: scm::Snapshot::default(),
             scm_visible: false,
             scm_focused: false,
+            pending_commit_save: None,
+            scm_commit_save_checked: false,
             scm_selected: 0,
             scm_repositories_collapsed: false,
             scm_staged_collapsed: false,

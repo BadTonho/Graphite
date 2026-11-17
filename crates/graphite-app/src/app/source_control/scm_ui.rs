@@ -1000,6 +1000,11 @@ impl App {
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
+        if let ScmAction::Commit(options) = action {
+            if self.defer_commit_for_unsaved(options) {
+                return;
+            }
+        }
         let root = self.scm_workspace_root();
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = self.t("scm.error.actions_need_loop").into();

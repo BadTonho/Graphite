@@ -52,3 +52,7 @@ In the plan you can reorder lines and change the first word to `pick` (`p`), `sq
 Git receives the checked plan through `GIT_SEQUENCE_EDITOR` (a `cp` of the plan over its todo list, run by git's own shell) and `GIT_EDITOR=true`, so no editor opens and squashed commits keep the joined message. A conflict leaves the rebase in progress, exactly as for **Git: Rebase onto Branch...**: resolve it, then **Git: Continue Merge or Rebase**, or **Git: Abort Merge or Rebase**.
 
 Not supported: `reword`, `edit`, `exec`, `break`, keeping merge commits (`--rebase-merges`) and editing the message of a squash.
+
+## Unsaved files and the diff view
+
+- **Commit with unsaved files.** A commit records what is on disk, so text that is only in the editor would be left out. When open documents inside the repository have unsaved changes, a dialog in the middle of the window lists them and asks: **Save and commit** (`S`), **Commit anyway** (`D`) or **Cancel** (`Esc`). If saving fails, no commit is made.
