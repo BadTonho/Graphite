@@ -72,6 +72,11 @@ plugin contribution visibility. Run `cargo test -p graphite-app --bin graphite
 activity_bar` and `cargo test --workspace`. Native visual checks should include
 Windows and Linux sessions where available.
 
-## Plugins sidebar: list bar
+## Plugins sidebar: one column of lists
 
-Under the search box, each tab (Installed, Open VSX, Graphite) has a bar with a chevron, the title of the list and a badge with the number of items, set between two thin lines. Click the bar to fold or unfold the list; each tab remembers its own state. A thin line also separates one plugin card from the next, so the plugins are easier to tell apart.
+The Plugins sidebar has no tab buttons. Under the search box there is one bar per list (**Installed**, **Open VSX**, **Graphite**), each with a chevron, the title and a badge with the number of items, set between thin lines. The open list shows its plugin cards right under its bar, and the other bars stay stacked below the cards.
+
+- Click a closed bar to open that list (the key shortcuts `i`, `o` and `g` do the same).
+- Click the open bar to fold its cards; the other bars then move up under it. Each list remembers whether it is folded.
+- A thin line separates one plugin card from the next.
+- While a plugin's details or the trust prompt are shown, the bars below the open one are hidden to give the details more room.

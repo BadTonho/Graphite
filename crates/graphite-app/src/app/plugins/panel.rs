@@ -43,17 +43,31 @@ impl App {
         self.plugins.section_collapsed[self.plugins.tab.index()]
     }
 
+    pub(super) fn plugin_details_open(&self) -> bool {
+        self.plugins.preview.is_some()
+            || self.plugins.trust.is_some()
+            || self.plugins.inspecting.is_some()
+    }
+
+    /// Geometry of the sidebar for the list that is open and the current state.
+    pub(super) fn plugin_layout(&self, height: f32, line_height: f32) -> PluginsLayout {
+        PluginsLayout::new(
+            height,
+            line_height,
+            self.sidebar_layout_width_px(),
+            self.plugins.tab.index(),
+            self.plugin_section_collapsed(),
+            self.plugin_details_open(),
+        )
+    }
+
     pub(super) fn plugin_visible_rows(&self) -> usize {
         self.gpu
             .as_ref()
             .map(|gpu| {
                 let (_, height) = gpu.renderer.size();
-                PluginsLayout::new(
-                    height,
-                    gpu.renderer.line_height(),
-                    self.sidebar_layout_width_px(),
-                )
-                .visible_rows()
+                self.plugin_layout(height, gpu.renderer.line_height())
+                    .visible_rows()
             })
             .unwrap_or(6)
     }
@@ -257,7 +271,7 @@ impl App {
         };
         let lh = gpu.renderer.line_height();
         let (_, height) = gpu.renderer.size();
-        let layout = PluginsLayout::new(height, lh, self.sidebar_layout_width_px());
+        let layout = self.plugin_layout(height, lh);
         let window_width = gpu.renderer.size().0;
         let x = self.sidebar_local_x(self.mouse.x as f32, window_width);
         let y = self.sidebar_local_y(self.mouse.y as f32);
@@ -268,13 +282,15 @@ impl App {
         if self.plugins.worker.is_some() {
             return;
         }
-        if let Some(tab) = layout.tab_at(x, y) {
+        if let Some(index) = layout.bar_at(x, y) {
             self.leave_plugin_details();
-            self.plugin_action(match tab {
-                PluginsTab::Installed => 'i',
-                PluginsTab::OpenVsx => 'o',
-                PluginsTab::Graphite => 'g',
-            });
+            if index == self.plugins.tab.index() {
+                self.plugins.section_collapsed[index] = !self.plugins.section_collapsed[index];
+                self.plugins.scroll = 0;
+            } else {
+                self.plugin_action(PluginsTab::from_index(index).action_key());
+                self.plugins.section_collapsed[index] = false;
+            }
             return;
         }
         if layout.search_contains(x, y) {
@@ -288,12 +304,6 @@ impl App {
             || self.plugins.trust.is_some()
             || self.plugins.inspecting.is_some()
         {
-            return;
-        }
-        if layout.section_contains(x, y) {
-            let tab = self.plugins.tab.index();
-            self.plugins.section_collapsed[tab] = !self.plugins.section_collapsed[tab];
-            self.plugins.scroll = 0;
             return;
         }
         if self.plugins.path_input {

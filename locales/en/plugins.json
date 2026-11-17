@@ -103,8 +103,5 @@
   "plugins.worker_stopped": "Plugin worker stopped unexpectedly",
   "plugins.requested_commands.header": "Commands that extensions asked for and Graphite does not have.\nColumns: requests, command id, where it was asked from.",
   "plugins.requested_commands.none": "No extension has asked for a command Graphite lacks in this session.",
-  "plugins.sidebar.title_installed": "Installed",
-  "plugins.sidebar.title_open_vsx": "Open VSX results",
-  "plugins.sidebar.title_graphite": "GitHub repositories",
   "plugins.sidebar.title_assets": "Release assets"
 }

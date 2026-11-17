@@ -937,7 +937,7 @@ impl App {
         if !self.plugins.visible || self.zen_mode {
             return;
         }
-        let layout = PluginsLayout::new(height, line_height, self.sidebar_layout_width_px());
+        let layout = self.plugin_layout(height, line_height);
         let x = layout.sidebar_x;
         let width = layout.width;
         renderer.set_clip(Some([x, 0.0, x + width, height - line_height]));
@@ -954,11 +954,23 @@ impl App {
             layout.title_y,
             rgb(Theme::color(Theme::DIM, 0x616161)),
         );
-        self.draw_plugin_tabs(renderer, &layout, line_height);
         self.draw_plugin_search(renderer, &layout, line_height, cell_width);
 
-        let (section, count, empty_key) = self.plugin_section();
-        self.draw_plugin_section_bar(renderer, &layout, line_height, cell_width, &section, count);
+        for tab in PluginsTab::ALL {
+            if layout.bar_visible(tab.index()) {
+                let (title, count) = self.plugin_bar_info(tab);
+                self.draw_plugin_section_bar(
+                    renderer,
+                    &layout,
+                    line_height,
+                    cell_width,
+                    tab.index(),
+                    &title,
+                    count,
+                );
+            }
+        }
+        let empty_key = self.plugin_empty_key();
         if !self.plugins.message.is_empty() {
             let color = if self.plugins.worker.is_some() {
                 Theme::color(Theme::DIM, 0x616161)
@@ -983,50 +995,6 @@ impl App {
         }
         self.draw_plugin_footer(renderer, &layout, line_height, cell_width);
         renderer.set_clip(None);
-    }
-
-    fn draw_plugin_tabs(&self, renderer: &mut Renderer, layout: &PluginsLayout, line_height: f32) {
-        for tab in [
-            PluginsTab::Installed,
-            PluginsTab::OpenVsx,
-            PluginsTab::Graphite,
-        ]
-        .into_iter()
-        {
-            let (x, tab_width) = layout.tab_bounds(tab);
-            let label = match tab {
-                PluginsTab::Installed => self.t("plugins.sidebar.installed"),
-                PluginsTab::OpenVsx => self.t("plugins.sidebar.open_vsx"),
-                PluginsTab::Graphite => self.t("plugins.sidebar.graphite"),
-            };
-            let color = if tab == self.plugins.tab {
-                Theme::color(Theme::TEXT, 0x1e1e1e)
-            } else {
-                Theme::color(Theme::DIM, 0x616161)
-            };
-            renderer.draw_text(
-                label,
-                x + PAD,
-                layout.tabs_y + (layout.tab_height - line_height) * 0.5,
-                rgb(color),
-            );
-            if tab == self.plugins.tab {
-                renderer.draw_rect(
-                    x + PAD,
-                    layout.tabs_y + layout.tab_height - 2.0,
-                    tab_width - PAD * 2.0,
-                    2.0,
-                    rgb(Theme::color(Theme::STATUS, 0x005a9e)),
-                );
-            }
-        }
-        renderer.draw_rect(
-            layout.sidebar_x,
-            layout.tabs_y + layout.tab_height,
-            layout.width,
-            1.0,
-            rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
-        );
     }
 
     fn draw_plugin_search(
@@ -1092,54 +1060,64 @@ impl App {
         );
     }
 
-    /// Title (without the count), count and empty-list text of the current tab's list.
-    fn plugin_section(&self) -> (String, usize, &'static str) {
-        match self.plugins.tab {
+    /// Title and item count shown on the bar of a list.
+    fn plugin_bar_info(&self, tab: PluginsTab) -> (String, usize) {
+        match tab {
             PluginsTab::Installed => (
-                self.t("plugins.sidebar.title_installed").to_owned(),
+                self.t("plugins.sidebar.installed").to_owned(),
                 self.plugins.installed.len(),
-                "plugins.sidebar.empty_installed",
             ),
             PluginsTab::OpenVsx => (
-                self.t("plugins.sidebar.title_open_vsx").to_owned(),
+                self.t("plugins.sidebar.open_vsx").to_owned(),
                 self.plugins.open_vsx.len(),
-                "plugins.sidebar.empty_open_vsx",
             ),
-            PluginsTab::Graphite => {
-                if let Some((_, assets)) = &self.plugins.graphite_assets {
-                    (
-                        self.t("plugins.sidebar.title_assets").to_owned(),
-                        assets.len(),
-                        "plugins.sidebar.empty_assets",
-                    )
-                } else {
-                    (
-                        self.t("plugins.sidebar.title_graphite").to_owned(),
-                        self.plugins.graphite.len(),
-                        "plugins.sidebar.empty_graphite",
-                    )
-                }
-            }
+            PluginsTab::Graphite => match &self.plugins.graphite_assets {
+                Some((_, assets)) => (
+                    self.t("plugins.sidebar.title_assets").to_owned(),
+                    assets.len(),
+                ),
+                None => (
+                    self.t("plugins.sidebar.graphite").to_owned(),
+                    self.plugins.graphite.len(),
+                ),
+            },
         }
     }
 
-    /// The bar above the list: chevron, title and a badge with the count, between two lines.
+    /// Text shown when the open list has no items.
+    fn plugin_empty_key(&self) -> &'static str {
+        match self.plugins.tab {
+            PluginsTab::Installed => "plugins.sidebar.empty_installed",
+            PluginsTab::OpenVsx => "plugins.sidebar.empty_open_vsx",
+            PluginsTab::Graphite if self.plugins.graphite_assets.is_some() => {
+                "plugins.sidebar.empty_assets"
+            }
+            PluginsTab::Graphite => "plugins.sidebar.empty_graphite",
+        }
+    }
+
+    /// One bar of the column: chevron, title and a badge with the count, between two lines.
     fn draw_plugin_section_bar(
         &self,
         renderer: &mut Renderer,
         layout: &PluginsLayout,
         line_height: f32,
         cell_width: f32,
+        index: usize,
         title: &str,
         count: usize,
     ) {
         let (x, y, width, height) = (
             layout.sidebar_x,
-            layout.section_y,
+            layout.bar_y(index),
             layout.width,
-            layout.section_height,
+            layout.bar_height,
         );
-        let hovered = layout.section_contains(self.mouse.x as f32, self.mouse.y as f32);
+        let window_width = renderer.size().0;
+        let mouse_x = self.sidebar_local_x(self.mouse.x as f32, window_width);
+        let mouse_y = self.sidebar_local_y(self.mouse.y as f32);
+        let hovered = layout.bar_at(mouse_x, mouse_y) == Some(index);
+        let open = index == self.plugins.tab.index() && !self.plugin_section_collapsed();
         let bar = if hovered {
             Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
         } else {
@@ -1151,13 +1129,12 @@ impl App {
         renderer.draw_rect(x, y, width, 1.0, line);
         renderer.draw_rect(x, y + height - 1.0, width, 1.0, line);
 
-        let collapsed = self.plugin_section_collapsed();
         let chevron_size = (line_height * 0.8).round();
         renderer.draw_icon(
-            if collapsed {
-                crate::file_icons::CHEVRON_RIGHT
-            } else {
+            if open {
                 crate::file_icons::CHEVRON_DOWN
+            } else {
+                crate::file_icons::CHEVRON_RIGHT
             },
             x + PAD * 0.5,
             y + (height - chevron_size) * 0.5,

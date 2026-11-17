@@ -74,6 +74,11 @@ visibilidade de contribuições de plugins. Execute `cargo test -p graphite-app
 --bin graphite activity_bar` e `cargo test --workspace`. A verificação visual
 nativa deve incluir Windows e Linux quando disponíveis.
 
-## Barra lateral de plugins: barra da lista
+## Barra lateral de plugins: uma coluna de listas
 
-Abaixo da caixa de pesquisa, cada aba (Instalados, Open VSX, Graphite) tem uma barra com uma seta, o título da lista e um selo com o número de itens, entre duas linhas finas. Clique na barra para recolher ou expandir a lista; cada aba guarda o seu próprio estado. Uma linha fina também separa um cartão de plugin do próximo, para os plugins ficarem mais fáceis de distinguir.
+A barra lateral de Plugins não tem botões de aba. Abaixo da caixa de pesquisa há uma barra para cada lista (**Instalados**, **Open VSX**, **Graphite**), cada uma com uma seta, o título e um selo com o número de itens, entre linhas finas. A lista aberta mostra os cartões dos plugins logo abaixo da sua barra, e as outras barras ficam empilhadas abaixo dos cartões.
+
+- Clique numa barra fechada para abrir aquela lista (os atalhos de tecla `i`, `o` e `g` fazem o mesmo).
+- Clique na barra aberta para recolher os cartões; as outras barras sobem para baixo dela. Cada lista lembra se está recolhida.
+- Uma linha fina separa um cartão de plugin do próximo.
+- Enquanto os detalhes de um plugin ou o aviso de confiança aparecem, as barras abaixo da aberta ficam ocultas para dar mais espaço aos detalhes.

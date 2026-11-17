@@ -103,8 +103,5 @@
   "plugins.worker_stopped": "O worker de plugins parou inesperadamente",
   "plugins.requested_commands.header": "Comandos que extensões pediram e o Graphite não tem.\nColunas: pedidos, id do comando, de onde foi pedido.",
   "plugins.requested_commands.none": "Nenhuma extensão pediu, nesta sessão, um comando que o Graphite não tem.",
-  "plugins.sidebar.title_installed": "Instalados",
-  "plugins.sidebar.title_open_vsx": "Resultados do Open VSX",
-  "plugins.sidebar.title_graphite": "Repositórios GitHub",
   "plugins.sidebar.title_assets": "Ativos da versão"
 }
