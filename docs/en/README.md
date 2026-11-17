@@ -37,6 +37,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Localization](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
+  - [Known limitations](roadmap/known-limitations.md)
 - **Contributing**
   - [Draft releases and platform packages](contributing/releases.md)
   - [Creating and installing plugins](contributing/plugins.md)
@@ -47,4 +48,5 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Local verification results](contributing/verification-results.md)
 - **Security**
   - [Security policy](security/policy.md)
+  - [Release audit](security/release-audit.md)
 

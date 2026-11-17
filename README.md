@@ -2,11 +2,32 @@
 
 A native **Rust** code editor built for speed and low memory usage, with long-term support for **existing `.vsix` extensions**.
 
-> Status: **v0.3 implementation in place** — workspace tests and the Windows build pass; full Windows/Linux UI verification has not been completed.
+> Status: **v0.1.0**, the first release, for Windows and Linux (x86-64). Read the [known limitations](docs/en/roadmap/known-limitations.md) before relying on it for important work.
 
 ## Why
 
 Electron-based editors run a full Chromium + Node.js per window. Graphite renders directly on the GPU with `wgpu` and `cosmic-text`, keeping the editor fast and light.
+
+## What it does
+
+- **Editor:** multiple cursors, folding, bracket and indentation tools, side-by-side and inline diff, a three-way merge editor, notebooks (`.ipynb`) with local kernels, and a built-in terminal.
+- **Language support:** syntax highlighting, TextMate grammars from extensions and a generic Language Server Protocol client.
+- **Source control:** Git status, staging, commits, a history graph, branches, stashes and GitHub sign-in, with a progress indicator and a change count.
+- **Extensions:** native Graphite plugins and VS Code `.vsix` extensions from Open VSX, run in a separate host process.
+- **Chat and agents:** chat panels backed by the model provider you configure.
+- **Settings sync:** keep settings, keybindings, snippets and profiles in sync through a private GitHub Gist or a private repository.
+- **Interface:** complete English and Portuguese (Brazil), light, dark and high contrast themes, and keyboard-first navigation.
+
+## Install
+
+Download a package from the [Releases](https://github.com/BadTonho/Graphite/releases) page and check it against its `.sha256` file.
+
+| System | Packages |
+|---|---|
+| Windows (x86-64) | Setup `.exe` (per user, no administrator rights) or portable `.zip` |
+| Linux (x86-64) | `.deb`, `.rpm`, Arch `.pkg.tar.zst`, `.AppImage` or portable `.tar.gz` |
+
+The Windows installer is not code-signed yet, so Windows SmartScreen may warn when you run it. Choose **More info** and **Run anyway** if you trust the download. Windows needs up-to-date graphics drivers, and WebView2 for extension webviews.
 
 ## Quick start
 
@@ -25,7 +46,7 @@ The Explorer, Quick Open list and editor tabs show colored file-type icons for p
 
 The activity bar on the far left switches between Explorer, Search, Source Control and Plugins while keeping the Explorer at its original width. See [Activity bar](docs/en/features/activity-bar.md) for behavior and layout details.
 
-## Controls (v0.3)
+## Controls
 
 | Action | Input |
 |---|---|
@@ -71,7 +92,11 @@ Graphite detects the operating-system language and ships complete English and Po
 | `graphite-core-api` | UI-independent command, document and service contracts |
 | `graphite-plugins` | Native plugin manifests, catalogs, VSIX packaging |
 | `graphite-extension-host` | Out-of-process extension host protocol |
+| `graphite-plugin-sdk` | SDK for writing native Graphite plugins |
+| `graphite-auth` | GitHub device-flow sign-in and the stored session |
+| `graphite-chat` | Chat providers, agent sessions and tool approval |
 | `graphite-i18n` | Embedded translation catalogs and runtime lookup |
+| `graphite-xtask` | The repository's verification command |
 | `graphite-app` | `winit` window, file tree, editor UI |
 
 The app also includes a generic Language Server Protocol client and an ANSI terminal backed by a cross-platform PTY.
@@ -83,5 +108,5 @@ The app also includes a generic Language Server Protocol client and an ANSI term
 
 ## License
 
-MIT
+Graphite is released under the [MIT license](LICENSE). The distributions also carry `THIRD_PARTY_NOTICES.txt`, with the license of every library they include, and the notices of the bundled Code OSS and Node.js runtimes and of the icon font.
 

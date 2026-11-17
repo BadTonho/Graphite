@@ -37,6 +37,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Localização](features/localization.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
+  - [Limitações conhecidas](roadmap/known-limitations.md)
 - **Contribuição**
   - [Releases em rascunho e pacotes por plataforma](contributing/releases.md)
   - [Criando e instalando plugins](contributing/plugins.md)
@@ -47,4 +48,5 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Resultados de verificação local](contributing/verification-results.md)
 - **Segurança**
   - [Política de segurança](security/policy.md)
+  - [Auditoria de lançamento](security/release-audit.md)
 

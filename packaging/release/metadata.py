@@ -28,6 +28,22 @@ def release_version(tag, root=ROOT):
     return version
 
 
+def known_limitations(root=ROOT):
+    """The known-limitations pages in both languages, shaped as release-note sections."""
+    sections = []
+    for heading, relative in (("Known limitations", "docs/en/roadmap/known-limitations.md"),
+                              ("Limitações conhecidas", "docs/pt-BR/roadmap/known-limitations.md")):
+        path = root / relative
+        text = path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+        if not text:
+            raise ValueError(f"Missing nonempty known-limitations page: {relative}")
+        body = "\n".join(text.splitlines()[1:]).strip().replace("\n## ", "\n### ")
+        if body.startswith("## "):
+            body = "#" + body
+        sections.append(f"## {heading}\n\n{body}")
+    return sections
+
+
 def release_notes(tag, root=ROOT):
     version = release_version(tag, root)
     sections = [f"# Graphite {tag}",
@@ -35,6 +51,7 @@ def release_notes(tag, root=ROOT):
                 "Review all assets, checksums, signatures and platform checks before publishing."]
     if version == "0.1.0":
         sections.append("Initial release / Lançamento inicial.")
+        sections.extend(known_limitations(root))
     else:
         for language in ("en", "pt-BR"):
             sections.append((root / "changelog" / version / f"{language}.md").read_text(encoding="utf-8"))

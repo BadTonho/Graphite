@@ -36,6 +36,9 @@ def unpack(archive, destination):
             raise ValueError(f"Portable archive is missing {name}")
     if not (bundle / "code-oss/commit").is_file():
         raise ValueError("Portable archive is missing the Code OSS runtime")
+    for required in ("THIRD_PARTY_NOTICES.txt", "licenses/icon-font/NOTICE.md"):
+        if not (bundle / required).is_file():
+            raise ValueError(f"Portable archive is missing {required}")
     shutil.copy2(ROOT / "LICENSE", bundle / "LICENSE")
     return bundle
 
@@ -64,6 +67,8 @@ def linux_tree(bundle, root):
     licenses = root / "usr/share/licenses/graphite"
     licenses.mkdir(parents=True)
     shutil.copy2(ROOT / "LICENSE", licenses)
+    shutil.copy2(bundle / "THIRD_PARTY_NOTICES.txt", licenses)
+    shutil.copytree(bundle / "licenses/icon-font", licenses / "icon-font")
 
 
 def deb(root, output, version, work):
@@ -106,7 +111,7 @@ def rpm(root, output, version, work):
         "%files\n/usr/lib/graphite\n/usr/bin/graphite\n/usr/bin/graphite-code\n"
         "/usr/share/applications/graphite.desktop\n"
         "/usr/share/pixmaps/graphite.png\n"
-        "%license /usr/share/licenses/graphite/LICENSE\n", encoding="utf-8")
+        "%license /usr/share/licenses/graphite\n", encoding="utf-8")
     run(["rpmbuild", "-bb", "--define", f"_topdir {work / 'rpmbuild'}", spec])
     packages = list((work / "rpmbuild/RPMS").rglob("*.rpm"))
     if len(packages) != 1:

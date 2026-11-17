@@ -7,6 +7,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import urllib.request
@@ -110,6 +111,7 @@ def main():
             binary += ".exe" if windows else ""
             shutil.copy2(ROOT / "target/release" / binary, package)
         shutil.copy2(ROOT / "LICENSE", package / "LICENSE")
+        run([sys.executable, ROOT / "packaging/release/licenses.py", "--output-dir", package], ROOT)
         archive = shutil.make_archive(str(output / name), "zip" if windows else "gztar", work, name)
         print(archive)
 
