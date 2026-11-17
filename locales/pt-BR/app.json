@@ -777,5 +777,10 @@
   "notebook.section.nothing_to_unfold": "Não há seção recolhida aqui",
   "notebook.section.folded": "{count} célula(s) oculta(s)",
   "sticky_scroll.none": "Não há linhas fixadas na rolagem fixa",
-  "sticky_scroll.not_focused": "A rolagem fixa não está em foco; execute Focar a rolagem fixa primeiro"
+  "sticky_scroll.not_focused": "A rolagem fixa não está em foco; execute Focar a rolagem fixa primeiro",
+  "titlebar.update.available": "Atualizar {tag}",
+  "titlebar.update.downloading": "Baixando...",
+  "titlebar.update.restart": "Reiniciar ({tag})",
+  "titlebar.update.tip_available": "Baixar atualização {tag}",
+  "titlebar.update.tip_restart": "Reiniciar para aplicar atualização {tag}"
 }

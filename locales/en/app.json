@@ -777,5 +777,10 @@
   "notebook.section.nothing_to_unfold": "There is no folded section here",
   "notebook.section.folded": "{count} cell(s) hidden",
   "sticky_scroll.none": "There are no pinned sticky scroll lines",
-  "sticky_scroll.not_focused": "Sticky scroll is not focused; run Focus sticky scroll first"
+  "sticky_scroll.not_focused": "Sticky scroll is not focused; run Focus sticky scroll first",
+  "titlebar.update.available": "Update {tag}",
+  "titlebar.update.downloading": "Updating...",
+  "titlebar.update.restart": "Restart ({tag})",
+  "titlebar.update.tip_available": "Download update {tag}",
+  "titlebar.update.tip_restart": "Restart to apply update {tag}"
 }

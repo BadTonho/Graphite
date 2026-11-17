@@ -12,6 +12,7 @@ use transport::{GitHubReleasesTransport, UpdateTransport};
 #[derive(Debug, Clone)]
 pub(crate) enum UpdateUiEvent {
     CheckCompleted(Result<Option<ReleaseInfo>, String>),
+    BackgroundCheckCompleted(Result<Option<ReleaseInfo>, String>),
     DownloadCompleted {
         release: ReleaseInfo,
         result: Result<Vec<u8>, String>,
@@ -99,6 +100,51 @@ impl App {
             });
             let _ = proxy.send_event(UserEvent::Update(UpdateUiEvent::CheckCompleted(outcome)));
         });
+    }
+
+    /// Starts the background GitHub Releases poller once per process: checks shortly after
+    /// startup and then every 10 minutes without disturbing the status bar when up to date.
+    pub(crate) fn start_background_update_poller(&self) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static POLLER_STARTED: AtomicBool = AtomicBool::new(false);
+
+        let Some(proxy) = self.event_proxy.clone() else {
+            return;
+        };
+        if POLLER_STARTED
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+        let repo = self.updates.config.repo.clone();
+        let channel = self.updates.config.channel;
+        let current = self.updates.current_version.clone();
+        let _ = std::thread::Builder::new()
+            .name("graphite-update-poller".into())
+            .spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                loop {
+                    let outcome = GitHubReleasesTransport::new().and_then(|transport| {
+                        transport.fetch_latest_release(&repo, channel).map(|rel| {
+                            if rel.is_newer_than(&current) {
+                                Some(rel)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                    if proxy
+                        .send_event(UserEvent::Update(UpdateUiEvent::BackgroundCheckCompleted(
+                            outcome,
+                        )))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(600));
+                }
+            });
     }
 
     pub(crate) fn download_update_with(&mut self, transport: &dyn UpdateTransport) {
@@ -313,6 +359,30 @@ impl App {
                 self.updates.status = UpdateStatus::Error(err.clone());
                 self.status = format!("Update check failed: {err}");
             }
+            UpdateUiEvent::BackgroundCheckCompleted(Ok(Some(release))) => {
+                if !matches!(
+                    self.updates.status,
+                    UpdateStatus::Downloading { .. } | UpdateStatus::ReadyToRestart { .. }
+                ) {
+                    self.updates.latest_release = Some(release.clone());
+                    self.updates.status = UpdateStatus::Available(release);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                }
+            }
+            UpdateUiEvent::BackgroundCheckCompleted(Ok(None)) => {
+                if matches!(
+                    self.updates.status,
+                    UpdateStatus::Idle | UpdateStatus::Checking | UpdateStatus::UpToDate { .. }
+                ) {
+                    self.updates.latest_release = None;
+                    self.updates.status = UpdateStatus::UpToDate {
+                        checked_version: self.updates.current_version.clone(),
+                    };
+                }
+            }
+            UpdateUiEvent::BackgroundCheckCompleted(Err(_)) => {}
             UpdateUiEvent::DownloadCompleted { release, result } => match result {
                 Ok(bytes) => {
                     if bytes.is_empty() {
@@ -450,5 +520,38 @@ mod tests {
         app.download_update_with(&tampered);
         assert!(matches!(app.updates.status, UpdateStatus::Error(_)));
         assert!(app.status.contains("SHA-256 verification failed"));
+    }
+
+    #[test]
+    fn background_check_is_silent_on_errors_and_surfaces_available_release() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.status = "Ready".into();
+
+        app.handle_update_event(UpdateUiEvent::BackgroundCheckCompleted(Err(
+            "offline".into()
+        )));
+        assert_eq!(app.status, "Ready");
+        assert!(matches!(app.updates.status, UpdateStatus::Idle));
+
+        let release = ReleaseInfo {
+            tag_name: "v0.2.0".into(),
+            version: "0.2.0".into(),
+            prerelease: false,
+            notes: String::new(),
+            html_url: "https://github.com/BadTonho/Graphite/releases/tag/v0.2.0".into(),
+            asset: None,
+        };
+        app.handle_update_event(UpdateUiEvent::BackgroundCheckCompleted(Ok(Some(
+            release.clone(),
+        ))));
+        assert!(matches!(app.updates.status, UpdateStatus::Available(_)));
+        assert_eq!(
+            app.updates
+                .latest_release
+                .as_ref()
+                .map(|r| r.tag_name.as_str()),
+            Some("v0.2.0")
+        );
     }
 }

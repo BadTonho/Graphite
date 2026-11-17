@@ -153,6 +153,7 @@ pub(crate) struct TitlebarLayout {
         super::titlebar_layout_controls::LayoutControl,
         super::titlebar_layout_controls::Rect,
     ); 4],
+    pub(crate) update_button: Option<MenuItemRectLike>,
     command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
@@ -166,6 +167,7 @@ impl TitlebarLayout {
         char_width: f32,
         scale: f32,
         localized_widths: [f32; 8],
+        update_button_width: f32,
     ) -> Self {
         let scale = scale.max(0.5);
         let control_width = TITLEBAR_CONTROL_WIDTH * scale;
@@ -200,7 +202,19 @@ impl TitlebarLayout {
             height,
             scale,
         );
-        let right = layout_controls[0].1 .0 - 5.0 * scale;
+        let update_button = if update_button_width > 0.0 {
+            let btn_h = (22.0 * scale).min(height);
+            let btn_x = (layout_controls[0].1 .0 - update_button_width - 6.0 * scale).max(0.0);
+            Some(MenuItemRectLike {
+                x: btn_x,
+                y: (height - btn_h) * 0.5,
+                width: update_button_width,
+                height: btn_h,
+            })
+        } else {
+            None
+        };
+        let right = update_button.map_or(layout_controls[0].1 .0, |btn| btn.x) - 5.0 * scale;
         let center_x = width * 0.5;
         let max_field_width = ((right - center_x - 4.0 * scale) * 2.0).max(0.0);
         let preferred_field_width = (COMMAND_CENTER_WIDTH * scale)
@@ -283,6 +297,7 @@ impl TitlebarLayout {
             icon,
             controls,
             layout_controls,
+            update_button,
             command_center,
             menus: menu_rects,
             overflowed,
@@ -443,12 +458,16 @@ impl App {
             self.t(menu.label_key()).chars().count() as f32 * char_width
                 + MENU_HORIZONTAL_PADDING * 2.0 * scale
         });
+        let update_button_width = self.titlebar_update_button().map_or(0.0, |btn| {
+            btn.label.chars().count() as f32 * char_width + 16.0 * scale
+        });
         TitlebarLayout::new(
             width,
             self.top_menu_height(),
             char_width,
             scale,
             localized_widths,
+            update_button_width,
         )
     }
 
@@ -538,6 +557,10 @@ impl App {
             return false;
         };
         let layout = self.titlebar_layout(width, self.font_size * 0.6);
+        if layout.update_button.is_some_and(|rect| rect.contains(x, y)) {
+            self.click_titlebar_update_button();
+            return true;
+        }
         if let Some(control) =
             super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y)
         {
@@ -1812,6 +1835,100 @@ impl App {
         self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
         self.draw_layout_controls(renderer, &layout.layout_controls, layout.height);
+        self.draw_titlebar_update_button(renderer, &layout);
+    }
+
+    pub(crate) fn titlebar_update_button(&self) -> Option<TitlebarUpdateButton> {
+        use crate::app::updates::state::UpdateStatus;
+        match &self.updates.status {
+            UpdateStatus::Available(release) => Some(TitlebarUpdateButton {
+                label: self.tf("titlebar.update.available", &[("tag", &release.tag_name)]),
+                tooltip: self.tf(
+                    "titlebar.update.tip_available",
+                    &[("tag", &release.tag_name)],
+                ),
+                bg_hex: 0x007acc,
+                hover_hex: 0x1a8ad4,
+                action: TitlebarUpdateAction::Download,
+            }),
+            UpdateStatus::Downloading { .. } => Some(TitlebarUpdateButton {
+                label: self.t("titlebar.update.downloading").to_owned(),
+                tooltip: self.t("titlebar.update.downloading").to_owned(),
+                bg_hex: 0x3a3d41,
+                hover_hex: 0x3a3d41,
+                action: TitlebarUpdateAction::None,
+            }),
+            UpdateStatus::ReadyToRestart { release, .. } => Some(TitlebarUpdateButton {
+                label: self.tf("titlebar.update.restart", &[("tag", &release.tag_name)]),
+                tooltip: self.tf("titlebar.update.tip_restart", &[("tag", &release.tag_name)]),
+                bg_hex: 0x2f855a,
+                hover_hex: 0x38a169,
+                action: TitlebarUpdateAction::Restart,
+            }),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn click_titlebar_update_button(&mut self) {
+        let Some(button) = self.titlebar_update_button() else {
+            return;
+        };
+        match button.action {
+            TitlebarUpdateAction::Download => self.download_update(),
+            TitlebarUpdateAction::Restart => self.restart_to_update(),
+            TitlebarUpdateAction::None => {}
+        }
+    }
+
+    fn draw_titlebar_update_button(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        let Some(rect) = layout.update_button else {
+            return;
+        };
+        let Some(button) = self.titlebar_update_button() else {
+            return;
+        };
+        let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+        let hovered = rect.contains(mx, my);
+        let bg = rgb(if hovered {
+            button.hover_hex
+        } else {
+            button.bg_hex
+        });
+        renderer.draw_rect(rect.x, rect.y, rect.width, rect.height, bg);
+        let cw = renderer.char_width().max(4.0);
+        let lh = renderer.line_height();
+        let text_w = button.label.chars().count() as f32 * cw;
+        let text_x = rect.x + ((rect.width - text_w) * 0.5).max(4.0);
+        let text_y = rect.y + ((rect.height - lh) * 0.5).max(0.0);
+        renderer.draw_text(&button.label, text_x, text_y, rgb(0xffffff));
+
+        if hovered {
+            let win_w = renderer.size().0;
+            let tip_w = button.tooltip.chars().count() as f32 * cw + 16.0;
+            let tip_h = lh + 10.0;
+            let tip_x = rect.x.clamp(4.0, (win_w - tip_w - 4.0).max(4.0));
+            let tip_y = layout.height + 4.0;
+            renderer.draw_rect(
+                tip_x,
+                tip_y,
+                tip_w,
+                tip_h,
+                rgb(Theme::color(Theme::DIM, 0x454545)),
+            );
+            renderer.draw_rect(
+                tip_x + 1.0,
+                tip_y + 1.0,
+                tip_w - 2.0,
+                tip_h - 2.0,
+                rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
+            );
+            renderer.draw_text(
+                &button.tooltip,
+                tip_x + 8.0,
+                tip_y + 5.0,
+                rgb(Theme::color(Theme::TEXT, 0xcccccc)),
+            );
+        }
     }
 
     fn draw_command_center_controls(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
@@ -2979,6 +3096,7 @@ mod tests {
             8.0 * scale,
             scale,
             [72.0, 64.0, 96.0, 56.0, 32.0, 64.0, 72.0, 56.0].map(|width| width * scale),
+            0.0,
         )
     }
 
@@ -3147,4 +3265,45 @@ mod tests {
             crate::config::ActivityBarPosition::Default
         );
     }
+
+    #[test]
+    fn titlebar_update_button_appears_only_when_update_exists_and_stays_left_of_layout_controls() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let idle = app.titlebar_layout(1280.0, 8.0);
+        assert!(idle.update_button.is_none());
+
+        app.updates.status = crate::app::updates::state::UpdateStatus::Available(
+            crate::app::updates::state::ReleaseInfo {
+                tag_name: "v0.2.0".into(),
+                version: "0.2.0".into(),
+                prerelease: false,
+                notes: String::new(),
+                html_url: "https://github.com/BadTonho/Graphite/releases/tag/v0.2.0".into(),
+                asset: None,
+            },
+        );
+        let with_update = app.titlebar_layout(1280.0, 8.0);
+        let btn = with_update.update_button.expect("update button visible");
+        assert!(btn.x + btn.width <= with_update.layout_controls[0].1 .0);
+        assert!(
+            with_update.command_center.field.x + with_update.command_center.field.width <= btn.x
+        );
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TitlebarUpdateAction {
+    Download,
+    Restart,
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TitlebarUpdateButton {
+    pub label: String,
+    pub tooltip: String,
+    pub bg_hex: u32,
+    pub hover_hex: u32,
+    pub action: TitlebarUpdateAction,
 }
