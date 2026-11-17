@@ -519,8 +519,9 @@ impl App {
             return None;
         }
         let sidebar_lh = lh;
+        let local_y = self.sidebar_local_y(my);
         let first_row_y = sidebar_lh * 1.5;
-        (my >= first_row_y).then(|| ((my - first_row_y) / sidebar_lh) as usize)
+        (local_y >= first_row_y).then(|| ((local_y - first_row_y) / sidebar_lh) as usize)
     }
 
     /// Ends a drag that started on an explorer row. Dropping on a folder (or on a file, which

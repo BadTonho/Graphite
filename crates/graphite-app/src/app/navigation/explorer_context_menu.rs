@@ -162,6 +162,7 @@ impl App {
     }
 
     fn explorer_target_at(&self, y: f32, lh: f32) -> PathBuf {
+        let y = self.sidebar_local_y(y);
         let first_row_y = lh * 1.5;
         if y >= first_row_y {
             let row = ((y - first_row_y) / lh) as usize + self.explorer_scroll;
@@ -696,6 +697,24 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.tree.refresh();
         (dir, app)
+    }
+
+    #[test]
+    fn the_row_under_the_pointer_accounts_for_the_menu_bar_offset() {
+        let (dir, app) = temp_app();
+        let lh = 18.0;
+        let offset = app.activity_bar_vertical_offset();
+        assert!(offset > 0.0, "the explorer is drawn below the menu bar");
+        // Window y of the middle of the first row, as drawn: offset + 1.5 lines + half a line.
+        let first_row_middle = offset + lh * 1.5 + lh * 0.5;
+        let expected = app.tree.rows[0].entry.path.clone();
+        assert_eq!(app.explorer_target_at(first_row_middle, lh), expected);
+        // The header strip above the first row targets the workspace root.
+        assert_eq!(
+            app.explorer_target_at(offset + lh * 0.5, lh),
+            app.tree.root().to_path_buf()
+        );
+        drop(dir);
     }
 
     #[test]

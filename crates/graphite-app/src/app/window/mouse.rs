@@ -417,9 +417,11 @@ impl App {
                 return;
             }
             let sidebar_lh = lh;
+            // The explorer is drawn below the menu bar, so the click is read in sidebar space.
+            let local_y = self.sidebar_local_y(my);
             let first_row_y = sidebar_lh * 1.5;
-            if my >= first_row_y {
-                let row = ((my - first_row_y) / sidebar_lh) as usize + self.explorer_scroll;
+            if local_y >= first_row_y {
+                let row = ((local_y - first_row_y) / sidebar_lh) as usize + self.explorer_scroll;
                 if row >= self.tree.rows.len() {
                     self.activate_virtual_explorer_row(row - self.tree.rows.len());
                     return;
