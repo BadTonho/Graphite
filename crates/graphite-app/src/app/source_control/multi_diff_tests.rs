@@ -2,7 +2,7 @@ use super::*;
 
 fn repo() -> (crate::test_support::TempDir, App) {
     let dir = crate::test_support::TempDir::new();
-    gix::init(dir.path()).unwrap();
+    crate::test_support::init_git_repo(dir.path());
     let translator = graphite_i18n::Translator::english();
     for (name, text) in [
         ("a.txt", "1\n2\n3\n"),

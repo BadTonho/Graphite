@@ -127,7 +127,7 @@ mod tests {
     /// `loose.txt` untracked; `photo.bin` committed and changed (binary).
     fn repo() -> (TempDir, Vec<FileStatus>) {
         let dir = TempDir::new();
-        gix::init(dir.path()).unwrap();
+        crate::test_support::init_git_repo(dir.path());
         let write = |name: &str, bytes: &[u8]| fs::write(dir.path().join(name), bytes).unwrap();
         for (name, text) in [
             ("kept.txt", "same\n"),

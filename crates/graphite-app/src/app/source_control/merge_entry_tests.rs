@@ -4,7 +4,7 @@ const MARKED: &str = "top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\nb
 
 fn conflicted_repo(text: &str) -> (crate::test_support::TempDir, App, PathBuf) {
     let dir = crate::test_support::TempDir::new();
-    gix::init(dir.path()).unwrap();
+    crate::test_support::init_git_repo(dir.path());
     let path = dir.path().join("merged.txt");
     std::fs::write(&path, text).unwrap();
     crate::scm::mark_conflicted_for_tests(dir.path(), "merged.txt", "base\n", "ours\n", "theirs\n");

@@ -135,7 +135,7 @@ fn unsaved_edits_of_the_open_file_block_completion() {
 #[test]
 fn completing_a_conflicted_file_stages_it() {
     let dir = crate::test_support::TempDir::new();
-    gix::init(dir.path()).unwrap();
+    crate::test_support::init_git_repo(dir.path());
     let path = dir.path().join("merged.txt");
     std::fs::write(&path, TWO).unwrap();
     crate::scm::mark_conflicted_for_tests(dir.path(), "merged.txt", "base\n", "ours\n", "theirs\n");

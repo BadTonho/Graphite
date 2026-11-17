@@ -999,7 +999,7 @@ mod tests {
 
     fn repo() -> (TempDir, PathBuf) {
         let dir = TempDir::new();
-        gix::init(dir.path()).unwrap();
+        crate::test_support::init_git_repo(dir.path());
         let file = dir.path().join("note.txt");
         fs::write(&file, "one\n").unwrap();
         (dir, file)

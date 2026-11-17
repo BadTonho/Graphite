@@ -25,6 +25,20 @@ impl TempDir {
     }
 }
 
+/// Initialises a git repository whose `.git/config` carries a test author identity.
+/// Commits need an identity, and CI runners (unlike developer machines) have no global one.
+pub fn init_git_repo(path: &Path) {
+    use std::io::Write;
+    gix::init(path).unwrap();
+    let mut config = std::fs::OpenOptions::new()
+        .append(true)
+        .open(path.join(".git").join("config"))
+        .unwrap();
+    config
+        .write_all(b"[user]\n\tname = Graphite Test\n\temail = test@example.invalid\n")
+        .unwrap();
+}
+
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
