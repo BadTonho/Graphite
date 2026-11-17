@@ -15,8 +15,8 @@ pub(crate) const TRUSTED_UPDATE_KEYS: &[[u8; 32]] = &[UPDATE_SIGNING_KEY_2026];
 
 /// Primary release-signing public key (Ed25519, raw 32 bytes).
 const UPDATE_SIGNING_KEY_2026: [u8; 32] = [
-    20, 175, 101, 49, 171, 148, 58, 148, 159, 191, 12, 147, 109, 104, 201, 16, 202, 233, 30, 221,
-    24, 188, 94, 246, 91, 122, 214, 125, 63, 231, 164, 125,
+    167, 28, 132, 52, 186, 149, 151, 158, 22, 243, 238, 71, 21, 129, 173, 136, 140, 189, 243, 179,
+    51, 36, 117, 35, 64, 19, 128, 28, 74, 108, 195, 169,
 ];
 
 const MESSAGE_DOMAIN: &str = "graphite-update-v1";
@@ -91,6 +91,30 @@ mod tests {
     use super::*;
 
     const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn the_shipped_trust_list_has_real_distinct_keys() {
+        assert!(
+            !TRUSTED_UPDATE_KEYS.is_empty(),
+            "releases could never be verified"
+        );
+        for (index, key) in TRUSTED_UPDATE_KEYS.iter().enumerate() {
+            assert_ne!(key, &[0u8; 32], "an all-zero key is a placeholder");
+            assert!(
+                !TRUSTED_UPDATE_KEYS[..index].contains(key),
+                "the same key is listed twice"
+            );
+        }
+    }
+
+    #[test]
+    fn a_signature_by_an_unlisted_key_is_not_accepted_with_the_shipped_list() {
+        let signer = TestSigner::new();
+        assert!(
+            !TRUSTED_UPDATE_KEYS.contains(&signer.public_key()),
+            "a throwaway test key must never be trusted by the shipped list"
+        );
+    }
 
     #[test]
     fn accepts_valid_signature_from_trusted_key() {
