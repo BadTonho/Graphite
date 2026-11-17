@@ -73,3 +73,7 @@ Os testes cobrem modos de layout, visibilidade nativa, ações do menu e
 visibilidade de contribuições de plugins. Execute `cargo test -p graphite-app
 --bin graphite activity_bar` e `cargo test --workspace`. A verificação visual
 nativa deve incluir Windows e Linux quando disponíveis.
+
+## Barra lateral de plugins: barra da lista
+
+Abaixo da caixa de pesquisa, cada aba (Instalados, Open VSX, Graphite) tem uma barra com uma seta, o título da lista e um selo com o número de itens, entre duas linhas finas. Clique na barra para recolher ou expandir a lista; cada aba guarda o seu próprio estado. Uma linha fina também separa um cartão de plugin do próximo, para os plugins ficarem mais fáceis de distinguir.

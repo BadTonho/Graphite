@@ -39,6 +39,10 @@ impl App {
         }
     }
 
+    pub(super) fn plugin_section_collapsed(&self) -> bool {
+        self.plugins.section_collapsed[self.plugins.tab.index()]
+    }
+
     pub(super) fn plugin_visible_rows(&self) -> usize {
         self.gpu
             .as_ref()
@@ -286,11 +290,20 @@ impl App {
         {
             return;
         }
+        if layout.section_contains(x, y) {
+            let tab = self.plugins.tab.index();
+            self.plugins.section_collapsed[tab] = !self.plugins.section_collapsed[tab];
+            self.plugins.scroll = 0;
+            return;
+        }
         if self.plugins.path_input {
             self.plugins.query.clear();
             self.plugins.path_input = false;
         }
         self.plugins.editing = false;
+        if self.plugin_section_collapsed() {
+            return;
+        }
         let count = self.plugin_row_count();
         let scroll = self
             .plugins

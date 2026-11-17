@@ -48,6 +48,8 @@ pub(crate) struct Plugins {
     inspecting: Option<Metadata>,
     trust: Option<String>,
     tab: PluginsTab,
+    /// Whether the list of each tab is folded under its header bar.
+    section_collapsed: [bool; 3],
     query: String,
     path_input: bool,
     editing: bool,

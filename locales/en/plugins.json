@@ -91,10 +91,6 @@
   "plugins.sidebar.search_open_vsx": "Search Open VSX",
   "plugins.sidebar.search_graphite": "Search Graphite plugins on GitHub",
   "plugins.sidebar.search_path": "Package path (Enter)",
-  "plugins.sidebar.section_assets": "Release assets ({count})",
-  "plugins.sidebar.section_graphite": "GitHub repositories ({count})",
-  "plugins.sidebar.section_open_vsx": "Open VSX results ({count})",
-  "plugins.sidebar.section_installed": "Installed ({count})",
   "plugins.sidebar.size_kb": "{size} KB",
   "plugins.sidebar.size_mb": "{size} MB",
   "plugins.sidebar.stars": "{stars} stars",
@@ -106,5 +102,9 @@
   "plugins.window_title": "Graphite — Plugins",
   "plugins.worker_stopped": "Plugin worker stopped unexpectedly",
   "plugins.requested_commands.header": "Commands that extensions asked for and Graphite does not have.\nColumns: requests, command id, where it was asked from.",
-  "plugins.requested_commands.none": "No extension has asked for a command Graphite lacks in this session."
+  "plugins.requested_commands.none": "No extension has asked for a command Graphite lacks in this session.",
+  "plugins.sidebar.title_installed": "Installed",
+  "plugins.sidebar.title_open_vsx": "Open VSX results",
+  "plugins.sidebar.title_graphite": "GitHub repositories",
+  "plugins.sidebar.title_assets": "Release assets"
 }

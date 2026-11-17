@@ -71,3 +71,7 @@ Automated coverage checks layout modes, built-in visibility, menu actions and
 plugin contribution visibility. Run `cargo test -p graphite-app --bin graphite
 activity_bar` and `cargo test --workspace`. Native visual checks should include
 Windows and Linux sessions where available.
+
+## Plugins sidebar: list bar
+
+Under the search box, each tab (Installed, Open VSX, Graphite) has a bar with a chevron, the title of the list and a badge with the number of items, set between two thin lines. Click the bar to fold or unfold the list; each tab remembers its own state. A thin line also separates one plugin card from the next, so the plugins are easier to tell apart.

@@ -1972,3 +1972,16 @@ fn main() {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
+
+#[test]
+fn each_tab_remembers_whether_its_list_is_folded() {
+    let dir = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    assert!(!app.plugin_section_collapsed());
+    app.plugins.section_collapsed[PluginsTab::Installed.index()] = true;
+    assert!(app.plugin_section_collapsed());
+    app.plugins.tab = PluginsTab::OpenVsx;
+    assert!(!app.plugin_section_collapsed());
+    app.plugins.tab = PluginsTab::Installed;
+    assert!(app.plugin_section_collapsed());
+}

@@ -12,6 +12,16 @@ pub(super) enum PluginsTab {
     Graphite,
 }
 
+impl PluginsTab {
+    pub(super) fn index(self) -> usize {
+        match self {
+            Self::Installed => 0,
+            Self::OpenVsx => 1,
+            Self::Graphite => 2,
+        }
+    }
+}
+
 impl Default for PluginsTab {
     fn default() -> Self {
         Self::Installed
@@ -27,6 +37,7 @@ pub(super) struct PluginsLayout {
     pub(super) search_y: f32,
     pub(super) search_height: f32,
     pub(super) section_y: f32,
+    pub(super) section_height: f32,
     pub(super) message_y: f32,
     pub(super) list_y: f32,
     pub(super) list_bottom: f32,
@@ -44,7 +55,8 @@ impl PluginsLayout {
         let search_y = tabs_y + tab_height + line_height * 0.35;
         let search_height = line_height * 1.6;
         let section_y = search_y + search_height + line_height * 0.5;
-        let message_y = section_y + line_height * 1.15;
+        let section_height = line_height * 1.6;
+        let message_y = section_y + section_height + line_height * 0.15;
         let list_y = message_y + line_height * 1.15;
         let content_bottom = (height - line_height).max(0.0);
         let footer_y = (content_bottom - line_height * 5.4).max(list_y + line_height * 2.0);
@@ -58,6 +70,7 @@ impl PluginsLayout {
             search_y,
             search_height,
             section_y,
+            section_height,
             message_y,
             list_y,
             list_bottom,
@@ -107,6 +120,14 @@ impl PluginsLayout {
 
     fn open_vsx_tab_width(&self) -> f32 {
         self.width * 0.31
+    }
+
+    /// The header bar of the list (chevron, title and count).
+    pub(super) fn section_contains(&self, x: f32, y: f32) -> bool {
+        x >= self.sidebar_x
+            && x < self.sidebar_x + self.width
+            && y >= self.section_y
+            && y < self.section_y + self.section_height
     }
 
     pub(super) fn search_contains(&self, x: f32, y: f32) -> bool {
@@ -186,5 +207,29 @@ mod tests {
             layout.card_index(ACTIVITY_BAR_WIDTH + PAD, layout.list_y + 2.0, 5, 5),
             None
         );
+    }
+
+    #[test]
+    fn the_section_bar_sits_between_the_search_box_and_the_list() {
+        let layout = PluginsLayout::new(720.0, 19.0, SIDEBAR_WIDTH);
+        assert!(layout.section_y >= layout.search_y + layout.search_height);
+        assert!(layout.message_y >= layout.section_y + layout.section_height);
+        assert!(layout.list_y > layout.message_y);
+        let inside = (ACTIVITY_BAR_WIDTH + 20.0, layout.section_y + 2.0);
+        assert!(layout.section_contains(inside.0, inside.1));
+        // The bar does not swallow clicks meant for the search box or the first card.
+        assert!(!layout.section_contains(inside.0, layout.search_y + 2.0));
+        assert!(!layout.section_contains(inside.0, layout.list_y + 2.0));
+        assert!(!layout.section_contains(2.0, inside.1));
+    }
+
+    #[test]
+    fn every_tab_has_its_own_index() {
+        let indexes = [
+            PluginsTab::Installed.index(),
+            PluginsTab::OpenVsx.index(),
+            PluginsTab::Graphite.index(),
+        ];
+        assert_eq!(indexes, [0, 1, 2]);
     }
 }

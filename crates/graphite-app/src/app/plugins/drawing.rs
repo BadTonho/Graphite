@@ -957,13 +957,8 @@ impl App {
         self.draw_plugin_tabs(renderer, &layout, line_height);
         self.draw_plugin_search(renderer, &layout, line_height, cell_width);
 
-        let (section, empty_key) = self.plugin_section();
-        renderer.draw_text(
-            &section,
-            x + PAD,
-            layout.section_y,
-            rgb(Theme::color(Theme::DIM, 0x616161)),
-        );
+        let (section, count, empty_key) = self.plugin_section();
+        self.draw_plugin_section_bar(renderer, &layout, line_height, cell_width, &section, count);
         if !self.plugins.message.is_empty() {
             let color = if self.plugins.worker.is_some() {
                 Theme::color(Theme::DIM, 0x616161)
@@ -1097,42 +1092,106 @@ impl App {
         );
     }
 
-    fn plugin_section(&self) -> (String, &'static str) {
+    /// Title (without the count), count and empty-list text of the current tab's list.
+    fn plugin_section(&self) -> (String, usize, &'static str) {
         match self.plugins.tab {
             PluginsTab::Installed => (
-                self.tf(
-                    "plugins.sidebar.section_installed",
-                    &[("count", &self.plugins.installed.len())],
-                ),
+                self.t("plugins.sidebar.title_installed").to_owned(),
+                self.plugins.installed.len(),
                 "plugins.sidebar.empty_installed",
             ),
             PluginsTab::OpenVsx => (
-                self.tf(
-                    "plugins.sidebar.section_open_vsx",
-                    &[("count", &self.plugins.open_vsx.len())],
-                ),
+                self.t("plugins.sidebar.title_open_vsx").to_owned(),
+                self.plugins.open_vsx.len(),
                 "plugins.sidebar.empty_open_vsx",
             ),
             PluginsTab::Graphite => {
                 if let Some((_, assets)) = &self.plugins.graphite_assets {
                     (
-                        self.tf(
-                            "plugins.sidebar.section_assets",
-                            &[("count", &assets.len())],
-                        ),
+                        self.t("plugins.sidebar.title_assets").to_owned(),
+                        assets.len(),
                         "plugins.sidebar.empty_assets",
                     )
                 } else {
                     (
-                        self.tf(
-                            "plugins.sidebar.section_graphite",
-                            &[("count", &self.plugins.graphite.len())],
-                        ),
+                        self.t("plugins.sidebar.title_graphite").to_owned(),
+                        self.plugins.graphite.len(),
                         "plugins.sidebar.empty_graphite",
                     )
                 }
             }
         }
+    }
+
+    /// The bar above the list: chevron, title and a badge with the count, between two lines.
+    fn draw_plugin_section_bar(
+        &self,
+        renderer: &mut Renderer,
+        layout: &PluginsLayout,
+        line_height: f32,
+        cell_width: f32,
+        title: &str,
+        count: usize,
+    ) {
+        let (x, y, width, height) = (
+            layout.sidebar_x,
+            layout.section_y,
+            layout.width,
+            layout.section_height,
+        );
+        let hovered = layout.section_contains(self.mouse.x as f32, self.mouse.y as f32);
+        let bar = if hovered {
+            Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
+        } else {
+            Theme::color(0x2d2d30, 0xe4e6f1)
+        };
+        let line = rgb(Theme::color(0x454545, 0xc8c8c8));
+        let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
+        renderer.draw_rect(x, y, width, height, rgb(bar));
+        renderer.draw_rect(x, y, width, 1.0, line);
+        renderer.draw_rect(x, y + height - 1.0, width, 1.0, line);
+
+        let collapsed = self.plugin_section_collapsed();
+        let chevron_size = (line_height * 0.8).round();
+        renderer.draw_icon(
+            if collapsed {
+                crate::file_icons::CHEVRON_RIGHT
+            } else {
+                crate::file_icons::CHEVRON_DOWN
+            },
+            x + PAD * 0.5,
+            y + (height - chevron_size) * 0.5,
+            chevron_size,
+            text,
+        );
+
+        let badge_text = count.to_string();
+        let badge_height = (line_height * 0.95).round();
+        let badge_width = (badge_text.chars().count() as f32 * cell_width + 10.0).max(badge_height);
+        let badge_x = x + width - PAD - badge_width;
+        let badge_y = y + (height - badge_height) * 0.5;
+        renderer.draw_rect(
+            badge_x,
+            badge_y,
+            badge_width,
+            badge_height,
+            rgb(Theme::color(Theme::STATUS, 0x007acc)),
+        );
+        renderer.draw_text(
+            &badge_text,
+            badge_x + (badge_width - badge_text.chars().count() as f32 * cell_width) * 0.5,
+            badge_y + (badge_height - line_height) * 0.5,
+            rgb(0xffffff),
+        );
+
+        let title_x = x + PAD * 0.5 + chevron_size + PAD * 0.5;
+        let room = ((badge_x - PAD * 0.5 - title_x) / cell_width).max(1.0) as usize;
+        renderer.draw_text(
+            &fit(title, room),
+            title_x,
+            y + (height - line_height) * 0.5,
+            text,
+        );
     }
 
     fn draw_plugin_cards(
@@ -1143,6 +1202,9 @@ impl App {
         cell_width: f32,
         empty_key: &'static str,
     ) {
+        if self.plugin_section_collapsed() {
+            return;
+        }
         let count = self.plugin_row_count();
         let max = ((layout.width - PAD * 2.0) / cell_width).max(1.0) as usize;
         if count == 0 {
@@ -1174,6 +1236,14 @@ impl App {
                 y,
                 index == self.plugins.index,
                 hovered == Some(index),
+            );
+            // A thin line between cards keeps neighbours apart.
+            renderer.draw_rect(
+                layout.sidebar_x + PAD,
+                y + layout.card_height - 1.0,
+                layout.width - PAD * 2.0,
+                1.0,
+                rgb(Theme::color(0x3a3a3c, 0xdcdcdc)),
             );
         }
     }
