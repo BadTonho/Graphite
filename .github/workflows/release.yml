@@ -1,0 +1,240 @@
+name: Draft release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.ref_name }}
+
+jobs:
+  draft:
+    name: Validate tag and create draft
+    if: github.event.deleted == false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release tooling
+        run: python -m unittest discover -s packaging/release/tests -v
+      - name: Validate workspace version and bilingual changelog
+        run: python packaging/release/metadata.py --tag "$RELEASE_TAG"
+      - name: Create or reuse draft only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python packaging/release/github_release.py draft --tag "$RELEASE_TAG"
+
+  desktop:
+    name: Package ${{ matrix.target }}
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows
+            runner: windows-2022
+            archive: graphite-windows-x64.zip
+          - target: ubuntu22.04
+            runner: ubuntu-22.04
+            archive: graphite-linux-x64.tar.gz
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+            target/release
+            target/phase5-inputs
+          key: release-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'packaging/portable.py') }}
+          restore-keys: release-${{ matrix.target }}-
+      - name: Install Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+      - name: Ensure Windows native module build prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/release/windows-tools.ps1
+      - name: Install Ubuntu build and AppImage dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config git curl xz-utils dpkg-dev \
+            libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev \
+            libxi-dev libxrandr-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev libfontconfig1-dev libfreetype6-dev \
+            patchelf file desktop-file-utils squashfs-tools \
+            libgirepository1.0-dev librsvg2-dev adwaita-icon-theme shared-mime-info
+      - name: Build helpers and test workspace
+        run: |
+          cargo build --workspace --locked
+          cargo test --workspace --locked --no-fail-fast -- --test-threads=4
+      - name: Build portable distribution with bundled host
+        run: python packaging/portable.py
+      - name: Build release packages
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+          PORTABLE_ARCHIVE: ${{ matrix.archive }}
+        run: |
+          python packaging/release/packages.py --tag "$RELEASE_TAG" \
+            --target "$PACKAGE_TARGET" --portable "target/portable/$PORTABLE_ARCHIVE" \
+            --output target/release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: target/release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  distributions:
+    name: Package ${{ matrix.target }}
+    needs: draft
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: debian12
+            image: debian:12
+          - target: fedora44
+            image: fedora:44
+          - target: arch
+            image: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install native build tools
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          case "$PACKAGE_TARGET" in
+            debian12)
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates build-essential git curl python3 xz-utils dpkg-dev pkg-config \
+                libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev \
+                libxrandr-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+                libfontconfig1-dev libfreetype6-dev
+              ;;
+            fedora44)
+              dnf install -y gcc gcc-c++ make git curl python3 xz pkgconf-pkg-config \
+                libxkbcommon-devel wayland-devel libX11-devel libXcursor-devel \
+                libXi-devel libXrandr-devel gtk3-devel webkit2gtk4.1-devel \
+                libsoup3-devel fontconfig-devel freetype-devel rpm-build
+              ;;
+            arch)
+              pacman -Syu --noconfirm --needed base-devel git curl python xz pkgconf \
+                libxkbcommon wayland libx11 libxcursor libxi libxrandr gtk3 \
+                webkit2gtk-4.1 libsoup3 fontconfig freetype2
+              useradd --create-home builder
+              ;;
+          esac
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+            target/release
+            target/phase5-inputs
+          key: release-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'packaging/portable.py') }}
+          restore-keys: release-${{ matrix.target }}-
+      - name: Build helpers and test workspace
+        run: |
+          cargo build --workspace --locked
+          cargo test --workspace --locked --no-fail-fast -- --test-threads=4
+      - name: Build portable distribution with bundled host
+        run: python3 packaging/portable.py
+      - name: Build native package
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          python3 packaging/release/packages.py --tag "$RELEASE_TAG" \
+            --target "$PACKAGE_TARGET" --portable target/portable/graphite-linux-x64.tar.gz \
+            --output target/release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: target/release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  attach:
+    name: Attach packages to draft
+    needs: [draft, desktop, distributions]
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+            target/release
+            target/phase5-inputs
+          key: release-windows-${{ hashFiles('Cargo.lock', 'packaging/portable.py') }}
+          restore-keys: release-windows-
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: target/release-assets
+          merge-multiple: true
+      - name: Check complete asset set, hash and optionally sign
+        env:
+          GRAPHITE_UPDATE_SIGNING_KEY: ${{ secrets.GRAPHITE_UPDATE_SIGNING_KEY }}
+        run: python packaging/release/assets.py --tag "$env:RELEASE_TAG" --assets target/release-assets
+      - name: Upload only while release remains a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python packaging/release/github_release.py upload --tag "$env:RELEASE_TAG" --assets target/release-assets

@@ -1,5 +1,7 @@
 # Application Updates and Redacted Issue Reporter
 
+The [draft release workflow](../contributing/releases.md) builds native installers and dedicated update ZIPs. Asset selection prefers `graphite-update-*` ZIPs and excludes distribution packages, tarballs, AppImages and setup executables because the in-app installer replaces only the main executable.
+
 Graphite includes an application update manager backed by GitHub Releases and a diagnostic Issue Reporter that strips credentials before generating bug reports.
 
 ## Updates (`crates/graphite-app/src/app/updates/`)

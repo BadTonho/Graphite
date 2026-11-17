@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export APPDIR
+export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export XDG_DATA_DIRS="$APPDIR/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas"
+export GTK_DATA_PREFIX="$APPDIR/usr"
+export GTK_EXE_PREFIX="$APPDIR/usr"
+export GTK_PATH="$APPDIR/usr/lib/gtk-3.0"
+export WEBKIT_EXEC_PATH="$APPDIR/usr/lib/webkit2gtk-4.1"
+export WEBKIT_INJECTED_BUNDLE_PATH="$APPDIR/usr/lib/webkit2gtk-4.1/injected-bundle"
+# Loader cache paths must follow the actual AppImage mount/extraction directory.
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/Graphite/appimage/$(printf '%s' "$APPDIR" | cksum | cut -d' ' -f1)"
+mkdir -p "$cache"
+for entry in "gdk-pixbuf-2.0/2.10.0/loaders.cache" "gtk-3.0/3.0.0/immodules.cache"; do
+  if [ -f "$APPDIR/usr/lib/$entry" ]; then
+    name="$(basename "$entry")"
+    sed "s|/usr/lib/x86_64-linux-gnu|$APPDIR/usr/lib|g" "$APPDIR/usr/lib/$entry" > "$cache/$name"
+  fi
+done
+if [ -f "$cache/loaders.cache" ]; then export GDK_PIXBUF_MODULE_FILE="$cache/loaders.cache"; fi
+if [ -f "$cache/immodules.cache" ]; then export GTK_IM_MODULE_FILE="$cache/immodules.cache"; fi
+exec "$APPDIR/usr/bin/graphite" "$@"

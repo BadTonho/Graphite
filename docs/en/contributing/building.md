@@ -42,6 +42,8 @@ See [Regression testing](testing.md) for the coverage matrix, targeted test comm
 
 ## Portable packages and Code OSS tests
 
+For tag-triggered draft releases and Windows/Debian/Ubuntu/Fedora/Arch/AppImage packages, see [releases](releases.md).
+
 On Windows or Linux x86-64, run `python packaging/portable.py` from the repository root with Python 3.11+, the Rust toolchain and a native C++ toolchain. On Windows, install Visual Studio Build Tools with Desktop development with C++, the Windows SDK and the matching Spectre-mitigated MSVC libraries. On Linux, install a C++ compiler and Make. The script verifies pinned source and Node archives, installs locked upstream dependencies, compiles the host and writes the platform archive to `target/portable/`. The Cargo build by itself requires neither Node nor the Code OSS downloads.
 
 Extract the archive and run Graphite from the extracted directory. Keep the adjacent `code-oss` directory in place. To run the local VSIX integration test, set `GRAPHITE_TEST_CODE_OSS` to that directory and run `cargo test -p graphite-app official_host_runs_local_vsix_services_and_invalidates_sessions -- --ignored`. The separate `open_vsx_sort_command_edits_and_undoes` test also requires `GRAPHITE_TEST_OPEN_VSX_SAMPLE`, pointing to the pinned VSIX recorded in the [v0.5 validation](../features/v0.5-extensions-automation.md). The tests use local files by default. Set `GRAPHITE_TEST_OPEN_VSX_LIVE=1` to also verify the public registry search and download against the pinned file.

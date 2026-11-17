@@ -1,5 +1,7 @@
 # Atualizações e Relator de Problemas com Redação de Segredos
 
+O [workflow de release em rascunho](../contributing/releases.md) gera instaladores nativos e ZIPs dedicados de atualização. A seleção prefere ZIPs `graphite-update-*` e exclui pacotes de distribuição, tarballs, AppImages e instaladores porque o instalador interno substitui somente o executável principal.
+
 O Graphite inclui um gerenciador de atualizações baseado em GitHub Releases e um Relator de Problemas que remove credenciais automaticamente antes de gerar rascunhos de bug reports.
 
 ## Atualizações (`crates/graphite-app/src/app/updates/`)

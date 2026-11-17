@@ -238,6 +238,20 @@ fn is_metadata_asset(lower_name: &str) -> bool {
     METADATA_SUFFIXES.iter().any(|s| lower_name.ends_with(s))
 }
 
+// The installer swaps only the main executable. Native packages, AppImages and tarballs
+// need their own installation flow and must never be mistaken for an update payload.
+fn is_installable_update(name: &str, os: &str) -> bool {
+    name.ends_with(".zip")
+        || (os == "windows"
+            && name.ends_with(".exe")
+            && !name.contains("setup")
+            && !name.contains("installer"))
+        || name.ends_with(".bin")
+        || ALL_ARCH_TOKENS
+            .iter()
+            .any(|arch| name.ends_with(&format!("-{arch}")))
+}
+
 /// Picks the package for `os`/`arch`. There is deliberately no fallback to an asset built for
 /// another platform: installing the wrong binary would break the editor.
 fn select_asset_for(payload: &GitHubReleasePayload, os: &str, arch: &str) -> Option<ReleaseAsset> {
@@ -247,7 +261,10 @@ fn select_asset_for(payload: &GitHubReleasePayload, os: &str, arch: &str) -> Opt
         .iter()
         .filter_map(|a| {
             let lower = a.name.to_ascii_lowercase();
-            if is_metadata_asset(&lower) || !lower.contains(os) {
+            if is_metadata_asset(&lower)
+                || !lower.contains(os)
+                || !is_installable_update(&lower, os)
+            {
                 return None;
             }
             let score = if ours.iter().any(|t| lower.contains(t)) {
@@ -257,7 +274,8 @@ fn select_asset_for(payload: &GitHubReleasePayload, os: &str, arch: &str) -> Opt
             } else {
                 1
             };
-            Some((score, a))
+            let dedicated_update = lower.starts_with("graphite-update-") && lower.ends_with(".zip");
+            Some(((score, dedicated_update), a))
         })
         .max_by_key(|(score, _)| *score)
         .map(|(_, a)| a)?;
@@ -385,7 +403,7 @@ mod tests {
             "v1.0.0",
             false,
             &[
-                "graphite-linux-x64.tar.gz",
+                "graphite-linux-x64.zip",
                 "graphite-windows-arm64.zip",
                 "graphite-windows-x64.zip",
                 "graphite-windows-x64.zip.sig",
@@ -407,7 +425,7 @@ mod tests {
         );
         assert_eq!(
             select_asset_for(&p, "linux", "x86_64").unwrap().name,
-            "graphite-linux-x64.tar.gz"
+            "graphite-linux-x64.zip"
         );
         // Wrong arch only, other OS only, or just source archives: nothing is selected.
         assert!(select_asset_for(&p, "linux", "aarch64").is_none());
@@ -418,6 +436,44 @@ mod tests {
             "x86_64"
         )
         .is_none());
+    }
+
+    #[test]
+    fn release_package_formats_never_override_the_dedicated_update_archive() {
+        let assets = [
+            "graphite-update-v1.0.0-linux-x64.zip",
+            "graphite-v1.0.0-linux-x64.tar.gz",
+            "graphite-v1.0.0-linux-x64.AppImage",
+            "graphite-v1.0.0-linux-debian12-x64.deb",
+            "graphite-v1.0.0-linux-fedora44-x64.rpm",
+            "graphite-v1.0.0-linux-arch-x64.pkg.tar.zst",
+            "graphite-update-v1.0.0-windows-x64.zip",
+            "graphite-v1.0.0-windows-x64.zip",
+            "graphite-v1.0.0-windows-x64-setup.exe",
+        ];
+        for ordered in [assets.to_vec(), assets.into_iter().rev().collect()] {
+            let release = payload("v1.0.0", false, &ordered, "");
+            for os in ["windows", "linux"] {
+                assert_eq!(
+                    select_asset_for(&release, os, "x86_64").unwrap().name,
+                    format!("graphite-update-v1.0.0-{os}-x64.zip")
+                );
+            }
+        }
+        let native_only = payload(
+            "v1.0.0",
+            false,
+            &[
+                "graphite-linux-x64.AppImage",
+                "graphite-linux-x64.tar.gz",
+                "graphite-linux-x64.deb",
+                "graphite-windows-x64-setup.exe",
+                "graphite-windows-x64-installer.exe",
+            ],
+            "",
+        );
+        assert!(select_asset_for(&native_only, "linux", "x86_64").is_none());
+        assert!(select_asset_for(&native_only, "windows", "x86_64").is_none());
     }
 
     #[test]

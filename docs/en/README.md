@@ -38,6 +38,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
 - **Contributing**
+  - [Draft releases and platform packages](contributing/releases.md)
   - [Creating and installing plugins](contributing/plugins.md)
   - [Building and testing](contributing/building.md)
   - [Regression testing and coverage](contributing/testing.md)

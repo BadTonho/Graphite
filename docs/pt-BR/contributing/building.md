@@ -1,5 +1,7 @@
 # Compilação e Testes
 
+Para releases em rascunho acionadas por tag e pacotes Windows/Debian/Ubuntu/Fedora/Arch/AppImage, consulte [releases](releases.md).
+
 Plugins nativos, Emmet e seus testes de integração usam Node.js 24+ no build comum do Cargo. A distribuição portátil inclui Node.js 24.22.1 e o host Code OSS para execução de VSIX.
 
 ## Requisitos

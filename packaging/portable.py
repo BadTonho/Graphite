@@ -48,7 +48,7 @@ def build(cache, runtime, work, windows):
     )
     source_archive = fetch(
         f"https://codeload.github.com/microsoft/vscode/tar.gz/{COMMIT}",
-        cache / "vscode.tar.gz",
+        cache / f"vscode-{COMMIT}.tar.gz",
         SOURCE_HASH,
     )
     shutil.unpack_archive(node_archive, work)
@@ -109,6 +109,7 @@ def main():
         for binary in ("graphite", "code", "graphite-extension-host"):
             binary += ".exe" if windows else ""
             shutil.copy2(ROOT / "target/release" / binary, package)
+        shutil.copy2(ROOT / "LICENSE", package / "LICENSE")
         archive = shutil.make_archive(str(output / name), "zip" if windows else "gztar", work, name)
         print(archive)
 

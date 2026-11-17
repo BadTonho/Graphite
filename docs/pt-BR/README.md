@@ -38,6 +38,7 @@ Original em inglês: [../en/README.md](../en/README.md)
 - **Roadmap**
   - [Roadmap](roadmap/roadmap.md)
 - **Contribuição**
+  - [Releases em rascunho e pacotes por plataforma](contributing/releases.md)
   - [Criando e instalando plugins](contributing/plugins.md)
   - [Compilação e testes](contributing/building.md)
   - [Testes de regressão e cobertura](contributing/testing.md)
