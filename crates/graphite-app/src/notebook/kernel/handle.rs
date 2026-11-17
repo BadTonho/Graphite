@@ -668,7 +668,17 @@ mod tests {
     fn an_error_in_the_code_arrives_as_an_error_output_and_a_failed_reply() {
         let (handle, _kernel) = connected();
         let id = handle.execute("raise");
-        let events = wait_for(&handle, |events| finished(events, &id));
+        // The reply (shell channel) and the error output (IOPub) can arrive in either order,
+        // so wait for both instead of stopping at the first one.
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["ename"] == "Boom"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "Boom"
@@ -704,7 +714,17 @@ mod tests {
                 .any(|event| matches!(event, KernelEvent::ExecuteInput { .. }))
         });
         handle.interrupt();
-        let events = wait_for(&handle, |events| finished(events, &id));
+        // The reply and the KeyboardInterrupt output travel on different channels, so the
+        // output can arrive after the reply; wait for both.
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["ename"] == "KeyboardInterrupt"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "KeyboardInterrupt"
@@ -792,7 +812,15 @@ mod tests {
         };
         let handle = launch(&spec, &std::env::temp_dir(), Arc::new(|| {})).unwrap();
         let id = handle.execute("print('hi')\n1 + 1");
-        let events = wait_for(&handle, |events| finished(events, &id));
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["output_type"] == "stream" && output["text"] == "hi\n"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["output_type"] == "stream" && output["text"] == "hi\n"
@@ -802,7 +830,15 @@ mod tests {
             KernelEvent::Output { output, .. } if output["data"]["text/plain"] == "2"
         )));
         let id = handle.execute("1 / 0");
-        let events = wait_for(&handle, |events| finished(events, &id));
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["ename"] == "ZeroDivisionError"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "ZeroDivisionError"
@@ -821,7 +857,17 @@ while time.time() < end:
         // because on Windows Python only notices the interrupt once `time.sleep` returns.)
         std::thread::sleep(Duration::from_millis(1500));
         handle.interrupt();
-        let events = wait_for(&handle, |events| finished(events, &id));
+        // The reply and the KeyboardInterrupt output travel on different channels, so the
+        // output can arrive after the reply; wait for both.
+        let events = wait_for(&handle, |events| {
+            finished(events, &id)
+                && events.iter().any(|event| {
+                    matches!(
+                        event,
+                        KernelEvent::Output { output, .. } if output["ename"] == "KeyboardInterrupt"
+                    )
+                })
+        });
         assert!(events.iter().any(|event| matches!(
             event,
             KernelEvent::Output { output, .. } if output["ename"] == "KeyboardInterrupt"

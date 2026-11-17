@@ -11,17 +11,7 @@ struct Server {
 impl Server {
     fn new() -> Self {
         let dir = crate::test_support::TempDir::new();
-        let executable = std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join(format!("graphite-test-lsp{}", std::env::consts::EXE_SUFFIX));
-        assert!(
-            executable.is_file(),
-            "build graphite-test-lsp before targeted tests"
-        );
+        let executable = crate::test_support::test_binary("graphite-test-lsp");
         let config = ServerConfig {
             extension: "rs".into(),
             language_id: "rust".into(),
