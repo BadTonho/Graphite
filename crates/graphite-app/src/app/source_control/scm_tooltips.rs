@@ -365,8 +365,10 @@ impl App {
     ) {
         let pad_x = 12.0;
         let pad_y = 10.0;
-        let max_card_w = (win_w - 24.0).clamp(260.0, 480.0);
-        let max_inner_chars = ((max_card_w - pad_x * 2.0) / cw).floor().max(24.0) as usize;
+        let max_card_w = (win_w - 24.0).clamp(260.0, 560.0);
+        let max_inner_chars = ((max_card_w - pad_x * 2.0 - cw * 2.0) / cw)
+            .floor()
+            .max(24.0) as usize;
 
         let when =
             scm_graph::format_commit_when(&commit.date, now_unix_seconds(), &self.translator);
@@ -431,7 +433,8 @@ impl App {
             .max(stats_chars)
             .max(footer_chars)
             .min(max_inner_chars);
-        let box_width = (needed_chars as f32 * cw + pad_x * 2.0).clamp(280.0, max_card_w);
+        let box_width =
+            (needed_chars as f32 * cw + pad_x * 2.0 + cw * 2.0).clamp(280.0, max_card_w);
         let inner_w = box_width - pad_x * 2.0;
 
         // Compute ref pill rows to know exact card height.
@@ -453,8 +456,31 @@ impl App {
             }
         }
 
+        let stats_rows = if let Some(files) = &files_text {
+            let mut rows = 1usize;
+            let mut row_w = files.chars().count() as f32 * cw;
+            for part in [ins_text.as_deref(), del_text.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                let part_w = (2 + part.chars().count()) as f32 * cw;
+                if row_w > 0.0 && row_w + part_w > inner_w {
+                    rows += 1;
+                    row_w = part.chars().count() as f32 * cw;
+                } else {
+                    row_w += part_w;
+                }
+            }
+            rows
+        } else {
+            0
+        };
         let divider_gap = 11.0;
-        let stats_height = if stats.is_some() { lh + 4.0 } else { 0.0 };
+        let stats_height = if stats_rows > 0 {
+            stats_rows as f32 * lh + 4.0
+        } else {
+            0.0
+        };
         let pills_height = if pill_rows > 0 {
             pill_rows as f32 * (pill_h + 4.0) + 2.0
         } else {
@@ -545,16 +571,20 @@ impl App {
                 let mut sx = cx;
                 renderer.draw_text(files, sx, cy, text);
                 sx += files.chars().count() as f32 * cw;
-                if let Some(ins) = &ins_text {
-                    renderer.draw_text(", ", sx, cy, dim);
-                    sx += 2.0 * cw;
-                    renderer.draw_text(ins, sx, cy, green);
-                    sx += ins.chars().count() as f32 * cw;
-                }
-                if let Some(del) = &del_text {
-                    renderer.draw_text(", ", sx, cy, dim);
-                    sx += 2.0 * cw;
-                    renderer.draw_text(del, sx, cy, red);
+                for (part, color) in [(ins_text.as_deref(), green), (del_text.as_deref(), red)] {
+                    let Some(part) = part else { continue };
+                    let part_w = part.chars().count() as f32 * cw;
+                    if sx > cx && sx + 2.0 * cw + part_w > cx + inner_w {
+                        cy += lh;
+                        sx = cx;
+                    } else {
+                        renderer.draw_text(", ", sx, cy, dim);
+                        sx += 2.0 * cw;
+                    }
+                    let clipped =
+                        Self::help_menu_visible_label(part, cw, (cx + inner_w - sx).max(0.0));
+                    renderer.draw_text(&clipped, sx, cy, color);
+                    sx += clipped.chars().count() as f32 * cw;
                 }
                 cy += lh + 4.0;
             }
