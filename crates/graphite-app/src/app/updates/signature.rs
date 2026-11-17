@@ -15,8 +15,8 @@ pub(crate) const TRUSTED_UPDATE_KEYS: &[[u8; 32]] = &[UPDATE_SIGNING_KEY_2026];
 
 /// Primary release-signing public key (Ed25519, raw 32 bytes).
 const UPDATE_SIGNING_KEY_2026: [u8; 32] = [
-    167, 28, 132, 52, 186, 149, 151, 158, 22, 243, 238, 71, 21, 129, 173, 136, 140, 189, 243, 179,
-    51, 36, 117, 35, 64, 19, 128, 28, 74, 108, 195, 169,
+    178, 37, 15, 248, 184, 55, 17, 84, 218, 188, 56, 170, 167, 85, 4, 9, 231, 131, 90, 127, 243,
+    240, 246, 171, 55, 249, 122, 104, 194, 56, 120, 79,
 ];
 
 const MESSAGE_DOMAIN: &str = "graphite-update-v1";
