@@ -10,6 +10,9 @@ mod snippets;
 mod theme_includes;
 mod themes;
 mod view_layout;
+pub(crate) use color_themes::{
+    install_bundled_themes, list_color_themes, selected_color_theme, set_color_theme, ColorTheme,
+};
 #[cfg(test)]
 use import::import_from_with;
 pub use import::{import_vscode, import_vscode_to};
@@ -22,9 +25,6 @@ use settings::project_settings;
 pub use settings::{
     editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
     workspace_configuration_in,
-};
-pub(crate) use color_themes::{
-    install_bundled_themes, list_color_themes, selected_color_theme, set_color_theme, ColorTheme,
 };
 pub(crate) use settings_edit::set_user_setting;
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;

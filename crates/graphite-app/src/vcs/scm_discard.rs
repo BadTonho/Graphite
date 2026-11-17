@@ -134,6 +134,9 @@ mod tests {
         assert!(discard(root, &[target("missing.txt", false)]).is_err());
         // A path that looks like an option is a path after `--`.
         assert!(discard(root, &[target("--all", false)]).is_err());
-        assert_eq!(discard(root, &[]).unwrap(), "Discarded changes in 0 file(s)");
+        assert_eq!(
+            discard(root, &[]).unwrap(),
+            "Discarded changes in 0 file(s)"
+        );
     }
 }

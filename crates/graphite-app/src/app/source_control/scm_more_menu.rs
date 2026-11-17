@@ -174,10 +174,7 @@ fn commit_button_tree() -> Vec<MoreNode> {
 fn file_menu_tree(staged: bool) -> Vec<MoreNode> {
     use MoreCommand as C;
     use MoreNode as N;
-    let mut rows = vec![
-        N::leaf("scm.file.open", C::FileOpen),
-        N::Separator,
-    ];
+    let mut rows = vec![N::leaf("scm.file.open", C::FileOpen), N::Separator];
     if staged {
         rows.push(N::leaf("scm.file.unstage", C::FileUnstage));
     } else {
@@ -215,18 +212,42 @@ pub(crate) fn more_menu_tree(as_tree: bool) -> Vec<MoreNode> {
             "scm.more.commit",
             vec![
                 N::leaf("scm.more.commit", C::Commit(CommitOptions::PLAIN)),
-                N::leaf("scm.more.commit_staged", commit_options(CommitScope::Staged, false, false)),
-                N::leaf("scm.more.commit_all", commit_options(CommitScope::All, false, false)),
+                N::leaf(
+                    "scm.more.commit_staged",
+                    commit_options(CommitScope::Staged, false, false),
+                ),
+                N::leaf(
+                    "scm.more.commit_all",
+                    commit_options(CommitScope::All, false, false),
+                ),
                 N::leaf("scm.more.undo_last_commit", C::UndoLastCommit),
                 N::leaf("scm.more.abort_operation", C::AbortOperation),
                 N::Separator,
-                N::leaf("scm.more.commit_amend", commit_options(CommitScope::Smart, true, false)),
-                N::leaf("scm.more.commit_staged_amend", commit_options(CommitScope::Staged, true, false)),
-                N::leaf("scm.more.commit_all_amend", commit_options(CommitScope::All, true, false)),
+                N::leaf(
+                    "scm.more.commit_amend",
+                    commit_options(CommitScope::Smart, true, false),
+                ),
+                N::leaf(
+                    "scm.more.commit_staged_amend",
+                    commit_options(CommitScope::Staged, true, false),
+                ),
+                N::leaf(
+                    "scm.more.commit_all_amend",
+                    commit_options(CommitScope::All, true, false),
+                ),
                 N::Separator,
-                N::leaf("scm.more.commit_signed", commit_options(CommitScope::Smart, false, true)),
-                N::leaf("scm.more.commit_staged_signed", commit_options(CommitScope::Staged, false, true)),
-                N::leaf("scm.more.commit_all_signed", commit_options(CommitScope::All, false, true)),
+                N::leaf(
+                    "scm.more.commit_signed",
+                    commit_options(CommitScope::Smart, false, true),
+                ),
+                N::leaf(
+                    "scm.more.commit_staged_signed",
+                    commit_options(CommitScope::Staged, false, true),
+                ),
+                N::leaf(
+                    "scm.more.commit_all_signed",
+                    commit_options(CommitScope::All, false, true),
+                ),
             ],
         ),
         N::submenu(
@@ -472,8 +493,12 @@ impl MoreMenu {
                 self.open.truncate(level);
                 self.open.push(index);
                 let child_rows = rows_at(tree, &self.open);
-                self.selected
-                    .push(child_rows.iter().position(MoreNode::is_selectable).unwrap_or(0));
+                self.selected.push(
+                    child_rows
+                        .iter()
+                        .position(MoreNode::is_selectable)
+                        .unwrap_or(0),
+                );
             }
         } else {
             self.open.truncate(level);
@@ -700,7 +725,10 @@ impl App {
     /// The tree of the open menu.
     fn open_more_tree(&self) -> Vec<MoreNode> {
         menu_tree(
-            self.scm_more_menu.as_ref().map(|menu| menu.kind).unwrap_or_default(),
+            self.scm_more_menu
+                .as_ref()
+                .map(|menu| menu.kind)
+                .unwrap_or_default(),
             self.scm_view_as_tree,
         )
     }
@@ -807,7 +835,11 @@ impl App {
             }
             C::FileCopyPath | C::FileCopyRelativePath => {
                 let text = if command == C::FileCopyPath {
-                    self.tree.root().join(&file.path).to_string_lossy().into_owned()
+                    self.tree
+                        .root()
+                        .join(&file.path)
+                        .to_string_lossy()
+                        .into_owned()
                 } else {
                     file.path.to_string_lossy().replace('\\', "/")
                 };
@@ -857,7 +889,9 @@ impl App {
             C::RenameBranch => self.open_name_prompt(NameTarget::RenameBranch),
             C::DeleteBranch => self.open_branch_picker_for(BranchPickerAction::Delete),
             C::DeleteBranchForce => self.open_branch_picker_for(BranchPickerAction::DeleteForce),
-            C::CreateBranchFrom => self.open_branch_picker_for(BranchPickerAction::CreateBranchFrom),
+            C::CreateBranchFrom => {
+                self.open_branch_picker_for(BranchPickerAction::CreateBranchFrom)
+            }
             C::DeleteRemoteBranch => {
                 self.open_branch_picker_for(BranchPickerAction::DeleteRemoteBranch)
             }
@@ -869,9 +903,7 @@ impl App {
             C::AddRemote => self.open_name_prompt(NameTarget::RemoteUrl),
             C::RemoveRemote => self.open_branch_picker_for(BranchPickerAction::RemoveRemote),
             C::Stash => self.run_scm_remote(RemoteOp::StashWith(StashMode::Tracked)),
-            C::StashUntracked => {
-                self.run_scm_remote(RemoteOp::StashWith(StashMode::WithUntracked))
-            }
+            C::StashUntracked => self.run_scm_remote(RemoteOp::StashWith(StashMode::WithUntracked)),
             C::StashStaged => self.run_scm_remote(RemoteOp::StashWith(StashMode::Staged)),
             C::StashApplyLatest => self.run_scm_remote(RemoteOp::StashApplyLatest),
             C::StashPopLatest => self.run_scm_remote(RemoteOp::StashPopLatest),
@@ -910,7 +942,13 @@ impl App {
             for (index, row) in rows.iter().enumerate() {
                 match row {
                     MoreNode::Separator => {
-                        renderer.draw_rect(panel.x + 1.0, top + 4.0, panel.width - 2.0, 1.0, border);
+                        renderer.draw_rect(
+                            panel.x + 1.0,
+                            top + 4.0,
+                            panel.width - 2.0,
+                            1.0,
+                            border,
+                        );
                     }
                     MoreNode::Item { label, .. } => {
                         let focused = menu.selected.get(level) == Some(&index);
@@ -1019,7 +1057,10 @@ mod tests {
         menu.pointer_moved(&tree, x, y);
         let panels = menu.panels(&tree);
         assert_eq!(panels.len(), 2);
-        assert!(panels[1].x >= panels[0].x + panels[0].width - 3.0, "to the right");
+        assert!(
+            panels[1].x >= panels[0].x + panels[0].width - 3.0,
+            "to the right"
+        );
         assert!(menu.contains(&tree, panels[1].x + 5.0, panels[1].y + 10.0));
 
         let (x, y) = point(&menu, &tree, 0, index_of(&tree, "scm.more.pull"));
@@ -1147,7 +1188,11 @@ mod tests {
         ] {
             app.status.clear();
             app.run_more_command(command);
-            assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{command:?}");
+            assert_eq!(
+                app.status,
+                app.t("scm.error.actions_need_loop"),
+                "{command:?}"
+            );
         }
     }
 
@@ -1168,7 +1213,10 @@ mod tests {
         assert!(!unstaged.contains(&"scm.file.unstage"));
         let staged = labels(&file_menu_tree(true));
         assert!(staged.contains(&"scm.file.unstage"));
-        assert!(!staged.contains(&"scm.file.discard"), "staged changes are unstaged first");
+        assert!(
+            !staged.contains(&"scm.file.discard"),
+            "staged changes are unstaged first"
+        );
         assert!(!staged.contains(&"scm.file.stage"));
     }
 
@@ -1202,7 +1250,10 @@ mod tests {
         let (x, y) = point(menu, &tree, 0, index_of(&tree, "scm.file.discard"));
         app.scm_more_menu_click(x, y);
         assert!(app.scm_more_menu.is_none());
-        let confirm = app.scm_confirm.as_ref().expect("a confirmation is shown first");
+        let confirm = app
+            .scm_confirm
+            .as_ref()
+            .expect("a confirmation is shown first");
         assert!(confirm.message.contains("a.txt"));
     }
 

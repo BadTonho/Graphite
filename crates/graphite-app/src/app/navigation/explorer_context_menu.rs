@@ -348,7 +348,10 @@ impl App {
             0.0
         };
         let (x, y) = place_context_menu(anchor, (width, height), window, bottom_inset);
-        let selected = rows.iter().position(ExplorerContextMenuRow::is_selectable).unwrap_or(0);
+        let selected = rows
+            .iter()
+            .position(ExplorerContextMenuRow::is_selectable)
+            .unwrap_or(0);
         self.explorer_context_menu = Some(ExplorerContextMenu {
             target,
             is_dir,
@@ -600,14 +603,18 @@ impl App {
     }
 
     fn explorer_relative_display(&self, target: &Path) -> String {
-        let rel = target.strip_prefix(self.tree.root()).ok().map(Path::to_path_buf).or_else(|| {
-            let norm_target = normalize_path(target);
-            let norm_root = normalize_path(self.tree.root());
-            norm_target
-                .strip_prefix(&norm_root)
-                .ok()
-                .map(Path::to_path_buf)
-        });
+        let rel = target
+            .strip_prefix(self.tree.root())
+            .ok()
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                let norm_target = normalize_path(target);
+                let norm_root = normalize_path(self.tree.root());
+                norm_target
+                    .strip_prefix(&norm_root)
+                    .ok()
+                    .map(Path::to_path_buf)
+            });
         if let Some(rel) = rel {
             let s = rel.to_string_lossy().replace('\\', "/");
             if s.is_empty() {

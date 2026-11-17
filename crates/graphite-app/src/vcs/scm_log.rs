@@ -19,7 +19,10 @@ fn changes_something(args: &[&str]) -> bool {
         | "clone" | "apply" => true,
         "branch" | "tag" => !rest.iter().any(|arg| matches!(*arg, "--list" | "-l")),
         "stash" => rest.first().copied() != Some("list"),
-        "remote" => matches!(rest.first().copied(), Some("add" | "remove" | "rename" | "set-url")),
+        "remote" => matches!(
+            rest.first().copied(),
+            Some("add" | "remove" | "rename" | "set-url")
+        ),
         _ => false,
     }
 }
@@ -44,7 +47,9 @@ pub(crate) fn record(args: &[&str], outcome: Result<&str, &str>) {
         return;
     }
     let now = clock();
-    let mut lines = LINES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut lines = LINES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut push = |line: String| {
         if lines.len() == CAPACITY {
             lines.pop_front();
@@ -54,12 +59,20 @@ pub(crate) fn record(args: &[&str], outcome: Result<&str, &str>) {
     push(format!("[{now}] > git {}", args.join(" ")));
     match outcome {
         Ok(output) => {
-            for line in output.lines().filter(|line| !line.trim().is_empty()).take(20) {
+            for line in output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .take(20)
+            {
                 push(format!("           {line}"));
             }
         }
         Err(reason) => {
-            for line in reason.lines().filter(|line| !line.trim().is_empty()).take(20) {
+            for line in reason
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .take(20)
+            {
                 push(format!("           error: {line}"));
             }
         }
@@ -68,7 +81,9 @@ pub(crate) fn record(args: &[&str], outcome: Result<&str, &str>) {
 
 /// The whole log, oldest line first.
 pub(crate) fn text() -> String {
-    let lines = LINES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let lines = LINES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     lines.iter().cloned().collect::<Vec<_>>().join("\n")
 }
 
@@ -107,8 +122,14 @@ mod tests {
 
     #[test]
     fn a_recorded_command_shows_its_outcome() {
-        record(&["push", "--set-upstream", "log-test-remote", "HEAD"], Err("rejected\nnon-fast-forward"));
-        record(&["commit", "-m", "log test message"], Ok("[main abc123] log test message"));
+        record(
+            &["push", "--set-upstream", "log-test-remote", "HEAD"],
+            Err("rejected\nnon-fast-forward"),
+        );
+        record(
+            &["commit", "-m", "log test message"],
+            Ok("[main abc123] log test message"),
+        );
         record(&["status"], Ok("not recorded"));
         let text = text();
         assert!(text.contains("> git push --set-upstream log-test-remote HEAD"));
@@ -129,7 +150,10 @@ mod tests {
         }
         let text = text();
         assert!(text.lines().count() <= CAPACITY);
-        assert!(!text.contains("capacity-test-0\n") && text.contains(&format!("capacity-test-{}", CAPACITY + 49)));
+        assert!(
+            !text.contains("capacity-test-0\n")
+                && text.contains(&format!("capacity-test-{}", CAPACITY + 49))
+        );
     }
 
     #[test]

@@ -79,15 +79,24 @@ mod tests {
         fs::write(root.join("new.txt"), "new\n").unwrap();
 
         push(root, StashMode::Tracked).unwrap();
-        assert_eq!(fs::read_to_string(root.join("tracked.txt")).unwrap(), "one\n");
+        assert_eq!(
+            fs::read_to_string(root.join("tracked.txt")).unwrap(),
+            "one\n"
+        );
         assert!(root.join("new.txt").exists(), "untracked files stay");
 
         apply_latest(root).unwrap();
-        assert_eq!(fs::read_to_string(root.join("tracked.txt")).unwrap(), "two\n");
+        assert_eq!(
+            fs::read_to_string(root.join("tracked.txt")).unwrap(),
+            "two\n"
+        );
         git(root, &["checkout", "--", "tracked.txt"]);
 
         push(root, StashMode::WithUntracked).unwrap_or_default();
-        assert!(!root.join("new.txt").exists(), "untracked files are stashed too");
+        assert!(
+            !root.join("new.txt").exists(),
+            "untracked files are stashed too"
+        );
         pop_latest(root).unwrap();
         assert!(root.join("new.txt").exists());
     }
@@ -101,7 +110,10 @@ mod tests {
         fs::write(root.join("other.txt"), "x\nunstaged\n").unwrap();
 
         push(root, StashMode::Staged).unwrap();
-        assert_eq!(fs::read_to_string(root.join("tracked.txt")).unwrap(), "one\n");
+        assert_eq!(
+            fs::read_to_string(root.join("tracked.txt")).unwrap(),
+            "one\n"
+        );
         assert_eq!(
             fs::read_to_string(root.join("other.txt")).unwrap(),
             "x\nunstaged\n",

@@ -11,7 +11,10 @@ pub(crate) fn add_to_gitignore(root: &Path, relative: &Path) -> Result<bool, Str
         .collect::<Vec<_>>()
         .join("/");
     if entry.is_empty() || entry.split('/').any(|part| part == "..") {
-        return Err(format!("'{}' is not inside the repository", relative.display()));
+        return Err(format!(
+            "'{}' is not inside the repository",
+            relative.display()
+        ));
     }
     let entry = format!("/{}", escape(&entry));
     let path = root.join(".gitignore");
@@ -55,7 +58,10 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let root = dir.path();
         assert!(add_to_gitignore(root, Path::new("src/gen.rs")).unwrap());
-        assert_eq!(fs::read_to_string(root.join(".gitignore")).unwrap(), "/src/gen.rs\n");
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "/src/gen.rs\n"
+        );
         assert!(!add_to_gitignore(root, Path::new("src/gen.rs")).unwrap());
         assert!(add_to_gitignore(root, Path::new("notes.txt")).unwrap());
         assert_eq!(
@@ -70,7 +76,10 @@ mod tests {
         let root = dir.path();
         fs::write(root.join(".gitignore"), "target").unwrap();
         add_to_gitignore(root, Path::new("a.txt")).unwrap();
-        assert_eq!(fs::read_to_string(root.join(".gitignore")).unwrap(), "target\n/a.txt\n");
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "target\n/a.txt\n"
+        );
     }
 
     #[test]

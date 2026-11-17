@@ -293,7 +293,12 @@ impl App {
             .gpu
             .as_ref()
             .map_or(20.0, |gpu| gpu.renderer.line_height());
-        let (x, y) = place_dropdown(button, (width, height), (window_width, window_height), status_height);
+        let (x, y) = place_dropdown(
+            button,
+            (width, height),
+            (window_width, window_height),
+            status_height,
+        );
         self.terminal_toolbar_menu = Some(TerminalToolbarMenu {
             kind,
             x,
@@ -502,10 +507,20 @@ mod tests {
 
     #[test]
     fn dropdown_opens_upward_when_near_bottom_and_downward_when_near_top() {
-        let (_, up_y) = place_dropdown((800.0, 620.0, 22.0, 22.0), (240.0, 200.0), (1000.0, 700.0), 22.0);
+        let (_, up_y) = place_dropdown(
+            (800.0, 620.0, 22.0, 22.0),
+            (240.0, 200.0),
+            (1000.0, 700.0),
+            22.0,
+        );
         assert!(up_y + 200.0 <= 620.0);
 
-        let (_, down_y) = place_dropdown((800.0, 40.0, 22.0, 22.0), (240.0, 200.0), (1000.0, 700.0), 22.0);
+        let (_, down_y) = place_dropdown(
+            (800.0, 40.0, 22.0, 22.0),
+            (240.0, 200.0),
+            (1000.0, 700.0),
+            22.0,
+        );
         assert_eq!(down_y, 64.0);
     }
 

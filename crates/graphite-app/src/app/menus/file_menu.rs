@@ -677,11 +677,12 @@ impl App {
             // The nested panel has its own rows; see `file_nested_command_at`.
             return None;
         }
-        let (panel, left, width) = if self.file_menu_submenu.is_some() && inside(submenu_x, FILE_SUBMENU_WIDTH) {
-            (self.file_menu_submenu, submenu_x, FILE_SUBMENU_WIDTH)
-        } else {
-            (None, popup_x, FILE_MENU_WIDTH)
-        };
+        let (panel, left, width) =
+            if self.file_menu_submenu.is_some() && inside(submenu_x, FILE_SUBMENU_WIDTH) {
+                (self.file_menu_submenu, submenu_x, FILE_SUBMENU_WIDTH)
+            } else {
+                (None, popup_x, FILE_MENU_WIDTH)
+            };
         if !inside(left, width) {
             return None;
         }
@@ -1356,8 +1357,7 @@ mod tests {
         app.open_file_submenu(FileMenuSubmenu::Preferences);
         app.open_file_submenu(FileMenuSubmenu::Themes);
         let (popup_x, window) = (0.0, (1400.0, 900.0));
-        let (submenu_x, nested_x, width) =
-            App::file_panel_xs(popup_x, FILE_MENU_WIDTH, window.0);
+        let (submenu_x, nested_x, width) = App::file_panel_xs(popup_x, FILE_MENU_WIDTH, window.0);
         assert_eq!(submenu_x, FILE_MENU_WIDTH);
         assert_eq!(nested_x, FILE_MENU_WIDTH + width);
         // The nested panel starts at the Themes row, not at the top of the menu.
@@ -1368,10 +1368,24 @@ mod tests {
         assert_eq!(hit, Some((SettingsSubcommand::DarkTheme, true)));
         // The first-level lookup leaves the nested panel to `file_nested_command_at`.
         assert!(app
-            .file_menu_command_at(nested_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1)
+            .file_menu_command_at(
+                nested_x + 10.0,
+                first_row,
+                popup_x,
+                submenu_x,
+                nested_x,
+                window.1
+            )
             .is_none());
         // The same point over the first-level panel hits a Preferences row instead.
-        let hit = app.file_menu_command_at(submenu_x + 10.0, first_row, popup_x, submenu_x, nested_x, window.1);
+        let hit = app.file_menu_command_at(
+            submenu_x + 10.0,
+            first_row,
+            popup_x,
+            submenu_x,
+            nested_x,
+            window.1,
+        );
         assert_ne!(hit.map(|hit| hit.0), Some(FileMenuCommand::DarkTheme));
         // With no room on the right, both submenus open to the left of their parents.
         let (left_x, left_nested, _) = App::file_panel_xs(900.0, FILE_MENU_WIDTH, 1400.0);
@@ -1396,25 +1410,28 @@ mod tests {
         }
         // The bundled theme is offered, and choosing it from the File menu applies it.
         let simple = SettingsSubcommand::ColorTheme("Graphite Simple".into());
-        assert!(app
-            .file_nested_rows(FileMenuSubmenu::Themes)
-            .iter()
-            .any(|row| matches!(row, SettingsSubmenuRow::Item { command, .. } if *command == simple)));
+        assert!(app.file_nested_rows(FileMenuSubmenu::Themes).iter().any(
+            |row| matches!(row, SettingsSubmenuRow::Item { command, .. } if *command == simple)
+        ));
         app.open_file_submenu(FileMenuSubmenu::Preferences);
         app.open_file_submenu(FileMenuSubmenu::Themes);
         let index = app
             .file_nested_rows(FileMenuSubmenu::Themes)
             .into_iter()
             .filter(|row| matches!(row, SettingsSubmenuRow::Item { .. }))
-            .position(|row| matches!(row, SettingsSubmenuRow::Item { command, .. } if command == simple))
+            .position(
+                |row| matches!(row, SettingsSubmenuRow::Item { command, .. } if command == simple),
+            )
             .unwrap();
         app.file_menu_nested_selection = index;
         let (command, enabled) = app.file_nested_selected().unwrap();
         assert!(enabled);
         app.execute_settings_subcommand(command);
-        assert!(std::fs::read_to_string(app.profile_root.join("settings.json"))
-            .unwrap()
-            .contains("Graphite Simple"));
+        assert!(
+            std::fs::read_to_string(app.profile_root.join("settings.json"))
+                .unwrap()
+                .contains("Graphite Simple")
+        );
         // The panel is as tall as its rows, so it is positioned like any other submenu.
         assert!(app.file_panel_height(FileMenuSubmenu::Themes) > 8.0);
     }

@@ -23,7 +23,9 @@ pub(crate) struct ScmConfirm {
 type Rect = (f32, f32, f32, f32);
 
 fn modal_rects(width: f32, height: f32) -> (Rect, Rect, Rect) {
-    let panel_width = (width * 0.6).clamp(340.0, 560.0).min((width - 24.0).max(0.0));
+    let panel_width = (width * 0.6)
+        .clamp(340.0, 560.0)
+        .min((width - 24.0).max(0.0));
     let panel_height = 128.0;
     let x = ((width - panel_width) * 0.5).max(12.0);
     let y = ((height - panel_height) * 0.5).max(12.0);
@@ -167,11 +169,8 @@ impl App {
             bg,
         );
         renderer.draw_text(self.t(confirm.title_key), x + 16.0, y + 14.0, text);
-        let clipped = Self::help_menu_visible_label(
-            &confirm.message,
-            cw,
-            (panel_width - 32.0).max(0.0),
-        );
+        let clipped =
+            Self::help_menu_visible_label(&confirm.message, cw, (panel_width - 32.0).max(0.0));
         renderer.draw_text(&clipped, x + 16.0, y + 44.0, dim);
         let button = |renderer: &mut Renderer, rect: Rect, fill: Color, label: &str, fg: Color| {
             renderer.draw_rect(rect.0, rect.1, rect.2, rect.3, fill);
@@ -238,8 +237,14 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert!(all[1].untracked);
         assert!(app.discard_target_at(0).is_some());
-        assert!(app.discard_target_at(2).is_none(), "conflicts are resolved, not discarded");
-        assert!(app.discard_target_at(3).is_none(), "staged files have nothing to discard");
+        assert!(
+            app.discard_target_at(2).is_none(),
+            "conflicts are resolved, not discarded"
+        );
+        assert!(
+            app.discard_target_at(3).is_none(),
+            "staged files have nothing to discard"
+        );
         assert!(app.discard_target_at(9).is_none());
     }
 

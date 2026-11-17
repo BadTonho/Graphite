@@ -778,15 +778,21 @@ mod tests {
         app.branch_picker_action = BranchPickerAction::PushTo;
         assert_eq!(app.branch_picker_entries(), ["origin", "backup"]);
 
-        for (action, selected) in [(BranchPickerAction::PullFrom, 1), (BranchPickerAction::PushTo, 0)]
-        {
+        for (action, selected) in [
+            (BranchPickerAction::PullFrom, 1),
+            (BranchPickerAction::PushTo, 0),
+        ] {
             app.branch_picker = true;
             app.branch_picker_action = action;
             app.branch_selected = selected;
             app.branch_picker_items = vec!["origin".into(), "backup".into()];
             app.status.clear();
             app.confirm_branch_picker();
-            assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{action:?}");
+            assert_eq!(
+                app.status,
+                app.t("scm.error.actions_need_loop"),
+                "{action:?}"
+            );
         }
         assert!(RemoteOp::PullFrom("origin/main".into()).needs_saved_documents());
         assert!(!RemoteOp::PushTo("origin".into()).needs_saved_documents());
@@ -818,7 +824,11 @@ mod tests {
             app.confirm_branch_picker();
             assert!(!app.branch_picker, "{action:?} closes the picker");
             // With no event loop the operation stops at this message, which shows it started.
-            assert_eq!(app.status, app.t("scm.error.actions_need_loop"), "{action:?}");
+            assert_eq!(
+                app.status,
+                app.t("scm.error.actions_need_loop"),
+                "{action:?}"
+            );
         }
 
         app.branch_picker = true;
@@ -836,7 +846,10 @@ mod tests {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.run_more_command(crate::app::scm_more_menu::MoreCommand::Clone);
-        assert_eq!(app.branch_name_prompt.as_ref().unwrap().target, NameTarget::CloneUrl);
+        assert_eq!(
+            app.branch_name_prompt.as_ref().unwrap().target,
+            NameTarget::CloneUrl
+        );
         // A blank address keeps the prompt open instead of asking for a folder.
         app.handle_branch_name_prompt_key(&Key::Named(NamedKey::Enter), None);
         assert!(app.branch_name_prompt.is_some());
@@ -853,7 +866,10 @@ mod tests {
             Some("https://example.invalid/a.git"),
         );
         app.handle_branch_name_prompt_key(&Key::Named(NamedKey::Enter), None);
-        let next = app.branch_name_prompt.as_ref().expect("the name is asked next");
+        let next = app
+            .branch_name_prompt
+            .as_ref()
+            .expect("the name is asked next");
         assert_eq!(
             next.target,
             NameTarget::RemoteName("https://example.invalid/a.git".into())

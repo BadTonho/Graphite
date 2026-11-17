@@ -43,6 +43,7 @@ base64 = "0.22"
 wry = "0.57.1"
 resvg = { version = "0.50.0", default-features = false, features = ["raster-images"] }
 rfd = { version = "0.16.0", default-features = false, features = ["gtk3"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
@@ -50,7 +51,6 @@ winresource = "0.1"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18.2"

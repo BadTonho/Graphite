@@ -383,16 +383,14 @@ impl App {
                     label: self.t("settings_menu.density_default").into(),
                     shortcut: String::new(),
                     enabled: true,
-                    checked: self.activity_bar_preferences.size
-                        == config::ActivityBarSize::Default,
+                    checked: self.activity_bar_preferences.size == config::ActivityBarSize::Default,
                 },
                 I {
                     command: C::DensityCompact,
                     label: self.t("settings_menu.density_compact").into(),
                     shortcut: String::new(),
                     enabled: true,
-                    checked: self.activity_bar_preferences.size
-                        == config::ActivityBarSize::Compact,
+                    checked: self.activity_bar_preferences.size == config::ActivityBarSize::Compact,
                 },
             ],
         }
@@ -1089,13 +1087,17 @@ mod tests {
             })
             .collect();
         assert_eq!(checked, [simple]);
-        assert!(std::fs::read_to_string(app.profile_root.join("settings.json"))
-            .unwrap()
-            .contains("Graphite Simple"));
+        assert!(
+            std::fs::read_to_string(app.profile_root.join("settings.json"))
+                .unwrap()
+                .contains("Graphite Simple")
+        );
         app.execute_settings_subcommand(SettingsSubcommand::DarkTheme);
-        assert!(!std::fs::read_to_string(app.profile_root.join("settings.json"))
-            .unwrap()
-            .contains("Graphite Simple"));
+        assert!(
+            !std::fs::read_to_string(app.profile_root.join("settings.json"))
+                .unwrap()
+                .contains("Graphite Simple")
+        );
         let rows = app.settings_submenu_rows(SettingsSubmenu::Themes, &[]);
         assert!(matches!(
             rows[0],

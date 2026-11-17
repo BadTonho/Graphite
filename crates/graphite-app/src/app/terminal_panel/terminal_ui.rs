@@ -234,14 +234,13 @@ impl App {
         let cw = gpu.renderer.char_width().max(1.0);
         let (w, h) = gpu.renderer.size();
         let sidebar_width = self.sidebar_width_px();
-        let panel_h =
-            drawing_helpers::terminal_panel_height_with_delta(h, self.view_preferences.panel_height_delta);
-        let rows = ((panel_h - super::terminal_drawing::TERMINAL_HEADER_HEIGHT - 4.0) / lh)
-            .max(1.0) as u16;
-        let columns = (((w
-            - sidebar_width
-            - super::terminal_drawing::TERMINAL_GUTTER_WIDTH
-            - PAD)
+        let panel_h = drawing_helpers::terminal_panel_height_with_delta(
+            h,
+            self.view_preferences.panel_height_delta,
+        );
+        let rows = ((panel_h - super::terminal_drawing::TERMINAL_HEADER_HEIGHT - 4.0) / lh).max(1.0)
+            as u16;
+        let columns = (((w - sidebar_width - super::terminal_drawing::TERMINAL_GUTTER_WIDTH - PAD)
             / if self.split_terminal.is_some() {
                 2.0
             } else {

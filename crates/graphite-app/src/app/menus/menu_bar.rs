@@ -2384,13 +2384,7 @@ impl App {
         for row in submenu_rows.iter().copied() {
             match row {
                 FileMenuRow::Separator => {
-                    renderer.draw_rect(
-                        x + 8.0,
-                        y + 4.0,
-                        width - 16.0,
-                        1.0,
-                        border,
-                    );
+                    renderer.draw_rect(x + 8.0, y + 4.0, width - 16.0, 1.0, border);
                     y += Self::file_menu_row_height(row);
                 }
                 FileMenuRow::Item {
@@ -2402,13 +2396,7 @@ impl App {
                     checked,
                 } => {
                     if Some(submenu_item_index) == selected_index {
-                        renderer.draw_rect(
-                            x + 2.0,
-                            y,
-                            width - 4.0,
-                            26.0,
-                            selected,
-                        );
+                        renderer.draw_rect(x + 2.0, y, width - 4.0, 26.0, selected);
                     }
                     if checked {
                         renderer.draw_text("✓", x + 9.0, y + 5.0, foreground);

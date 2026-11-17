@@ -143,7 +143,15 @@ mod tests {
     fn stash_references_are_recognised_strictly() {
         assert!(is_stash_ref("stash@{0}"));
         assert!(is_stash_ref("stash@{12}"));
-        for bad in ["", "stash@{}", "stash@{x}", "stash@{0} ", "main", "--all", "stash@{-1}"] {
+        for bad in [
+            "",
+            "stash@{}",
+            "stash@{x}",
+            "stash@{0} ",
+            "main",
+            "--all",
+            "stash@{-1}",
+        ] {
             assert!(!is_stash_ref(bad), "{bad}");
         }
         assert_eq!(stash_ref("stash@{3}: On main: wip"), "stash@{3}");
@@ -218,9 +226,22 @@ mod tests {
         let remote = dir.path().join("remote.git");
         let work = dir.path().join("work");
         fs::create_dir_all(&work).unwrap();
-        git(dir.path(), &["init", "-q", "--bare", "-b", "main", remote.to_str().unwrap()]);
+        git(
+            dir.path(),
+            &[
+                "init",
+                "-q",
+                "--bare",
+                "-b",
+                "main",
+                remote.to_str().unwrap(),
+            ],
+        );
         git(&work, &["init", "-q", "-b", "main"]);
-        git(&work, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(
+            &work,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
         fs::write(work.join("a.txt"), "a\n").unwrap();
         git(&work, &["add", "-A"]);
         git(&work, &["commit", "-q", "-m", "base"]);
@@ -228,7 +249,10 @@ mod tests {
 
         delete_remote_branch(&work, "origin/topic").unwrap();
         let heads = run_git(&remote, &["branch", "--list"]).unwrap();
-        assert!(heads.contains("main") && !heads.contains("topic"), "{heads}");
+        assert!(
+            heads.contains("main") && !heads.contains("topic"),
+            "{heads}"
+        );
         assert!(delete_remote_branch(&work, "topic").is_err());
         assert!(delete_remote_branch(&work, "origin/--all").is_err());
         assert!(delete_remote_branch(&work, "origin/missing").is_err());

@@ -600,7 +600,10 @@ mod tests {
         assert!(create_branch_from(root, "x", "--all").is_err());
         assert!(create_branch_from(root, "x", "no-such-ref").is_err());
         assert!(create_branch_from(root, "bad name", "main").is_err());
-        assert!(create_branch_from(root, "from-tag", "main").is_err(), "the name exists");
+        assert!(
+            create_branch_from(root, "from-tag", "main").is_err(),
+            "the name exists"
+        );
     }
 
     #[test]

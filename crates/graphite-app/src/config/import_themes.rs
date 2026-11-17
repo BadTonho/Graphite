@@ -179,7 +179,8 @@ fn import_entries(
         let result = fs::create_dir_all(destination).and_then(|_| {
             fs::write(
                 destination.join(".graphite-theme-catalog.json"),
-                serde_json::json!({"graphiteThemes":catalog,"graphiteThemeLabels":labels}).to_string(),
+                serde_json::json!({"graphiteThemes":catalog,"graphiteThemeLabels":labels})
+                    .to_string(),
             )
         });
         if let Err(error) = result {

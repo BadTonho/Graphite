@@ -97,14 +97,17 @@ mod tests {
         app.branch_picker_items = vec!["v1".into()];
 
         let second = TempDir::new();
-        let workspace = graphite_workspace::Workspace::from_roots(vec![second.path().to_path_buf()])
-            .unwrap();
+        let workspace =
+            graphite_workspace::Workspace::from_roots(vec![second.path().to_path_buf()]).unwrap();
         app.tree.replace_workspace(workspace);
         app.reset_scm_for_workspace();
 
         assert_ne!(app.scm_snapshot.branch.as_deref(), Some("old-branch"));
         assert!(app.scm_snapshot.files.is_empty());
-        assert_eq!((app.scm_graph_scroll, app.scm_graph_limit), (0, super::super::scm_graph_ui::GRAPH_PAGE));
+        assert_eq!(
+            (app.scm_graph_scroll, app.scm_graph_limit),
+            (0, super::super::scm_graph_ui::GRAPH_PAGE)
+        );
         assert!(app.scm_graph_selected_hash.is_none());
         assert_eq!((app.scm_selected, app.scm_scroll), (0, 0));
         assert!(app.scm_commit_message.is_empty());
@@ -133,7 +136,10 @@ mod tests {
         app.handle_user_event(UserEvent::ScmSnapshot(root, current));
         assert_eq!(app.scm_snapshot.branch.as_deref(), Some("current"));
 
-        app.handle_user_event(UserEvent::ScmGraph(other.path().to_path_buf(), Err("late".into())));
+        app.handle_user_event(UserEvent::ScmGraph(
+            other.path().to_path_buf(),
+            Err("late".into()),
+        ));
         assert!(app.scm_graph_rows.is_empty());
     }
 
@@ -148,12 +154,15 @@ mod tests {
             .status()
             .unwrap();
         assert!(ran.success());
-        let workspace = graphite_workspace::Workspace::from_roots(vec![second.path().to_path_buf()])
-            .unwrap();
+        let workspace =
+            graphite_workspace::Workspace::from_roots(vec![second.path().to_path_buf()]).unwrap();
         app.tree.replace_workspace(workspace);
         app.reset_scm_for_workspace();
         // Without an event loop the refresh runs right away, so the snapshot is the new repository's.
         assert_eq!(app.scm_snapshot.branch.as_deref(), Some("fresh"));
-        assert!(app.scm_graph_rows.is_empty(), "no commits yet in the new repository");
+        assert!(
+            app.scm_graph_rows.is_empty(),
+            "no commits yet in the new repository"
+        );
     }
 }

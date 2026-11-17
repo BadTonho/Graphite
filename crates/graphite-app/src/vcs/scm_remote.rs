@@ -114,8 +114,7 @@ pub(crate) fn publish_github_repository(
             .unwrap_or_else(|| format!("GitHub API error ({status})"));
         return Err(message);
     }
-    let json: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     let clone_url = json["clone_url"]
         .as_str()
         .ok_or_else(|| "GitHub response missing clone_url".to_owned())?;
@@ -180,10 +179,18 @@ pub(crate) fn clone(parent: &Path, url: &str) -> Result<std::path::PathBuf, Stri
     if url.is_empty() || url.starts_with('-') || url.chars().any(char::is_control) {
         return Err("Type the address of a repository".into());
     }
-    let name = clone_folder_name(url).ok_or_else(|| format!("Cannot tell a folder name from '{url}'"))?;
+    let name =
+        clone_folder_name(url).ok_or_else(|| format!("Cannot tell a folder name from '{url}'"))?;
     let target = parent.join(&name);
-    if target.exists() && target.read_dir().map_or(true, |mut entries| entries.next().is_some()) {
-        return Err(format!("'{}' already exists and is not empty", target.display()));
+    if target.exists()
+        && target
+            .read_dir()
+            .map_or(true, |mut entries| entries.next().is_some())
+    {
+        return Err(format!(
+            "'{}' already exists and is not empty",
+            target.display()
+        ));
     }
     run_git(parent, &["clone", "--", url, &name])?;
     Ok(target)
@@ -374,9 +381,15 @@ mod tests {
         let parent = dir.path().join("parent");
         fs::create_dir_all(&work).unwrap();
         fs::create_dir_all(&parent).unwrap();
-        git(dir.path(), &["init", "--bare", "-b", "main", source.to_str().unwrap()]);
+        git(
+            dir.path(),
+            &["init", "--bare", "-b", "main", source.to_str().unwrap()],
+        );
         git(&work, &["init", "-b", "main"]);
-        git(&work, &["remote", "add", "origin", source.to_str().unwrap()]);
+        git(
+            &work,
+            &["remote", "add", "origin", source.to_str().unwrap()],
+        );
         fs::write(work.join("a.txt"), "a").unwrap();
         git(&work, &["add", "a.txt"]);
         git(&work, &["commit", "-m", "first"]);
@@ -386,7 +399,9 @@ mod tests {
         assert_eq!(cloned, parent.join("source"));
         assert!(cloned.join("a.txt").exists());
         assert!(
-            clone(&parent, source.to_str().unwrap()).unwrap_err().contains("already exists"),
+            clone(&parent, source.to_str().unwrap())
+                .unwrap_err()
+                .contains("already exists"),
             "a busy folder is not overwritten"
         );
         assert!(clone(&parent, "--upload-pack=evil").is_err());
@@ -403,11 +418,20 @@ mod tests {
         let second = dir.path().join("second");
         fs::create_dir_all(&work).unwrap();
         for bare in [&main_remote, &other_remote] {
-            git(dir.path(), &["init", "--bare", "-b", "main", bare.to_str().unwrap()]);
+            git(
+                dir.path(),
+                &["init", "--bare", "-b", "main", bare.to_str().unwrap()],
+            );
         }
         git(&work, &["init", "-b", "main"]);
-        git(&work, &["remote", "add", "origin", main_remote.to_str().unwrap()]);
-        git(&work, &["remote", "add", "other", other_remote.to_str().unwrap()]);
+        git(
+            &work,
+            &["remote", "add", "origin", main_remote.to_str().unwrap()],
+        );
+        git(
+            &work,
+            &["remote", "add", "other", other_remote.to_str().unwrap()],
+        );
         fs::write(work.join("a.txt"), "one").unwrap();
         git(&work, &["add", "a.txt"]);
         git(&work, &["commit", "-m", "first"]);
@@ -423,7 +447,14 @@ mod tests {
         assert!(push_to(&work, "no such").is_err());
 
         // A second clone adds a commit to `other`; pull it by naming the remote branch.
-        git(dir.path(), &["clone", other_remote.to_str().unwrap(), second.to_str().unwrap()]);
+        git(
+            dir.path(),
+            &[
+                "clone",
+                other_remote.to_str().unwrap(),
+                second.to_str().unwrap(),
+            ],
+        );
         fs::write(second.join("b.txt"), "two").unwrap();
         git(&second, &["add", "b.txt"]);
         git(&second, &["commit", "-m", "second"]);

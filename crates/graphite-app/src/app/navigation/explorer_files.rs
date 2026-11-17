@@ -364,9 +364,12 @@ impl App {
             return;
         };
         let norm_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-        if self.tree.roots().iter().any(|root| {
-            std::fs::canonicalize(root).unwrap_or_else(|_| root.clone()) == norm_path
-        }) {
+        if self
+            .tree
+            .roots()
+            .iter()
+            .any(|root| std::fs::canonicalize(root).unwrap_or_else(|_| root.clone()) == norm_path)
+        {
             return;
         }
         self.explorer_delete_confirm = Some(path);
@@ -397,7 +400,11 @@ impl App {
     fn explorer_delete_modal_rects(
         width: f32,
         height: f32,
-    ) -> ((f32, f32, f32, f32), (f32, f32, f32, f32), (f32, f32, f32, f32)) {
+    ) -> (
+        (f32, f32, f32, f32),
+        (f32, f32, f32, f32),
+        (f32, f32, f32, f32),
+    ) {
         let panel_width = (width * 0.6)
             .clamp(340.0, 520.0)
             .min((width - 24.0).max(0.0));
@@ -427,9 +434,8 @@ impl App {
             return false;
         }
         let (panel, confirm, cancel) = Self::explorer_delete_modal_rects(width, height);
-        let in_rect = |r: (f32, f32, f32, f32)| {
-            mx >= r.0 && mx < r.0 + r.2 && my >= r.1 && my < r.1 + r.3
-        };
+        let in_rect =
+            |r: (f32, f32, f32, f32)| mx >= r.0 && mx < r.0 + r.2 && my >= r.1 && my < r.1 + r.3;
         if in_rect(confirm) {
             self.confirm_explorer_delete();
         } else if in_rect(cancel) || !in_rect(panel) {
@@ -469,8 +475,7 @@ impl App {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let message = self.tf("explorer.delete.confirm", &[("name", &name)]);
-        let clipped =
-            Self::help_menu_visible_label(&message, cw, (panel_width - 32.0).max(0.0));
+        let clipped = Self::help_menu_visible_label(&message, cw, (panel_width - 32.0).max(0.0));
         renderer.draw_text(&clipped, x + 16.0, y + 44.0, dim);
 
         renderer.draw_rect(confirm.0, confirm.1, confirm.2, confirm.3, danger_bg);
@@ -568,8 +573,7 @@ impl App {
         let norm_parent =
             std::fs::canonicalize(&prompt.path).unwrap_or_else(|_| prompt.path.clone());
         if let Some((idx, row)) = self.tree.rows.iter().enumerate().find(|(_, row)| {
-            std::fs::canonicalize(&row.entry.path)
-                .unwrap_or_else(|_| row.entry.path.clone())
+            std::fs::canonicalize(&row.entry.path).unwrap_or_else(|_| row.entry.path.clone())
                 == norm_parent
         }) {
             Some((idx + 1, row.depth + 1))

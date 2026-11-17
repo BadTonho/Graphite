@@ -85,8 +85,8 @@ impl App {
                 let icon_slot = sidebar_lh;
                 let icon_size = (sidebar_lh * 0.85).round();
                 let icon_x = indent + chevron_slot;
-                let is_folder =
-                    prompt.kind == crate::app::navigation::explorer_files::ExplorerPromptKind::NewFolder;
+                let is_folder = prompt.kind
+                    == crate::app::navigation::explorer_files::ExplorerPromptKind::NewFolder;
                 let icon = crate::icon_theme::for_entry(&prompt.value, is_folder, false, false);
                 crate::icon_theme::draw(
                     r,

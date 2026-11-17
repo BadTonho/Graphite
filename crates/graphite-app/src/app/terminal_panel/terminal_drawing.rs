@@ -372,12 +372,7 @@ impl App {
                     top + (TERMINAL_HEADER_HEIGHT - 11.0) * 0.5,
                     rgb(0xcccccc),
                 );
-                renderer.draw_text(
-                    &layout.shell_label,
-                    rect.x + 22.0,
-                    text_y,
-                    rgb(0xcccccc),
-                );
+                renderer.draw_text(&layout.shell_label, rect.x + 22.0, text_y, rgb(0xcccccc));
                 continue;
             }
             draw_toolbar_action(
@@ -407,8 +402,7 @@ impl App {
                 );
             }
             let visible_rows = (body_height / line_height).max(0.0) as usize;
-            for (index, (document, diagnostic)) in
-                diagnostics.iter().take(visible_rows).enumerate()
+            for (index, (document, diagnostic)) in diagnostics.iter().take(visible_rows).enumerate()
             {
                 let severity = match diagnostic.severity {
                     Some(lsp_types::DiagnosticSeverity::ERROR) => {
@@ -456,7 +450,10 @@ impl App {
                 let clean: String = line
                     .chars()
                     .map(|ch| if ch.is_control() { ' ' } else { ch })
-                    .take((((panel_width - TERMINAL_GUTTER_WIDTH - PAD) / cell_width).max(1.0)) as usize)
+                    .take(
+                        (((panel_width - TERMINAL_GUTTER_WIDTH - PAD) / cell_width).max(1.0))
+                            as usize,
+                    )
                     .collect();
                 renderer.draw_text(
                     &clean,
@@ -790,15 +787,30 @@ mod tests {
 
         for translator in [en, pt] {
             let tab_labels = [
-                (TerminalHeaderTab::Problems, translator.text("terminal.tab.problems")),
-                (TerminalHeaderTab::Output, translator.text("terminal.tab.output")),
+                (
+                    TerminalHeaderTab::Problems,
+                    translator.text("terminal.tab.problems"),
+                ),
+                (
+                    TerminalHeaderTab::Output,
+                    translator.text("terminal.tab.output"),
+                ),
                 (
                     TerminalHeaderTab::DebugConsole,
                     translator.text("terminal.tab.debug_console"),
                 ),
-                (TerminalHeaderTab::Terminal, translator.text("terminal.tab.terminal")),
-                (TerminalHeaderTab::Ports, translator.text("terminal.tab.ports")),
-                (TerminalHeaderTab::Comments, translator.text("terminal.tab.comments")),
+                (
+                    TerminalHeaderTab::Terminal,
+                    translator.text("terminal.tab.terminal"),
+                ),
+                (
+                    TerminalHeaderTab::Ports,
+                    translator.text("terminal.tab.ports"),
+                ),
+                (
+                    TerminalHeaderTab::Comments,
+                    translator.text("terminal.tab.comments"),
+                ),
             ];
             let sessions = vec!["PowerShell 1".to_owned(), "PowerShell 2".to_owned()];
             let layout = compute_terminal_header_layout(

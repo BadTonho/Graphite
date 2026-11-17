@@ -99,7 +99,12 @@ impl App {
         let public_rect = (x + 16.0, y + 66.0, btn_w, btn_h);
         let private_rect = (x + 16.0, y + 102.0, btn_w, btn_h);
         let cancel_rect = (x + panel_w - 112.0, y + panel_h - btn_h - 14.0, 96.0, btn_h);
-        ((x, y, panel_w, panel_h), public_rect, private_rect, cancel_rect)
+        (
+            (x, y, panel_w, panel_h),
+            public_rect,
+            private_rect,
+            cancel_rect,
+        )
     }
 
     pub(crate) fn click_scm_publish_modal(
@@ -114,9 +119,8 @@ impl App {
         }
         let (panel, public_rect, private_rect, cancel_rect) =
             Self::publish_modal_rects(width, height);
-        let in_rect = |r: (f32, f32, f32, f32)| {
-            mx >= r.0 && mx < r.0 + r.2 && my >= r.1 && my < r.1 + r.3
-        };
+        let in_rect =
+            |r: (f32, f32, f32, f32)| mx >= r.0 && mx < r.0 + r.2 && my >= r.1 && my < r.1 + r.3;
         if in_rect(public_rect) {
             self.start_publish_repo(false);
         } else if in_rect(private_rect) {

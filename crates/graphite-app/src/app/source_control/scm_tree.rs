@@ -117,7 +117,8 @@ mod tests {
             .map(|row| match row {
                 TreeRow::Folder {
                     path, depth, count, ..
-                } => format!("{}{}/ ({count})", "  ".repeat(*depth), path.display()).replace('\\', "/"),
+                } => format!("{}{}/ ({count})", "  ".repeat(*depth), path.display())
+                    .replace('\\', "/"),
                 TreeRow::File { index, depth } => {
                     let name = Path::new(paths[*index])
                         .file_name()
@@ -132,7 +133,14 @@ mod tests {
 
     #[test]
     fn folders_come_before_files_and_everything_is_sorted() {
-        let paths = ["z.txt", "src/b.rs", "src/a.rs", "src/ui/w.rs", "a.txt", "docs/x.md"];
+        let paths = [
+            "z.txt",
+            "src/b.rs",
+            "src/a.rs",
+            "src/ui/w.rs",
+            "a.txt",
+            "docs/x.md",
+        ];
         let tree = rows(&paths, &Collapsed::new());
         assert_eq!(
             describe(&tree, &paths),
@@ -179,7 +187,15 @@ mod tests {
                 count: 2
             }
         );
-        assert!(matches!(&tree[1], TreeRow::Folder { depth: 1, first: 0, count: 1, .. }));
+        assert!(matches!(
+            &tree[1],
+            TreeRow::Folder {
+                depth: 1,
+                first: 0,
+                count: 1,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -214,8 +230,22 @@ mod tests {
         view: &super::super::scm_ui::ScmListView<'_>,
     ) -> Vec<super::super::scm_ui::ScmListRowKind> {
         super::super::scm_ui::scm_panel_layout_with_graph(
-            snapshot, 300.0, 900.0, 20.0, 9.0, 0, false, false, false, &[], false, false, 0, 0,
-            None, view,
+            snapshot,
+            300.0,
+            900.0,
+            20.0,
+            9.0,
+            0,
+            false,
+            false,
+            false,
+            &[],
+            false,
+            false,
+            0,
+            0,
+            None,
+            view,
         )
         .list_rows
         .into_iter()
@@ -229,7 +259,12 @@ mod tests {
         let snapshot = snapshot(&[("src/a.rs", false), ("src/b.rs", false), ("top.txt", false)]);
         let flat = kinds(&snapshot, &ScmListView::LIST);
         assert!(flat.iter().all(|kind| !matches!(kind, K::Folder { .. })));
-        assert_eq!(flat.iter().filter(|kind| matches!(kind, K::File { .. })).count(), 3);
+        assert_eq!(
+            flat.iter()
+                .filter(|kind| matches!(kind, K::File { .. }))
+                .count(),
+            3
+        );
 
         let mut collapsed = Collapsed::new();
         let open = ScmListView {
@@ -239,9 +274,20 @@ mod tests {
         let tree = kinds(&snapshot, &open);
         assert!(matches!(
             tree[1],
-            K::Folder { staged: false, depth: 0, count: 2, collapsed: false, .. }
+            K::Folder {
+                staged: false,
+                depth: 0,
+                count: 2,
+                collapsed: false,
+                ..
+            }
         ));
-        assert_eq!(tree.iter().filter(|kind| matches!(kind, K::File { .. })).count(), 3);
+        assert_eq!(
+            tree.iter()
+                .filter(|kind| matches!(kind, K::File { .. }))
+                .count(),
+            3
+        );
 
         collapsed.insert((false, PathBuf::from("src")));
         let closed = ScmListView {
@@ -249,9 +295,17 @@ mod tests {
             collapsed_folders: Some(&collapsed),
         };
         let tree = kinds(&snapshot, &closed);
-        assert!(matches!(tree[1], K::Folder { collapsed: true, .. }));
+        assert!(matches!(
+            tree[1],
+            K::Folder {
+                collapsed: true,
+                ..
+            }
+        ));
         assert_eq!(
-            tree.iter().filter(|kind| matches!(kind, K::File { .. })).count(),
+            tree.iter()
+                .filter(|kind| matches!(kind, K::File { .. }))
+                .count(),
             1,
             "only top.txt is left"
         );
@@ -268,7 +322,9 @@ mod tests {
             ("src/staged.rs", true),
         ]);
         app.toggle_scm_folder(false, "src".into());
-        assert!(app.scm_collapsed_folders.contains(&(false, PathBuf::from("src"))));
+        assert!(app
+            .scm_collapsed_folders
+            .contains(&(false, PathBuf::from("src"))));
         app.toggle_scm_folder(false, "src".into());
         assert!(app.scm_collapsed_folders.is_empty());
 

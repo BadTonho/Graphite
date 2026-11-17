@@ -141,7 +141,10 @@ mod tests {
         git(root, &["add", "a.txt"]);
 
         commit(root, &request("staged only")).unwrap();
-        assert_eq!(git(root, &["show", "--name-only", "--format=", "HEAD"]), "a.txt");
+        assert_eq!(
+            git(root, &["show", "--name-only", "--format=", "HEAD"]),
+            "a.txt"
+        );
         assert_eq!(git(root, &["status", "--porcelain"]), "?? new.txt");
 
         let all = CommitRequest {
@@ -149,7 +152,10 @@ mod tests {
             ..request("everything")
         };
         commit(root, &all).unwrap();
-        assert_eq!(git(root, &["show", "--name-only", "--format=", "HEAD"]), "new.txt");
+        assert_eq!(
+            git(root, &["show", "--name-only", "--format=", "HEAD"]),
+            "new.txt"
+        );
         assert_eq!(git(root, &["status", "--porcelain"]), "");
     }
 
@@ -228,9 +234,22 @@ mod tests {
         let remote = dir.path().join("remote.git");
         let work = dir.path().join("work");
         fs::create_dir_all(&work).unwrap();
-        git(dir.path(), &["init", "-q", "--bare", "-b", "main", remote.to_str().unwrap()]);
+        git(
+            dir.path(),
+            &[
+                "init",
+                "-q",
+                "--bare",
+                "-b",
+                "main",
+                remote.to_str().unwrap(),
+            ],
+        );
         git(&work, &["init", "-q", "-b", "main"]);
-        git(&work, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(
+            &work,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
         fs::write(work.join("a.txt"), "a\n").unwrap();
         git(&work, &["add", "-A"]);
         git(&work, &["commit", "-q", "-m", "first"]);
@@ -254,6 +273,9 @@ mod tests {
             ..request("then sync")
         };
         commit(&work, &sync).unwrap();
-        assert_eq!(git(&remote, &["log", "-1", "--format=%s", "main"]), "then sync");
+        assert_eq!(
+            git(&remote, &["log", "-1", "--format=%s", "main"]),
+            "then sync"
+        );
     }
 }

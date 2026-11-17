@@ -458,7 +458,8 @@ impl ViewMenuState {
     fn rect_at(&self, app: &App, panel: usize, size: (f32, f32)) -> (f32, f32, f32, f32) {
         let (window_width, window_height) = size;
         let width = VIEW_MENU_WIDTH.min(window_width);
-        let full = self.rows_at(app, panel).len() as f32 * VIEW_ROW_HEIGHT + VIEW_MENU_PADDING * 2.0;
+        let full =
+            self.rows_at(app, panel).len() as f32 * VIEW_ROW_HEIGHT + VIEW_MENU_PADDING * 2.0;
         if panel == 0 {
             return (
                 self.x,
@@ -784,7 +785,13 @@ impl App {
             for (index, row) in rows.iter().enumerate().skip(scroll).take(visible_rows) {
                 let y = top + VIEW_MENU_PADDING + (index - scroll) as f32 * VIEW_ROW_HEIGHT;
                 if row.separator {
-                    renderer.draw_rect(left + 1.0, y + VIEW_ROW_HEIGHT * 0.5, width - 2.0, 1.0, border);
+                    renderer.draw_rect(
+                        left + 1.0,
+                        y + VIEW_ROW_HEIGHT * 0.5,
+                        width - 2.0,
+                        1.0,
+                        border,
+                    );
                     continue;
                 }
                 if selected == index {
@@ -838,14 +845,18 @@ impl App {
         let scroll = menu.scroll_at(panel);
         Some((
             left + width / 2.0,
-            top + VIEW_MENU_PADDING + (row - scroll) as f32 * VIEW_ROW_HEIGHT + VIEW_ROW_HEIGHT / 2.0,
+            top + VIEW_MENU_PADDING
+                + (row - scroll) as f32 * VIEW_ROW_HEIGHT
+                + VIEW_ROW_HEIGHT / 2.0,
         ))
     }
 
     /// The page shown by the innermost open panel.
     #[cfg(test)]
     pub(crate) fn view_menu_open_page(&self) -> Option<ViewPage> {
-        self.view_menu.as_ref().map(|menu| menu.page_at(menu.depth()))
+        self.view_menu
+            .as_ref()
+            .map(|menu| menu.page_at(menu.depth()))
     }
 
     fn save_view_preferences(&mut self) {

@@ -69,11 +69,7 @@ fn arc(map: &mut Bitmap, start: f32, sweep: f32) {
     for step in 0..=steps {
         let angle = (start + step as f32 / 2.0).to_radians();
         for radius in [4.0_f32, 5.0] {
-            plot(
-                map,
-                8.0 + radius * angle.cos(),
-                8.0 + radius * angle.sin(),
-            );
+            plot(map, 8.0 + radius * angle.cos(), 8.0 + radius * angle.sin());
         }
     }
 }
@@ -297,7 +293,11 @@ mod tests {
         assert!(top > 10 && bottom > 10);
         // The refresh ring is open at the top right, so that corner is emptier than the left.
         let refresh = bitmap(ScmIcon::Refresh);
-        let left: usize = refresh.iter().flat_map(|row| &row[..4]).filter(|c| **c).count();
+        let left: usize = refresh
+            .iter()
+            .flat_map(|row| &row[..4])
+            .filter(|c| **c)
+            .count();
         assert!(left > 4);
     }
 }

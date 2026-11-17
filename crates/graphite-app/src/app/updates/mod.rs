@@ -1,5 +1,6 @@
 //! Application update manager backed by GitHub Releases.
 
+pub(crate) mod apply;
 pub(crate) mod state;
 pub(crate) mod transport;
 
@@ -200,6 +201,28 @@ impl App {
             marker_dir.join("pending-install.json"),
             serde_json::to_string_pretty(&marker).unwrap_or_default(),
         );
+        if self.event_proxy.is_some() {
+            if let Ok(exe) = std::env::current_exe() {
+                match apply::apply_pending_update_in(&self.profile_root, &exe) {
+                    Ok(Some(_)) => {
+                        let workspace = self.tree.root().to_path_buf();
+                        if std::process::Command::new(&exe)
+                            .arg(workspace)
+                            .spawn()
+                            .is_ok()
+                        {
+                            std::process::exit(0);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        self.updates.status = UpdateStatus::Error(err.clone());
+                        self.status = err;
+                        return;
+                    }
+                }
+            }
+        }
         self.status = format!("Update {tag} scheduled to apply on next restart");
     }
 

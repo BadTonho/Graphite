@@ -72,9 +72,7 @@ impl RemoteOp {
             RemoteOp::StashPopLatest => crate::scm_stash::pop_latest(root),
             RemoteOp::UndoLastCommit => branches::undo_last_commit(root),
             RemoteOp::DeleteTag(name) => crate::scm_refs::delete_tag(root, name),
-            RemoteOp::DeleteRemoteBranch(name) => {
-                crate::scm_refs::delete_remote_branch(root, name)
-            }
+            RemoteOp::DeleteRemoteBranch(name) => crate::scm_refs::delete_remote_branch(root, name),
             RemoteOp::StashApply(entry) => crate::scm_refs::stash_apply(root, entry),
             RemoteOp::StashPop(entry) => crate::scm_refs::stash_pop(root, entry),
             RemoteOp::StashDrop(entry) => crate::scm_refs::stash_drop(root, entry),
@@ -257,7 +255,6 @@ impl App {
             Err(error) => self.status = self.tf("scm.remote.failed", &[("error", &error)]),
         }
     }
-
 }
 
 #[cfg(test)]
@@ -294,7 +291,10 @@ mod tests {
 
         // Without an event loop starting a clone stops with this message.
         app.status.clear();
-        app.start_clone("https://example.invalid/r.git".into(), dir.path().to_path_buf());
+        app.start_clone(
+            "https://example.invalid/r.git".into(),
+            dir.path().to_path_buf(),
+        );
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
 

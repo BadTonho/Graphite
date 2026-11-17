@@ -17,7 +17,10 @@ use documents::{document, document_store, file_format};
 mod explorer;
 use explorer::{file_icons, file_nesting, icon_theme, tree};
 mod vcs;
-use vcs::{merge, multi_diff, scm, scm_branches, scm_changes, scm_commit, scm_discard, scm_ignore, scm_log, scm_refs, scm_remote, scm_stash};
+use vcs::{
+    merge, multi_diff, scm, scm_branches, scm_changes, scm_commit, scm_discard, scm_ignore,
+    scm_log, scm_refs, scm_remote, scm_stash,
+};
 mod language;
 use language::{json_schema, lsp, semantic_tokens};
 mod tooling;
@@ -951,6 +954,15 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 
 fn main() {
     let cwd = std::env::current_dir().expect("no current directory");
+    if let Ok(exe) = std::env::current_exe() {
+        let config_root = config::app_config_dir();
+        let profiles = app::phase5::Profiles::open(&config_root).ok();
+        let profile_root = profiles
+            .as_ref()
+            .and_then(|profiles| profiles.path(profiles.active()).ok())
+            .unwrap_or(config_root);
+        let _ = app::updates::apply::apply_pending_update_in(&profile_root, &exe);
+    }
     let cli_translator = graphite_i18n::Translator::new(config::language_selection(&cwd).language);
     let mut args = std::env::args_os()
         .skip(1)

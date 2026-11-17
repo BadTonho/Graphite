@@ -355,7 +355,10 @@ pub(crate) enum UserEvent {
     },
     /// A refreshed snapshot and the folder it was read from; one for another folder is stale.
     ScmSnapshot(PathBuf, crate::scm::Snapshot),
-    ScmGraph(PathBuf, Result<Vec<crate::vcs::scm_graph::GraphRow>, String>),
+    ScmGraph(
+        PathBuf,
+        Result<Vec<crate::vcs::scm_graph::GraphRow>, String>,
+    ),
     ScmOperationCompleted {
         message: String,
         snapshot: Option<crate::scm::Snapshot>,
@@ -691,7 +694,8 @@ impl App {
             let mut menu = Node::new(Role::Menu);
             menu.set_label(self.t("menubar.file"));
             let mut item_children = Vec::new();
-            for (item_index, (label, shortcut, enabled, checked)) in entries.into_iter().enumerate() {
+            for (item_index, (label, shortcut, enabled, checked)) in entries.into_iter().enumerate()
+            {
                 {
                     let id = file_menu_item_node(item_index);
                     let mut item = Node::new(Role::MenuItem);

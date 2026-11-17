@@ -39,7 +39,10 @@ impl GraphMenuAction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GraphMenuRow {
-    Action { action: GraphMenuAction, enabled: bool },
+    Action {
+        action: GraphMenuAction,
+        enabled: bool,
+    },
     Separator,
 }
 
@@ -201,10 +204,7 @@ impl App {
         let width = (widest as f32 * cw.max(6.0) + 28.0).max(MIN_MENU_WIDTH);
         let height = PADDING * 2.0 + rows.iter().map(|row| row.height()).sum::<f32>();
         let (x, y) = place_context_menu(anchor, (width, height), window, bottom_inset);
-        let selected = rows
-            .iter()
-            .position(|row| row.is_selectable())
-            .unwrap_or(0);
+        let selected = rows.iter().position(|row| row.is_selectable()).unwrap_or(0);
         self.scm_graph_menu = Some(GraphContextMenu {
             hash,
             subject,

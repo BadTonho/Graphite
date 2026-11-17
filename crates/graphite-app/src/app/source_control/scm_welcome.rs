@@ -173,7 +173,11 @@ impl App {
             renderer.draw_text(label, label_x, label_y, btn_fg);
         };
 
-        draw_button(renderer, layout.init_button, self.t("scm.welcome.initialize"));
+        draw_button(
+            renderer,
+            layout.init_button,
+            self.t("scm.welcome.initialize"),
+        );
 
         for (y, line) in &layout.docs_lines {
             renderer.draw_text(line, left, *y, text);

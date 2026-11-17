@@ -74,10 +74,12 @@ mod tests {
         assert!(!request.stage_all);
 
         let nothing_staged = app(&dir, false, true, "message");
-        assert!(nothing_staged
-            .build_commit_request(CommitOptions::PLAIN)
-            .unwrap()
-            .stage_all);
+        assert!(
+            nothing_staged
+                .build_commit_request(CommitOptions::PLAIN)
+                .unwrap()
+                .stage_all
+        );
     }
 
     #[test]
@@ -107,7 +109,9 @@ mod tests {
         let dir = TempDir::new();
         let blank = app(&dir, true, false, "   ");
         assert_eq!(
-            blank.build_commit_request(CommitOptions::PLAIN).unwrap_err(),
+            blank
+                .build_commit_request(CommitOptions::PLAIN)
+                .unwrap_err(),
             blank.t("scm.error.empty_message")
         );
         let amend = CommitOptions {
@@ -122,10 +126,15 @@ mod tests {
 
         let clean = app(&dir, false, false, "m");
         assert_eq!(
-            clean.build_commit_request(CommitOptions::PLAIN).unwrap_err(),
+            clean
+                .build_commit_request(CommitOptions::PLAIN)
+                .unwrap_err(),
             clean.t("scm.error.nothing_to_commit")
         );
-        assert!(clean.build_commit_request(amend).is_ok(), "amending needs no new changes");
+        assert!(
+            clean.build_commit_request(amend).is_ok(),
+            "amending needs no new changes"
+        );
     }
 
     #[test]
