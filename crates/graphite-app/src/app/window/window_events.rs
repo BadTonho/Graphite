@@ -329,6 +329,12 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     return;
                 }
+                if self.settings_editor_click(self.mouse.x as f32, self.mouse.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.titlebar_handle_press(self.mouse.x as f32, self.mouse.y as f32) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
@@ -470,6 +476,12 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
+                if self.settings_editor_scroll(lines) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.multi_diff.is_some() {
                     self.multi_diff_scroll_rows(lines.round() as isize);
                     if let Some(gpu) = &self.gpu {
@@ -619,6 +631,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if self.settings_editor_key(&event.logical_key, event.text.as_deref()) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 self.note_screencast_shortcut(&event);
                 let editor_state = self.editor_state();
 

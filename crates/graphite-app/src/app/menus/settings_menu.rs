@@ -801,7 +801,9 @@ impl App {
             | SettingsMenuCommand::Themes
             | SettingsMenuCommand::LayoutDensity
             | SettingsMenuCommand::Updated => {}
-            SettingsMenuCommand::Settings => self.open_preference_file("settings.json"),
+            SettingsMenuCommand::Settings => {
+                self.open_settings_editor(crate::app::settings_editor::SettingsScope::User)
+            }
             SettingsMenuCommand::Extensions => self.open_plugins(),
             SettingsMenuCommand::KeyboardShortcuts => self.open_preference_file("keybindings.json"),
             SettingsMenuCommand::Snippets => self.open_snippet_configuration(),

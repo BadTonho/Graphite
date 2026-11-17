@@ -9,7 +9,7 @@ pub(crate) use window::{
 mod menus;
 pub(crate) use menus::{
     edit_menu, file_menu, go_menu, help_menu, menu_bar, profile_menu, run_menu, selection_menu,
-    settings_menu, terminal_menu, view_menu,
+    settings_editor, settings_menu, terminal_menu, view_menu,
 };
 mod command_system;
 pub(crate) use command_system::{

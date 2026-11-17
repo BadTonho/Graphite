@@ -395,6 +395,7 @@ struct App {
     updates: app::updates::UpdateState,
     troubleshooting: app::issue_reporter::TroubleshootingSession,
     error_notifications: app::error_notification::ErrorNotificationState,
+    settings_editor: Option<app::settings_editor::SettingsEditor>,
 }
 
 impl App {
@@ -930,6 +931,7 @@ impl App {
             updates,
             troubleshooting: app::issue_reporter::TroubleshootingSession::default(),
             error_notifications: app::error_notification::ErrorNotificationState::default(),
+            settings_editor: None,
         }
     }
 }

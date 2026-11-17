@@ -12,6 +12,7 @@ pub(crate) mod popup_placement;
 pub(crate) mod profile_menu;
 pub(crate) mod run_menu;
 pub(crate) mod selection_menu;
+pub(crate) mod settings_editor;
 pub(crate) mod settings_menu;
 pub(crate) mod terminal_menu;
 pub(crate) mod view_menu;

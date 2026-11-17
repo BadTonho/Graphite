@@ -793,5 +793,11 @@
   "updates.changelog.heading": "What's New in Graphite {tag}",
   "updates.changelog.release_url": "Release notes",
   "updates.changelog.empty_notes": "Graphite has been updated to {tag}.",
-  "updates.changelog.status": "Updated to {tag}"
+  "updates.changelog.status": "Updated to {tag}",
+  "settings_editor.title": "Settings",
+  "settings_editor.open_json": "Open Settings (JSON)",
+  "settings_editor.search_placeholder": "Search settings...",
+  "settings_editor.scope_user": "User",
+  "settings_editor.scope_workspace": "Workspace",
+  "settings_editor.opened": "Opened Settings editor"
 }

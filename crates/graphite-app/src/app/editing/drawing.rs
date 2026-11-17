@@ -855,6 +855,7 @@ impl App {
         self.draw_scm_more_menu(r);
         self.draw_workbench_menu(r);
         self.draw_help_modal(r);
+        self.draw_settings_editor(r);
         self.draw_error_notification(r);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
