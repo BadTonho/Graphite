@@ -166,7 +166,10 @@ fn stage_binary_to_temp(staged_path: &Path, dest_temp: &Path) -> Result<(), Stri
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().replace('\\', "/");
+        let name = entry
+            .name()
+            .map_err(|err| format!("Failed reading zip entry name: {err}"))?
+            .replace('\\', "/");
         let base = name.rsplit('/').next().unwrap_or(&name);
         if base.eq_ignore_ascii_case(wanted) {
             matched_index = Some(idx);

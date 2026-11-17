@@ -48,7 +48,9 @@ fn with_archive<T>(
     let mut files = HashSet::new();
     for i in 0..zip.len() {
         let entry = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().trim_end_matches('/');
+        // A name that cannot be decoded is as unsafe as a bad path: the package is refused.
+        let entry_name = entry.name().map_err(|e| e.to_string())?;
+        let name = entry_name.trim_end_matches('/');
         let key = name.to_ascii_lowercase();
         if !safe_path(name) || !names.insert(key.clone()) {
             return Err(format!("Unsafe or duplicate archive path: {name}"));
@@ -165,7 +167,7 @@ pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
         let mut total = 0u64;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
-            let out = destination.join(entry.name());
+            let out = destination.join(entry.name().map_err(|e| e.to_string())?.as_ref());
             if entry.is_dir() {
                 fs::create_dir_all(out).map_err(|e| e.to_string())?;
                 continue;
