@@ -136,7 +136,7 @@ impl App {
                         );
                     }
                     renderer.draw_text(
-                        &self.t(label),
+                        self.t(label),
                         x + 14.0,
                         top + 5.0,
                         if enabled { text } else { dim },
@@ -682,15 +682,13 @@ impl App {
                     }
                 }
                 Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
-                    if let Some(row) = rows.get(snapshot.submenu_selected).cloned() {
-                        if let SettingsSubmenuRow::Item {
-                            command, enabled, ..
-                        } = row
-                        {
-                            if enabled {
-                                self.execute_settings_subcommand(command);
-                            }
-                        }
+                    if let Some(SettingsSubmenuRow::Item {
+                        command,
+                        enabled: true,
+                        ..
+                    }) = rows.get(snapshot.submenu_selected).cloned()
+                    {
+                        self.execute_settings_subcommand(command);
                     }
                 }
                 _ => return false,
@@ -777,19 +775,16 @@ impl App {
         let Some(menu) = self.settings_menu.clone() else {
             return;
         };
-        if let Some(row) = menu.submenu.and_then(|submenu| {
+        if let Some(SettingsSubmenuRow::Item {
+            command,
+            enabled: true,
+            ..
+        }) = menu.submenu.and_then(|submenu| {
             self.settings_submenu_rows(submenu, &menu.profiles)
                 .into_iter()
                 .nth(index)
         }) {
-            if let SettingsSubmenuRow::Item {
-                command, enabled, ..
-            } = row
-            {
-                if enabled {
-                    self.execute_settings_subcommand(command);
-                }
-            }
+            self.execute_settings_subcommand(command);
         }
     }
 

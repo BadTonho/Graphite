@@ -616,11 +616,7 @@ pub fn run_plugin_over_streams<P: Plugin>(
         .map_err(|e| ServiceError::Io(e.to_string()))?;
 
     let mut worker_handles = Vec::new();
-    loop {
-        let msg = match read_message(&mut reader) {
-            Ok(Some(msg)) => msg,
-            Ok(None) | Err(_) => break,
-        };
+    while let Ok(Some(msg)) = read_message(&mut reader) {
         if msg.session() != session {
             continue;
         }

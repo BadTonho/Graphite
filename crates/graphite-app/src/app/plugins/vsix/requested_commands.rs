@@ -42,6 +42,7 @@ impl Requested {
         first
     }
 
+    #[cfg(test)]
     pub(super) fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }

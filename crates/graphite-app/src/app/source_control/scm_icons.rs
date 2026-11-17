@@ -34,9 +34,9 @@ fn plot(map: &mut Bitmap, x: f32, y: f32) {
 }
 
 fn fill(map: &mut Bitmap, x: usize, y: usize, width: usize, height: usize) {
-    for row in y..(y + height).min(GRID) {
-        for column in x..(x + width).min(GRID) {
-            map[row][column] = true;
+    for line in map.iter_mut().take((y + height).min(GRID)).skip(y) {
+        for cell in line.iter_mut().take((x + width).min(GRID)).skip(x) {
+            *cell = true;
         }
     }
 }
@@ -83,14 +83,14 @@ fn triangle(map: &mut Bitmap, a: (f32, f32), b: (f32, f32), c: (f32, f32)) {
     let side = |p: (f32, f32), q: (f32, f32), r: (f32, f32)| {
         (p.0 - r.0) * (q.1 - r.1) - (q.0 - r.0) * (p.1 - r.1)
     };
-    for y in 0..GRID {
-        for x in 0..GRID {
+    for (y, line) in map.iter_mut().enumerate() {
+        for (x, cell) in line.iter_mut().enumerate() {
             let p = (x as f32 + 0.5, y as f32 + 0.5);
             let (d1, d2, d3) = (side(p, a, b), side(p, b, c), side(p, c, a));
             let negative = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
             let positive = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
             if !(negative && positive) {
-                map[y][x] = true;
+                *cell = true;
             }
         }
     }
@@ -274,9 +274,9 @@ mod tests {
     #[test]
     fn plus_is_a_symmetric_cross_and_minus_is_its_horizontal_bar() {
         let plus = bitmap(ScmIcon::Plus);
-        for y in 0..GRID {
-            for x in 0..GRID {
-                assert_eq!(plus[y][x], plus[x][y], "plus is symmetric at {x},{y}");
+        for (y, line) in plus.iter().enumerate() {
+            for (x, cell) in line.iter().enumerate() {
+                assert_eq!(*cell, plus[x][y], "plus is symmetric at {x},{y}");
             }
         }
         let minus = bitmap(ScmIcon::Minus);

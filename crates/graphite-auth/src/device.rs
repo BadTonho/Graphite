@@ -297,7 +297,10 @@ mod tests {
         assert_eq!(session.login, "octocat");
         assert_eq!(session.name.as_deref(), Some("Mona"));
         assert_eq!(session.token, "gho_test");
-        assert_eq!(session.scope, "read:user", "the session remembers its scopes");
+        assert_eq!(
+            session.scope, "read:user",
+            "the session remembers its scopes"
+        );
         assert!(fake.posts.borrow()[0].contains("scope=read:user"));
         assert!(fake.posts.borrow()[1]
             .contains("grant_type=urn:ietf:params:oauth:grant-type:device_code"));
@@ -306,7 +309,8 @@ mod tests {
     #[test]
     fn the_requested_scopes_are_recorded_with_single_spaces() {
         let fake = Fake::new(vec![code_response(), json!({"access_token": "gho_test"})]);
-        let session = sign_in_with_scope(&fake, "client", "read:user   gist", |_| {}, |_| {}).unwrap();
+        let session =
+            sign_in_with_scope(&fake, "client", "read:user   gist", |_| {}, |_| {}).unwrap();
         assert_eq!(session.scope, "read:user gist");
     }
 

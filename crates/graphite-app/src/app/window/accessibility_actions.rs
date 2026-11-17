@@ -209,7 +209,7 @@ impl App {
                     if menu == super::menu_bar::WorkbenchMenu::View {
                         let (width, height) = self.gpu.as_ref().map_or((1200.0, 760.0), |gpu| {
                             let (width, height) = gpu.renderer.size();
-                            (width as f32, height as f32)
+                            (width, height)
                         });
                         self.view_menu_open(0.0, width, height);
                     }

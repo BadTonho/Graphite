@@ -29,6 +29,7 @@ pub(crate) struct FoundLine {
 }
 
 impl Session {
+    #[cfg(test)]
     /// Every line of every cell that holds `query`, ignoring case, in document order. At most
     /// `limit` are returned.
     pub(crate) fn find_lines(&self, query: &str, limit: usize) -> Vec<FoundLine> {

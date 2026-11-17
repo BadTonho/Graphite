@@ -20,9 +20,7 @@ pub(super) fn graphite_scm_stage_line(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.perform_scm_action(crate::app::scm_ui::ScmAction::StageCursorLine)
-    };
+    app.perform_scm_action(crate::app::scm_ui::ScmAction::StageCursorLine);
     Ok(())
 }
 
@@ -30,9 +28,7 @@ pub(super) fn graphite_scm_revert_line(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.perform_scm_action(crate::app::scm_ui::ScmAction::RevertCursorLine)
-    };
+    app.perform_scm_action(crate::app::scm_ui::ScmAction::RevertCursorLine);
     Ok(())
 }
 
@@ -40,9 +36,7 @@ pub(super) fn graphite_scm_revert_hunk(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.perform_scm_action(crate::app::scm_ui::ScmAction::RevertFirstHunk)
-    };
+    app.perform_scm_action(crate::app::scm_ui::ScmAction::RevertFirstHunk);
     Ok(())
 }
 

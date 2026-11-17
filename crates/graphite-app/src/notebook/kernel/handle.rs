@@ -85,13 +85,6 @@ impl KernelHandle {
         )
     }
 
-    pub(crate) fn request_info(&self) {
-        self.send(
-            false,
-            Message::request("kernel_info_request", &self.session, json!({})),
-        );
-    }
-
     /// Interrupts what is running, by message and, for kernels that ask for it, by signal.
     pub(crate) fn interrupt(&self) {
         self.send(
@@ -112,11 +105,6 @@ impl KernelHandle {
         let _ = self
             .commands
             .send(Command::KillAfter(Duration::from_secs(3)));
-    }
-
-    /// Ends the kernel process without asking.
-    pub(crate) fn kill(&self) {
-        let _ = self.commands.send(Command::Kill);
     }
 
     /// The events that arrived since the last call.
@@ -269,6 +257,7 @@ fn read_events(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn supervise(
     connection: Connection,
     session: String,

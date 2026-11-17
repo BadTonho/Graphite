@@ -176,7 +176,7 @@ impl ApplicationHandler<UserEvent> for App {
         window.set_visible(true);
         window.set_ime_allowed(true);
         self.sidebar_scale_factor = scale;
-        self.sidebar_window_width_px = renderer.size().0 as f32;
+        self.sidebar_window_width_px = renderer.size().0;
         self.gpu = Some(Gpu {
             window,
             renderer,
@@ -275,7 +275,7 @@ impl ApplicationHandler<UserEvent> for App {
                         && (pointer_x - separator_x).abs() <= 4.0
                         && pointer_y
                             < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
-                                gpu.renderer.size().1 as f32 - gpu.renderer.line_height()
+                                gpu.renderer.size().1 - gpu.renderer.line_height()
                             });
                     let over_panel_separator = self
                         .is_over_terminal_resize_handle(pointer_x, pointer_y)
@@ -400,10 +400,8 @@ impl ApplicationHandler<UserEvent> for App {
                             && y < rect.y + rect.height
                     });
                     // Ctrl+click follows a link an extension reported under the cursor.
-                    if in_editor {
-                        if !self.open_document_link_at_cursor() {
-                            self.run_code_lens_at_line_end();
-                        }
+                    if in_editor && !self.open_document_link_at_cursor() {
+                        self.run_code_lens_at_line_end();
                     }
                 }
                 if editor_state != self.editor_state() {
@@ -514,11 +512,7 @@ impl ApplicationHandler<UserEvent> for App {
                     && self.view_preferences.panel_visible
                     && self.gpu.as_ref().is_some_and(|gpu| {
                         let (width, height) = gpu.renderer.size();
-                        let panel = self.panel_bounds(
-                            width as f32,
-                            height as f32,
-                            gpu.renderer.line_height(),
-                        );
+                        let panel = self.panel_bounds(width, height, gpu.renderer.line_height());
                         (self.mouse.x as f32) >= panel.x
                             && (self.mouse.x as f32) < panel.x + panel.width
                             && (self.mouse.y as f32) >= panel.y

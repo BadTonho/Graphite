@@ -296,6 +296,7 @@ impl App {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_graphite_detail_sidebar(
         &self,
         renderer: &mut Renderer,
@@ -1097,6 +1098,7 @@ impl App {
     }
 
     /// One bar of the column: chevron, title and a badge with the count, between two lines.
+    #[allow(clippy::too_many_arguments)]
     fn draw_plugin_section_bar(
         &self,
         renderer: &mut Renderer,
@@ -1225,6 +1227,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_plugin_card(
         &self,
         renderer: &mut Renderer,

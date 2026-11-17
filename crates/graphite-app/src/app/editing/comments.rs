@@ -41,11 +41,10 @@ impl App {
                 record.enabled
                     && record.trusted_version.as_deref() == Some(record.metadata.version())
             })
-            .filter_map(|record| match &record.metadata {
-                Metadata::Vsix(vsix) => Some(vsix.language_comments.iter()),
-                Metadata::Native(native) => Some(native.languages.iter()),
+            .flat_map(|record| match &record.metadata {
+                Metadata::Vsix(vsix) => vsix.language_comments.iter(),
+                Metadata::Native(native) => native.languages.iter(),
             })
-            .flatten()
             .filter(|comments| {
                 comments.extensions.iter().any(|ext| {
                     ext.strip_prefix('.')

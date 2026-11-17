@@ -251,12 +251,14 @@ impl App {
                     paste(editor, &mut SystemClipboard);
                 });
             }),
-            _ if !ctrl && !alt => {
-                if !character.is_empty() && !character.chars().any(char::is_control) {
-                    self.with_notebook(|session| {
-                        session.edit_input(|editor| editor.insert(&character));
-                    });
-                }
+            _ if !ctrl
+                && !alt
+                && !character.is_empty()
+                && !character.chars().any(char::is_control) =>
+            {
+                self.with_notebook(|session| {
+                    session.edit_input(|editor| editor.insert(&character));
+                });
             }
             _ => {}
         }

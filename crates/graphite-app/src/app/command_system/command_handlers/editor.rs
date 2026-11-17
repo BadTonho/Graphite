@@ -111,9 +111,7 @@ pub(super) fn editor_action_add_selection_to_next_find_match(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        app.editor_mut().select_occurrences(false)
-    };
+    app.editor_mut().select_occurrences(false);
     Ok(())
 }
 

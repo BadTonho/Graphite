@@ -1,5 +1,28 @@
 # Resultados de verificação local
 
+## Execução em 2026-11-17
+
+Windows, com a preparação do lançamento 0.1.0. Comando: `cargo run -p graphite-xtask -- verify`.
+
+| Verificação | Resultado | Evidência |
+|---|---|---|
+| Formatação | PASS | `cargo fmt --all --check` sem diferenças |
+| Clippy, avisos negados | PASS | `cargo clippy --workspace --all-targets -- -D warnings`, sem achados |
+| Build do workspace | PASS | `cargo build --workspace` |
+| Testes do workspace | PASS | 1.837 passaram, 0 falharam, 10 ignorados |
+| Testes das ferramentas de release | PASS | `python -m unittest discover -s packaging/release/tests` |
+| Verificador completo | PASS (saída 0) | |
+| Interface/GPU interativa no Windows e aplicativo empacotado | PENDENTE | Só verificações sem janela |
+| Build/testes/interface no Linux | PENDENTE | Este ambiente de execução é Windows |
+
+A limpeza que fez as verificações rigorosas passarem:
+
+- As diferenças de formatação em dez arquivos dos crates de base foram aplicadas.
+- Os achados do Clippy nos crates de base e no `graphite-app` (cerca de 290) foram corrigidos, pelas correções automáticas ou à mão. O código que nada usava, no programa e nos testes, foi removido; o código que só os testes usam agora é `#[cfg(test)]`. Onde um aviso foi mantido de propósito (listas longas de argumentos de funções de desenho, alguns campos lidos só pelos testes, um processo de editor desanexado de propósito), o código tem um `allow` local com o motivo.
+- Uma correção automática estava errada e foi refeita à mão: trocar `1 as *const u16` por `std::ptr::dangling()` mudaria um ID de recurso do Windows de 1 para 2, então o teste do ícone usa `std::ptr::without_provenance(1)`.
+
+Continua em aberto do registro anterior: as verificações manuais dos fluxos essenciais e dos pacotes reais nos dois sistemas, os nove testes VSIX ignorados e o teste de notebook com kernel real.
+
 ## Execução em 2026-11-16
 
 Windows, commit-base `8035ce5` mais as alterações desta implementação na árvore de trabalho. Ferramentas: Rust/Cargo 1.97.0, Node.js 24.18.0, Git 2.53.0.windows.1. Comando: `cargo run -p graphite-xtask -- verify`. O verificador executa `cargo test --workspace --no-fail-fast -- --test-threads=4` para que a falha de um alvo não impeça os demais.

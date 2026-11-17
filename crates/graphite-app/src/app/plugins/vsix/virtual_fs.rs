@@ -211,6 +211,8 @@ pub(crate) struct VirtualRow {
 #[derive(Clone, Debug)]
 struct Provider {
     scheme: String,
+    /// Recorded from the provider's capabilities; nothing reads it yet.
+    #[allow(dead_code)]
     readonly: bool,
 }
 
@@ -266,6 +268,7 @@ impl VirtualFs {
             .map(|(handle, _)| *handle)
     }
 
+    #[cfg(test)]
     pub(crate) fn is_readonly(&self, scheme: &str) -> bool {
         self.providers
             .values()

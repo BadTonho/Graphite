@@ -42,6 +42,7 @@ impl App {
             self.start_plugin(id);
         }
     }
+    #[cfg(test)]
     pub(crate) fn plugin_console_log_path(&self, id: &str) -> Option<PathBuf> {
         self.plugins
             .store

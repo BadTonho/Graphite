@@ -131,7 +131,7 @@ impl MergeState {
             }
             let Some(start) = (match before.as_deref() {
                 None => Some(cursor),
-                Some(text) if text.is_empty() => Some(cursor),
+                Some("") => Some(cursor),
                 Some(text) => find_anchor_end(ancestor, cursor, text),
             }) else {
                 continue;
@@ -139,7 +139,7 @@ impl MergeState {
             let Some(end) = (match after.as_deref() {
                 None if index + 1 >= len => Some(ancestor.len()),
                 None => continue,
-                Some(text) if text.is_empty() => Some(ancestor.len()),
+                Some("") => Some(ancestor.len()),
                 Some(text) => find_anchor_start(ancestor, start, text),
             }) else {
                 continue;
@@ -352,6 +352,44 @@ impl MergeState {
     }
 }
 
+fn find_anchor_end(haystack: &str, from: usize, needle: &str) -> Option<usize> {
+    if let Some(pos) = haystack[from..].find(needle) {
+        return Some(from + pos + needle.len());
+    }
+    let tail: String = needle
+        .lines()
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|line| format!("{line}\n"))
+        .collect();
+    if !tail.is_empty() {
+        if let Some(pos) = haystack[from..].find(&tail) {
+            return Some(from + pos + tail.len());
+        }
+    }
+    None
+}
+
+fn find_anchor_start(haystack: &str, from: usize, needle: &str) -> Option<usize> {
+    if let Some(pos) = haystack[from..].find(needle) {
+        return Some(from + pos);
+    }
+    let head: String = needle
+        .lines()
+        .take(3)
+        .map(|line| format!("{line}\n"))
+        .collect();
+    if !head.is_empty() {
+        if let Some(pos) = haystack[from..].find(&head) {
+            return Some(from + pos);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,42 +540,4 @@ tail
             "head\nb1\nmid\nexplicit-base\ntail\n"
         );
     }
-}
-
-fn find_anchor_end(haystack: &str, from: usize, needle: &str) -> Option<usize> {
-    if let Some(pos) = haystack[from..].find(needle) {
-        return Some(from + pos + needle.len());
-    }
-    let tail: String = needle
-        .lines()
-        .rev()
-        .take(3)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|line| format!("{line}\n"))
-        .collect();
-    if !tail.is_empty() {
-        if let Some(pos) = haystack[from..].find(&tail) {
-            return Some(from + pos + tail.len());
-        }
-    }
-    None
-}
-
-fn find_anchor_start(haystack: &str, from: usize, needle: &str) -> Option<usize> {
-    if let Some(pos) = haystack[from..].find(needle) {
-        return Some(from + pos);
-    }
-    let head: String = needle
-        .lines()
-        .take(3)
-        .map(|line| format!("{line}\n"))
-        .collect();
-    if !head.is_empty() {
-        if let Some(pos) = haystack[from..].find(&head) {
-            return Some(from + pos);
-        }
-    }
-    None
 }

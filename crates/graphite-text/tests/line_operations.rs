@@ -261,29 +261,32 @@ fn overtype_overwrites_until_line_end_and_preserves_paste_insert() {
 
 #[test]
 fn reindent_lines_and_selected_lines_follow_brackets_and_undo_together() {
-    with_editor("fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n", |e| {
-        let changed = e.reindent_lines(spaces(4), false).unwrap();
-        assert!(changed > 0);
-        assert_eq!(
-            e.text(),
-            "fn main() {\n    let x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
-        );
-        e.undo();
-        assert_eq!(
-            e.text(),
-            "fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n"
-        );
+    with_editor(
+        "fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n",
+        |e| {
+            let changed = e.reindent_lines(spaces(4), false).unwrap();
+            assert!(changed > 0);
+            assert_eq!(
+                e.text(),
+                "fn main() {\n    let x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
+            );
+            e.undo();
+            assert_eq!(
+                e.text(),
+                "fn main() {\nlet x = 1;\n   if true {\nprintln!(\"{\");\n    }\n}\n"
+            );
 
-        // Reindent only lines 2..=3 while still respecting outer depth from line 0.
-        let start = e.rope().line_to_char(2);
-        let end = e.rope().line_to_char(4);
-        e.set_selection(start, end);
-        e.reindent_selected_lines(spaces(4), false).unwrap();
-        assert_eq!(
-            e.text(),
-            "fn main() {\nlet x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
-        );
-    });
+            // Reindent only lines 2..=3 while still respecting outer depth from line 0.
+            let start = e.rope().line_to_char(2);
+            let end = e.rope().line_to_char(4);
+            e.set_selection(start, end);
+            e.reindent_selected_lines(spaces(4), false).unwrap();
+            assert_eq!(
+                e.text(),
+                "fn main() {\nlet x = 1;\n    if true {\n        println!(\"{\");\n    }\n}\n"
+            );
+        },
+    );
 
     with_editor("def f():\nx = 1\n", |e| {
         e.reindent_lines(spaces(4), true).unwrap();

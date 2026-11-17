@@ -83,10 +83,20 @@ fn matches_captures_and_keywords_are_classified() {
 fn a_block_comment_and_a_string_carry_over_lines() {
     let lines = tokens("a /* one\ntwo 42\nthree */ 7\n\"x\ny\" 9");
     assert_eq!(lines[0], [pair("/* one", Class::Comment)]);
-    assert_eq!(lines[1], [pair("two 42", Class::Comment)], "no number inside a comment");
-    assert_eq!(lines[2], [pair("three */", Class::Comment), pair("7", Class::Number)]);
+    assert_eq!(
+        lines[1],
+        [pair("two 42", Class::Comment)],
+        "no number inside a comment"
+    );
+    assert_eq!(
+        lines[2],
+        [pair("three */", Class::Comment), pair("7", Class::Number)]
+    );
     assert_eq!(lines[3], [pair("\"x", Class::String)]);
-    assert_eq!(lines[4], [pair("y\"", Class::String), pair("9", Class::Number)]);
+    assert_eq!(
+        lines[4],
+        [pair("y\"", Class::String), pair("9", Class::Number)]
+    );
 }
 
 #[test]
@@ -106,10 +116,21 @@ fn escapes_inside_strings_override_the_string_and_quotes_follow_it() {
 #[test]
 fn an_end_pattern_can_use_the_text_the_begin_pattern_matched() {
     let lines = tokens("<<END\nEND is text here\nEND\nafter 5");
-    assert_eq!(lines[0], [pair("<<", Class::String), pair("END", Class::Operator)]);
-    assert_eq!(lines[1], [pair("END is text here", Class::String)], "END must be alone on its line");
+    assert_eq!(
+        lines[0],
+        [pair("<<", Class::String), pair("END", Class::Operator)]
+    );
+    assert_eq!(
+        lines[1],
+        [pair("END is text here", Class::String)],
+        "END must be alone on its line"
+    );
     assert_eq!(lines[2], [pair("END", Class::String)]);
-    assert_eq!(lines[3], [pair("5", Class::Number)], "the heredoc is closed");
+    assert_eq!(
+        lines[3],
+        [pair("5", Class::Number)],
+        "the heredoc is closed"
+    );
     // A different marker does not close it.
     let lines = tokens("<<A\nB\nA\n1");
     assert_eq!(lines[1], [pair("B", Class::String)]);
@@ -129,7 +150,11 @@ fn captures_can_be_tokenized_with_their_own_patterns() {
     let lines = tokens("[ 12 and 3 ] 4");
     assert_eq!(
         lines[0],
-        [pair("12", Class::Number), pair("3", Class::Number), pair("4", Class::Number)],
+        [
+            pair("12", Class::Number),
+            pair("3", Class::Number),
+            pair("4", Class::Number)
+        ],
         "{:?}",
         lines[0]
     );
@@ -140,7 +165,10 @@ fn offsets_are_bytes_of_the_line_even_with_multibyte_text() {
     let text = "é \"ü\" 5";
     let (registry, base) = registry();
     let spans = DocumentHighlighter::new().highlight(&registry, base, text);
-    let found: Vec<(&str, Class)> = spans[0].iter().map(|s| (&text[s.range.clone()], s.class)).collect();
+    let found: Vec<(&str, Class)> = spans[0]
+        .iter()
+        .map(|s| (&text[s.range.clone()], s.class))
+        .collect();
     assert_eq!(found, [("\"ü\"", Class::String), ("5", Class::Number)]);
 }
 
@@ -172,13 +200,20 @@ fn grammars_can_include_other_grammars_and_the_base_grammar() {
         .unwrap();
     let text = "<ifoo 12> 3";
     let spans = DocumentHighlighter::new().highlight(&registry, base, text);
-    let found: Vec<(&str, Class)> = spans[0].iter().map(|s| (&text[s.range.clone()], s.class)).collect();
+    let found: Vec<(&str, Class)> = spans[0]
+        .iter()
+        .map(|s| (&text[s.range.clone()], s.class))
+        .collect();
     // `foo` follows `i`, so the word boundary fails; the number inside comes from `$base`.
     assert_eq!(found, [("12", Class::Number), ("3", Class::Number)]);
     let text = "<i foo>";
     let spans = DocumentHighlighter::new().highlight(&registry, base, text);
     assert_eq!(&text[spans[0][0].range.clone()], "foo");
-    assert_eq!(spans[0][0].class, Class::Keyword, "the included grammar's rule applies");
+    assert_eq!(
+        spans[0][0].class,
+        Class::Keyword,
+        "the included grammar's rule applies"
+    );
 }
 
 #[test]
@@ -199,7 +234,10 @@ fn broken_patterns_and_empty_matches_never_hang_or_break_the_rest() {
     let spans = DocumentHighlighter::new().highlight(&registry, base, text);
     assert_eq!(spans.len(), 2);
     let class_at = |line: usize, byte: usize| {
-        spans[line].iter().find(|s| s.range.contains(&byte)).map(|s| s.class)
+        spans[line]
+            .iter()
+            .find(|s| s.range.contains(&byte))
+            .map(|s| s.class)
     };
     assert_eq!(class_at(0, 0), Some(Class::Keyword), "x* matched xx");
     assert_eq!(class_at(0, 2), None, "a space matches nothing");
@@ -223,21 +261,39 @@ fn editing_retokenizes_only_what_changed_and_matches_a_fresh_run() {
     ];
     for text in versions {
         let fresh = DocumentHighlighter::new().highlight(&registry, base, text);
-        assert_eq!(incremental.highlight(&registry, base, text), fresh, "{text:?}");
+        assert_eq!(
+            incremental.highlight(&registry, base, text),
+            fresh,
+            "{text:?}"
+        );
     }
     // Going back and forth keeps working too.
     for text in versions.iter().rev() {
         let fresh = DocumentHighlighter::new().highlight(&registry, base, text);
-        assert_eq!(incremental.highlight(&registry, base, text), fresh, "{text:?}");
+        assert_eq!(
+            incremental.highlight(&registry, base, text),
+            fresh,
+            "{text:?}"
+        );
     }
 }
 
 #[test]
 fn a_different_grammar_starts_over() {
     let mut registry = Registry::new(|_| None);
-    let a = registry.add(&json!({"scopeName": "source.a", "patterns": [{"match": "x", "name": "keyword.a"}]})).unwrap();
-    let b = registry.add(&json!({"scopeName": "source.b", "patterns": [{"match": "x", "name": "string.b"}]})).unwrap();
+    let a = registry
+        .add(&json!({"scopeName": "source.a", "patterns": [{"match": "x", "name": "keyword.a"}]}))
+        .unwrap();
+    let b = registry
+        .add(&json!({"scopeName": "source.b", "patterns": [{"match": "x", "name": "string.b"}]}))
+        .unwrap();
     let mut highlighter = DocumentHighlighter::new();
-    assert_eq!(highlighter.highlight(&registry, a, "x")[0][0].class, Class::Keyword);
-    assert_eq!(highlighter.highlight(&registry, b, "x")[0][0].class, Class::String);
+    assert_eq!(
+        highlighter.highlight(&registry, a, "x")[0][0].class,
+        Class::Keyword
+    );
+    assert_eq!(
+        highlighter.highlight(&registry, b, "x")[0][0].class,
+        Class::String
+    );
 }

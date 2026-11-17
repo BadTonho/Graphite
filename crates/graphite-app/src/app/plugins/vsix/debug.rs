@@ -279,7 +279,7 @@ impl App {
                 Ok(AdapterEndpoint::Server(server)) => config.server = Some(server),
                 Ok(AdapterEndpoint::Pipe(path)) => config.pipe = Some(path),
                 Ok(AdapterEndpoint::Inline) => {
-                    if let Err(error) = self.start_inline_debug_session(runtime, config, &result) {
+                    if let Err(error) = self.start_inline_debug_session(runtime, config, result) {
                         self.status = format!("{}: {error}", pending.owner);
                     }
                     return;
@@ -909,7 +909,7 @@ mod tests {
             r#"{"configurations":[{"name":"From file","type":"python","request":"launch"}]}"#,
         )
         .unwrap();
-        let mut register = |app: &mut App, args: Value| {
+        let register = |app: &mut App, args: Value| {
             let mut runtime = app.plugins.vsix.take().unwrap();
             app.handle_vsix_request(
                 &mut runtime,

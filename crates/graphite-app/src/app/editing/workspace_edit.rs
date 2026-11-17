@@ -13,161 +13,6 @@ struct Target {
     edits: Vec<ApiTextEdit>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stale_prepared_edit_does_not_add_closed_documents_or_change_history() {
-        let dir = crate::test_support::TempDir::new();
-        let first = dir.path().join("first.rs");
-        let second = dir.path().join("second.rs");
-        std::fs::write(&first, "abc").unwrap();
-        std::fs::write(&second, "xyz").unwrap();
-        let mut changes = serde_json::Map::new();
-        let edit = serde_json::json!([{ "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText":"Q" }]);
-        changes.insert(lsp::path_to_uri(&first).unwrap(), edit.clone());
-        changes.insert(lsp::path_to_uri(&second).unwrap(), edit);
-        let workspace = serde_json::from_value(serde_json::json!({"changes": changes})).unwrap();
-        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.open_file(first);
-        let prepared = app.prepare_workspace_edit(workspace).unwrap();
-        let count = app.documents.len();
-        app.editor_mut().insert("!");
-        let revision = app.documents[app.active_document()].buffer.revision();
-        assert!(app.commit_workspace_edit(prepared).is_err());
-        assert_eq!(app.documents.len(), count);
-        assert_eq!(app.documents[app.active_document()].buffer.text(), "!abc");
-        assert_eq!(
-            app.documents[app.active_document()].buffer.revision(),
-            revision
-        );
-        assert_eq!(std::fs::read_to_string(second).unwrap(), "xyz");
-    }
-    fn edit_targets(paths: &[&Path], replacement: &str) -> lsp_types::WorkspaceEdit {
-        let changes: serde_json::Map<_, _> = paths.iter().map(|path| (
-            lsp::path_to_uri(path).unwrap(),
-            serde_json::json!([{ "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText":replacement }])
-        )).collect();
-        serde_json::from_value(serde_json::json!({"changes": changes})).unwrap()
-    }
-
-    #[test]
-    fn closed_file_change_rejects_every_target_without_touching_redo() {
-        let dir = crate::test_support::TempDir::new();
-        let first = dir.path().join("first.txt");
-        let second = dir.path().join("second.txt");
-        std::fs::write(&first, "abc").unwrap();
-        std::fs::write(&second, "xyz").unwrap();
-        let mut app = App::new_with_options(dir.path().into(), None, true);
-        app.open_file(first.clone());
-        app.editor_mut().insert("!");
-        app.editor_mut().undo();
-        let revision = app.editor().revision();
-        let prepared = app
-            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
-            .unwrap();
-        std::fs::write(&second, "external change").unwrap();
-        assert!(app.commit_workspace_edit(prepared).is_err());
-        assert_eq!(app.documents.len(), 1);
-        assert_eq!(app.editor().revision(), revision);
-        assert_eq!(app.editor().text(), "abc");
-        app.editor_mut().redo();
-        assert_eq!(app.editor().text(), "!abc");
-    }
-
-    #[test]
-    fn prepared_edit_retains_closed_document_and_publishes_dirty_result() {
-        let dir = crate::test_support::TempDir::new();
-        let path = dir.path().join("file.txt");
-        std::fs::write(&path, "abc").unwrap();
-        let mut app = App::new_with_options(dir.path().into(), None, true);
-        app.open_file(path.clone());
-        let id = app.active_document();
-        let prepared = app
-            .prepare_workspace_edit(edit_targets(&[&path], "Q"))
-            .unwrap();
-        assert!(app.documents.is_retained(id));
-        app.close_active_tab();
-        assert!(app.documents.get(id).is_some());
-        assert_eq!(app.editor_groups.view_count(id), 0);
-        app.commit_workspace_edit(prepared).unwrap();
-        assert!(app.documents.get(id).is_some());
-        assert_eq!(app.editor_groups.view_count(id), 1);
-        app.activate_editor_document(id);
-        assert_eq!(app.active_document(), id);
-        assert_eq!(app.editor().text(), "Qbc");
-        app.editor_mut().undo();
-        assert_eq!(app.editor().text(), "abc");
-        assert!(!app.documents[id].is_dirty());
-        assert_eq!(std::fs::read_to_string(path).unwrap(), "abc");
-    }
-
-    #[test]
-    fn cancelled_preparation_releases_document_retention() {
-        let dir = crate::test_support::TempDir::new();
-        let path = dir.path().join("file.txt");
-        std::fs::write(&path, "abc").unwrap();
-        let mut app = App::new_with_options(dir.path().into(), None, true);
-        app.open_file(path.clone());
-        let id = app.active_document();
-        let prepared = app
-            .prepare_workspace_edit(edit_targets(&[&path], "Q"))
-            .unwrap();
-        app.close_active_tab();
-        drop(prepared);
-        app.collect_closed_documents();
-        assert!(app.documents.get(id).is_none());
-        app.reopen_closed_tab();
-        assert_eq!(app.editor().text(), "abc");
-        app.editor_mut().undo();
-        assert_eq!(app.editor().text(), "abc");
-    }
-
-    #[test]
-    fn permission_change_or_opened_target_rejects_prepared_batch() {
-        let dir = crate::test_support::TempDir::new();
-        let first = dir.path().join("first.txt");
-        let second = dir.path().join("second.txt");
-        std::fs::write(&first, "abc").unwrap();
-        std::fs::write(&second, "xyz").unwrap();
-        let mut app = App::new_with_options(dir.path().into(), None, true);
-        app.open_file(first.clone());
-        let prepared = app
-            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
-            .unwrap();
-        let original = std::fs::metadata(&second).unwrap().permissions();
-        let mut readonly = original.clone();
-        readonly.set_readonly(true);
-        std::fs::set_permissions(&second, readonly).unwrap();
-        let result = app.commit_workspace_edit(prepared);
-        std::fs::set_permissions(&second, original).unwrap();
-        assert!(result.is_err());
-        assert_eq!(app.editor().text(), "abc");
-        assert_eq!(app.documents.len(), 1);
-        let prepared = app
-            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
-            .unwrap();
-        app.open_file(second);
-        assert!(app.commit_workspace_edit(prepared).is_err());
-        assert!(app.documents.iter().all(|d| d.buffer.revision() == 0));
-    }
-
-    #[test]
-    fn no_op_closed_target_does_not_publish_a_document_or_view() {
-        let dir = crate::test_support::TempDir::new();
-        let path = dir.path().join("file.txt");
-        std::fs::write(&path, "abc").unwrap();
-        let mut app = App::new_with_options(dir.path().into(), None, true);
-        let id = app.active_document();
-        app.apply_workspace_edit(edit_targets(&[&path], "a"))
-            .unwrap();
-        assert_eq!(app.documents.len(), 1);
-        assert_eq!(app.active_document(), id);
-        assert_eq!(app.editor_groups.views(0).unwrap().0.len(), 1);
-    }
-}
-
 pub(crate) struct Prepared {
     index: Option<DocumentId>,
     tab: Option<Document>,
@@ -489,5 +334,160 @@ impl App {
             self.sync_lsp_document(index);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_prepared_edit_does_not_add_closed_documents_or_change_history() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.rs");
+        let second = dir.path().join("second.rs");
+        std::fs::write(&first, "abc").unwrap();
+        std::fs::write(&second, "xyz").unwrap();
+        let mut changes = serde_json::Map::new();
+        let edit = serde_json::json!([{ "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText":"Q" }]);
+        changes.insert(lsp::path_to_uri(&first).unwrap(), edit.clone());
+        changes.insert(lsp::path_to_uri(&second).unwrap(), edit);
+        let workspace = serde_json::from_value(serde_json::json!({"changes": changes})).unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(first);
+        let prepared = app.prepare_workspace_edit(workspace).unwrap();
+        let count = app.documents.len();
+        app.editor_mut().insert("!");
+        let revision = app.documents[app.active_document()].buffer.revision();
+        assert!(app.commit_workspace_edit(prepared).is_err());
+        assert_eq!(app.documents.len(), count);
+        assert_eq!(app.documents[app.active_document()].buffer.text(), "!abc");
+        assert_eq!(
+            app.documents[app.active_document()].buffer.revision(),
+            revision
+        );
+        assert_eq!(std::fs::read_to_string(second).unwrap(), "xyz");
+    }
+    fn edit_targets(paths: &[&Path], replacement: &str) -> lsp_types::WorkspaceEdit {
+        let changes: serde_json::Map<_, _> = paths.iter().map(|path| (
+            lsp::path_to_uri(path).unwrap(),
+            serde_json::json!([{ "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText":replacement }])
+        )).collect();
+        serde_json::from_value(serde_json::json!({"changes": changes})).unwrap()
+    }
+
+    #[test]
+    fn closed_file_change_rejects_every_target_without_touching_redo() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        std::fs::write(&first, "abc").unwrap();
+        std::fs::write(&second, "xyz").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.open_file(first.clone());
+        app.editor_mut().insert("!");
+        app.editor_mut().undo();
+        let revision = app.editor().revision();
+        let prepared = app
+            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
+            .unwrap();
+        std::fs::write(&second, "external change").unwrap();
+        assert!(app.commit_workspace_edit(prepared).is_err());
+        assert_eq!(app.documents.len(), 1);
+        assert_eq!(app.editor().revision(), revision);
+        assert_eq!(app.editor().text(), "abc");
+        app.editor_mut().redo();
+        assert_eq!(app.editor().text(), "!abc");
+    }
+
+    #[test]
+    fn prepared_edit_retains_closed_document_and_publishes_dirty_result() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("file.txt");
+        std::fs::write(&path, "abc").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.open_file(path.clone());
+        let id = app.active_document();
+        let prepared = app
+            .prepare_workspace_edit(edit_targets(&[&path], "Q"))
+            .unwrap();
+        assert!(app.documents.is_retained(id));
+        app.close_active_tab();
+        assert!(app.documents.get(id).is_some());
+        assert_eq!(app.editor_groups.view_count(id), 0);
+        app.commit_workspace_edit(prepared).unwrap();
+        assert!(app.documents.get(id).is_some());
+        assert_eq!(app.editor_groups.view_count(id), 1);
+        app.activate_editor_document(id);
+        assert_eq!(app.active_document(), id);
+        assert_eq!(app.editor().text(), "Qbc");
+        app.editor_mut().undo();
+        assert_eq!(app.editor().text(), "abc");
+        assert!(!app.documents[id].is_dirty());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "abc");
+    }
+
+    #[test]
+    fn cancelled_preparation_releases_document_retention() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("file.txt");
+        std::fs::write(&path, "abc").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.open_file(path.clone());
+        let id = app.active_document();
+        let prepared = app
+            .prepare_workspace_edit(edit_targets(&[&path], "Q"))
+            .unwrap();
+        app.close_active_tab();
+        drop(prepared);
+        app.collect_closed_documents();
+        assert!(app.documents.get(id).is_none());
+        app.reopen_closed_tab();
+        assert_eq!(app.editor().text(), "abc");
+        app.editor_mut().undo();
+        assert_eq!(app.editor().text(), "abc");
+    }
+
+    #[test]
+    fn permission_change_or_opened_target_rejects_prepared_batch() {
+        let dir = crate::test_support::TempDir::new();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        std::fs::write(&first, "abc").unwrap();
+        std::fs::write(&second, "xyz").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.open_file(first.clone());
+        let prepared = app
+            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
+            .unwrap();
+        let original = std::fs::metadata(&second).unwrap().permissions();
+        let mut readonly = original.clone();
+        readonly.set_readonly(true);
+        std::fs::set_permissions(&second, readonly).unwrap();
+        let result = app.commit_workspace_edit(prepared);
+        std::fs::set_permissions(&second, original).unwrap();
+        assert!(result.is_err());
+        assert_eq!(app.editor().text(), "abc");
+        assert_eq!(app.documents.len(), 1);
+        let prepared = app
+            .prepare_workspace_edit(edit_targets(&[&first, &second], "Q"))
+            .unwrap();
+        app.open_file(second);
+        assert!(app.commit_workspace_edit(prepared).is_err());
+        assert!(app.documents.iter().all(|d| d.buffer.revision() == 0));
+    }
+
+    #[test]
+    fn no_op_closed_target_does_not_publish_a_document_or_view() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("file.txt");
+        std::fs::write(&path, "abc").unwrap();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        let id = app.active_document();
+        app.apply_workspace_edit(edit_targets(&[&path], "a"))
+            .unwrap();
+        assert_eq!(app.documents.len(), 1);
+        assert_eq!(app.active_document(), id);
+        assert_eq!(app.editor_groups.views(0).unwrap().0.len(), 1);
     }
 }

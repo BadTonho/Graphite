@@ -278,45 +278,6 @@ impl App {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_uris_round_trip_through_the_extension_host_shape() {
-        let uri = file_uri(Path::new("C:\\code\\a b.rs"));
-        assert_eq!(uri["path"], json!("/C:/code/a b.rs"));
-        let verbatim = file_uri(Path::new("\\\\?\\C:\\code\\a.rs"));
-        assert_eq!(verbatim["path"], json!("/C:/code/a.rs"));
-        assert_eq!(file_path(&uri), Some(PathBuf::from("C:/code/a b.rs")));
-        assert_eq!(
-            file_path(&json!("/tmp/x")),
-            None,
-            "plain paths are not URIs"
-        );
-    }
-
-    #[test]
-    fn glob_arguments_accept_strings_objects_and_arrays() {
-        assert_eq!(patterns(&json!("**/*.rs")), vec!["**/*.rs"]);
-        assert_eq!(patterns(&json!({"pattern":"target/**"})), vec!["target/**"]);
-        assert_eq!(
-            patterns(&json!([{"pattern":"a/**"}, "b/**"])),
-            vec!["a/**", "b/**"]
-        );
-        assert!(patterns(&Value::Null).is_empty());
-    }
-
-    #[test]
-    fn output_logs_are_read_as_their_trailing_text() {
-        let dir = crate::test_support::TempDir::new();
-        let path = dir.path().join("log.txt");
-        std::fs::write(&path, "first\nsecond\n").unwrap();
-        assert_eq!(read_output(&path), "first\nsecond\n");
-        assert_eq!(read_output(&dir.path().join("missing")), "");
-    }
-}
-
 impl Runtime {
     /// Status bar item texts that the running extensions created.
     pub(crate) fn workbench_status_texts(&self) -> Vec<String> {
@@ -391,5 +352,44 @@ impl App {
                 self.show_output_text(&path, &content);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_uris_round_trip_through_the_extension_host_shape() {
+        let uri = file_uri(Path::new("C:\\code\\a b.rs"));
+        assert_eq!(uri["path"], json!("/C:/code/a b.rs"));
+        let verbatim = file_uri(Path::new("\\\\?\\C:\\code\\a.rs"));
+        assert_eq!(verbatim["path"], json!("/C:/code/a.rs"));
+        assert_eq!(file_path(&uri), Some(PathBuf::from("C:/code/a b.rs")));
+        assert_eq!(
+            file_path(&json!("/tmp/x")),
+            None,
+            "plain paths are not URIs"
+        );
+    }
+
+    #[test]
+    fn glob_arguments_accept_strings_objects_and_arrays() {
+        assert_eq!(patterns(&json!("**/*.rs")), vec!["**/*.rs"]);
+        assert_eq!(patterns(&json!({"pattern":"target/**"})), vec!["target/**"]);
+        assert_eq!(
+            patterns(&json!([{"pattern":"a/**"}, "b/**"])),
+            vec!["a/**", "b/**"]
+        );
+        assert!(patterns(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn output_logs_are_read_as_their_trailing_text() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("log.txt");
+        std::fs::write(&path, "first\nsecond\n").unwrap();
+        assert_eq!(read_output(&path), "first\nsecond\n");
+        assert_eq!(read_output(&dir.path().join("missing")), "");
     }
 }

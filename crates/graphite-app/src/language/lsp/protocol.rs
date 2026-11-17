@@ -65,33 +65,6 @@ pub(super) fn save_edits(
         .collect())
 }
 
-#[cfg(test)]
-mod save_tests {
-    use super::*;
-    #[test]
-    fn save_notifications_respect_negotiated_capabilities_and_text_inclusion() {
-        assert!(SaveCapabilities::from_sync(Some(&json!(2)))
-            .did_save("file:///a", "x".into())
-            .is_none());
-        let caps = SaveCapabilities::from_sync(Some(
-            &json!({"willSave":true,"willSaveWaitUntil":true,"save":true}),
-        ));
-        assert!(caps.will_save && caps.wait_until);
-        let Message::Notification(message) = caps.did_save("file:///a", "x".into()).unwrap() else {
-            panic!()
-        };
-        assert!(message.params.get("text").is_none());
-        let caps = SaveCapabilities::from_sync(Some(&json!({"save":{"includeText":true}})));
-        let Message::Notification(message) = caps.did_save("file:///a", "written".into()).unwrap()
-        else {
-            panic!()
-        };
-        assert_eq!(message.params["text"], "written");
-        assert!(save_edits(json!([{"newText":"invalid"}])).is_err());
-        assert!(save_edits(Value::Null).unwrap().is_empty());
-    }
-}
-
 pub(super) fn full_text_change(text: String) -> TextDocumentContentChangeEvent {
     TextDocumentContentChangeEvent {
         range: None,
@@ -189,9 +162,7 @@ pub fn diagnostics_are_current(
     current_revision: Option<u64>,
     diagnostic_version: Option<i32>,
 ) -> bool {
-    diagnostic_version.map_or(true, |version| {
-        current_revision == Some(version.max(0) as u64)
-    })
+    diagnostic_version.is_none_or(|version| current_revision == Some(version.max(0) as u64))
 }
 
 pub(super) fn hover_to_string(hover: Hover) -> String {
@@ -209,5 +180,32 @@ pub(super) fn hover_to_string(hover: Hover) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
         lsp_types::HoverContents::Markup(markup) => markup.value,
+    }
+}
+
+#[cfg(test)]
+mod save_tests {
+    use super::*;
+    #[test]
+    fn save_notifications_respect_negotiated_capabilities_and_text_inclusion() {
+        assert!(SaveCapabilities::from_sync(Some(&json!(2)))
+            .did_save("file:///a", "x".into())
+            .is_none());
+        let caps = SaveCapabilities::from_sync(Some(
+            &json!({"willSave":true,"willSaveWaitUntil":true,"save":true}),
+        ));
+        assert!(caps.will_save && caps.wait_until);
+        let Message::Notification(message) = caps.did_save("file:///a", "x".into()).unwrap() else {
+            panic!()
+        };
+        assert!(message.params.get("text").is_none());
+        let caps = SaveCapabilities::from_sync(Some(&json!({"save":{"includeText":true}})));
+        let Message::Notification(message) = caps.did_save("file:///a", "written".into()).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(message.params["text"], "written");
+        assert!(save_edits(json!([{"newText":"invalid"}])).is_err());
+        assert!(save_edits(Value::Null).unwrap().is_empty());
     }
 }

@@ -125,7 +125,7 @@ pub(crate) struct PersistedSyncData {
     pub conflicts: Vec<SyncConflict>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct SyncState {
     pub persisted: PersistedSyncData,
     pub turning_on: bool,
@@ -135,20 +135,6 @@ pub(crate) struct SyncState {
     pub isolated: bool,
     pub last_error: Option<String>,
     pub last_summary: Option<String>,
-}
-
-impl Default for SyncState {
-    fn default() -> Self {
-        Self {
-            persisted: PersistedSyncData::default(),
-            turning_on: false,
-            turning_on_backend: SyncBackend::default(),
-            syncing: false,
-            isolated: false,
-            last_error: None,
-            last_summary: None,
-        }
-    }
 }
 
 impl PersistedSyncData {

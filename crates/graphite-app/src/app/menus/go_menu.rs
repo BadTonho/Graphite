@@ -1044,7 +1044,7 @@ impl App {
     pub(crate) fn adjacent_group(&self, direction: GoSubcommand) -> Option<u64> {
         let (w, h, lh) = self.gpu.as_ref().map_or((1200.0, 760.0, 20.0), |gpu| {
             let (w, h) = gpu.renderer.size();
-            (w as f32, h as f32, gpu.renderer.line_height())
+            (w, h, gpu.renderer.line_height())
         });
         let rects = self.group_rectangles(w, h, lh);
         adjacent_group_id(&rects, self.editor_groups.focused(), direction)

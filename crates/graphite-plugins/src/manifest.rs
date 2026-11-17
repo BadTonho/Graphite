@@ -1364,7 +1364,10 @@ mod activity_bar_tests {
         assert_eq!(notebooks[0].view_type, "sample-book");
         assert!(notebooks[0].matches(std::path::Path::new("/w/a.SBOOK")));
         assert!(notebooks[0].is_default());
-        assert_eq!(vsix_activation_events(&manifest), ["onNotebook:sample-book"]);
+        assert_eq!(
+            vsix_activation_events(&manifest),
+            ["onNotebook:sample-book"]
+        );
     }
 
     #[test]

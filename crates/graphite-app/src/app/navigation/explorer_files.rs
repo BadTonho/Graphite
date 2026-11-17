@@ -4,6 +4,9 @@ use super::*;
 use std::fs;
 use winit::keyboard::{Key, NamedKey};
 
+/// A rectangle as `(x, y, width, height)`.
+type RectTuple = (f32, f32, f32, f32);
+
 /// What the explorer prompt is asking for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ExplorerPromptKind {
@@ -397,14 +400,7 @@ impl App {
         true
     }
 
-    fn explorer_delete_modal_rects(
-        width: f32,
-        height: f32,
-    ) -> (
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-    ) {
+    fn explorer_delete_modal_rects(width: f32, height: f32) -> (RectTuple, RectTuple, RectTuple) {
         let panel_width = (width * 0.6)
             .clamp(340.0, 520.0)
             .min((width - 24.0).max(0.0));
@@ -596,6 +592,7 @@ impl App {
         norm_prompt == norm_row
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_explorer_inline_input(
         &self,
         renderer: &mut Renderer,
@@ -632,12 +629,12 @@ impl App {
         };
         let (width, height) = renderer.size();
         let cw = renderer.char_width();
-        let panel_width = (width as f32 * 0.72)
+        let panel_width = (width * 0.72)
             .clamp(360.0, 700.0)
-            .min((width as f32 - 24.0).max(0.0));
+            .min((width - 24.0).max(0.0));
         let panel_height = 120.0;
-        let x = ((width as f32 - panel_width) * 0.5).max(12.0);
-        let y = ((height as f32 - panel_height) * 0.5).max(12.0);
+        let x = ((width - panel_width) * 0.5).max(12.0);
+        let y = ((height - panel_height) * 0.5).max(12.0);
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));

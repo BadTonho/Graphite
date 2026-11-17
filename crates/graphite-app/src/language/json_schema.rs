@@ -199,31 +199,29 @@ fn schema_for_document(
         return Ok(None);
     };
     let retriever = CachedRetriever::new(cache_dir.to_path_buf(), *translator)?;
-    let (schema_text, base_uri) = if schema_uri.starts_with("https://") {
-        let text = retriever.retrieve_text(schema_uri)?;
-        (text, schema_uri.to_owned())
-    } else if schema_uri.starts_with("file://") {
-        let text = retriever.retrieve_text(schema_uri)?;
-        (text, schema_uri.to_owned())
-    } else if schema_uri.contains("://") {
-        return Err(translator.text("json.error.only_https_file").into());
-    } else {
-        let schema_path = path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(schema_uri);
-        let schema_path = schema_path.canonicalize().unwrap_or(schema_path);
-        let base_uri = reqwest::Url::from_file_path(&schema_path)
-            .map_err(|_| translator.text("json.error.local_path_uri").to_owned())?
-            .to_string();
-        let text = fs::read_to_string(&schema_path).map_err(|error| {
-            translator.format(
-                "json.error.cannot_read_schema",
-                &[("path", &schema_path.display()), ("error", &error)],
-            )
-        })?;
-        (text, base_uri)
-    };
+    let (schema_text, base_uri) =
+        if schema_uri.starts_with("https://") || schema_uri.starts_with("file://") {
+            let text = retriever.retrieve_text(schema_uri)?;
+            (text, schema_uri.to_owned())
+        } else if schema_uri.contains("://") {
+            return Err(translator.text("json.error.only_https_file").into());
+        } else {
+            let schema_path = path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(schema_uri);
+            let schema_path = schema_path.canonicalize().unwrap_or(schema_path);
+            let base_uri = reqwest::Url::from_file_path(&schema_path)
+                .map_err(|_| translator.text("json.error.local_path_uri").to_owned())?
+                .to_string();
+            let text = fs::read_to_string(&schema_path).map_err(|error| {
+                translator.format(
+                    "json.error.cannot_read_schema",
+                    &[("path", &schema_path.display()), ("error", &error)],
+                )
+            })?;
+            (text, base_uri)
+        };
     let schema = serde_json::from_str(&schema_text)
         .map_err(|error| translator.format("json.error.invalid_json", &[("error", &error)]))?;
     Ok(Some((schema, base_uri, retriever)))

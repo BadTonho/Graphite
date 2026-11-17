@@ -45,6 +45,7 @@ pub(crate) fn parse_windows_netstat(text: &str, owned: &BTreeSet<u32>) -> Vec<Lo
     listeners
 }
 
+#[cfg(test)]
 pub(crate) fn parse_linux_ss(text: &str, owned: &BTreeSet<u32>) -> Vec<LocalPort> {
     let mut listeners = Vec::new();
     for line in text.lines() {
@@ -100,10 +101,6 @@ impl PortManager {
 
     pub(crate) fn refresh_from_netstat(&mut self, text: &str) {
         self.listeners = parse_windows_netstat(text, &self.owned_processes);
-    }
-
-    pub(crate) fn refresh_from_ss(&mut self, text: &str) {
-        self.listeners = parse_linux_ss(text, &self.owned_processes);
     }
 
     pub(crate) fn remove_process(&mut self, process_id: u32) {

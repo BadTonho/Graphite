@@ -3,6 +3,9 @@
 use super::*;
 use winit::keyboard::{Key, NamedKey};
 
+/// A rectangle as `(x, y, width, height)`.
+type RectTuple = (f32, f32, f32, f32);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ScmPublishModal {
     pub repo_name: String,
@@ -83,12 +86,7 @@ impl App {
     fn publish_modal_rects(
         width: f32,
         height: f32,
-    ) -> (
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-    ) {
+    ) -> (RectTuple, RectTuple, RectTuple, RectTuple) {
         let panel_w = (width * 0.62)
             .clamp(360.0, 500.0)
             .min((width - 24.0).max(0.0));

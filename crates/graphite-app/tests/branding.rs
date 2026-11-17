@@ -73,7 +73,14 @@ fn windows_executable_contains_the_generated_icon_group() {
     // Load as data only: the test never starts an editor window or executes its code.
     let module = unsafe { LoadLibraryExW(path.as_ptr(), std::ptr::null_mut(), 2) };
     assert!(!module.is_null(), "{}", std::io::Error::last_os_error());
-    let resource = unsafe { FindResourceW(module, 1usize as *const u16, 14usize as *const u16) };
+    // MAKEINTRESOURCE: the resource ids 1 and 14 travel as pointer values, not as addresses.
+    let resource = unsafe {
+        FindResourceW(
+            module,
+            std::ptr::without_provenance::<u16>(1),
+            std::ptr::without_provenance::<u16>(14),
+        )
+    };
     let size = if resource.is_null() {
         0
     } else {

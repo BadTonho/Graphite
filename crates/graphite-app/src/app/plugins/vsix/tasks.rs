@@ -48,13 +48,14 @@ enum TaskWorkerEvent {
 struct RunningTask {
     id: String,
     task: Value,
-    is_custom: bool,
     cancel: Arc<AtomicBool>,
     events: Option<Receiver<TaskWorkerEvent>>,
 }
 
 #[derive(Default)]
 pub(super) struct Tasks {
+    /// Only the tests allocate call ids from this counter.
+    #[cfg_attr(not(test), allow(dead_code))]
     next_id: u64,
     next_exec_seq: u64,
     pub(crate) providers: BTreeMap<u64, VsixTaskProvider>,
@@ -68,6 +69,7 @@ impl Tasks {
         !self.running.is_empty() || !self.in_flight_provide.is_empty()
     }
 
+    #[cfg(test)]
     fn next_call_id(&mut self) -> u64 {
         let id = TASK_BASE + self.next_id;
         self.next_id = (self.next_id + 1) % (TASK_END - TASK_BASE);
@@ -384,13 +386,11 @@ impl App {
             None
         };
 
-        let is_custom = events.is_none();
         runtime.tasks.running.insert(
             exec_id.clone(),
             RunningTask {
                 id: exec_id.clone(),
                 task: execution_dto["task"].clone(),
-                is_custom,
                 cancel,
                 events,
             },
@@ -407,6 +407,7 @@ impl App {
         Ok(execution_dto)
     }
 
+    #[cfg(test)]
     pub(crate) fn request_vsix_tasks(&mut self) -> Result<()> {
         let Some(runtime) = self.plugins.vsix.as_mut() else {
             return Err("No active VSIX runtime".into());

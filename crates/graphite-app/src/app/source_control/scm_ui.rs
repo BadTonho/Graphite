@@ -97,6 +97,7 @@ pub(crate) struct ScmListView<'a> {
 }
 
 impl ScmListView<'static> {
+    #[cfg(test)]
     /// The flat list.
     pub(crate) const LIST: Self = Self {
         tree: false,
@@ -140,6 +141,7 @@ pub(crate) fn discard_button(action: ScmRect, cell_width: f32) -> ScmRect {
     }
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn scm_panel_layout(
     snapshot: &crate::scm::Snapshot,
@@ -173,6 +175,7 @@ pub(crate) fn scm_panel_layout(
     )
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn scm_panel_layout_with_graph(
     snapshot: &crate::scm::Snapshot,

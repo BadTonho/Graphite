@@ -3,7 +3,10 @@
 //! a peer, the READY handshake and multipart messages.
 
 use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+#[cfg(test)]
+use std::net::TcpListener;
+use std::net::TcpStream;
+#[cfg(test)]
 use std::time::Duration;
 
 const FLAG_MORE: u8 = 0x01;
@@ -86,6 +89,7 @@ impl Socket {
         Self::handshake(stream, socket_type, identity)
     }
 
+    #[cfg(test)]
     /// Accepts one peer on `listener`, as a socket of `socket_type` (`ROUTER`, `PUB`, ...).
     pub(crate) fn accept(listener: &TcpListener, socket_type: &str) -> io::Result<Self> {
         let (stream, _) = listener.accept()?;
@@ -98,6 +102,7 @@ impl Socket {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.stream.set_read_timeout(timeout)
     }

@@ -128,13 +128,15 @@ mod tests {
     #[test]
     fn view_preferences_round_trip_per_profile_and_invalid_zoom_is_clamped() {
         let temp = crate::test_support::TempDir::new();
-        let mut preferences = ViewLayoutPreferences::default();
-        preferences.menu_bar_visible = false;
-        preferences.panel_position = PanelPosition::Right;
-        preferences.panel_align_right = true;
-        preferences.zoom_percent = 150;
-        preferences.multi_cursor_modifier = MultiCursorModifier::Alt;
-        preferences.column_selection_mode = true;
+        let preferences = ViewLayoutPreferences {
+            menu_bar_visible: false,
+            panel_position: PanelPosition::Right,
+            panel_align_right: true,
+            zoom_percent: 150,
+            multi_cursor_modifier: MultiCursorModifier::Alt,
+            column_selection_mode: true,
+            ..ViewLayoutPreferences::default()
+        };
         save_view_layout_preferences(temp.path(), &preferences).unwrap();
         assert_eq!(load_view_layout_preferences(temp.path()), preferences);
         fs::write(

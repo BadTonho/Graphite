@@ -53,6 +53,8 @@ impl ExplorerContextMenuRow {
 pub(crate) struct ExplorerContextMenu {
     pub target: PathBuf,
     pub is_dir: bool,
+    /// Read by the tests; the menu itself branches on the local value.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub is_root: bool,
     pub x: f32,
     pub y: f32,
@@ -111,7 +113,7 @@ fn reveal_in_os_file_manager(target: &Path) -> Result<(), String> {
             command.arg(target);
         }
         command.spawn().map_err(|error| error.to_string())?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {

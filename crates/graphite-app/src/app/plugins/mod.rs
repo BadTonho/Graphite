@@ -22,10 +22,14 @@ pub(crate) use vsix::eligible as vsix_extension_runnable;
 pub(crate) use vsix::HierarchyKind as VsixHierarchyKind;
 pub(crate) use vsix::{file_changes, DecorationMark, FileChange, VsixLanguageFeature};
 
+// Outcomes are short-lived messages from a worker thread; boxing the runtime would only add a hop.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Outcome {
     Refreshed(Vec<Installed>),
     OpenVsx(Vec<Extension>),
     Graphite(Vec<Repository>),
+    /// Handled when received; the sidebar does not request the asset list yet.
+    #[cfg_attr(not(test), allow(dead_code))]
     GraphiteAssets(Repository, Vec<Asset>),
     GraphiteDetails(String, RepositoryDetails),
     Preview(PathBuf, Metadata),

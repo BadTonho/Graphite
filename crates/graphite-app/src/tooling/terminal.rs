@@ -665,7 +665,7 @@ fn xterm_color(index: u8) -> [u8; 3] {
 fn default_shell() -> String {
     #[cfg(windows)]
     {
-        return "powershell.exe".into();
+        "powershell.exe".into()
     }
     #[cfg(not(windows))]
     {
@@ -877,7 +877,7 @@ mod tests {
         #[cfg(not(windows))]
         let shell = "/bin/sh";
         let session = TerminalSession::start(
-            &root,
+            root,
             Some(shell),
             Arc::new(|| {}),
             graphite_i18n::Translator::english(),

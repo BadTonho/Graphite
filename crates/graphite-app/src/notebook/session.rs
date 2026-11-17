@@ -14,6 +14,10 @@ pub(crate) enum Mode {
     Edit,
 }
 
+/// The drawn blocks of a cell, with the outputs revision and size they were built for.
+type RenderedBlocks =
+    std::cell::RefCell<Option<((u64, usize), std::sync::Arc<Vec<super::rich::Block>>)>>;
+
 /// A cell together with its editing state.
 pub(crate) struct CellState {
     /// Identifies the cell inside the session; unlike an index it survives moves.
@@ -27,7 +31,7 @@ pub(crate) struct CellState {
     pub output_collapsed: bool,
     /// Counts changes to the outputs, so the drawn form is rebuilt only when they change.
     outputs_rev: u64,
-    rendered: std::cell::RefCell<Option<((u64, usize), std::sync::Arc<Vec<super::rich::Block>>)>>,
+    rendered: RenderedBlocks,
 }
 
 impl CellState {
@@ -81,6 +85,8 @@ impl CellState {
 
 /// One step of the undo history. Applying an entry flips the state it describes, so the same
 /// value serves for undo and redo.
+// Entries are a few at a time on the undo stack; boxing the cell would only add a hop.
+#[allow(clippy::large_enum_variant)]
 enum Entry {
     /// A text edit in the cell with this uid.
     Text(u64),
@@ -614,10 +620,12 @@ impl Session {
 
     // History.
 
+    #[cfg(test)]
     pub(crate) fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
 
+    #[cfg(test)]
     pub(crate) fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
@@ -732,6 +740,32 @@ impl Session {
             }
         }
     }
+}
+
+fn format_cell_text(text: &str, kind: CellKind, tab_size: usize) -> String {
+    let indent = " ".repeat(tab_size.max(1));
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines: Vec<String> = normalized
+        .split('\n')
+        .map(|line| {
+            let trimmed = line.trim_end_matches([' ', '\t']);
+            if kind == CellKind::Code {
+                let leading_tabs = trimmed.bytes().take_while(|&b| b == b'\t').count();
+                if leading_tabs > 0 {
+                    return format!(
+                        "{}{}",
+                        indent.repeat(leading_tabs),
+                        &trimmed[leading_tabs..]
+                    );
+                }
+            }
+            trimmed.to_owned()
+        })
+        .collect();
+    while lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -1075,30 +1109,4 @@ mod tests {
         assert_eq!(changed, 2);
         assert_eq!(texts(&session), ["  x = 1\n  return x", "# Title"]);
     }
-}
-
-fn format_cell_text(text: &str, kind: CellKind, tab_size: usize) -> String {
-    let indent = " ".repeat(tab_size.max(1));
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut lines: Vec<String> = normalized
-        .split('\n')
-        .map(|line| {
-            let trimmed = line.trim_end_matches([' ', '\t']);
-            if kind == CellKind::Code {
-                let leading_tabs = trimmed.bytes().take_while(|&b| b == b'\t').count();
-                if leading_tabs > 0 {
-                    return format!(
-                        "{}{}",
-                        indent.repeat(leading_tabs),
-                        &trimmed[leading_tabs..]
-                    );
-                }
-            }
-            trimmed.to_owned()
-        })
-        .collect();
-    while lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
-        lines.pop();
-    }
-    lines.join("\n")
 }

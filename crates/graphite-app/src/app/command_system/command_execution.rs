@@ -313,7 +313,7 @@ impl App {
             validate_arguments(
                 entry.arguments,
                 &request.arguments,
-                &self.t("command.error.invalid_arguments"),
+                self.t("command.error.invalid_arguments"),
             )?;
             if matches!(entry.arguments, ArgumentKind::Index) {
                 let index = request.arguments["index"].as_u64().unwrap();

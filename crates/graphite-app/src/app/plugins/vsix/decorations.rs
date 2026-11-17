@@ -369,9 +369,7 @@ impl Decorations {
     /// Shows `(0-based line, text)` pairs as muted text at the end of those lines, with a
     /// built-in decoration type.
     pub(super) fn set_lenses(&mut self, editor: &str, lines: Vec<(u32, String)>) {
-        self.styles
-            .entry(LENS_KEY.to_owned())
-            .or_insert_with(Style::default);
+        self.styles.entry(LENS_KEY.to_owned()).or_default();
         let marks = lines
             .into_iter()
             .take(MARK_LIMIT)
@@ -606,7 +604,6 @@ pub(super) fn dispatch(
                             after: instance,
                             before: instance_before,
                             hover: hover_text(&item["hoverMessage"]),
-                            ..Default::default()
                         })
                     })
                     .take(MARK_LIMIT)

@@ -10,8 +10,10 @@ pub struct TreeRow {
     pub icon: crate::icon_theme::Icon,
     pub workspace_root: bool,
     /// A companion file shown under its parent (file nesting).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub nested: bool,
     /// Number of companion files nested under this row.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub nested_count: usize,
 }
 
@@ -89,13 +91,6 @@ impl FileTree {
         self.workspace.clone()
     }
 
-    pub fn is_in_workspace(&self, path: &std::path::Path) -> bool {
-        self.workspace
-            .roots()
-            .iter()
-            .any(|root| path.starts_with(root))
-    }
-
     pub fn root_for(&self, path: &std::path::Path) -> &std::path::Path {
         self.workspace
             .roots()
@@ -130,10 +125,6 @@ impl FileTree {
             self.rebuild();
         }
         removed
-    }
-
-    pub fn open_workspace_file(path: &std::path::Path) -> Result<Workspace, String> {
-        Workspace::open_code_workspace(path)
     }
 
     /// Re-lists the folders after files were created, renamed, moved or deleted.

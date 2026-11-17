@@ -57,8 +57,6 @@ struct Request {
     document: DocumentSnapshot,
     cursor: usize,
     deadline: Instant,
-    /// Text the request was made with (the new name of a rename).
-    argument: Option<String>,
 }
 
 #[derive(Default)]
@@ -310,7 +308,6 @@ impl App {
             document,
             cursor,
             deadline: Instant::now() + Duration::from_secs(10),
-            argument,
         });
         Ok(true)
     }

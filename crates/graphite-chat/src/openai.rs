@@ -94,7 +94,7 @@ impl Decoder {
             return Ok(Vec::new());
         }
         if data == "[DONE]" {
-            return Ok(self.finish()?);
+            return self.finish();
         }
         let value: Value = serde_json::from_str(data)
             .map_err(|_| ChatError::Protocol("The server sent a chunk that is not JSON".into()))?;

@@ -86,7 +86,7 @@ impl Buffer {
                     " ".repeat(columns % width)
                 )
             };
-            if line.slice(..count).to_string() != replacement {
+            if line.slice(..count) != replacement.as_str() {
                 let start = self.rope.line_to_char(index);
                 edits.push(TextReplacement {
                     range: start..start + count,
@@ -272,5 +272,9 @@ fn scan_indent_tokens(trimmed: &str, colon_indents: bool) -> (usize, isize, bool
         }
     }
 
-    (leading_closers, net_delta, colon_indents && last_code_char == Some(':'))
+    (
+        leading_closers,
+        net_delta,
+        colon_indents && last_code_char == Some(':'),
+    )
 }

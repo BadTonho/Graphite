@@ -54,10 +54,6 @@ impl TerminalProfileConfig {
     }
 }
 
-pub fn terminal_settings(translator: &Translator) -> Result<TerminalSettings, String> {
-    terminal_settings_in(&app_config_dir(), translator)
-}
-
 pub fn terminal_settings_in(
     config_root: &Path,
     translator: &Translator,

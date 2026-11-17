@@ -43,7 +43,6 @@ impl App {
         let has_terminal = !self.terminals.is_empty();
         let editor = self.editor();
         let has_selection = editor.selections().iter().any(|s| s.anchor != s.head);
-        drop(editor);
         let has_active_file = self.documents[self.active_document()]
             .buffer
             .path()

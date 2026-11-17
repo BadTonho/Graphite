@@ -100,7 +100,7 @@ mod find_tests {
 
     #[test]
     fn include_exclude_folder_and_limit_shape_the_results() {
-        let (dir, workspace) = workspace();
+        let (_dir, workspace) = workspace();
         assert_eq!(
             names(&workspace.find_files(None, &["**/*.rs".into()], &[], 10)),
             vec!["lib.rs", "main.rs", "out.rs"]

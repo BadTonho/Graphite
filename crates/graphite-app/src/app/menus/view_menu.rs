@@ -590,7 +590,7 @@ impl App {
     fn view_window_size(&self) -> (f32, f32) {
         self.gpu.as_ref().map_or((1200.0, 760.0), |gpu| {
             let (width, height) = gpu.renderer.size();
-            (width as f32, height as f32)
+            (width, height)
         })
     }
 
@@ -769,7 +769,7 @@ impl App {
         let Some(menu) = &self.view_menu else { return };
         let visible_extensions = self.visible_extension_activities();
         let (window_width, window_height) = renderer.size();
-        let size = (window_width as f32, window_height as f32);
+        let size = (window_width, window_height);
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         for panel in 0..=menu.depth() {

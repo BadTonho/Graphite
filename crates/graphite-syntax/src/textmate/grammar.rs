@@ -10,7 +10,6 @@ use std::rc::Rc;
 /// A regular expression of a rule. One that does not compile (an Oniguruma feature the engine
 /// lacks) never matches, so the rest of the grammar still works.
 pub(super) struct Pattern {
-    pub source: String,
     regex: Option<Regex>,
     /// The pattern contains `\G`: it only matches where the previous match ended.
     pub anchored: bool,
@@ -23,7 +22,6 @@ impl Pattern {
     pub(super) fn new(source: &str) -> Self {
         let (translated, anchored) = translate(source);
         Self {
-            source: source.to_owned(),
             regex: Regex::new(&translated).ok(),
             anchored,
         }
@@ -40,7 +38,11 @@ impl Pattern {
         }
         Some(
             (0..captures.len())
-                .map(|index| captures.get(index).map(|group| (group.start(), group.end())))
+                .map(|index| {
+                    captures
+                        .get(index)
+                        .map(|group| (group.start(), group.end()))
+                })
                 .collect(),
         )
     }
@@ -62,7 +64,11 @@ pub(super) fn translate(source: &str) -> (String, bool) {
         match ch {
             '\\' => match chars.next() {
                 Some('G') if in_class == 0 => anchored = true,
-                Some('h') => out.push_str(if in_class > 0 { "0-9a-fA-F" } else { "[0-9a-fA-F]" }),
+                Some('h') => out.push_str(if in_class > 0 {
+                    "0-9a-fA-F"
+                } else {
+                    "[0-9a-fA-F]"
+                }),
                 Some('H') if in_class == 0 => out.push_str("[^0-9a-fA-F]"),
                 Some(other) => {
                     out.push('\\');
@@ -206,13 +212,16 @@ pub(super) struct GrammarData {
     pub repository: HashMap<String, usize>,
 }
 
+/// Finds the JSON of a grammar by its scope name.
+type GrammarLoader = Box<dyn Fn(&str) -> Option<Value>>;
+
 /// The grammars loaded so far, with all their rules.
 pub struct Registry {
     pub(super) rules: Vec<Rule>,
     pub(super) grammars: Vec<GrammarData>,
     by_scope: HashMap<String, usize>,
     failed: HashSet<String>,
-    loader: Box<dyn Fn(&str) -> Option<Value>>,
+    loader: GrammarLoader,
     /// Compiled end patterns by their source: backreferences make many of them per rule.
     end_patterns: RefCell<HashMap<String, Rc<Pattern>>>,
 }
@@ -324,17 +333,22 @@ impl Registry {
         &self.grammars[grammar].scope_name
     }
 
-    fn parse_patterns(&mut self, parser: &mut Parser, value: &Value, grammar: usize) -> Vec<RuleRef> {
+    fn parse_patterns(
+        &mut self,
+        parser: &mut Parser,
+        value: &Value,
+        grammar: usize,
+    ) -> Vec<RuleRef> {
         value
             .as_array()
             .into_iter()
             .flatten()
             .filter(|entry| entry["disabled"].as_i64().unwrap_or(0) == 0)
-            .filter_map(|entry| {
+            .map(|entry| {
                 if let Some(include) = entry["include"].as_str() {
-                    return Some(RuleRef::Include(parse_include(parser, include)));
+                    return RuleRef::Include(parse_include(parser, include));
                 }
-                Some(RuleRef::Rule(self.parse_rule(parser, entry, grammar)))
+                RuleRef::Rule(self.parse_rule(parser, entry, grammar))
             })
             .collect()
     }
@@ -478,9 +492,15 @@ mod tests {
         assert_eq!(groups[0], Some((1, 3)));
         assert_eq!(groups[2], Some((2, 3)));
         let anchored = Pattern::new(r"\Gab");
-        assert!(anchored.find("xab", 0, Some(0)).is_none(), "ab is at 1, not at the anchor");
+        assert!(
+            anchored.find("xab", 0, Some(0)).is_none(),
+            "ab is at 1, not at the anchor"
+        );
         assert!(anchored.find("xab", 0, Some(1)).is_some());
-        assert!(anchored.find("xab", 0, None).is_none(), "no anchor, no match");
+        assert!(
+            anchored.find("xab", 0, None).is_none(),
+            "no anchor, no match"
+        );
         assert!(Pattern::new("(bad").find("x", 0, None).is_none());
     }
 
@@ -493,7 +513,11 @@ mod tests {
         assert_eq!(end.resolve(line, &begin), r"^EOF$|\\EOFx");
         let tricky = "<<a.b";
         let groups = vec![Some((0, 5)), Some((2, 5))];
-        assert_eq!(end.resolve(tricky, &groups), r"^a\.b$|\\a\.bx", "group text is escaped");
+        assert_eq!(
+            end.resolve(tricky, &groups),
+            r"^a\.b$|\\a\.bx",
+            "group text is escaped"
+        );
         assert!(!EndPattern::new("x").has_backrefs);
     }
 
@@ -512,9 +536,16 @@ mod tests {
             }))
             .unwrap();
         assert_eq!(registry.scope_name(outer), "source.outer");
-        assert!(registry.grammar("source.inner").is_some(), "loaded for the include");
+        assert!(
+            registry.grammar("source.inner").is_some(),
+            "loaded for the include"
+        );
         assert!(registry.grammar("source.missing").is_none());
-        assert_eq!(registry.add(&json!({"scopeName": "source.outer"})).unwrap(), outer, "added once");
+        assert_eq!(
+            registry.add(&json!({"scopeName": "source.outer"})).unwrap(),
+            outer,
+            "added once"
+        );
         assert!(registry.add(&json!({"patterns": []})).is_err());
 
         let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -526,6 +557,8 @@ mod tests {
         let index = registry.add_text(plist).unwrap();
         assert_eq!(registry.scope_name(index), "source.plist");
         assert!(registry.add_text("{not json").is_err());
-        assert!(registry.add_text("\u{feff}{\"scopeName\": \"source.bom\", \"patterns\": []}").is_ok());
+        assert!(registry
+            .add_text("\u{feff}{\"scopeName\": \"source.bom\", \"patterns\": []}")
+            .is_ok());
     }
 }

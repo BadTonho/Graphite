@@ -104,8 +104,8 @@ impl App {
                         &[("warnings", &active.warnings.join("; "))],
                     )
                 };
-            } else {
-                self.status = self.tf("save.failed", &[("error", result.as_ref().unwrap_err())]);
+            } else if let Err(error) = &result {
+                self.status = self.tf("save.failed", &[("error", error)]);
             }
             for request in active.requests {
                 if result.is_ok() {

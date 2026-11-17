@@ -152,6 +152,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn cancel_vsix_prompt(&mut self) {
         self.answer_vsix_prompt(None);
     }

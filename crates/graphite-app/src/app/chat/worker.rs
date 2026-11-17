@@ -3,7 +3,7 @@
 use super::*;
 use graphite_chat::{
     run_turn, run_turn_with_tools, write_proposed_edit, AgentMode, AgentTurnEvent,
-    ApprovalDecision, ChatContext, HttpModelStreamer, Message, PendingToolApproval, ProviderConfig,
+    ApprovalDecision, ChatContext, HttpModelStreamer, Message, PendingToolApproval,
     SystemCommandRunner, TurnStatus,
 };
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
@@ -440,13 +440,6 @@ impl App {
         } else {
             self.status = "Saved chat provider settings".into();
         }
-    }
-
-    pub(crate) fn set_chat_provider_config(&mut self, config: ProviderConfig) {
-        self.chat.provider = Some(config);
-        let _ = self
-            .chat
-            .persist_provider(&self.profile_root, self.profiles.is_none());
     }
 
     /// Starts an inline chat request on the active editor selection or line.

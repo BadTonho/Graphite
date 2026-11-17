@@ -272,6 +272,7 @@ impl LspManager {
         Ok(servers.into_values().collect())
     }
 
+    #[cfg(test)]
     pub fn from_config(configs: Vec<ServerConfig>) -> Self {
         Self {
             configs: configs

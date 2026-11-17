@@ -58,7 +58,6 @@ struct Listing {
     document: DocumentId,
     revision: u64,
     uri: String,
-    deadline: Instant,
 }
 
 #[derive(Default)]
@@ -190,7 +189,6 @@ impl App {
             document,
             revision,
             uri: snapshot.uri.as_str().to_owned(),
-            deadline: now + TIMEOUT,
         });
         Ok(())
     }
@@ -536,7 +534,7 @@ mod tests {
 
     #[test]
     fn unwrapped_lines_get_a_lens_row_above_them_and_clicking_it_runs_the_lens() {
-        use crate::app::lens_rows::BodyRow;
+        use crate::app::editing::lens_rows::BodyRow;
         let dir = TempDir::new();
         let (mut app, host) = app_with_lens_provider(&dir, "one\n  two\nthree\nfour\n");
         app.poll_vsix();

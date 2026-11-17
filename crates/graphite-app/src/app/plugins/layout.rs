@@ -9,8 +9,9 @@
 
 use super::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(super) enum PluginsTab {
+    #[default]
     Installed,
     OpenVsx,
     Graphite,
@@ -38,12 +39,6 @@ impl PluginsTab {
             Self::OpenVsx => 'o',
             Self::Graphite => 'g',
         }
-    }
-}
-
-impl Default for PluginsTab {
-    fn default() -> Self {
-        Self::Installed
     }
 }
 

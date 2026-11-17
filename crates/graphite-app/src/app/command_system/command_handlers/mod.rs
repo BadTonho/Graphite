@@ -45,6 +45,7 @@ mod workbench;
 const ALL: &[TargetKind] = &[TargetKind::Global, TargetKind::View, TargetKind::Widget];
 const VIEW: &[TargetKind] = &[TargetKind::View];
 const WIDGET: &[TargetKind] = &[TargetKind::Widget];
+#[allow(clippy::too_many_arguments)]
 fn add(
     registry: &mut CommandRegistry,
     id: &'static str,

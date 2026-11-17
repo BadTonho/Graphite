@@ -410,12 +410,12 @@ impl App {
         };
         let (width, height) = renderer.size();
         let cw = renderer.char_width();
-        let panel_width = (width as f32 * 0.72)
+        let panel_width = (width * 0.72)
             .clamp(360.0, 700.0)
-            .min((width as f32 - 24.0).max(0.0));
+            .min((width - 24.0).max(0.0));
         let panel_height = 120.0;
-        let x = ((width as f32 - panel_width) * 0.5).max(12.0);
-        let y = ((height as f32 - panel_height) * 0.5).max(12.0);
+        let x = ((width - panel_width) * 0.5).max(12.0);
+        let y = ((height - panel_height) * 0.5).max(12.0);
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));

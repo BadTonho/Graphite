@@ -122,12 +122,6 @@ pub(crate) fn parse_jsonc(text: &str) -> Result<Value, serde_json::Error> {
     }
     serde_json::from_str(&cleaned)
 }
-pub fn editor_prefs_for_workspace(
-    workspace: &Path,
-    translator: &Translator,
-) -> Result<EditorPrefs, String> {
-    editor_prefs_for_workspace_in(&app_config_dir(), workspace, translator)
-}
 
 pub fn editor_prefs_for_workspace_in(
     config_root: &Path,
@@ -135,10 +129,6 @@ pub fn editor_prefs_for_workspace_in(
     translator: &Translator,
 ) -> Result<EditorPrefs, String> {
     read_editor_prefs(&settings_paths_in(config_root, workspace), translator)
-}
-
-pub(super) fn settings_paths(workspace: &Path) -> [PathBuf; 3] {
-    settings_paths_in(&app_config_dir(), workspace)
 }
 
 pub(super) fn settings_paths_in(config: &Path, workspace: &Path) -> [PathBuf; 3] {
@@ -369,10 +359,6 @@ pub(super) fn read_editor_prefs(
         }
     }
     Ok(prefs)
-}
-
-pub fn workspace_configuration(workspace: &Path, translator: &Translator) -> Result<Value, String> {
-    merge_settings(&settings_paths(workspace), translator)
 }
 
 pub fn workspace_configuration_in(

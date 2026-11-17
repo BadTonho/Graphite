@@ -106,7 +106,7 @@ impl App {
             ));
         }
         entries.extend(self.commit_entries(&file));
-        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.0));
         let items: Vec<GoSymbolItem> = entries.into_iter().map(|(_, item)| item).collect();
         let message = items
             .is_empty()
@@ -286,7 +286,7 @@ mod tests {
         assert!(names.iter().any(|name| name.contains("first")));
         assert!(names
             .iter()
-            .any(|name| name.contains(&app.t("timeline.saved"))));
+            .any(|name| name.contains(app.t("timeline.saved"))));
         // A commit entry is a copy of the file as it was.
         let first = picker
             .items

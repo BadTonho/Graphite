@@ -127,7 +127,7 @@ impl Translator {
     }
 
     /// Returns the translation for `key`, or `key` itself when it is missing.
-    pub fn text<'a>(self, key: &'a str) -> &'a str {
+    pub fn text(self, key: &str) -> &str {
         if let Some(value) = lookup(self.language, key) {
             return value;
         }

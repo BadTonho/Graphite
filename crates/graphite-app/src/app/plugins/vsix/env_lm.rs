@@ -343,15 +343,14 @@ impl App {
                 continue;
             }
             for ev in &vsix.activation_events {
-                if ev == "*"
+                if (ev == "*"
                     || ev == "onStartupFinished"
                     || ev
                         .strip_prefix("workspaceContains:")
-                        .is_some_and(|glob| workspace_contains_glob(root, glob))
+                        .is_some_and(|glob| workspace_contains_glob(root, glob)))
+                    && runtime.activated_events.insert(ev.clone())
                 {
-                    if runtime.activated_events.insert(ev.clone()) {
-                        to_fire.push(ev.clone());
-                    }
+                    to_fire.push(ev.clone());
                 }
             }
         }

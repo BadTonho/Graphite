@@ -119,8 +119,9 @@ impl App {
                 self.cleanup_plugin_download();
                 self.plugins.index = 0;
                 self.plugins.scroll = 0;
-            } else if self.plugins.trust.take().is_some() {
-            } else if self.plugins.inspecting.take().is_some() {
+            } else if self.plugins.trust.take().is_some()
+                || self.plugins.inspecting.take().is_some()
+            {
             } else if self.plugins.editing {
                 self.plugins.editing = false;
             } else {

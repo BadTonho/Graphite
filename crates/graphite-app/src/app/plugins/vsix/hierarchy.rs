@@ -9,7 +9,6 @@
 use super::languages::Feature;
 use super::*;
 use crate::app::go_menu::GoSymbolItem;
-use std::collections::BTreeSet;
 
 /// Replies to hierarchy requests carry ids in `HIERARCHY_BASE..HIERARCHY_END`.
 const HIERARCHY_BASE: u64 = 7_000_000;

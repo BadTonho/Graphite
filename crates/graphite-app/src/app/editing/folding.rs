@@ -293,17 +293,6 @@ pub(crate) fn region_at_line(regions: &[Region], line: usize) -> Option<usize> {
         .map(|(index, _)| index)
 }
 
-/// The regions containing `line`, innermost first.
-pub(crate) fn regions_at_line(regions: &[Region], line: usize) -> Vec<usize> {
-    let mut chain = Vec::new();
-    let mut next = region_at_line(regions, line);
-    while let Some(index) = next {
-        chain.push(index);
-        next = regions[index].parent;
-    }
-    chain
-}
-
 /// The regions inside `regions[index]`, at any depth.
 pub(crate) fn regions_inside(regions: &[Region], index: usize) -> impl Iterator<Item = usize> + '_ {
     let end = regions[index].end;

@@ -322,10 +322,6 @@ fn focus_group_5(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
     app.focus_group_number(5);
     Ok(())
 }
-fn focus_next_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.focus_group_step(false);
-    Ok(())
-}
 fn focus_previous_group(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.focus_group_step(true);
     Ok(())
@@ -424,27 +420,24 @@ pub(super) fn workbench_action_close_active_editor(
     {
         return Err(CommandError::Busy);
     }
-    {
-        if app.active_view_needs_confirmation() {
-            app.close_confirm = true;
-            app.command_runtime.pending_close =
-                Some((invocation.execution, app.command_view_ref().id));
-            if let Some(pending) = app.command_runtime.pending.get_mut(&invocation.execution) {
-                pending.deferred = true;
-            }
-            app.status = app.t("status.unsaved_tab_prompt").into();
-        } else if app.saving.document_pending(app.command_document()) {
-            app.command_job(false);
-            app.save_batch(
-                vec![app.command_document()],
-                super::super::saving::AfterSave::Close {
-                    execution: invocation.execution,
-                    view: app.command_view_ref().id,
-                },
-            );
-        } else {
-            app.close_active_tab();
+    if app.active_view_needs_confirmation() {
+        app.close_confirm = true;
+        app.command_runtime.pending_close = Some((invocation.execution, app.command_view_ref().id));
+        if let Some(pending) = app.command_runtime.pending.get_mut(&invocation.execution) {
+            pending.deferred = true;
         }
+        app.status = app.t("status.unsaved_tab_prompt").into();
+    } else if app.saving.document_pending(app.command_document()) {
+        app.command_job(false);
+        app.save_batch(
+            vec![app.command_document()],
+            super::super::saving::AfterSave::Close {
+                execution: invocation.execution,
+                view: app.command_view_ref().id,
+            },
+        );
+    } else {
+        app.close_active_tab();
     };
     Ok(())
 }
@@ -765,10 +758,11 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         focus_below_group,
     );
-    for (id, title) in [(
-        "workbench.action.navigateToLastEditLocation",
-        "Last Edit Location",
-    )] {
+    {
+        let (id, title) = (
+            "workbench.action.navigateToLastEditLocation",
+            "Last Edit Location",
+        );
         add(
             registry,
             id,

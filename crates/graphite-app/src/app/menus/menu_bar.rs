@@ -1,6 +1,9 @@
 use super::*;
 use winit::keyboard::{Key, NamedKey};
 
+/// A rectangle as `(x, y, width, height)`.
+type RectTuple = (f32, f32, f32, f32);
+
 const MENU_START_X: f32 = 38.0;
 const MENU_HORIZONTAL_PADDING: f32 = 8.0;
 const EMPTY_MENU_WIDTH: f32 = 220.0;
@@ -132,7 +135,7 @@ impl TitlebarControlRects {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct MenuItemRectLike {
+pub(crate) struct MenuItemRectLike {
     x: f32,
     y: f32,
     width: f32,
@@ -419,11 +422,7 @@ impl App {
         &self,
         width: f32,
         char_width: f32,
-    ) -> (
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-    ) {
+    ) -> (RectTuple, RectTuple, RectTuple) {
         let layout = self.titlebar_layout(width, char_width);
         let rect = |rect: MenuItemRectLike| (rect.x, rect.y, rect.width, rect.height);
         (
@@ -755,8 +754,6 @@ impl App {
         }) else {
             return false;
         };
-        let width = width as f32;
-        let height = height as f32;
         let layout = self.titlebar_layout(width, char_width);
         if y < layout.height {
             let selected = self
@@ -1090,8 +1087,8 @@ impl App {
         let Some((char_width, width, height)) = self.gpu.as_ref().map(|gpu| {
             (
                 gpu.renderer.char_width(),
-                gpu.renderer.size().0 as f32,
-                gpu.renderer.size().1 as f32,
+                gpu.renderer.size().0,
+                gpu.renderer.size().1,
             )
         }) else {
             return;
@@ -1603,7 +1600,7 @@ impl App {
                             entries[self.workbench_overflow_selection.min(entries.len() - 1)];
                         let (width, height) = self.gpu.as_ref().map_or((1200.0, 760.0), |gpu| {
                             let (width, height) = gpu.renderer.size();
-                            (width as f32, height as f32)
+                            (width, height)
                         });
                         let char_width = self
                             .gpu
@@ -1656,7 +1653,7 @@ impl App {
                             (1200.0, 760.0, self.font_size * 0.6),
                             |gpu| {
                                 let (width, height) = gpu.renderer.size();
-                                (width as f32, height as f32, gpu.renderer.char_width())
+                                (width, height, gpu.renderer.char_width())
                             },
                         );
                         let anchor = self
@@ -1674,7 +1671,7 @@ impl App {
                             (1200.0, 760.0, self.font_size * 0.6),
                             |gpu| {
                                 let (width, height) = gpu.renderer.size();
-                                (width as f32, height as f32, gpu.renderer.char_width())
+                                (width, height, gpu.renderer.char_width())
                             },
                         );
                         let anchor = self.titlebar_layout(width, char_width).menu_anchor(active);
@@ -1714,8 +1711,8 @@ impl App {
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         let hovered = rgb(Theme::color(Theme::ACTIVE_ROW, 0x3f3f46));
-        renderer.draw_rect(0.0, 0.0, width as f32, menu_height, background);
-        renderer.draw_rect(0.0, menu_height - 1.0, width as f32, 1.0, border);
+        renderer.draw_rect(0.0, 0.0, width, menu_height, background);
+        renderer.draw_rect(0.0, menu_height - 1.0, width, 1.0, border);
         draw_brand_icon(renderer, layout.icon);
 
         let active_is_overflowed = self.workbench_menu.is_some_and(|menu| {
@@ -1753,7 +1750,7 @@ impl App {
         }
 
         if self.workbench_menu == Some(WorkbenchMenu::More) && self.workbench_menu_overflow {
-            let popup = layout.overflow_popup(char_width, width as f32);
+            let popup = layout.overflow_popup(char_width, width);
             renderer.draw_rect(popup.x, popup.y, popup.width, popup.height, border);
             renderer.draw_rect(
                 popup.x + 1.0,
@@ -1800,10 +1797,10 @@ impl App {
                 let popup_width = (self.t("menubar.empty").chars().count() as f32 * char_width
                     + MENU_HORIZONTAL_PADDING * 2.0)
                     .max(EMPTY_MENU_WIDTH)
-                    .min((width as f32 - 2.0).max(80.0));
+                    .min((width - 2.0).max(80.0));
                 let popup_x = layout
                     .menu_anchor(active)
-                    .clamp(0.0, (width as f32 - popup_width).max(0.0));
+                    .clamp(0.0, (width - popup_width).max(0.0));
                 renderer.draw_rect(popup_x, menu_height, popup_width, EMPTY_MENU_HEIGHT, border);
                 renderer.draw_rect(
                     popup_x + 1.0,
@@ -2007,10 +2004,10 @@ impl App {
         use super::run_menu::RunMenuRow;
         let (window_width, window_height) = renderer.size();
         let char_width = renderer.char_width();
-        let width = self.run_menu_width(char_width, window_width as f32);
+        let width = self.run_menu_width(char_width, window_width);
         let x = layout
             .menu_anchor(WorkbenchMenu::Run)
-            .clamp(0.0, (window_width as f32 - width).max(0.0));
+            .clamp(0.0, (window_width - width).max(0.0));
         let y = layout.height;
         let rows = self.run_menu_rows();
         let height = rows
@@ -2090,9 +2087,9 @@ impl App {
             }
         }
         if self.run_breakpoint_submenu {
-            let submenu_width = self.run_breakpoint_menu_width(char_width, window_width as f32);
+            let submenu_width = self.run_breakpoint_menu_width(char_width, window_width);
             let submenu_x =
-                self.run_breakpoint_submenu_position(x, width, window_width as f32, submenu_width);
+                self.run_breakpoint_submenu_position(x, width, window_width, submenu_width);
             let submenu_rows = self.run_breakpoint_rows();
             let submenu_height = submenu_rows
                 .iter()
@@ -2105,7 +2102,7 @@ impl App {
                 })
                 .sum::<f32>()
                 + 8.0;
-            let submenu_y = self.run_breakpoint_submenu_top(y, window_height as f32);
+            let submenu_y = self.run_breakpoint_submenu_top(y, window_height);
             renderer.draw_rect(submenu_x, submenu_y, submenu_width, submenu_height, border);
             renderer.draw_rect(
                 submenu_x + 1.0,
@@ -2185,12 +2182,12 @@ impl App {
         };
         let (width, height) = renderer.size();
         let cw = renderer.char_width();
-        let panel_width = (width as f32 * 0.72)
+        let panel_width = (width * 0.72)
             .clamp(360.0, 700.0)
-            .min((width as f32 - 24.0).max(0.0));
+            .min((width - 24.0).max(0.0));
         let panel_height = 120.0;
-        let x = ((width as f32 - panel_width) * 0.5).max(12.0);
-        let y = ((height as f32 - panel_height) * 0.5).max(12.0);
+        let x = ((width - panel_width) * 0.5).max(12.0);
+        let y = ((height - panel_height) * 0.5).max(12.0);
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
@@ -2221,12 +2218,12 @@ impl App {
         };
         let (width, height) = renderer.size();
         let cw = renderer.char_width();
-        let panel_width = (width as f32 * 0.72)
+        let panel_width = (width * 0.72)
             .clamp(360.0, 700.0)
-            .min((width as f32 - 24.0).max(0.0));
+            .min((width - 24.0).max(0.0));
         let panel_height = 120.0;
-        let x = ((width as f32 - panel_width) * 0.5).max(12.0);
-        let y = ((height as f32 - panel_height) * 0.5).max(12.0);
+        let x = ((width - panel_width) * 0.5).max(12.0);
+        let y = ((height - panel_height) * 0.5).max(12.0);
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
@@ -2260,10 +2257,10 @@ impl App {
         use super::help_menu::HelpRow;
         let (window_width, _) = renderer.size();
         let char_width = renderer.char_width();
-        let width = self.help_menu_width(char_width, window_width as f32);
+        let width = self.help_menu_width(char_width, window_width);
         let x = layout
             .menu_anchor(WorkbenchMenu::Help)
-            .clamp(0.0, (window_width as f32 - width).max(0.0));
+            .clamp(0.0, (window_width - width).max(0.0));
         let y = layout.height;
         let rows = self.help_menu_rows();
         let height = rows
@@ -2337,10 +2334,10 @@ impl App {
     fn draw_file_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::file_menu::FileMenuRow;
         let (width, window_height) = renderer.size();
-        let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width as f32);
+        let popup_width = super::file_menu::FILE_MENU_WIDTH.min(width);
         let popup_x = layout
             .menu_anchor(WorkbenchMenu::File)
-            .clamp(0.0, width as f32 - popup_width);
+            .clamp(0.0, width - popup_width);
         let popup_y = layout.height;
         let rows = self.file_menu_rows(None);
         let main_selected_command = match self.file_menu_submenu {
@@ -2435,7 +2432,7 @@ impl App {
         }
         if let Some(open) = self.file_menu_submenu {
             let (submenu_x, nested_x, submenu_width) =
-                Self::file_panel_xs(popup_x, popup_width, width as f32);
+                Self::file_panel_xs(popup_x, popup_width, width);
             let nested_row = self.file_menu_nested.and_then(|nested| {
                 self.file_menu_rows(Some(open))
                     .into_iter()
@@ -2449,7 +2446,7 @@ impl App {
                 renderer,
                 open,
                 submenu_x,
-                self.file_submenu_top(window_height as f32),
+                self.file_submenu_top(window_height),
                 submenu_width,
                 Some(nested_row.unwrap_or(self.file_menu_selection)),
             );
@@ -2458,7 +2455,7 @@ impl App {
                     renderer,
                     nested,
                     nested_x,
-                    self.file_nested_top(window_height as f32),
+                    self.file_nested_top(window_height),
                     submenu_width,
                     Some(self.file_menu_nested_selection),
                 );
@@ -2616,10 +2613,10 @@ impl App {
     fn draw_terminal_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::terminal_menu::TerminalMenuRow;
         let (width, _) = renderer.size();
-        let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width as f32);
+        let popup_width = super::terminal_menu::TERMINAL_MENU_WIDTH.min(width);
         let popup_x = layout
             .menu_anchor(WorkbenchMenu::Terminal)
-            .clamp(0.0, width as f32 - popup_width);
+            .clamp(0.0, width - popup_width);
         let popup_y = layout.height;
         let rows = self.terminal_menu_rows();
         let popup_height = rows
@@ -2683,10 +2680,10 @@ impl App {
     fn draw_edit_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::edit_menu::EditMenuRow;
         let (width, _) = renderer.size();
-        let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width as f32);
+        let popup_width = super::edit_menu::EDIT_MENU_WIDTH.min(width);
         let popup_x = layout
             .menu_anchor(WorkbenchMenu::Edit)
-            .clamp(0.0, width as f32 - popup_width);
+            .clamp(0.0, width - popup_width);
         let popup_y = layout.height;
         let rows = self.edit_menu_rows();
         let popup_height = rows
@@ -2750,10 +2747,10 @@ impl App {
         use super::selection_menu::SelectionMenuRow;
         let (width, _) = renderer.size();
         let char_width = renderer.char_width();
-        let popup_width = self.selection_menu_width(char_width, width as f32);
+        let popup_width = self.selection_menu_width(char_width, width);
         let popup_x = layout
             .menu_anchor(WorkbenchMenu::Selection)
-            .clamp(0.0, (width as f32 - popup_width).max(0.0));
+            .clamp(0.0, (width - popup_width).max(0.0));
         let popup_y = layout.height;
         let rows = self.selection_menu_rows();
         let popup_height = super::selection_menu::selection_menu_height(&rows);
@@ -2819,7 +2816,6 @@ impl App {
     fn draw_go_menu(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
         use super::go_menu::{GoMenuRow as R, GoSubmenuRow as SR};
         let (width, _) = renderer.size();
-        let width = width as f32;
         let cw = renderer.char_width();
         let lh = renderer.line_height();
         let popup_width = self.go_menu_width(cw, width);

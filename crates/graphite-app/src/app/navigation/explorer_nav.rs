@@ -19,7 +19,7 @@ impl App {
         let Some((height, line_height)) = self
             .gpu
             .as_ref()
-            .map(|gpu| (gpu.renderer.size().1 as f32, gpu.renderer.line_height()))
+            .map(|gpu| (gpu.renderer.size().1, gpu.renderer.line_height()))
         else {
             return 20;
         };
@@ -162,6 +162,60 @@ impl App {
     pub(crate) fn explorer_scroll_by(&mut self, rows: isize) {
         let last = self.explorer_row_count().saturating_sub(1);
         self.explorer_scroll = self.explorer_scroll.saturating_add_signed(rows).min(last);
+    }
+}
+
+impl App {
+    pub(crate) fn explorer_select_all(&mut self) {
+        self.explorer_multi_selected = self
+            .tree
+            .rows
+            .iter()
+            .map(|row| row.entry.path.clone())
+            .collect();
+    }
+
+    pub(crate) fn explorer_clear_selection(&mut self) {
+        self.explorer_multi_selected.clear();
+        self.explorer_type_filter.clear();
+    }
+
+    pub(crate) fn explorer_expand_selection(&mut self, down: bool) {
+        if let Some(current) = self.explorer_selected.clone() {
+            self.explorer_multi_selected.insert(current);
+        }
+        self.explorer_move(if down {
+            ExplorerMove::Down
+        } else {
+            ExplorerMove::Up
+        });
+        if let Some(next) = self.explorer_selected.clone() {
+            self.explorer_multi_selected.insert(next);
+        }
+    }
+
+    pub(crate) fn explorer_type_find(&mut self, query: &str) {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.explorer_type_filter = trimmed.to_owned();
+        let needle = trimmed.to_ascii_lowercase();
+        let start = self
+            .explorer_selected_row()
+            .map_or(0, |index| (index + 1) % self.tree.rows.len().max(1));
+        for offset in 0..self.tree.rows.len() {
+            let index = (start + offset) % self.tree.rows.len();
+            if self.tree.rows[index]
+                .entry
+                .name
+                .to_ascii_lowercase()
+                .contains(&needle)
+            {
+                self.explorer_select_row(index);
+                return;
+            }
+        }
     }
 }
 
@@ -343,59 +397,5 @@ mod tests {
 
         app.explorer_type_find("file_15");
         assert_eq!(selected_name(&app), "file_15.txt");
-    }
-}
-
-impl App {
-    pub(crate) fn explorer_select_all(&mut self) {
-        self.explorer_multi_selected = self
-            .tree
-            .rows
-            .iter()
-            .map(|row| row.entry.path.clone())
-            .collect();
-    }
-
-    pub(crate) fn explorer_clear_selection(&mut self) {
-        self.explorer_multi_selected.clear();
-        self.explorer_type_filter.clear();
-    }
-
-    pub(crate) fn explorer_expand_selection(&mut self, down: bool) {
-        if let Some(current) = self.explorer_selected.clone() {
-            self.explorer_multi_selected.insert(current);
-        }
-        self.explorer_move(if down {
-            ExplorerMove::Down
-        } else {
-            ExplorerMove::Up
-        });
-        if let Some(next) = self.explorer_selected.clone() {
-            self.explorer_multi_selected.insert(next);
-        }
-    }
-
-    pub(crate) fn explorer_type_find(&mut self, query: &str) {
-        let trimmed = query.trim();
-        if trimmed.is_empty() {
-            return;
-        }
-        self.explorer_type_filter = trimmed.to_owned();
-        let needle = trimmed.to_ascii_lowercase();
-        let start = self
-            .explorer_selected_row()
-            .map_or(0, |index| (index + 1) % self.tree.rows.len().max(1));
-        for offset in 0..self.tree.rows.len() {
-            let index = (start + offset) % self.tree.rows.len();
-            if self.tree.rows[index]
-                .entry
-                .name
-                .to_ascii_lowercase()
-                .contains(&needle)
-            {
-                self.explorer_select_row(index);
-                return;
-            }
-        }
     }
 }

@@ -82,10 +82,8 @@ fn marker_of(body: &str) -> Option<(Marker, &str)> {
         _ => {
             let label = if rest.is_empty() {
                 ""
-            } else if let Some(label) = rest.strip_prefix(' ') {
-                label
             } else {
-                return None;
+                rest.strip_prefix(' ')?
             };
             let marker = match first {
                 '<' => Marker::Start(run),

@@ -127,6 +127,7 @@ pub(crate) fn encode_ws_frame(opcode: u8, payload: &[u8], masked: bool) -> Vec<u
     frame
 }
 
+#[cfg(test)]
 pub(crate) fn read_ws_frame(reader: &mut impl Read) -> Result<(u8, Vec<u8>), String> {
     let mut header = [0u8; 2];
     reader
@@ -176,7 +177,6 @@ pub(crate) fn read_ws_frame(reader: &mut impl Read) -> Result<(u8, Vec<u8>), Str
 /// Active TCP WebSocket connection to a configurable relay server (`ws://`).
 pub(crate) struct WebSocketTunnelClient {
     stream: TcpStream,
-    pub endpoint: String,
 }
 
 impl WebSocketTunnelClient {
@@ -215,10 +215,7 @@ impl WebSocketTunnelClient {
         if !header_str.contains("101") || !header_str.contains(&expected_accept) {
             return Err("Invalid WebSocket upgrade response from relay".into());
         }
-        Ok(Self {
-            stream,
-            endpoint: url.to_owned(),
-        })
+        Ok(Self { stream })
     }
 
     pub fn send_envelope(&mut self, env: &RelayEnvelope) -> Result<(), String> {
@@ -229,6 +226,7 @@ impl WebSocketTunnelClient {
             .map_err(|e| format!("Tunnel send failed: {e}"))
     }
 
+    #[cfg(test)]
     pub fn recv_envelope(&mut self) -> Result<RelayEnvelope, String> {
         let (opcode, payload) = read_ws_frame(&mut self.stream)?;
         if opcode == 0x8 {

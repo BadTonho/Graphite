@@ -217,7 +217,7 @@ impl App {
             let count = quick.paths.len().min(8);
             let height = lh * (count as f32 + 1.5);
             let (x, y, width) = if self.command_center.is_some() {
-                let (x, y, width, _) = self.command_center_popup_bounds(w as f32, cw, lh, count);
+                let (x, y, width, _) = self.command_center_popup_bounds(w, cw, lh, count);
                 (x, y, width)
             } else {
                 (editor_left, lh * 1.5, editor_width)
@@ -286,8 +286,7 @@ impl App {
             let rows = self.command_palette_rows();
             let height = lh * (rows.len().min(8) as f32 + 1.5);
             let (x, y, width) = if self.command_center.is_some() {
-                let (x, y, width, _) =
-                    self.command_center_popup_bounds(w as f32, cw, lh, rows.len());
+                let (x, y, width, _) = self.command_center_popup_bounds(w, cw, lh, rows.len());
                 (x, y, width)
             } else {
                 (editor_left, lh * 1.5, editor_width)
@@ -352,7 +351,7 @@ impl App {
             let shown = rows.len().min(8);
             let height = lh * (shown as f32 + 1.8);
             let (x, y, width) = if self.command_center.is_some() {
-                let (x, y, width, _) = self.command_center_popup_bounds(w as f32, cw, lh, shown);
+                let (x, y, width, _) = self.command_center_popup_bounds(w, cw, lh, shown);
                 (x, y, width)
             } else {
                 (editor_left, ((h - height) * 0.22).max(lh), editor_width)

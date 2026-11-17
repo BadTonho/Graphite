@@ -89,6 +89,7 @@ fn emit(
     );
 }
 
+#[cfg(test)]
 /// The indexes of the files at or below `folder`, from the `(index, path)` pairs of one list.
 pub(crate) fn files_under(files: &[(usize, &Path)], folder: &Path) -> Vec<usize> {
     files

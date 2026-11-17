@@ -1,5 +1,28 @@
 # Local verification results
 
+## Execution on 2026-11-17
+
+Windows, with the 0.1.0 release preparation. Command: `cargo run -p graphite-xtask -- verify`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Formatting | PASS | `cargo fmt --all --check` clean |
+| Clippy, warnings denied | PASS | `cargo clippy --workspace --all-targets -- -D warnings`, no findings |
+| Workspace build | PASS | `cargo build --workspace` |
+| Workspace tests | PASS | 1,837 passed, 0 failed, 10 ignored |
+| Release tooling tests | PASS | `python -m unittest discover -s packaging/release/tests` |
+| Overall verifier | PASS (exit 0) | |
+| Windows interactive UI/GPU and packaged application | PENDING | Headless checks only |
+| Linux build/tests/UI | PENDING | This execution environment is Windows |
+
+The cleanup that made the strict checks pass:
+
+- Formatting differences in ten files of the base crates were applied.
+- Clippy findings in the base crates were fixed, and the `graphite-app` ones (about 290) were fixed, either by the automatic fixes or by hand. Code that nothing used, in the program and in the tests, was removed; code only the tests use is now `#[cfg(test)]`. Where a lint was kept on purpose (long argument lists of drawing helpers, a few fields read only by tests, a deliberately detached editor process), the code carries a local `allow` with the reason.
+- One automatic fix was wrong and was corrected by hand: replacing `1 as *const u16` with `std::ptr::dangling()` would have changed a Windows resource id from 1 to 2, so the icon test uses `std::ptr::without_provenance(1)`.
+
+Still open from the previous record: the manual checks of the essential workflows and real packages on both systems, the nine ignored VSIX tests and the real-kernel notebook test.
+
 ## Execution on 2026-11-16
 
 Windows, base commit `8035ce5` plus this implementation's working-tree changes. Tools: Rust/Cargo 1.97.0, Node.js 24.18.0, Git 2.53.0.windows.1. Command: `cargo run -p graphite-xtask -- verify`. The verifier executes `cargo test --workspace --no-fail-fast -- --test-threads=4` so a failing target does not prevent other targets from being tested.

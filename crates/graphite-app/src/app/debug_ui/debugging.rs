@@ -1,5 +1,5 @@
 use super::*;
-use crate::debugger::{DebugState, RequestKind};
+use crate::debugger::DebugState;
 
 impl App {
     pub(crate) fn start_debugging(&mut self) -> Result<(), String> {
@@ -264,7 +264,7 @@ impl App {
         let configured_points = points.clone();
         if self.debug.session.is_some() {
             self.debug
-                .set_breakpoints(&path, configured_points)
+                .set_breakpoints(path, configured_points)
                 .map_err(|error| error.to_string())?;
         }
         Ok(())
@@ -299,12 +299,6 @@ impl App {
             .map_err(|error| error.to_string())?;
         self.debug_input.clear();
         Ok(())
-    }
-
-    pub(crate) fn set_debug_request_kind(&mut self, kind: RequestKind) {
-        if let Some(config) = self.debug.launch_configs.first_mut() {
-            config.request = kind;
-        }
     }
 }
 

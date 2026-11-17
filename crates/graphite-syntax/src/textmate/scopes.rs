@@ -90,22 +90,47 @@ mod tests {
 
     #[test]
     fn the_innermost_colored_scope_decides() {
-        assert_eq!(class_for_scopes(&["source.x", "string.quoted.double.x"]), Class::String);
+        assert_eq!(
+            class_for_scopes(&["source.x", "string.quoted.double.x"]),
+            Class::String
+        );
         // Quotes are punctuation inside the string and take the string's color.
         assert_eq!(
-            class_for_scopes(&["source.x", "string.quoted.double.x", "punctuation.definition.string.begin.x"]),
+            class_for_scopes(&[
+                "source.x",
+                "string.quoted.double.x",
+                "punctuation.definition.string.begin.x"
+            ]),
             Class::String
         );
         assert_eq!(
             class_for_scopes(&["source.x", "string.quoted", "constant.character.escape.x"]),
             Class::Constant
         );
-        assert_eq!(class_for_scopes(&["source.x", "keyword.operator.assignment.x"]), Class::Operator);
-        assert_eq!(class_for_scopes(&["source.x", "keyword.control.x"]), Class::Keyword);
-        assert_eq!(class_for_scopes(&["source.x", "constant.numeric.integer.x"]), Class::Number);
-        assert_eq!(class_for_scopes(&["source.x", "variable.other.property.x"]), Class::Property);
-        assert_eq!(class_for_scopes(&["source.x", "entity.name.function.x"]), Class::Function);
-        assert_eq!(class_for_scopes(&["source.x", "meta.block.x"]), Class::Default);
+        assert_eq!(
+            class_for_scopes(&["source.x", "keyword.operator.assignment.x"]),
+            Class::Operator
+        );
+        assert_eq!(
+            class_for_scopes(&["source.x", "keyword.control.x"]),
+            Class::Keyword
+        );
+        assert_eq!(
+            class_for_scopes(&["source.x", "constant.numeric.integer.x"]),
+            Class::Number
+        );
+        assert_eq!(
+            class_for_scopes(&["source.x", "variable.other.property.x"]),
+            Class::Property
+        );
+        assert_eq!(
+            class_for_scopes(&["source.x", "entity.name.function.x"]),
+            Class::Function
+        );
+        assert_eq!(
+            class_for_scopes(&["source.x", "meta.block.x"]),
+            Class::Default
+        );
         assert_eq!(class_for_scopes::<&str>(&[]), Class::Default);
     }
 

@@ -41,12 +41,6 @@ pub(super) fn expand_snippet(body: &str) -> String {
     }
     out
 }
-pub fn load_snippets_for_workspace(
-    workspace: &Path,
-    translator: &Translator,
-) -> (Vec<Snippet>, Vec<String>) {
-    load_snippets_for_workspace_in(&app_config_dir(), workspace, translator)
-}
 
 pub fn load_snippets_for_workspace_in(
     config_root: &Path,
@@ -86,7 +80,7 @@ pub(crate) fn parse_snippet_file(
 ) -> (Vec<Snippet>, Vec<String>) {
     let mut found = Vec::new();
     let mut warnings = Vec::new();
-    let data = match fs::read(&path) {
+    let data = match fs::read(path) {
         Ok(data) => data,
         Err(error) => {
             warnings.push(translator.format(

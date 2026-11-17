@@ -151,9 +151,7 @@ pub(super) fn workspace_edit_changes(dto: &Value) -> Option<Value> {
     let mut changes = serde_json::Map::new();
     for edit in edits {
         // File operations and notebook edits have no text edit; they are not supported.
-        let Some(text_edit) = edit.get("textEdit").filter(|edit| edit.is_object()) else {
-            return None;
-        };
+        let text_edit = edit.get("textEdit").filter(|edit| edit.is_object())?;
         let target = uri(&edit["resource"])?;
         let entry =
             json!({"range": range(&text_edit["range"])?, "newText": text_edit["text"].as_str()?});

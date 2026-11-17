@@ -1577,7 +1577,7 @@ export async function activate(context, g) {
         .execute_command(CommandRequest {
             id: "editor.action.triggerSuggest".into(),
             arguments: Value::Null,
-            target: active_target.clone(),
+            target: active_target,
         })
         .try_result();
     assert!(
@@ -1597,7 +1597,7 @@ export async function activate(context, g) {
         .execute_command(CommandRequest {
             id: "editor.action.showHover".into(),
             arguments: Value::Null,
-            target: active_target.clone(),
+            target: active_target,
         })
         .try_result();
     assert!(
@@ -1740,7 +1740,7 @@ export async function activate(_ctx, g) {
     let pkg = graphite_plugins::package::pack(&pkg_src).unwrap();
     let store = Store::new(store_root.clone());
     let installed = store.install(&pkg).unwrap();
-    store.enable(&installed.metadata.id(), true).unwrap();
+    store.enable(installed.metadata.id(), true).unwrap();
 
     let mut app = App::new_with_options(ws_root.clone(), None, true);
     let mut trust =
@@ -1921,7 +1921,7 @@ fn main() {
     let pkg = graphite_plugins::package::pack(&plugin_src).unwrap();
     let store = Store::new(store_root);
     let installed = store.install(&pkg).unwrap();
-    store.enable(&installed.metadata.id(), true).unwrap();
+    store.enable(installed.metadata.id(), true).unwrap();
 
     let mut app = App::new_with_options(ws_root.clone(), None, true);
     let mut trust =

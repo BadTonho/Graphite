@@ -375,7 +375,7 @@ impl App {
         };
         let (width, height) = self.gpu.as_ref().map_or((1200.0, 760.0), |g| {
             let (w, h) = g.renderer.size();
-            (w as f32, h as f32)
+            (w, h)
         });
         let rect = help_modal_rect(width, height);
         if x < rect.0 || x >= rect.0 + rect.2 || y < rect.1 || y >= rect.1 + rect.3 {
@@ -408,7 +408,7 @@ impl App {
                     self.help_modal = None;
                 }
             }
-            HelpPage::Playground if local_y >= 134.0 && local_y < 198.0 => {
+            HelpPage::Playground if (134.0..198.0).contains(&local_y) => {
                 self.load_playground_sample(x >= rect.0 + rect.2 * 0.5);
                 self.help_modal = None;
             }
@@ -439,13 +439,13 @@ impl App {
             return;
         };
         let (width, height) = renderer.size();
-        let rect = help_modal_rect(width as f32, height as f32);
+        let rect = help_modal_rect(width, height);
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));
         let dim = rgb(Theme::color(Theme::DIM, 0x858585));
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
-        renderer.draw_rect(0.0, 0.0, width as f32, height as f32, rgb(0x111111));
+        renderer.draw_rect(0.0, 0.0, width, height, rgb(0x111111));
         renderer.draw_rect(rect.0, rect.1, rect.2, rect.3, border);
         renderer.draw_rect(rect.0 + 1.0, rect.1 + 1.0, rect.2 - 2.0, rect.3 - 2.0, bg);
         let title = self.help_page_title(modal.page);

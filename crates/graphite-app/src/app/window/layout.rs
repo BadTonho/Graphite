@@ -396,6 +396,7 @@ fn effective_sidebar_content_width(
     preferred_logical.clamp(min, available)
 }
 
+#[cfg(test)]
 fn effective_sidebar_boundary(
     preferred_logical: f32,
     scale: f32,

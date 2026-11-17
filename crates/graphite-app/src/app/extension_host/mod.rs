@@ -15,10 +15,10 @@ mod requests;
 use native_editor_lang::{NativeLanguageProvider, PendingLanguageRequest};
 pub(crate) use native_services::{NativePrompt, NativeStatusItem};
 use native_system::NativeChatTool;
+#[cfg(test)]
+pub(crate) use native_ui::PluginMenuLocation;
 #[cfg_attr(not(test), allow(unused_imports))]
-pub(crate) use native_ui::{
-    NativeTreeView, NativeWebviewPanel, PendingActivationCommand, PluginMenuLocation,
-};
+pub(crate) use native_ui::{NativeTreeView, NativeWebviewPanel, PendingActivationCommand};
 pub(crate) struct OwnedCommand {
     pub resource: u64,
     pub session: u64,

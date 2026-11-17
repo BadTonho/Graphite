@@ -30,14 +30,10 @@ impl App {
             return;
         }
         if self.plugins.tab == PluginsTab::OpenVsx {
-            match action {
-                '\n' => {
-                    if let Some(extension) = self.plugins.open_vsx.get(self.plugins.index).cloned()
-                    {
-                        self.download_open_vsx_preview(extension.namespace, extension.name);
-                    }
+            if action == '\n' {
+                if let Some(extension) = self.plugins.open_vsx.get(self.plugins.index).cloned() {
+                    self.download_open_vsx_preview(extension.namespace, extension.name);
                 }
-                _ => {}
             }
             return;
         }

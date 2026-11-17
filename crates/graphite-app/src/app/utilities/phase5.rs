@@ -431,6 +431,7 @@ impl TaskFile {
     pub fn default_build(&self) -> Option<&Task> {
         self.default_group("build")
     }
+    #[cfg(test)]
     pub fn default_test(&self) -> Option<&Task> {
         self.default_group("test")
     }
@@ -446,13 +447,14 @@ impl TaskFile {
     pub fn get(&self, label: &str) -> Option<&Task> {
         self.tasks.iter().find(|task| task.label == label)
     }
+    #[cfg(test)]
     pub fn run(
         &self,
         label: &str,
         workspace: &Path,
         trusted: bool,
         cancelled: &AtomicBool,
-        mut output: impl FnMut(&str),
+        output: impl FnMut(&str),
     ) -> Result<i32, String> {
         self.run_with_process(label, workspace, trusted, cancelled, |_| {}, output)
     }

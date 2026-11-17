@@ -131,6 +131,7 @@ impl Session {
         self.kernel.language = None;
     }
 
+    #[cfg(test)]
     /// Detaches the kernel, which ends it.
     pub(crate) fn detach_kernel(&mut self) {
         self.kernel.forget_requests();
@@ -228,7 +229,6 @@ impl Session {
                     // Idle only once nothing of ours is left to run.
                     KernelState::Idle if self.kernel.run_states.is_empty() => KernelStatus::Idle,
                     KernelState::Idle => KernelStatus::Busy,
-                    KernelState::Dead => KernelStatus::Dead(String::new()),
                 };
                 true
             }

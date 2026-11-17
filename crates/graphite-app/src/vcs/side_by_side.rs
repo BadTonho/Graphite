@@ -100,7 +100,7 @@ fn changed_ranges(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>
     let (old_at, new_at) = (offsets(&old_tokens), offsets(&new_tokens));
     let diff = TextDiff::from_slices(&old_tokens, &new_tokens);
     let (mut left, mut right): (Vec<Range<usize>>, Vec<Range<usize>>) = (Vec::new(), Vec::new());
-    let mut mark = |ranges: &mut Vec<Range<usize>>, at: &[usize], index: usize, len: usize| {
+    let mark = |ranges: &mut Vec<Range<usize>>, at: &[usize], index: usize, len: usize| {
         if len > 0 {
             push_range(ranges, at[index], at[index + len] - at[index]);
         }
@@ -196,12 +196,12 @@ impl DiffModel {
     }
 
     fn push_removed(&mut self, lines: &[String], start: usize, len: usize) {
-        for index in start..start + len {
+        for (offset, line) in lines[start..start + len].iter().enumerate() {
             self.rows.push(Row {
                 kind: RowKind::Removed,
                 left: Some(Cell {
-                    number: index + 1,
-                    text: lines[index].clone(),
+                    number: start + offset + 1,
+                    text: line.clone(),
                     changed: Vec::new(),
                 }),
                 right: None,
@@ -211,13 +211,13 @@ impl DiffModel {
     }
 
     fn push_added(&mut self, lines: &[String], start: usize, len: usize) {
-        for index in start..start + len {
+        for (offset, line) in lines[start..start + len].iter().enumerate() {
             self.rows.push(Row {
                 kind: RowKind::Added,
                 left: None,
                 right: Some(Cell {
-                    number: index + 1,
-                    text: lines[index].clone(),
+                    number: start + offset + 1,
+                    text: line.clone(),
                     changed: Vec::new(),
                 }),
             });

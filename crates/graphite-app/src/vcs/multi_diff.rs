@@ -121,6 +121,7 @@ impl FileDiff {
         file
     }
 
+    #[cfg(test)]
     pub(crate) fn has_changes(&self) -> bool {
         self.binary || self.added + self.removed > 0
     }

@@ -733,6 +733,7 @@ impl App {
         )
     }
 
+    #[cfg(test)]
     /// The old "…" behavior: the Git commands in the command palette.
     pub(crate) fn open_scm_git_commands(&mut self) {
         self.open_command_palette();
@@ -793,6 +794,7 @@ impl App {
         true
     }
 
+    #[cfg(test)]
     pub(crate) fn run_more_command(&mut self, command: MoreCommand) {
         self.run_more_command_for(command, MoreMenuKind::Actions);
     }

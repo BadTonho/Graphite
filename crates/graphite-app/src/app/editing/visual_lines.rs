@@ -135,7 +135,7 @@ pub(crate) fn visual_to_position(
     let mut x = segment.indent;
     for (offset, ch) in chars[segment.start..segment.end].iter().enumerate() {
         let width = cell_width(*ch, tab_size);
-        if column < x + (width + 1) / 2 {
+        if column < x + width.div_ceil(2) {
             return segment.start + offset;
         }
         x += width;

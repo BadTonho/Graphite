@@ -25,7 +25,7 @@ impl App {
         if self.handle_github_dialog_click(mx, my, window_width, window_height, cw) {
             return;
         }
-        let sidebar_width = self.sidebar_layout_width_px();
+        let _sidebar_width = self.sidebar_layout_width_px();
 
         if self.help_modal.is_some() {
             self.help_modal_click(mx, my);
@@ -62,8 +62,8 @@ impl App {
         }
 
         if self.settings_menu.is_some() {
-            if self.settings_menu_contains(mx, my, window_width as f32, window_height as f32) {
-                self.settings_menu_click(mx, my, window_width as f32, window_height as f32);
+            if self.settings_menu_contains(mx, my, window_width, window_height) {
+                self.settings_menu_click(mx, my, window_width, window_height);
                 return;
             }
             if !self.zen_mode && self.activity_bar_contains(mx, my) {
@@ -78,13 +78,13 @@ impl App {
         }
         self.column_selection_anchor = None;
 
-        if self.click_scm_confirm(mx, my, window_width as f32, window_height as f32) {
+        if self.click_scm_confirm(mx, my, window_width, window_height) {
             return;
         }
-        if self.click_scm_publish_modal(mx, my, window_width as f32, window_height as f32) {
+        if self.click_scm_publish_modal(mx, my, window_width, window_height) {
             return;
         }
-        if self.click_explorer_delete_confirm(mx, my, window_width as f32, window_height as f32) {
+        if self.click_explorer_delete_confirm(mx, my, window_width, window_height) {
             return;
         }
         if self.scm_more_menu.is_some() {
@@ -105,7 +105,7 @@ impl App {
         }
 
         if self.activity_bar_menu.is_some() {
-            self.handle_activity_bar_menu_click(mx, my, window_width as f32);
+            self.handle_activity_bar_menu_click(mx, my, window_width);
             return;
         }
 
@@ -125,7 +125,7 @@ impl App {
             self.merge_handle_click(mx, my);
             return;
         }
-        if self.click_diff_view(mx, my, window_width as f32, window_height as f32, lh, cw) {
+        if self.click_diff_view(mx, my, window_width, window_height, lh, cw) {
             return;
         }
         if self.view_preferences.status_bar_visible && !self.zen_mode && my >= window_height - lh {
@@ -555,7 +555,6 @@ impl App {
                 let line = line.min(b.len_lines() - 1);
                 let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
                 let offset = b.line_start_char(line) + col.min(width);
-                drop(b);
                 self.run_ui_command_args(
                     "graphite.editor.addCursor",
                     serde_json::json!({"index":offset}),

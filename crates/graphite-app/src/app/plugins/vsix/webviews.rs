@@ -31,6 +31,7 @@ pub(super) struct Webviews {
 }
 
 impl Webviews {
+    #[cfg(test)]
     pub(crate) fn active_panel(&self) -> Option<&VsixWebviewPanel> {
         self.active
             .as_deref()
@@ -168,10 +169,8 @@ pub(super) fn rewrite_webview_resource_uri(raw: &str, allowed_roots: &[PathBuf])
             rest.find('/').map(|idx| &rest[idx..])?
         } else if let Some(rest) = raw.strip_prefix("vscode-resource://") {
             rest.strip_prefix("file").unwrap_or(rest)
-        } else if let Some(rest) = raw.strip_prefix("vscode-resource:") {
-            rest
         } else {
-            return None;
+            raw.strip_prefix("vscode-resource:")?
         };
 
     let without_query = encoded_path
@@ -225,7 +224,7 @@ pub(super) fn sanitize_webview_html(html: &str, allowed_roots: &[PathBuf]) -> St
         output.push_str(&rest[..pos]);
         let after = &rest[pos..];
         let end = after
-            .find(|c: char| matches!(c, '"' | '\'' | ')' | ' ' | '\t' | '\r' | '\n' | '<' | '>'))
+            .find(['"', '\'', ')', ' ', '\t', '\r', '\n', '<', '>'])
             .unwrap_or(after.len());
         let raw_uri = &after[..end];
         let replacement = rewrite_webview_resource_uri(raw_uri, allowed_roots)
@@ -499,6 +498,7 @@ impl App {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn send_vsix_webview_message(&mut self, handle: &str, message: Value) -> Result<()> {
         let runtime = self.plugins.vsix.as_mut().ok_or("No active VSIX runtime")?;
         if !runtime.webviews.contains(handle) {
@@ -512,6 +512,7 @@ impl App {
         }))
     }
 
+    #[cfg(test)]
     pub(crate) fn close_vsix_webview(&mut self, handle: &str) -> Result<()> {
         if let Some(runtime) = self.plugins.vsix.as_mut() {
             if runtime.webviews.panels.remove(handle).is_some() {
@@ -532,6 +533,7 @@ impl App {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn vsix_webview(&self) -> Option<&VsixWebviewPanel> {
         self.plugins
             .vsix

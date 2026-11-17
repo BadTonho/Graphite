@@ -713,6 +713,7 @@ impl App {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_whitespace_markers(
     renderer: &mut Renderer,
     text: &str,
@@ -780,6 +781,7 @@ fn draw_control_characters(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_sticky_headers(
     renderer: &mut Renderer,
     rect: GroupRect,

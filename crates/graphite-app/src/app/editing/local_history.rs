@@ -397,7 +397,7 @@ mod tests {
         assert!(!app.profile_root.exists());
 
         assert!(!app.open_local_history());
-        assert!(app.status.len() > 0);
+        assert!(!app.status.is_empty());
     }
 }
 

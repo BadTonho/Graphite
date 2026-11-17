@@ -159,6 +159,8 @@ impl ModelStreamer for HttpModelStreamer {
 }
 
 /// Runs a complete turn (including any tool rounds) until the model ends, errors, or is cancelled.
+// The arguments are the turn's independent collaborators; bundling them would only hide them.
+#[allow(clippy::too_many_arguments)]
 pub fn run_turn(
     config: &ProviderConfig,
     mode: AgentMode,

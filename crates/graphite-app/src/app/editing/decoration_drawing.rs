@@ -14,6 +14,7 @@ pub(crate) enum DecorationLayer {
     Over,
 }
 
+#[cfg(test)]
 /// Pixel span `[left, right)` of a mark on a line, or `None` when it is empty.
 fn span(
     mark: &crate::app::plugins::DecorationMark,
@@ -55,7 +56,7 @@ fn span_in(
     };
     let left = columns(segment.start, start);
     let right = left + columns(start, end);
-    (end > start).then(|| (text_x + left as f32 * cw, text_x + right as f32 * cw))
+    (end > start).then_some((text_x + left as f32 * cw, text_x + right as f32 * cw))
 }
 
 impl App {

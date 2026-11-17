@@ -16,7 +16,6 @@ enum SettingKind {
     Bool,
     Enum(&'static [&'static str]),
     Number,
-    Text,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -687,7 +686,7 @@ impl App {
         };
         let Some((w, h)) = self.gpu.as_ref().map(|g| {
             let (w, h) = g.renderer.size();
-            (w as f32, h as f32)
+            (w, h)
         }) else {
             return false;
         };
@@ -769,7 +768,7 @@ impl App {
         };
         let Some((w, h, lh)) = self.gpu.as_ref().map(|g| {
             let (w, h) = g.renderer.size();
-            (w as f32, h as f32, g.renderer.line_height())
+            (w, h, g.renderer.line_height())
         }) else {
             return false;
         };
@@ -916,7 +915,7 @@ impl App {
                                 Value::String(next.to_owned()),
                             );
                         }
-                        SettingKind::Number | SettingKind::Text => {
+                        SettingKind::Number => {
                             if let Some(e) = self.settings_editor.as_mut() {
                                 e.search_focused = false;
                                 e.editing_key = Some((def.key, current));
@@ -940,7 +939,7 @@ impl App {
         };
         let (w, h) = renderer.size();
         let lh = renderer.line_height();
-        let modal = modal_bounds(w as f32, h as f32);
+        let modal = modal_bounds(w, h);
 
         let bg = rgb(Theme::color(Theme::BG, 0xffffff));
         let sidebar_bg = rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3));
@@ -1119,7 +1118,7 @@ impl App {
                     }
                 }
                 SettingKind::Enum(_) => format!("{val}  v"),
-                SettingKind::Number | SettingKind::Text => val,
+                SettingKind::Number => val,
             };
             renderer.draw_text(&display, content_x + 8.0, box_y + 3.0, fg);
         }

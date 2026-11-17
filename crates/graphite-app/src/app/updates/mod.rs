@@ -252,6 +252,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn check_for_updates_with(&mut self, transport: &dyn UpdateTransport) {
         self.begin_check();
         self.status = format!(
@@ -339,6 +340,7 @@ impl App {
             });
     }
 
+    #[cfg(test)]
     pub(crate) fn download_update_with(&mut self, transport: &dyn UpdateTransport) {
         let Some(release) = self.updates.latest_release.clone() else {
             self.status = "No available update to download".into();

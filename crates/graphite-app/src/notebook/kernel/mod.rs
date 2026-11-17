@@ -10,8 +10,6 @@ mod zmtp;
 
 #[allow(unused_imports)]
 pub(crate) use connection::Connection;
-#[cfg(test)]
-pub(crate) use handle::attach;
 #[allow(unused_imports)]
 pub(crate) use handle::{launch, Command, KernelHandle, Notify};
 #[allow(unused_imports)]

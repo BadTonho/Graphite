@@ -45,25 +45,6 @@ impl App {
         }
     }
 
-    pub(crate) fn switch_recent_document(&mut self, reverse: bool) {
-        let current_id = self.active_document();
-        let target = if reverse {
-            self.recent_documents
-                .iter()
-                .rev()
-                .find(|id| **id != current_id && self.documents.resolve(**id).is_some())
-        } else {
-            self.recent_documents
-                .iter()
-                .find(|id| **id != current_id && self.documents.resolve(**id).is_some())
-        }
-        .and_then(|id| self.documents.resolve(*id));
-        if let Some(document) = target {
-            self.activate_editor_document(document);
-            self.status = self.t("editor.tabs.switched_recent").into();
-        }
-    }
-
     pub(crate) fn diagnostic_entries(&self) -> Vec<(DocumentId, lsp_types::Diagnostic)> {
         let mut entries = self
             .documents

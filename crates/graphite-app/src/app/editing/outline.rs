@@ -416,8 +416,10 @@ mod tests {
 
     #[test]
     fn sorting_by_name_and_kind_flattens_the_tree() {
-        let mut state = OutlineState::default();
-        state.sort = OutlineSort::Name;
+        let mut state = OutlineState {
+            sort: OutlineSort::Name,
+            ..OutlineState::default()
+        };
         let by_name = build_rows(&entries(), &state, 0);
         assert_eq!(
             by_name.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
@@ -433,8 +435,10 @@ mod tests {
 
     #[test]
     fn filter_on_type_keeps_matching_declarations_only_while_on() {
-        let mut state = OutlineState::default();
-        state.filter = "ALPHA".into();
+        let mut state = OutlineState {
+            filter: "ALPHA".into(),
+            ..OutlineState::default()
+        };
         assert_eq!(
             build_rows(&entries(), &state, 0).len(),
             5,

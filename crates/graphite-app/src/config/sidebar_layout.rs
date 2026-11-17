@@ -106,10 +106,12 @@ mod tests {
     #[test]
     fn activity_bar_preferences_round_trip_per_profile_and_default_on_invalid_data() {
         let temp = crate::test_support::TempDir::new();
-        let mut preferences = ActivityBarPreferences::default();
-        preferences.position = ActivityBarPosition::Bottom;
-        preferences.size = ActivityBarSize::Compact;
-        preferences.primary_sidebar_right = true;
+        let mut preferences = ActivityBarPreferences {
+            position: ActivityBarPosition::Bottom,
+            size: ActivityBarSize::Compact,
+            primary_sidebar_right: true,
+            ..ActivityBarPreferences::default()
+        };
         preferences.hidden_items.insert("search".into());
         save_activity_bar_preferences(temp.path(), &preferences).unwrap();
         assert_eq!(load_activity_bar_preferences(temp.path()), preferences);

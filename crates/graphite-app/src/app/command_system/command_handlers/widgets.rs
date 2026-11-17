@@ -20,13 +20,11 @@ pub(super) fn suggest_previous(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if !app.completion_items.is_empty() {
-            app.completion_index = app
-                .completion_index
-                .checked_sub(1)
-                .unwrap_or(app.completion_items.len() - 1);
-        }
+    if !app.completion_items.is_empty() {
+        app.completion_index = app
+            .completion_index
+            .checked_sub(1)
+            .unwrap_or(app.completion_items.len() - 1);
     };
     Ok(())
 }
@@ -35,10 +33,8 @@ pub(super) fn suggest_next(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if !app.completion_items.is_empty() {
-            app.completion_index = (app.completion_index + 1) % app.completion_items.len();
-        }
+    if !app.completion_items.is_empty() {
+        app.completion_index = (app.completion_index + 1) % app.completion_items.len();
     };
     Ok(())
 }
@@ -55,13 +51,11 @@ pub(super) fn quick_fix_previous(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if !app.quick_fix_actions.is_empty() {
-            app.quick_fix_index = app
-                .quick_fix_index
-                .checked_sub(1)
-                .unwrap_or(app.quick_fix_actions.len() - 1);
-        }
+    if !app.quick_fix_actions.is_empty() {
+        app.quick_fix_index = app
+            .quick_fix_index
+            .checked_sub(1)
+            .unwrap_or(app.quick_fix_actions.len() - 1);
     };
     Ok(())
 }
@@ -70,10 +64,8 @@ pub(super) fn quick_fix_next(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if !app.quick_fix_actions.is_empty() {
-            app.quick_fix_index = (app.quick_fix_index + 1) % app.quick_fix_actions.len();
-        }
+    if !app.quick_fix_actions.is_empty() {
+        app.quick_fix_index = (app.quick_fix_index + 1) % app.quick_fix_actions.len();
     };
     Ok(())
 }
@@ -98,10 +90,8 @@ pub(super) fn snippet_delete_left(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if let Some(query) = &mut app.snippet_query {
-            query.pop();
-        }
+    if let Some(query) = &mut app.snippet_query {
+        query.pop();
     };
     Ok(())
 }
@@ -110,16 +100,14 @@ pub(super) fn snippet_accept(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    {
-        if let Some(query) = app.snippet_query.take() {
-            if let Some(snippet) = app
-                .snippets
-                .iter()
-                .find(|s| s.prefix.starts_with(&query) && app.snippet_scope_matches(s))
-            {
-                let body = snippet.body.clone();
-                app.editor_mut().insert(&body);
-            }
+    if let Some(query) = app.snippet_query.take() {
+        if let Some(snippet) = app
+            .snippets
+            .iter()
+            .find(|s| s.prefix.starts_with(&query) && app.snippet_scope_matches(s))
+        {
+            let body = snippet.body.clone();
+            app.editor_mut().insert(&body);
         }
     };
     Ok(())

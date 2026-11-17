@@ -12,13 +12,12 @@
 use super::languages::Feature;
 use super::*;
 use crate::semantic_tokens::{self, Tokens};
-use graphite_core_api::{DocumentId, DocumentSnapshot};
+use graphite_core_api::DocumentSnapshot;
 use graphite_syntax::Span;
 
 /// The semantic tokens of the active document at one revision.
 pub(crate) struct SemanticTokens {
     pub uri: String,
-    pub document: DocumentId,
     pub revision: u64,
     lines: Tokens,
 }
@@ -127,7 +126,6 @@ impl App {
         let legend = runtime.semantic_legend(request.handle);
         runtime.passive.semantic = decode(&words, &legend).map(|lines| SemanticTokens {
             uri: request.uri,
-            document: request.key.document,
             revision: request.key.revision,
             lines,
         });

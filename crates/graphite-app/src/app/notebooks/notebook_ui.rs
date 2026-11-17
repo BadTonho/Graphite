@@ -90,8 +90,7 @@ impl App {
             .group_rectangles(width, height, lh)
             .into_iter()
             .find(|rect| rect.id == focused);
-        let body =
-            rect.map_or(height as f32, |rect| rect.height) - self.editor_tab_strip_height(lh);
+        let body = rect.map_or(height, |rect| rect.height) - self.editor_tab_strip_height(lh);
         let docked = self.interactive_input_height(lh);
         ((body - lh - docked).max(lh * 3.0), lh, cw)
     }
@@ -298,11 +297,13 @@ impl App {
             _ if ctrl && shift && (character == "_" || character == "-") => {
                 self.run_ui_command("notebook.cell.split")
             }
-            _ if !ctrl && !alt => {
-                if !character.is_empty() && !character.chars().any(char::is_control) {
-                    let text = character.to_owned();
-                    self.with_notebook(|session| session.edit(|editor| editor.insert(&text)));
-                }
+            _ if !ctrl
+                && !alt
+                && !character.is_empty()
+                && !character.chars().any(char::is_control) =>
+            {
+                let text = character.to_owned();
+                self.with_notebook(|session| session.edit(|editor| editor.insert(&text)));
             }
             _ => {}
         }

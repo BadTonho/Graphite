@@ -49,7 +49,7 @@ pub(crate) fn scm_welcome_layout(
     let btn_h = (row_height * 1.38).max(26.0);
 
     let mut y = row_height * 1.75;
-    let mut layout_paragraph = |text: &str, y: &mut f32| -> Vec<(f32, String)> {
+    let layout_paragraph = |text: &str, y: &mut f32| -> Vec<(f32, String)> {
         let mut out = Vec::new();
         for line in wrap_text(text, max_chars) {
             out.push((*y, line));

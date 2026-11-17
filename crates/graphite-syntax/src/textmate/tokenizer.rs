@@ -76,7 +76,13 @@ impl Registry {
     /// Tokenizes `line` (without its line terminator) starting in `state`. `first` is true for
     /// the first line of the document, where `\G` also matches at the start. Returns the spans
     /// and the state the next line starts in.
-    pub fn tokenize_line(&self, base: usize, line: &str, state: &State, first: bool) -> (Vec<Span>, State) {
+    pub fn tokenize_line(
+        &self,
+        base: usize,
+        line: &str,
+        state: &State,
+        first: bool,
+    ) -> (Vec<Span>, State) {
         let text = format!("{line}\n");
         let mut canvas = Canvas::new(line.len());
         let mut frames = state.frames.clone();
@@ -95,7 +101,16 @@ impl Registry {
                 match condition.find(&text, 0, Some(0)) {
                     Some(groups) => {
                         let scopes = self.scopes(&[], &frames[..=checked], true);
-                        self.paint_match(&mut canvas, &text, &groups, &scopes, None, while_captures, base, 0);
+                        self.paint_match(
+                            &mut canvas,
+                            &text,
+                            &groups,
+                            &scopes,
+                            None,
+                            while_captures,
+                            base,
+                            0,
+                        );
                         pos = pos.max(groups[0].map_or(0, |(_, end)| end));
                         anchor = Some(pos);
                     }
@@ -107,13 +122,28 @@ impl Registry {
             }
             checked += 1;
         }
-        self.scan(base, &text, pos, text.len(), &mut frames, &[], anchor, &mut canvas, 0);
+        self.scan(
+            base,
+            &text,
+            pos,
+            text.len(),
+            &mut frames,
+            &[],
+            anchor,
+            &mut canvas,
+            0,
+        );
         (canvas.spans(), State { frames })
     }
 
     /// The scopes of a token inside `frames`: `prefix`, then the name of every open rule and the
     /// content name of every open rule but (unless `content_of_top`) the innermost.
-    fn scopes<'a>(&'a self, prefix: &[&'a str], frames: &[Frame], content_of_top: bool) -> Vec<&'a str> {
+    fn scopes<'a>(
+        &'a self,
+        prefix: &[&'a str],
+        frames: &[Frame],
+        content_of_top: bool,
+    ) -> Vec<&'a str> {
         let mut scopes: Vec<&'a str> = prefix.to_vec();
         for (index, frame) in frames.iter().enumerate() {
             let rule = &self.rules[frame.rule];
@@ -160,13 +190,25 @@ impl Registry {
         out
     }
 
-    fn expand_root(&self, grammar: usize, base: usize, out: &mut Vec<Candidate>, seen: &mut HashSet<(bool, usize)>) {
+    fn expand_root(
+        &self,
+        grammar: usize,
+        base: usize,
+        out: &mut Vec<Candidate>,
+        seen: &mut HashSet<(bool, usize)>,
+    ) {
         if seen.insert((true, grammar)) {
             self.expand(&self.grammars[grammar].root, grammar, base, out, seen);
         }
     }
 
-    fn expand_rule(&self, id: usize, base: usize, out: &mut Vec<Candidate>, seen: &mut HashSet<(bool, usize)>) {
+    fn expand_rule(
+        &self,
+        id: usize,
+        base: usize,
+        out: &mut Vec<Candidate>,
+        seen: &mut HashSet<(bool, usize)>,
+    ) {
         if !seen.insert((false, id)) {
             return;
         }
@@ -249,7 +291,11 @@ impl Registry {
                     Candidate::Rule(id) => {
                         let pattern = self.begin_pattern(id);
                         match (pattern.anchored, cache.get(&id)) {
-                            (false, Some(cached)) if cached.as_ref().is_none_or(|g| g[0].is_some_and(|(s, _)| s >= pos)) => {
+                            (false, Some(cached))
+                                if cached
+                                    .as_ref()
+                                    .is_none_or(|g| g[0].is_some_and(|(s, _)| s >= pos)) =>
+                            {
                                 cached.clone()
                             }
                             _ => {
@@ -268,7 +314,10 @@ impl Registry {
                 let Some((start, _)) = groups[0] else {
                     continue;
                 };
-                if best.as_ref().is_none_or(|(_, g)| start < g[0].map_or(usize::MAX, |(s, _)| s)) {
+                if best
+                    .as_ref()
+                    .is_none_or(|(_, g)| start < g[0].map_or(usize::MAX, |(s, _)| s))
+                {
                     best = Some((candidate, groups));
                 }
             }
@@ -283,7 +332,16 @@ impl Registry {
                     let rule = &self.rules[frames.last().map_or(0, |frame| frame.rule)];
                     if let Kind::BeginEnd { end_captures, .. } = &rule.kind {
                         let scopes = self.scopes(prefix, frames, false);
-                        self.paint_match(canvas, slice, &groups, &scopes, None, end_captures, base, depth);
+                        self.paint_match(
+                            canvas,
+                            slice,
+                            &groups,
+                            &scopes,
+                            None,
+                            end_captures,
+                            base,
+                            depth,
+                        );
                     }
                     frames.pop();
                 }
@@ -292,20 +350,52 @@ impl Registry {
                     let scopes = self.scopes(prefix, frames, true);
                     match &rule.kind {
                         Kind::Match { captures, .. } => {
-                            self.paint_match(canvas, slice, &groups, &scopes, rule.name.as_deref(), captures, base, depth);
+                            self.paint_match(
+                                canvas,
+                                slice,
+                                &groups,
+                                &scopes,
+                                rule.name.as_deref(),
+                                captures,
+                                base,
+                                depth,
+                            );
                         }
                         Kind::BeginEnd {
-                            end, begin_captures, ..
+                            end,
+                            begin_captures,
+                            ..
                         } => {
-                            self.paint_match(canvas, slice, &groups, &scopes, rule.name.as_deref(), begin_captures, base, depth);
+                            self.paint_match(
+                                canvas,
+                                slice,
+                                &groups,
+                                &scopes,
+                                rule.name.as_deref(),
+                                begin_captures,
+                                base,
+                                depth,
+                            );
                             frames.push(Frame {
                                 rule: id,
                                 end: Some(end.resolve(slice, &groups)),
                             });
                         }
                         Kind::BeginWhile { begin_captures, .. } => {
-                            self.paint_match(canvas, slice, &groups, &scopes, rule.name.as_deref(), begin_captures, base, depth);
-                            frames.push(Frame { rule: id, end: None });
+                            self.paint_match(
+                                canvas,
+                                slice,
+                                &groups,
+                                &scopes,
+                                rule.name.as_deref(),
+                                begin_captures,
+                                base,
+                                depth,
+                            );
+                            frames.push(Frame {
+                                rule: id,
+                                end: None,
+                            });
                         }
                         Kind::Container(_) => {}
                     }
@@ -318,7 +408,9 @@ impl Registry {
             } else {
                 // An empty match makes no progress: after a few, step over a character.
                 stalled += 1;
-                if stalled > 2 || matches!(candidate, Candidate::Rule(id) if matches!(self.rules[id].kind, Kind::Match { .. })) {
+                if stalled > 2
+                    || matches!(candidate, Candidate::Rule(id) if matches!(self.rules[id].kind, Kind::Match { .. }))
+                {
                     pos = next_boundary(slice, pos);
                     stalled = 0;
                 }
@@ -401,7 +493,17 @@ impl Registry {
                 rule: container,
                 end: None,
             }];
-            self.scan(base, text, *a, *b, &mut frames, &nested_prefix, Some(*a), canvas, depth + 1);
+            self.scan(
+                base,
+                text,
+                *a,
+                *b,
+                &mut frames,
+                &nested_prefix,
+                Some(*a),
+                canvas,
+                depth + 1,
+            );
         }
     }
 }

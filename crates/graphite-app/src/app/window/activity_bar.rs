@@ -232,11 +232,13 @@ impl Activity {
     }
 }
 
+#[cfg(test)]
 /// Top edge of the item at `index`, in physical pixels.
 pub(crate) fn activity_top(index: usize) -> f32 {
     ACTIVITY_BAR_TOP + index as f32 * ACTIVITY_BAR_ITEM_HEIGHT
 }
 
+#[cfg(test)]
 /// Returns the item under `y`, or `None` outside every slot.
 pub(crate) fn activity_at(y: f32) -> Option<Activity> {
     if y < ACTIVITY_BAR_TOP {
@@ -952,6 +954,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     /// Handles a click inside the bar. Returns `false` when `y` misses an item.
     pub(crate) fn activity_bar_click(&mut self, y: f32) -> bool {
         let Some(activity) = activity_at(y).filter(|activity| {
@@ -1303,7 +1306,7 @@ impl App {
             self.t("activity.size"),
             self.t("activity.move_sidebar_right"),
         ];
-        for offset in 0..3 {
+        for (offset, label) in labels.iter().enumerate() {
             let index = settings_start + offset;
             let row_y = rect.y + rows[index];
             if menu.selected == index {
@@ -1315,7 +1318,7 @@ impl App {
                     rgb(Theme::color(Theme::ACTIVE_ROW, 0x094771)),
                 );
             }
-            renderer.draw_text(&labels[offset], rect.x + 15.0, row_y + 3.0, text);
+            renderer.draw_text(label, rect.x + 15.0, row_y + 3.0, text);
             if offset < 2 {
                 renderer.draw_text("›", rect.x + rect.width - 18.0, row_y + 3.0, dim);
             } else if self.activity_bar_preferences.primary_sidebar_right {

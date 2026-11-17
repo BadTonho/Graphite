@@ -11,21 +11,18 @@ mod theme_includes;
 mod themes;
 mod view_layout;
 pub(crate) use color_themes::{
-    install_bundled_themes, list_color_themes, selected_color_theme, set_color_theme, ColorTheme,
+    install_bundled_themes, list_color_themes, selected_color_theme, set_color_theme,
 };
 #[cfg(test)]
 use import::import_from_with;
-pub use import::{import_vscode, import_vscode_to};
+pub use import::import_vscode_to;
 pub(crate) use language::{language_selection, language_selection_in};
+pub(crate) use paths::terminal_settings_in;
 use paths::vscode_user_dir;
 pub use paths::{app_config_dir, lsp_config_path, TerminalProfile};
-pub(crate) use paths::{terminal_settings, terminal_settings_in};
 pub(crate) use settings::parse_jsonc;
 use settings::project_settings;
-pub use settings::{
-    editor_prefs_for_workspace, editor_prefs_for_workspace_in, workspace_configuration,
-    workspace_configuration_in,
-};
+pub use settings::{editor_prefs_for_workspace_in, workspace_configuration_in};
 pub(crate) use settings_edit::set_user_setting;
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
 pub(crate) use sidebar_layout::{
@@ -40,7 +37,7 @@ pub(crate) use sidebar_layout::{
 #[cfg(test)]
 use snippets::expand_snippet;
 pub(crate) use snippets::parse_snippet_file;
-pub use snippets::{load_snippets_for_workspace, load_snippets_for_workspace_in, Snippet};
+pub use snippets::{load_snippets_for_workspace_in, Snippet};
 pub(crate) use view_layout::NotificationPosition;
 
 /// Imports the themes a VSIX contributes (`contributes.themes`) from its extracted `package`
@@ -69,8 +66,8 @@ pub(crate) fn import_native_plugin_themes(
 #[cfg(test)]
 use themes::theme_colors_from;
 pub use themes::{
-    imported_theme_colors, imported_theme_colors_in, load_dark_theme, load_dark_theme_from,
-    load_high_contrast_from, save_dark_theme, save_dark_theme_in, save_high_contrast_in,
+    imported_theme_colors_in, load_dark_theme_from, load_high_contrast_from, save_dark_theme_in,
+    save_high_contrast_in,
 };
 pub(crate) use view_layout::{
     load_view_layout_preferences, save_view_layout_preferences, MultiCursorModifier, PanelPosition,
@@ -164,11 +161,16 @@ mod tests {
         let workspace = temp.path().join("settings.json");
         fs::write(&workspace, r#"{"editor.formatOnSave":true}"#).unwrap();
         let prefs =
-            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+            settings::read_editor_prefs(std::slice::from_ref(&workspace), &Translator::english())
+                .unwrap();
         assert!(prefs.format_on_save);
         assert!(!prefs.format_on_paste);
         fs::write(&workspace, r#"{"editor.formatOnSave":"yes"}"#).unwrap();
-        assert!(settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).is_err());
+        assert!(settings::read_editor_prefs(
+            std::slice::from_ref(&workspace),
+            &Translator::english()
+        )
+        .is_err());
         fs::write(&workspace, r#"{"editor.formatOnPaste":1}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
     }
@@ -179,11 +181,13 @@ mod tests {
         let workspace = temp.path().join("settings.json");
         fs::write(&workspace, r#"{"editor.formatOnSave":true}"#).unwrap();
         let prefs =
-            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+            settings::read_editor_prefs(std::slice::from_ref(&workspace), &Translator::english())
+                .unwrap();
         assert!(!prefs.format_on_type);
         fs::write(&workspace, r#"{"editor.formatOnType":true}"#).unwrap();
         let prefs =
-            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+            settings::read_editor_prefs(std::slice::from_ref(&workspace), &Translator::english())
+                .unwrap();
         assert!(prefs.format_on_type);
         fs::write(&workspace, r#"{"editor.formatOnType":"yes"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());
@@ -199,7 +203,8 @@ mod tests {
         )
         .unwrap();
         let prefs =
-            settings::read_editor_prefs(&[workspace.clone()], &Translator::english()).unwrap();
+            settings::read_editor_prefs(std::slice::from_ref(&workspace), &Translator::english())
+                .unwrap();
         assert_eq!(prefs.auto_save, Some(AutoSaveMode::OnFocusChange));
         assert_eq!(prefs.auto_save_delay_ms, 250);
         fs::write(&workspace, r#"{"files.autoSave":"always"}"#).unwrap();
@@ -360,7 +365,7 @@ mod tests {
         let dir = temp.path();
         fs::write(dir.join("theme.json"),r##"{"name":"Sample","colors":{"editor.background":"#101010"},"tokenColors":[{"scope":["keyword.control"],"settings":{"foreground":"#ff0000"}}]}"##).unwrap();
         let settings: Value = serde_json::from_str(r#"{"workbench.colorTheme":"Sample"}"#).unwrap();
-        let colors = theme_colors_from(&settings, &dir, &Translator::english());
+        let colors = theme_colors_from(&settings, dir, &Translator::english());
         assert_eq!(
             colors.get("editor.background").map(String::as_str),
             Some("#101010")

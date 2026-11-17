@@ -99,6 +99,7 @@ pub(crate) fn parse_graph_log(output: &str, head_hash: Option<&str>) -> Vec<Grap
     commits
 }
 
+#[cfg(test)]
 /// The lines of the hover card of a commit: subject, who and when, the id and the refs on it.
 pub(crate) fn tooltip_lines(commit: &GraphCommit) -> Vec<String> {
     let mut lines = vec![commit.subject.clone()];
@@ -550,6 +551,7 @@ pub(crate) fn load_graph_commits(root: &Path, limit: usize) -> Result<Vec<GraphR
     Ok(assign_graph_lanes(commits))
 }
 
+#[cfg(test)]
 /// Returns the commit summary and diff for inspecting a commit clicked in the Graph.
 pub(crate) fn commit_details(root: &Path, hash: &str) -> Result<String, String> {
     run_git(root, &["show", "--stat", "--patch", hash])

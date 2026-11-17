@@ -1,5 +1,6 @@
 //! Update channels, strict semantic version comparison, SHA-256 verification, and update state.
 
+#[cfg(test)]
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -190,6 +191,7 @@ impl UpdateConfig {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let sum = digest(&SHA256, bytes);
     let mut out = String::with_capacity(64);
@@ -199,6 +201,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     out
 }
 
+#[cfg(test)]
 pub(crate) fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<(), String> {
     let expected = expected_hex.trim().to_ascii_lowercase();
     if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -325,8 +328,10 @@ mod tests {
     #[test]
     fn config_save_reports_failures_and_round_trips() {
         let dir = crate::test_support::TempDir::new();
-        let mut config = UpdateConfig::default();
-        config.channel = UpdateChannel::Prerelease;
+        let config = UpdateConfig {
+            channel: UpdateChannel::Prerelease,
+            ..UpdateConfig::default()
+        };
         config.save(dir.path()).unwrap();
         assert_eq!(
             UpdateConfig::load_or_default(dir.path()).channel,

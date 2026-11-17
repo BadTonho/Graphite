@@ -89,6 +89,7 @@ fn place_dropdown(
 }
 
 impl App {
+    #[cfg(test)]
     pub(crate) fn toggle_terminal_profile_menu(
         &mut self,
         button: (f32, f32, f32, f32),
@@ -106,6 +107,7 @@ impl App {
         self.open_terminal_profile_menu(button, window_width, window_height);
     }
 
+    #[cfg(test)]
     pub(crate) fn toggle_terminal_more_actions_menu(
         &mut self,
         button: (f32, f32, f32, f32),
@@ -170,7 +172,6 @@ impl App {
             .is_some();
         let editor = self.editor();
         let has_selection = editor.selections().iter().any(|s| s.anchor != s.head);
-        drop(editor);
 
         let action = |label_key, shortcut, command, enabled| TerminalToolbarMenuRow::Action {
             label_key,

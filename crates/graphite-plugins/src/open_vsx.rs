@@ -92,7 +92,7 @@ impl Registry {
         if !valid_part(namespace) || !valid_part(name) {
             return Err("Invalid Open VSX extension identity".into());
         }
-        let url = format!("{}/{}", self.base, format!("{namespace}/{name}/latest"));
+        let url = format!("{}/{namespace}/{name}/latest", self.base);
         let version = self
             .client
             .get(url)

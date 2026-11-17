@@ -647,6 +647,8 @@ mod tests {
     }
 
     #[test]
+    // The workspace edit is keyed by `lsp_types::Url`, which clippy reads as a mutable key.
+    #[allow(clippy::mutable_key_type)]
     fn formatting_result_becomes_a_workspace_edit_only_when_it_changes_text() {
         let edits = json!([{
             "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},

@@ -371,7 +371,7 @@ impl App {
         };
         let (width, _) = gpu.renderer.size();
         let (px, py, popup_width, popup_height) = self.command_center_popup_bounds(
-            width as f32,
+            width,
             gpu.renderer.char_width(),
             gpu.renderer.line_height(),
             self.command_center_rows().len(),
@@ -387,7 +387,7 @@ impl App {
         let line_height = gpu.renderer.line_height();
         let char_width = gpu.renderer.char_width();
         let (_, top, _, _) = self.command_center_popup_bounds(
-            width as f32,
+            width,
             char_width,
             line_height,
             self.command_center_rows().len(),

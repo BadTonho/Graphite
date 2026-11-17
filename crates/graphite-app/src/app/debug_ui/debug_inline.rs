@@ -150,6 +150,7 @@ impl App {
             .map(String::as_str)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_debug_inline_value(
         &self,
         r: &mut Renderer,

@@ -438,9 +438,8 @@ fn compatibility_survey() {
                 }
             };
             let version = metadata.version;
-            let mut app = App::new_with_options(dir.path().join("work"), None, true);
             let _ = std::fs::create_dir_all(dir.path().join("work"));
-            app = App::new_with_options(dir.path().join("work"), None, true);
+            let mut app = App::new_with_options(dir.path().join("work"), None, true);
             app.profile_root = dir.path().join("profile");
             app.workspace_trust = Some(
                 crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap(),
@@ -1393,7 +1392,7 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
             .cloned()
             .unwrap_or_else(|| panic!("no {method} call in {messages:?}"))
     };
-    let mut request = |app: &mut App, id: u64, method: &str, args: Value| {
+    let request = |app: &mut App, id: u64, method: &str, args: Value| {
         let mut runtime = app.plugins.vsix.take().unwrap();
         app.handle_vsix_request(
             &mut runtime,
@@ -1595,7 +1594,7 @@ fn vsix_custom_editors_replace_the_text_editor_and_route_save_and_undo() {
         .expect("a text editor is resolved without a custom document");
     finish(&mut app, resolve, json!({"result": null}));
     let state = app.custom_editor_state(notes_id).unwrap();
-    assert!(state.ready && state.kind == crate::app::plugins::vsix::EditorKind::Text);
+    assert!(state.ready && state.kind == crate::app::plugins::vsix::editors::Kind::Text);
     assert!(!state.writable && !app.documents[notes_id].buffer.is_read_only());
     assert!(
         !app.route_custom_editor_action(EditorAction::Save),
@@ -1975,7 +1974,7 @@ fn vsix_decorations_offer_hover_messages_gutter_icons_and_ruler_marks() {
     let (session, _host) = Session::loopback();
     app.plugins.vsix = Some(Runtime::for_test(session));
     let uri = app.decoration_uri(&file).unwrap();
-    let mut call = |app: &mut App, method: &str, args: Value| {
+    let call = |app: &mut App, method: &str, args: Value| {
         let mut runtime = app.plugins.vsix.take().unwrap();
         app.handle_vsix_request(
             &mut runtime,
@@ -2059,7 +2058,7 @@ fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resourc
     let (session, host) = Session::loopback();
     let mut runtime = Runtime::for_test(session);
     let root_uri = graphite_core_api::DocumentUri::from_path(dir.path()).unwrap();
-    let mut call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
+    let call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
         app.handle_vsix_request(
             runtime,
             &json!({"id": 1, "actor": "MainThreadSCM", "method": method, "args": args}),
@@ -2236,7 +2235,7 @@ fn vsix_webview_views_resolve_update_their_header_and_are_disposed_with_the_prov
     let (session, host) = Session::loopback();
     let mut runtime = Runtime::for_test(session);
     let ext_uri = graphite_core_api::DocumentUri::from_path(&ext_root).unwrap();
-    let mut call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
+    let call = |app: &mut App, runtime: &mut Runtime, method: &str, args: Value| {
         app.handle_vsix_request(
             runtime,
             &json!({"id": 1, "actor": "MainThreadWebviewViews", "method": method, "args": args}),

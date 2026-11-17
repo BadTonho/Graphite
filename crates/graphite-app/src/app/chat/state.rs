@@ -12,9 +12,7 @@ use std::sync::{atomic::AtomicBool, mpsc, Arc};
 pub(crate) enum SessionsFilter {
     #[default]
     All,
-    Pinned,
     Archived,
-    Unread,
     AutomationRuns,
     Scheduled,
 }
@@ -157,9 +155,11 @@ impl Default for ChatState {
 
 impl ChatState {
     pub fn load_from_profile(profile_root: &Path) -> Self {
-        let mut state = Self::default();
-        state.provider = load_provider(profile_root);
-        state.policy = load_approval_policy(profile_root);
+        let mut state = Self {
+            provider: load_provider(profile_root),
+            policy: load_approval_policy(profile_root),
+            ..Self::default()
+        };
         let loaded = load_sessions(profile_root);
         if !loaded.is_empty() {
             state.active_session_id = loaded[0].id.clone();
@@ -231,9 +231,7 @@ impl ChatState {
             .iter()
             .filter(|s| match self.sessions_filter {
                 SessionsFilter::All => !s.archived,
-                SessionsFilter::Pinned => s.pinned && !s.archived,
                 SessionsFilter::Archived => s.archived,
-                SessionsFilter::Unread => s.unread && !s.archived,
                 SessionsFilter::AutomationRuns => {
                     !s.archived
                         && (s.id.starts_with("automation-")

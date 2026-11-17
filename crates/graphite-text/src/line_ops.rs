@@ -14,7 +14,8 @@ impl Editor<'_> {
         let selections = self.selections();
         let mut blocks = match selections.as_slice() {
             [only] if self.rope.char_to_line(only.anchor) == self.rope.char_to_line(only.head) => {
-                vec![0..self.len_lines()]
+                let whole_document = 0..self.len_lines();
+                vec![whole_document]
             }
             _ => self.selected_line_blocks(),
         };

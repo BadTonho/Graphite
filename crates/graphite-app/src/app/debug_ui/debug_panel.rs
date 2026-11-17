@@ -8,8 +8,10 @@ use super::*;
 use crate::debugger::{DebugRuntime, DebugState};
 use std::ops::Range;
 
+#[cfg(test)]
 /// Columns of the panel, left to right.
 pub(crate) const STACK: usize = 0;
+#[cfg(test)]
 pub(crate) const VARIABLES: usize = 1;
 pub(crate) const CONSOLE: usize = 2;
 const COLUMN_SHARE: [f32; 3] = [0.30, 0.36, 0.34];
@@ -283,15 +285,6 @@ pub(crate) fn action_at(
 }
 
 impl App {
-    pub(crate) fn debug_panel_geometry(
-        &self,
-        width: f32,
-        height: f32,
-        line_height: f32,
-    ) -> DebugPanelGeometry {
-        DebugPanelGeometry::new(&self.panel_bounds(width, height, line_height), line_height)
-    }
-
     /// Handles a click inside the debug panel body. Returns whether an action ran.
     pub(crate) fn debug_panel_click(
         &mut self,

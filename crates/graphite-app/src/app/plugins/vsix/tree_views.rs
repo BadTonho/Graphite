@@ -61,6 +61,7 @@ impl TreeViews {
         self.views.contains_key(view_id)
     }
 
+    #[cfg(test)]
     pub(super) fn meta(&self, view_id: &str) -> Option<&VsixTreeViewMeta> {
         self.views.get(view_id)
     }

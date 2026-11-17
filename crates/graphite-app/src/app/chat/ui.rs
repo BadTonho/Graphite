@@ -1,6 +1,6 @@
 //! Keyboard, mouse, session, code-block, and provider-dialog interactions for Chat.
 
-use super::state::{ChatSurface, ProviderDialogState, SessionsFilter};
+use super::state::{ChatSurface, ProviderDialogState};
 use super::*;
 use graphite_chat::{AgentMode, ApprovalDecision, ChatSession, ProviderKind};
 use winit::keyboard::{Key, NamedKey};
@@ -585,17 +585,6 @@ pub(crate) fn chat_session_badge(session: &ChatSession) -> &'static str {
             AgentMode::Edit => "[edit]",
             AgentMode::Agent => "[agent]",
         }
-    }
-}
-
-pub(crate) fn cycle_sessions_filter(current: SessionsFilter) -> SessionsFilter {
-    match current {
-        SessionsFilter::All => SessionsFilter::Pinned,
-        SessionsFilter::Pinned => SessionsFilter::Archived,
-        SessionsFilter::Archived => SessionsFilter::Unread,
-        SessionsFilter::Unread => SessionsFilter::AutomationRuns,
-        SessionsFilter::AutomationRuns => SessionsFilter::Scheduled,
-        SessionsFilter::Scheduled => SessionsFilter::All,
     }
 }
 

@@ -110,7 +110,7 @@ impl App {
             return;
         };
         let (width, height) = renderer.size();
-        let geometry = layout(width as f32, height as f32, renderer.char_width());
+        let geometry = layout(width, height, renderer.char_width());
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
         let bg = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let text = rgb(Theme::color(Theme::TEXT, 0xd4d4d4));

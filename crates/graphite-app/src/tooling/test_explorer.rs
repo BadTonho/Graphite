@@ -84,6 +84,7 @@ impl TestExplorer {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn replace_roots(
         &mut self,
         controller: &str,
@@ -131,6 +132,7 @@ impl TestExplorer {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn find_item(&self, id: &str) -> Option<&TestItem> {
         self.controllers
             .values()
@@ -221,16 +223,9 @@ impl TestExplorer {
             }
         }
     }
-
-    pub(crate) fn profile_for(&self, controller: &str) -> Option<TestRunProfile> {
-        self.controllers
-            .get(controller)?
-            .run_profiles
-            .first()
-            .cloned()
-    }
 }
 
+#[cfg(test)]
 fn find<'a>(item: &'a TestItem, id: &str) -> Option<&'a TestItem> {
     if item.id == id {
         return Some(item);

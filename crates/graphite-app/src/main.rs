@@ -65,6 +65,7 @@ use winit::{
 };
 
 const ACTIVITY_BAR_WIDTH: f32 = 48.0;
+#[cfg(test)]
 const SIDEBAR_WIDTH: f32 = ACTIVITY_BAR_WIDTH + 260.0;
 const PAD: f32 = 8.0;
 
@@ -607,9 +608,9 @@ impl App {
                 Err(_) => {}
             }
         }
-        let scm_watcher = event_proxy
-            .clone()
-            .and_then(|proxy| app::scm_workspace::start_watcher(proxy, &[root.clone()]));
+        let scm_watcher = event_proxy.clone().and_then(|proxy| {
+            app::scm_workspace::start_watcher(proxy, std::slice::from_ref(&root))
+        });
         let initialization_ms = initialization_started.elapsed().as_secs_f64() * 1000.0;
         let github_session = if isolated {
             None
@@ -1087,6 +1088,8 @@ fn main() {
         }
         if request.wait {
             let executable = std::env::current_exe().expect("could not locate current executable");
+            // The editor window outlives this process on purpose, so it is never waited for.
+            #[allow(clippy::zombie_processes)]
             let mut child = std::process::Command::new(executable)
                 .env("GRAPHITE_IPC_SERVER_CHILD", "1")
                 .current_dir(&cwd)

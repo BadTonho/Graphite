@@ -199,12 +199,7 @@ impl App {
         };
         let Some((w, h, lh, cw)) = self.gpu.as_ref().map(|gpu| {
             let (w, h) = gpu.renderer.size();
-            (
-                w as f32,
-                h as f32,
-                gpu.renderer.line_height(),
-                gpu.renderer.char_width(),
-            )
+            (w, h, gpu.renderer.line_height(), gpu.renderer.char_width())
         }) else {
             return false;
         };
@@ -238,8 +233,8 @@ impl App {
         let lh = renderer.line_height();
         let cw = renderer.char_width();
         let layout = error_notification_layout(
-            w as f32,
-            h as f32,
+            w,
+            h,
             self.view_preferences.status_bar_visible && !self.zen_mode,
             lh,
             cw,

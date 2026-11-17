@@ -22,19 +22,19 @@ pub(crate) struct FlattenedTreeRow {
 pub(crate) struct NativeWebviewPanel {
     pub owner: String,
     pub handle: String,
-    pub view_type: String,
     pub title: String,
     pub html: String,
     pub outbound_messages: Vec<Value>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PluginMenuLocation {
     CommandPalette,
     EditorContext,
-    ViewItemContext,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ResolvedPluginMenuItem {
     pub plugin_id: String,
@@ -89,11 +89,11 @@ impl App {
             ),
             ServiceRequest::CreateWebviewPanel {
                 handle,
-                view_type,
                 title,
                 html,
+                ..
             } => Some(
-                self.create_native_webview_panel(handle, view_type, title, html)
+                self.create_native_webview_panel(handle, title, html)
                     .map(|()| Value::Null),
             ),
             ServiceRequest::SetWebviewHtml { handle, html } => Some(
@@ -390,7 +390,6 @@ impl App {
     fn create_native_webview_panel(
         &mut self,
         handle: String,
-        view_type: String,
         title: String,
         html: String,
     ) -> ServiceResult<()> {
@@ -406,7 +405,6 @@ impl App {
         self.plugins.native_webview = Some(NativeWebviewPanel {
             owner,
             handle,
-            view_type,
             title,
             html,
             outbound_messages: Vec::new(),
@@ -492,6 +490,7 @@ impl App {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn native_webview(&self) -> Option<&NativeWebviewPanel> {
         self.plugins.native_webview.as_ref()
     }
@@ -605,6 +604,7 @@ impl App {
         self.keymap.set_plugin_bindings(&specs);
     }
 
+    #[cfg(test)]
     pub(crate) fn plugin_menu_items(
         &self,
         location: PluginMenuLocation,
@@ -630,7 +630,6 @@ impl App {
             let menu = match location {
                 PluginMenuLocation::CommandPalette => &menus.command_palette,
                 PluginMenuLocation::EditorContext => &menus.editor_context,
-                PluginMenuLocation::ViewItemContext => &menus.view_item_context,
             };
             for entry in menu {
                 let enabled = entry.when.as_deref().is_none_or(|when| {

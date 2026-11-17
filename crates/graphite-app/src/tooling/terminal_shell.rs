@@ -100,9 +100,9 @@ fn parse_payload(payload: &[u8]) -> Option<ShellEvent> {
 /// Local path from a `file://host/path` URI, with percent-escapes decoded.
 pub fn file_uri_path(uri: &str) -> Option<String> {
     let rest = uri.strip_prefix("file://")?;
-    let path = match rest.find('/') {
-        Some(slash) => &rest[slash..],
-        None => return None,
+    let path = {
+        let slash = rest.find('/')?;
+        &rest[slash..]
     };
     // Windows paths arrive as `/C:/dir`; drop the leading slash before the drive letter.
     let path = if path.len() > 2 && path.as_bytes()[2] == b':' {
@@ -217,7 +217,7 @@ mod tests {
     fn unrelated_and_oversized_sequences_are_ignored() {
         let mut scanner = ShellScanner::default();
         let mut big = b"\x1b]0;".to_vec();
-        big.extend(std::iter::repeat(b'x').take(MAX_PAYLOAD + 10));
+        big.extend(std::iter::repeat_n(b'x', MAX_PAYLOAD + 10));
         big.push(0x07);
         big.extend_from_slice(b"\x1b[31mred\x1b[0m\x1b]133;A\x07");
         assert_eq!(events(&mut scanner, &[&big]), vec![ShellEvent::PromptStart]);

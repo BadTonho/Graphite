@@ -136,12 +136,16 @@ pub struct DapSession {
     sequence: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum DebugState {
+    #[default]
     Stopped,
     Initializing,
     Running,
-    Paused { thread_id: i64, reason: String },
+    Paused {
+        thread_id: i64,
+        reason: String,
+    },
     Failed(String),
 }
 
@@ -273,12 +277,6 @@ pub struct DebugRuntime {
     ready_post_task: Option<String>,
 }
 
-impl Default for DebugState {
-    fn default() -> Self {
-        Self::Stopped
-    }
-}
-
 impl DebugRuntime {
     pub fn refresh_configs(&mut self, workspace: &Path) -> Result<(), DebugError> {
         let loaded = match load_launch_configs(workspace) {
@@ -386,10 +384,7 @@ impl DebugRuntime {
 
     pub fn poll(&mut self, workspace: &Path) -> Result<bool, DebugError> {
         let mut redraw = false;
-        loop {
-            let Some(session) = self.session.as_ref() else {
-                break;
-            };
+        while let Some(session) = self.session.as_ref() {
             let Some(event) = session.try_event()? else {
                 break;
             };
@@ -539,6 +534,7 @@ impl DebugRuntime {
         self.send_function_breakpoints()
     }
 
+    #[cfg(test)]
     pub fn remove_function_breakpoints(&mut self) -> Result<(), DebugError> {
         self.function_breakpoints.clear();
         self.send_function_breakpoints()
@@ -1136,10 +1132,11 @@ impl DebugRuntime {
                     Err(error) => self.push_output("stderr", error),
                 },
             }
-        } else if self.pending_breakpoints.remove(&seq).is_some() && !success {
-            self.push_output("stderr", dap_error(message));
-        } else if !success {
-            self.push_output("stderr", dap_error(message));
+        } else {
+            self.pending_breakpoints.remove(&seq);
+            if !success {
+                self.push_output("stderr", dap_error(message));
+            }
         }
         Ok(())
     }

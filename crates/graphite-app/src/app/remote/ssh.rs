@@ -129,6 +129,7 @@ pub(crate) struct SshCommandOutput {
 
 pub(crate) trait SshTransport: Send + Sync {
     fn exec(&self, target: &SshHostConfig, remote_cmd: &str) -> Result<SshCommandOutput, String>;
+    #[cfg(test)]
     fn build_forward_args(
         &self,
         target: &SshHostConfig,
@@ -187,6 +188,7 @@ impl SshTransport for OpenSshTransport {
         })
     }
 
+    #[cfg(test)]
     fn build_forward_args(
         &self,
         target: &SshHostConfig,

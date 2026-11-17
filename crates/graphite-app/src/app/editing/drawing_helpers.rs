@@ -44,7 +44,7 @@ pub(crate) fn draw_diagnostic_squiggle(
     }
     let mut offset = 0.0;
     while offset < width {
-        let wave = if ((offset / 2.0) as usize) % 2 == 0 {
+        let wave = if ((offset / 2.0) as usize).is_multiple_of(2) {
             0.0
         } else {
             1.0
@@ -60,6 +60,7 @@ pub(crate) fn draw_diagnostic_squiggle(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_line_diagnostic_squiggles(
     renderer: &mut Renderer,
     diagnostics: &[lsp_types::Diagnostic],

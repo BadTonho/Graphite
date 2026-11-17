@@ -1005,7 +1005,7 @@ mod tests {
         assert!(initial
             .files
             .iter()
-            .any(|item| item.untracked && item.path == PathBuf::from("note.txt")));
+            .any(|item| item.untracked && item.path == *"note.txt"));
         assert_eq!(
             initial.line_changes.get(Path::new("note.txt")),
             Some(&vec![(0, LineChange::Added)])
@@ -1025,7 +1025,7 @@ mod tests {
             snapshot
                 .files
                 .iter()
-                .find(|item| item.path == PathBuf::from("note.txt"))
+                .find(|item| item.path == *"note.txt")
                 .cloned()
                 .unwrap()
         };
@@ -1231,7 +1231,7 @@ mod tests {
         assert!(!snapshot
             .files
             .iter()
-            .any(|item| item.path == PathBuf::from("ignored.txt")));
+            .any(|item| item.path == *"ignored.txt"));
         let error = checkout_branch(dir.path(), "main", &translator()).unwrap_err();
         assert!(error.contains("worktree"));
         assert_eq!(fs::read_to_string(file).unwrap(), "one\n");

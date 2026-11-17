@@ -1,9 +1,5 @@
 use super::*;
 
-pub fn import_vscode(translator: &Translator) -> ImportReport {
-    import_vscode_to(&app_config_dir(), translator)
-}
-
 pub fn import_vscode_to(config_root: &Path, translator: &Translator) -> ImportReport {
     let Some(user_dir) = vscode_user_dir() else {
         return ImportReport {
@@ -23,19 +19,6 @@ pub fn import_vscode_to(config_root: &Path, translator: &Translator) -> ImportRe
     )
 }
 
-pub fn import_from(user_dir: &Path, target: &Path, translator: &Translator) -> ImportReport {
-    let extensions = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(|home| PathBuf::from(home).join(".vscode/extensions"));
-    import_from_with(
-        user_dir,
-        target,
-        extensions.as_deref(),
-        save_dark_theme,
-        translator,
-    )
-}
-
 pub(super) fn import_from_with(
     user_dir: &Path,
     target: &Path,
@@ -44,7 +27,7 @@ pub(super) fn import_from_with(
     translator: &Translator,
 ) -> ImportReport {
     let mut report = ImportReport::default();
-    if let Err(e) = fs::create_dir_all(&target) {
+    if let Err(e) = fs::create_dir_all(target) {
         report
             .warnings
             .push(translator.format("config.import.create_directory", &[("error", &e)]));

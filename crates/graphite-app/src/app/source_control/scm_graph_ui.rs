@@ -111,6 +111,7 @@ fn compact_ref_label(label: &str, max_chars: usize) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_ref_badge(
     renderer: &mut Renderer,
     label: &str,
@@ -384,24 +385,7 @@ impl App {
             .ok();
     }
 
-    pub(crate) fn open_scm_commit_diff(&mut self, hash: &str) {
-        let Some(proxy) = self.event_proxy.clone() else {
-            let root = self.scm_workspace_root();
-            match scm_graph::commit_details(&root, hash) {
-                Ok(text) => self.open_read_only_view(PathBuf::from("commit.diff"), &text),
-                Err(error) => self.status = error,
-            }
-            return;
-        };
-        let root = self.scm_workspace_root();
-        let hash = hash.to_owned();
-        self.status = self.t("scm.status.running").into();
-        std::thread::spawn(move || {
-            let result = scm_graph::commit_details(&root, &hash);
-            let _ = proxy.send_event(UserEvent::ScmHistory(result));
-        });
-    }
-
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_scm_graph_header(
         &self,
         renderer: &mut Renderer,

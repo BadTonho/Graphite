@@ -26,7 +26,10 @@ const RESERVED_SCHEMES: [&str; 11] = [
 /// Makes `scheme` a virtual document scheme. Returns false for an invalid or reserved scheme.
 pub fn register_virtual_scheme(scheme: &str) -> bool {
     let scheme = scheme.to_ascii_lowercase();
-    let valid = scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+    let valid = scheme
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
         && scheme
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
@@ -165,7 +168,10 @@ mod tests {
         let uri = DocumentUri::parse("vfstest-a:/docs/a%20b.md").unwrap();
         assert!(uri.is_virtual() && !uri.is_untitled());
         assert_eq!(uri.scheme(), "vfstest-a");
-        assert!(matches!(uri.to_path(), Err(ServiceError::UnsupportedUri(_))));
+        assert!(matches!(
+            uri.to_path(),
+            Err(ServiceError::UnsupportedUri(_))
+        ));
         let with_authority = DocumentUri::parse("vfstest-a://host/x").unwrap();
         assert_eq!(with_authority.as_str(), "vfstest-a://host/x");
         unregister_virtual_scheme("vfstest-a");
@@ -174,11 +180,22 @@ mod tests {
 
     #[test]
     fn reserved_and_invalid_schemes_cannot_be_registered() {
-        for scheme in ["file", "untitled", "HTTPS", "javascript", "data", "1abc", "a b", ""] {
+        for scheme in [
+            "file",
+            "untitled",
+            "HTTPS",
+            "javascript",
+            "data",
+            "1abc",
+            "a b",
+            "",
+        ] {
             assert!(!register_virtual_scheme(scheme), "{scheme}");
         }
         assert!(!is_virtual_scheme("file"));
-        assert!(!DocumentUri::from_path(&std::env::temp_dir()).unwrap().is_virtual());
+        assert!(!DocumentUri::from_path(&std::env::temp_dir())
+            .unwrap()
+            .is_virtual());
     }
 
     #[cfg(unix)]

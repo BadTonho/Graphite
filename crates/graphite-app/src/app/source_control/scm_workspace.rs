@@ -13,7 +13,7 @@ pub(crate) fn start_watcher(
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
         if result
             .as_ref()
-            .map_or(true, |event| crate::scm::is_relevant_watch_event(event))
+            .map_or(true, crate::scm::is_relevant_watch_event)
         {
             let _ = proxy.send_event(UserEvent::ScmRefresh);
             if let Ok(event) = &result {

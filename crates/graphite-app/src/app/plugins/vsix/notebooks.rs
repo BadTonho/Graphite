@@ -108,20 +108,11 @@ impl Adapter {
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
     /// `$executeCells` for a request of an adapter.
-    Execute {
-        adapter: u64,
-        request: String,
-    },
+    Execute { adapter: u64, request: String },
     /// `$dataToNotebook`: the file at `path` is being read.
-    Read {
-        path: PathBuf,
-        view_type: String,
-    },
+    Read { path: PathBuf, view_type: String },
     /// `$notebookToData`: the mirror's notebook is being written to `original`.
-    Write {
-        original: PathBuf,
-    },
-    Other(&'static str),
+    Write { original: PathBuf },
 }
 
 #[derive(Default)]
@@ -160,11 +151,6 @@ impl Notebooks {
 
     pub(crate) fn controllers(&self) -> impl Iterator<Item = &Controller> {
         self.controllers.values()
-    }
-
-    #[cfg(test)]
-    pub(super) fn binding(&self, mirror: &Path) -> Option<&(PathBuf, String)> {
-        self.bindings.get(mirror)
     }
 }
 
@@ -778,11 +764,6 @@ impl App {
                     }
                 }
             },
-            Op::Other(what) => {
-                if let Some(error) = error {
-                    self.status = format!("{what}: {error}");
-                }
-            }
         }
     }
 
@@ -986,7 +967,7 @@ fn apply_execution_update(adapters: &mut [Adapter], execution: u64, update: &Val
                 let Some(run) = adapter.runs.get_mut(&request) else {
                     return;
                 };
-                let Some((_, items, metadata)) =
+                let Some((_, items, _metadata)) =
                     run.outputs.iter_mut().find(|(output, ..)| output == id)
                 else {
                     return;
