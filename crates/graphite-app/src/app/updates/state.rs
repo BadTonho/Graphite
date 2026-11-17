@@ -161,7 +161,7 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             channel: UpdateChannel::Stable,
-            repo: "graphite-editor/graphite".to_owned(),
+            repo: "BadTonho/Graphite".to_owned(),
             auto_check: true,
         }
     }

@@ -198,7 +198,7 @@ mod tests {
         assert!(draft.body_markdown.contains("[REDACTED]"));
         assert!(draft
             .github_url
-            .starts_with("https://github.com/graphite-editor/graphite/issues/new?"));
+            .starts_with("https://github.com/BadTonho/Graphite/issues/new?"));
 
         app.run_ui_command("workbench.action.troubleshootIssue.stop");
         assert!(!app.troubleshooting.active);

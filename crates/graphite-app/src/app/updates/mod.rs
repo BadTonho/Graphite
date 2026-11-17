@@ -387,7 +387,7 @@ mod tests {
                 version: "9.9.9".into(),
                 prerelease: false,
                 notes: "Bug fixes and improvements".into(),
-                html_url: "https://github.com/graphite-editor/graphite/releases/tag/v9.9.9".into(),
+                html_url: "https://github.com/BadTonho/Graphite/releases/tag/v9.9.9".into(),
                 asset: Some(ReleaseAsset {
                     name: "graphite-9.9.9.zip".into(),
                     download_url: "https://example.invalid/graphite-9.9.9.zip".into(),
