@@ -25,6 +25,38 @@ impl TempDir {
     }
 }
 
+/// Finds a helper binary built alongside the test executable. The test executable can
+/// live under `target/<profile>/deps` or deeper (for example under `build/`), so the
+/// search walks up the ancestors instead of assuming a fixed depth.
+pub fn test_binary(name: &str) -> PathBuf {
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    let exe = std::env::current_exe().expect("current test executable");
+    match find_in_ancestors(&exe, &file) {
+        Ok(path) => path,
+        Err(searched) => panic!(
+            "build {name} before targeted tests; searched: {}",
+            searched
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+fn find_in_ancestors(exe: &Path, file: &str) -> Result<PathBuf, Vec<PathBuf>> {
+    let candidates: Vec<PathBuf> = exe
+        .ancestors()
+        .skip(1)
+        .take(6)
+        .map(|dir| dir.join(file))
+        .collect();
+    match candidates.iter().find(|path| path.is_file()) {
+        Some(found) => Ok(found.clone()),
+        None => Err(candidates),
+    }
+}
+
 /// Resolves the temp root to its long form. On Windows CI runners `TEMP` uses the
 /// 8.3 short name (`RUNNER~1`), while git and URI conversions report the long name,
 /// so tests comparing the two would fail on paths that are otherwise identical.
@@ -53,6 +85,30 @@ mod tests {
         let dir = TempDir::new();
         let canonical = strip_verbatim(std::fs::canonicalize(dir.path()).unwrap());
         assert_eq!(dir.path(), canonical);
+    }
+
+    #[test]
+    fn helper_binary_is_found_from_a_deeply_nested_test_executable() {
+        let dir = TempDir::new();
+        let debug = dir.path().join("target").join("debug");
+        std::fs::create_dir_all(debug.join("build").join("graphite-app").join("abc123")).unwrap();
+        let helper = debug.join("helper-tool");
+        std::fs::write(&helper, b"").unwrap();
+        let exe = debug
+            .join("build")
+            .join("graphite-app")
+            .join("abc123")
+            .join("graphite-app-test.exe");
+        assert_eq!(find_in_ancestors(&exe, "helper-tool"), Ok(helper));
+    }
+
+    #[test]
+    fn missing_helper_reports_every_searched_location() {
+        let dir = TempDir::new();
+        let exe = dir.path().join("deps").join("graphite-test");
+        let searched = find_in_ancestors(&exe, "absent-tool").unwrap_err();
+        assert!(searched.contains(&dir.path().join("deps").join("absent-tool")));
+        assert!(searched.len() >= 2);
     }
 
     #[test]
