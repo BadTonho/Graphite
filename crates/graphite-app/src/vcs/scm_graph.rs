@@ -180,6 +180,82 @@ pub(crate) fn commit_github_url(base_url: &str, hash: &str) -> String {
     format!("{}/commit/{hash}", base_url.trim_end_matches('/'))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CommitChangedFile {
+    pub path: String,
+    pub status: char,
+}
+
+/// Parses `git diff-tree --no-commit-id --name-status -r --root` output.
+pub(crate) fn parse_commit_files(output: &str) -> Vec<CommitChangedFile> {
+    let mut files = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut parts = trimmed.split('\t');
+        let Some(status_raw) = parts.next() else {
+            continue;
+        };
+        let status = status_raw.chars().next().unwrap_or('M');
+        // Renames/copies emit `<status>\t<old>\t<new>`; pick the final path.
+        let Some(path) = parts.next_back().filter(|p| !p.is_empty()) else {
+            continue;
+        };
+        files.push(CommitChangedFile {
+            path: path.replace('\\', "/"),
+            status,
+        });
+    }
+    files
+}
+
+/// Lists files changed by `hash` in `root`.
+pub(crate) fn load_commit_files(root: &Path, hash: &str) -> Result<Vec<CommitChangedFile>, String> {
+    if !is_valid_commit_hash(hash) {
+        return Err("Invalid commit hash".to_owned());
+    }
+    let output = run_git(
+        root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            hash,
+        ],
+    )?;
+    Ok(parse_commit_files(&output))
+}
+
+/// Loads `(before, after)` file contents for `rel_path` at `hash` vs its first parent.
+pub(crate) fn load_commit_file_comparison(
+    root: &Path,
+    hash: &str,
+    rel_path: &str,
+) -> Result<(String, String), String> {
+    if !is_valid_commit_hash(hash) {
+        return Err("Invalid commit hash".to_owned());
+    }
+    let clean = rel_path.trim().replace('\\', "/");
+    let show_raw = |spec: &str| -> String {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["show", spec])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    let left = show_raw(&format!("{hash}^:{clean}"));
+    let right = show_raw(&format!("{hash}:{clean}"));
+    Ok((left, right))
+}
+
 fn is_valid_commit_hash(hash: &str) -> bool {
     !hash.is_empty() && hash.len() <= 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -603,5 +679,48 @@ mod tests {
         let when = format_commit_when("2026-11-16 20:41:26 -0300", ts + 480, &translator);
         assert!(when.contains("8 minutes ago"), "{when}");
         assert!(when.contains("2026-11-16 20:41"), "{when}");
+    }
+
+    #[test]
+    fn loads_commit_changed_files_and_parent_comparison() {
+        let temp = crate::test_support::TempDir::new();
+        let root = temp.path();
+        assert!(run_git(root, &["init"]).is_ok());
+        let _ = run_git(root, &["config", "user.name", "Test"]);
+        let _ = run_git(root, &["config", "user.email", "test@example.com"]);
+
+        fs::write(root.join("a.txt"), "v1\n").unwrap();
+        run_git(root, &["add", "."]).unwrap();
+        run_git(root, &["commit", "-m", "init"]).unwrap();
+
+        fs::write(root.join("a.txt"), "v2\n").unwrap();
+        fs::write(root.join("b.txt"), "added\n").unwrap();
+        run_git(root, &["add", "."]).unwrap();
+        run_git(root, &["commit", "-m", "second"]).unwrap();
+
+        let rows = load_graph_commits(root, 10).unwrap();
+        let second_hash = &rows[0].commit.hash;
+        let files = load_commit_files(root, second_hash).unwrap();
+        assert_eq!(
+            files,
+            vec![
+                CommitChangedFile {
+                    path: "a.txt".into(),
+                    status: 'M'
+                },
+                CommitChangedFile {
+                    path: "b.txt".into(),
+                    status: 'A'
+                },
+            ]
+        );
+
+        let (left_a, right_a) = load_commit_file_comparison(root, second_hash, "a.txt").unwrap();
+        assert_eq!(left_a.replace("\r\n", "\n"), "v1\n");
+        assert_eq!(right_a.replace("\r\n", "\n"), "v2\n");
+
+        let (left_b, right_b) = load_commit_file_comparison(root, second_hash, "b.txt").unwrap();
+        assert_eq!(left_b, "");
+        assert_eq!(right_b.replace("\r\n", "\n"), "added\n");
     }
 }

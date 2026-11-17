@@ -96,7 +96,7 @@ pub(crate) fn tip_at(
             .map(|(_, key)| Tip::Button(key))
         }
         ScmListRowKind::GraphCommit { index } => Some(Tip::Commit(index)),
-        ScmListRowKind::Extension(_) => None,
+        ScmListRowKind::GraphCommitFile { .. } | ScmListRowKind::Extension(_) => None,
     }
 }
 

@@ -376,14 +376,13 @@ impl App {
                             }
                         }
                         ScmListRowKind::GraphCommit { index } => {
-                            if let Some(hash) = self
-                                .scm_graph_rows
-                                .get(index)
-                                .map(|r| r.commit.hash.clone())
-                            {
-                                self.scm_graph_selected_hash = Some(hash.clone());
-                                self.open_scm_commit_diff(&hash);
-                            }
+                            self.toggle_scm_graph_commit(index);
+                        }
+                        ScmListRowKind::GraphCommitFile {
+                            commit_index,
+                            file_index,
+                        } => {
+                            self.open_scm_graph_file_diff(commit_index, file_index);
                         }
                         ScmListRowKind::File { index, staged } => {
                             self.scm_selected = index;

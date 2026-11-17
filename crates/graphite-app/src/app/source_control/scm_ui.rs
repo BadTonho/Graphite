@@ -53,6 +53,10 @@ pub(crate) enum ScmListRowKind {
     GraphCommit {
         index: usize,
     },
+    GraphCommitFile {
+        commit_index: usize,
+        file_index: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -188,6 +192,47 @@ pub(crate) fn scm_panel_layout_with_graph(
     graph_height: Option<f32>,
     view: &ScmListView<'_>,
 ) -> ScmPanelLayout {
+    scm_panel_layout_with_graph_entries(
+        snapshot,
+        sidebar_width,
+        height,
+        row_height,
+        cell_width,
+        scroll,
+        repositories_collapsed,
+        staged_collapsed,
+        changes_collapsed,
+        extension_rows,
+        show_graph,
+        graph_collapsed,
+        graph_count,
+        graph_scroll,
+        graph_height,
+        view,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn scm_panel_layout_with_graph_entries(
+    snapshot: &crate::scm::Snapshot,
+    sidebar_width: f32,
+    height: f32,
+    row_height: f32,
+    cell_width: f32,
+    scroll: usize,
+    repositories_collapsed: bool,
+    staged_collapsed: bool,
+    changes_collapsed: bool,
+    extension_rows: &[crate::app::plugins::vsix::ExtensionRow],
+    show_graph: bool,
+    graph_collapsed: bool,
+    graph_count: usize,
+    graph_scroll: usize,
+    graph_height: Option<f32>,
+    view: &ScmListView<'_>,
+    graph_entries: Option<&[ScmListRowKind]>,
+) -> ScmPanelLayout {
     let left = ACTIVITY_BAR_WIDTH + PAD;
     let right = sidebar_width - PAD;
     let full_row = |y| ScmRect {
@@ -269,14 +314,10 @@ pub(crate) fn scm_panel_layout_with_graph(
                     });
                 }
             } else {
-                entries.extend(
-                    files
-                        .iter()
-                        .map(|(index, _)| ScmListRowKind::File {
-                            index: *index,
-                            staged,
-                        }),
-                );
+                entries.extend(files.iter().map(|(index, _)| ScmListRowKind::File {
+                    index: *index,
+                    staged,
+                }));
             }
         };
         if staged_count > 0 {
@@ -356,18 +397,32 @@ pub(crate) fn scm_panel_layout_with_graph(
             let commit_cap = ((list_end_y - (graph_header_y + row_height)) / row_height)
                 .floor()
                 .max(0.0) as usize;
-            rows.extend(
-                (0..graph_count)
-                    .skip(graph_scroll)
-                    .take(commit_cap)
-                    .enumerate()
-                    .map(|(visible, index)| {
-                        make_row(
-                            graph_header_y + row_height * (visible as f32 + 1.0),
-                            ScmListRowKind::GraphCommit { index },
-                        )
-                    }),
-            );
+            if let Some(entries) = graph_entries {
+                rows.extend(
+                    entries
+                        .iter()
+                        .copied()
+                        .skip(graph_scroll)
+                        .take(commit_cap)
+                        .enumerate()
+                        .map(|(visible, kind)| {
+                            make_row(graph_header_y + row_height * (visible as f32 + 1.0), kind)
+                        }),
+                );
+            } else {
+                rows.extend(
+                    (0..graph_count)
+                        .skip(graph_scroll)
+                        .take(commit_cap)
+                        .enumerate()
+                        .map(|(visible, index)| {
+                            make_row(
+                                graph_header_y + row_height * (visible as f32 + 1.0),
+                                ScmListRowKind::GraphCommit { index },
+                            )
+                        }),
+                );
+            }
         }
         (rows, Some(divider))
     } else {
@@ -779,8 +834,8 @@ impl App {
                 .ok();
         } else {
             self.scm_snapshot = crate::scm::snapshot(&root);
-            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, graph_limit)
-                .unwrap_or_default();
+            self.scm_graph_rows =
+                crate::vcs::scm_graph::load_graph_commits(&root, graph_limit).unwrap_or_default();
         }
     }
 
@@ -796,8 +851,8 @@ impl App {
                 })
                 .ok();
         } else {
-            self.scm_graph_rows = crate::vcs::scm_graph::load_graph_commits(&root, graph_limit)
-                .unwrap_or_default();
+            self.scm_graph_rows =
+                crate::vcs::scm_graph::load_graph_commits(&root, graph_limit).unwrap_or_default();
         }
     }
 
@@ -1655,13 +1710,31 @@ impl App {
                     [row_h, line_height, cell_width, sidebar_width],
                 ),
                 ScmListRowKind::GraphHeader { collapsed, .. } => {
-                    self.draw_scm_graph_header(renderer, row, collapsed, row_h, cell_width, text, dim);
+                    self.draw_scm_graph_header(
+                        renderer, row, collapsed, row_h, cell_width, text, dim,
+                    );
                 }
                 ScmListRowKind::GraphCommit { index } => {
                     self.draw_scm_graph_commit_row(
                         renderer,
                         row,
                         index,
+                        row_h,
+                        cell_width,
+                        sidebar_width,
+                        text,
+                        dim,
+                    );
+                }
+                ScmListRowKind::GraphCommitFile {
+                    commit_index,
+                    file_index,
+                } => {
+                    self.draw_scm_graph_commit_file_row(
+                        renderer,
+                        row,
+                        commit_index,
+                        file_index,
                         row_h,
                         cell_width,
                         sidebar_width,
@@ -1751,7 +1824,12 @@ impl App {
                     );
                     let name_x = row.chevron.x + indent + row.chevron.width;
                     let max = ((right - name_x - cell_width * 6.0) / cell_width).max(1.0) as usize;
-                    renderer.draw_text(&name.chars().take(max).collect::<String>(), name_x, y, text);
+                    renderer.draw_text(
+                        &name.chars().take(max).collect::<String>(),
+                        name_x,
+                        y,
+                        text,
+                    );
                     renderer.draw_text(&count.to_string(), right - cell_width, y, accent);
                     let action_hovered = row
                         .action
@@ -1759,7 +1837,11 @@ impl App {
                     draw_scm_control_slot(renderer, row.action, action_hovered);
                     draw_scm_icon(
                         renderer,
-                        if staged { ScmIcon::Minus } else { ScmIcon::Plus },
+                        if staged {
+                            ScmIcon::Minus
+                        } else {
+                            ScmIcon::Plus
+                        },
                         row.action,
                         scm_button_color(action_hovered),
                     );
@@ -2233,7 +2315,10 @@ pub(crate) enum ScmPrimaryAction {
     /// A remote exists but the branch does not track anything yet.
     PublishBranch,
     /// Nothing to commit and the branch differs from its upstream.
-    Sync { ahead: usize, behind: usize },
+    Sync {
+        ahead: usize,
+        behind: usize,
+    },
 }
 
 pub(crate) fn scm_primary_action_for(snapshot: &crate::scm::Snapshot) -> ScmPrimaryAction {

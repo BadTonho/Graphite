@@ -135,6 +135,26 @@ fn draw_ref_badge(
 }
 
 impl App {
+    pub(crate) fn scm_graph_visible_entries(&self) -> Vec<super::scm_ui::ScmListRowKind> {
+        let mut entries = Vec::with_capacity(self.scm_graph_rows.len());
+        for (commit_index, row) in self.scm_graph_rows.iter().enumerate() {
+            entries.push(super::scm_ui::ScmListRowKind::GraphCommit {
+                index: commit_index,
+            });
+            if self.scm_graph_expanded.contains(&row.commit.hash) {
+                if let Some(files) = self.scm_graph_commit_files.get(&row.commit.hash) {
+                    for file_index in 0..files.len() {
+                        entries.push(super::scm_ui::ScmListRowKind::GraphCommitFile {
+                            commit_index,
+                            file_index,
+                        });
+                    }
+                }
+            }
+        }
+        entries
+    }
+
     pub(crate) fn scm_sidebar_layout_for(
         &self,
         window_height: f32,
@@ -145,7 +165,8 @@ impl App {
         let sidebar_width = self.sidebar_layout_width_px();
         let visible_height =
             (window_height - self.activity_bar_vertical_offset() - line_height).max(0.0);
-        super::scm_ui::scm_panel_layout_with_graph(
+        let graph_entries = self.scm_graph_visible_entries();
+        super::scm_ui::scm_panel_layout_with_graph_entries(
             &self.scm_snapshot,
             sidebar_width,
             visible_height,
@@ -165,6 +186,7 @@ impl App {
                 tree: self.scm_view_as_tree,
                 collapsed_folders: Some(&self.scm_collapsed_folders),
             },
+            Some(&graph_entries),
         )
     }
 
@@ -243,7 +265,8 @@ impl App {
     }
 
     pub(crate) fn scroll_scm_graph(&mut self, lines: i32) {
-        let max_scroll = self.scm_graph_rows.len().saturating_sub(2);
+        let total = self.scm_graph_visible_entries().len();
+        let max_scroll = total.saturating_sub(2);
         self.scm_graph_scroll =
             (self.scm_graph_scroll as i32 + lines).clamp(0, max_scroll as i32) as usize;
         if graph_needs_more(
@@ -254,6 +277,111 @@ impl App {
             self.scm_graph_limit += GRAPH_PAGE;
             self.refresh_scm_graph_async();
         }
+    }
+
+    /// Expands or collapses the changed-file list under a commit in the Graph.
+    pub(crate) fn toggle_scm_graph_commit(&mut self, index: usize) {
+        let Some(hash) = self
+            .scm_graph_rows
+            .get(index)
+            .map(|row| row.commit.hash.clone())
+        else {
+            return;
+        };
+        self.scm_graph_selected_hash = Some(hash.clone());
+        if self.scm_graph_expanded.remove(&hash) {
+            return;
+        }
+        if !self.scm_graph_commit_files.contains_key(&hash) {
+            let root = self.scm_workspace_root();
+            match scm_graph::load_commit_files(&root, &hash) {
+                Ok(files) => {
+                    self.scm_graph_commit_files.insert(hash.clone(), files);
+                }
+                Err(error) => {
+                    self.status = error;
+                    return;
+                }
+            }
+        }
+        self.scm_graph_expanded.insert(hash);
+    }
+
+    /// Opens a side-by-side DiffView comparing a commit's changed file against its parent.
+    pub(crate) fn open_scm_graph_file_diff(&mut self, commit_index: usize, file_index: usize) {
+        let Some(commit) = self
+            .scm_graph_rows
+            .get(commit_index)
+            .map(|r| r.commit.clone())
+        else {
+            return;
+        };
+        let Some(file) = self
+            .scm_graph_commit_files
+            .get(&commit.hash)
+            .and_then(|files| files.get(file_index))
+            .cloned()
+        else {
+            return;
+        };
+        self.scm_graph_selected_hash = Some(commit.hash.clone());
+        self.scm_graph_selected_file = Some((commit.hash.clone(), file.path.clone()));
+
+        let root = self.scm_workspace_root();
+        let file_name = std::path::Path::new(&file.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&file.path)
+            .to_owned();
+        let title = format!("{file_name} ({})", commit.short_hash);
+        let left_name = format!("{}^ ({})", commit.short_hash, file.path);
+        let right_name = format!("{} ({})", commit.short_hash, file.path);
+
+        let Some(proxy) = self.event_proxy.clone() else {
+            match scm_graph::load_commit_file_comparison(&root, &commit.hash, &file.path) {
+                Ok((left, right)) => {
+                    self.diff_view = Some(super::scm_ui::DiffView {
+                        title,
+                        left_name,
+                        right_name,
+                        left,
+                        right,
+                        inline: false,
+                        collapse_unchanged: false,
+                        selected_change: 0,
+                    });
+                }
+                Err(error) => self.status = error,
+            }
+            return;
+        };
+
+        self.diff_loading = true;
+        std::thread::Builder::new()
+            .name("graphite-commit-file-diff".into())
+            .spawn(move || {
+                match scm_graph::load_commit_file_comparison(&root, &commit.hash, &file.path) {
+                    Ok((left, right)) => {
+                        let _ = proxy.send_event(UserEvent::DiffReady(super::scm_ui::DiffView {
+                            title,
+                            left_name,
+                            right_name,
+                            left,
+                            right,
+                            inline: false,
+                            collapse_unchanged: false,
+                            selected_change: 0,
+                        }));
+                    }
+                    Err(message) => {
+                        let _ = proxy.send_event(UserEvent::ScmOperationCompleted {
+                            message,
+                            snapshot: None,
+                        });
+                    }
+                }
+            })
+            .ok();
     }
 
     pub(crate) fn open_scm_commit_diff(&mut self, hash: &str) {
@@ -448,6 +576,101 @@ impl App {
         let text_y = row_top + (row_h - renderer.line_height()) * 0.5;
         renderer.draw_text(&truncated, text_x, text_y, fg);
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn draw_scm_graph_commit_file_row(
+        &self,
+        renderer: &mut Renderer,
+        row: &super::scm_ui::ScmListRow,
+        commit_index: usize,
+        file_index: usize,
+        row_h: f32,
+        cell_width: f32,
+        sidebar_width: f32,
+        text: Color,
+        dim: Color,
+    ) {
+        let Some(graph_row) = self.scm_graph_rows.get(commit_index) else {
+            return;
+        };
+        let Some(file) = self
+            .scm_graph_commit_files
+            .get(&graph_row.commit.hash)
+            .and_then(|files| files.get(file_index))
+        else {
+            return;
+        };
+        let y = row.bounds.y;
+        let row_top = y - row_h * 0.1;
+        let row_bottom = row_top + row_h;
+        let selected = self
+            .scm_graph_selected_file
+            .as_ref()
+            .is_some_and(|(h, p)| *h == graph_row.commit.hash && *p == file.path);
+        if selected {
+            renderer.draw_rect(
+                ACTIVITY_BAR_WIDTH,
+                row_top,
+                sidebar_width - ACTIVITY_BAR_WIDTH,
+                row_h,
+                rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+            );
+        }
+
+        // Continue the commit's outgoing lane lines straight down through its file rows.
+        let base_x = ACTIVITY_BAR_WIDTH + PAD + 8.0;
+        let lane_step = 11.0;
+        let lane_x = |col: usize| base_x + col as f32 * lane_step;
+        for edge in &graph_row.lower_edges {
+            let x = lane_x(edge.to_col);
+            renderer.draw_rect(
+                x - 1.0,
+                row_top,
+                2.0,
+                row_bottom - row_top,
+                lane_color(edge.color_index),
+            );
+        }
+
+        let content_x = lane_x(graph_row.max_lanes.max(1)) + 8.0;
+        let icon = crate::file_icons::for_path(std::path::Path::new(&file.path));
+        let icon_size = (row_h * 0.65).round();
+        let icon_y = row_top + (row_h - icon_size) * 0.5;
+        renderer.draw_icon(icon.glyph, content_x, icon_y, icon_size, rgb(icon.color));
+
+        let status_color = match file.status {
+            'A' => rgb(0x73c991),
+            'D' => rgb(0xf48771),
+            'R' | 'C' => rgb(0x4ea1ff),
+            _ => rgb(0xe2c08d),
+        };
+        let status_x = sidebar_width - PAD - cell_width;
+        let text_y = row_top + (row_h - renderer.line_height()) * 0.5;
+        let mut status_buf = [0u8; 4];
+        let status_str = file.status.encode_utf8(&mut status_buf);
+        renderer.draw_text(status_str, status_x, text_y, status_color);
+
+        let name_x = content_x + icon_size + 5.0;
+        let avail_w = (status_x - 6.0 - name_x).max(0.0);
+        let p = std::path::Path::new(&file.path);
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or(&file.path);
+        let parent = p
+            .parent()
+            .and_then(|d| d.to_str())
+            .filter(|d| !d.is_empty());
+
+        let name_clipped = Self::help_menu_visible_label(name, cell_width, avail_w);
+        renderer.draw_text(&name_clipped, name_x, text_y, text);
+        let name_w = name_clipped.chars().count() as f32 * cell_width;
+        if let Some(dir) = parent {
+            let dir_x = name_x + name_w + cell_width;
+            let dir_avail = (status_x - 6.0 - dir_x).max(0.0);
+            if dir_avail > cell_width * 3.0 {
+                let dir_clipped = Self::help_menu_visible_label(dir, cell_width, dir_avail);
+                renderer.draw_text(&dir_clipped, dir_x, text_y, dim);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -578,5 +801,54 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    #[test]
+    fn clicking_commit_expands_files_and_clicking_file_opens_diff_view() {
+        let dir = crate::test_support::TempDir::new();
+        let root = dir.path();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+        };
+        git(&["init"]);
+        git(&["config", "user.name", "Test"]);
+        git(&["config", "user.email", "test@example.com"]);
+        std::fs::write(root.join("note.txt"), "before\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-m", "first"]);
+        std::fs::write(root.join("note.txt"), "after\n").unwrap();
+        git(&["commit", "-am", "second"]);
+
+        let mut app = App::new_with_options(root.to_path_buf(), None, true);
+        app.scm_graph_rows = scm_graph::load_graph_commits(root, 10).unwrap();
+        assert_eq!(app.scm_graph_visible_entries().len(), 2);
+
+        app.toggle_scm_graph_commit(0);
+        let expanded = app.scm_graph_visible_entries();
+        assert_eq!(
+            expanded,
+            vec![
+                ScmListRowKind::GraphCommit { index: 0 },
+                ScmListRowKind::GraphCommitFile {
+                    commit_index: 0,
+                    file_index: 0,
+                },
+                ScmListRowKind::GraphCommit { index: 1 },
+            ]
+        );
+
+        app.open_scm_graph_file_diff(0, 0);
+        let diff = app.diff_view.as_ref().expect("diff view should open");
+        assert_eq!(diff.left.replace("\r\n", "\n"), "before\n");
+        assert_eq!(diff.right.replace("\r\n", "\n"), "after\n");
+
+        app.toggle_scm_graph_commit(0);
+        assert_eq!(app.scm_graph_visible_entries().len(), 2);
     }
 }
