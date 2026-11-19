@@ -53,6 +53,13 @@ fn git(root: &Path, args: &[&str], editor_free: bool) -> Result<Output, String> 
     Ok(output)
 }
 
+/// Whether `line` is advice printed after the actual error. Current git prefixes it with
+/// `hint:`; older versions (2.39, shipped by Debian 12) print the delete-branch advice bare.
+fn is_advice(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("hint:") || line.starts_with("If you are sure you want to delete it")
+}
+
 /// The message to show for a failed command. Git prints some failures (merge conflicts) on
 /// standard output, so that is used when standard error is empty.
 fn failure(output: &Output, operation: &str) -> String {
@@ -62,11 +69,11 @@ fn failure(output: &Output, operation: &str) -> String {
         &output.stderr
     };
     let conflicted = output.stdout.contains("CONFLICT") || output.stderr.contains("CONFLICT");
-    // The last line that is not advice (`hint: ...`) says what went wrong.
+    // The last line that is not advice says what went wrong.
     let line = text
         .lines()
         .rev()
-        .find(|line| !line.trim_start().starts_with("hint:"))
+        .find(|line| !is_advice(line))
         .or_else(|| text.lines().last())
         .unwrap_or(text);
     match (text.is_empty(), conflicted) {
@@ -486,6 +493,40 @@ pub(crate) fn continue_operation(root: &Path) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    fn failed(stderr: &str) -> Output {
+        Output {
+            success: false,
+            stdout: String::new(),
+            stderr: stderr.to_owned(),
+        }
+    }
+
+    #[test]
+    fn the_failure_message_is_the_error_not_the_advice_after_it() {
+        // Current git marks its advice with `hint:`.
+        assert_eq!(
+            failure(
+                &failed("error: the branch 'topic' is not fully merged\nhint: If you are sure you want to delete it,\nhint: run 'git branch -D topic'"),
+                "branch"
+            ),
+            "error: the branch 'topic' is not fully merged"
+        );
+        // Git 2.39 prints the same advice without the prefix.
+        assert_eq!(
+            failure(
+                &failed("error: The branch 'topic' is not fully merged.\nIf you are sure you want to delete it, run 'git branch -D topic'."),
+                "branch"
+            ),
+            "error: The branch 'topic' is not fully merged."
+        );
+        // Without advice, the last line is still the message, and silence has a fallback.
+        assert_eq!(
+            failure(&failed("fatal: not a git repository"), "status"),
+            "fatal: not a git repository"
+        );
+        assert_eq!(failure(&failed(""), "status"), "git status failed");
+    }
 
     #[test]
     fn every_rebase_gets_its_own_plan_directory() {
