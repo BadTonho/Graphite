@@ -44,6 +44,10 @@ impl<T: Copy> HeaderHitRect<T> {
 
 pub(crate) struct TerminalHeaderLayout {
     pub tabs: Vec<HeaderHitRect<TerminalHeaderTab>>,
+    /// The "…" button after the tabs, present when some tabs do not fit.
+    pub overflow: Option<HeaderHitRect<()>>,
+    /// The tabs that do not fit, in their usual order; the overflow menu lists them.
+    pub hidden: Vec<TerminalHeaderTab>,
     pub actions: Vec<HeaderHitRect<TerminalToolbarAction>>,
     pub shell_rect: HeaderHitRect<TerminalToolbarAction>,
     pub shell_label: String,
@@ -89,6 +93,55 @@ pub(crate) fn short_shell_name(profile: Option<&crate::config::TerminalProfile>)
     }
 }
 
+/// Chooses which of the panel's tabs to show in `available` pixels, given each tab's width.
+/// Returns the shown tab indices and the hidden ones, both in their usual order. When everything
+/// fits nothing is hidden. Otherwise room is kept for an overflow button after the tabs, tabs are
+/// taken from the left, and the `active` tab is always among the shown ones. At least one tab is
+/// always shown.
+fn fit_tabs(
+    widths: &[f32],
+    active: Option<usize>,
+    available: f32,
+    gap: f32,
+    overflow_width: f32,
+) -> (Vec<usize>, Vec<usize>) {
+    let span = |indices: &[usize]| -> f32 {
+        indices.iter().map(|&i| widths[i]).sum::<f32>()
+            + gap * indices.len().saturating_sub(1) as f32
+    };
+    let all: Vec<usize> = (0..widths.len()).collect();
+    if span(&all) <= available {
+        return (all, Vec::new());
+    }
+    let limit = available - overflow_width - gap;
+    let mut shown: Vec<usize> = Vec::new();
+    for index in 0..widths.len() {
+        let mut next = shown.clone();
+        next.push(index);
+        if span(&next) > limit {
+            break;
+        }
+        shown.push(index);
+    }
+    if let Some(active) = active.filter(|active| !shown.contains(active)) {
+        // Make room for the active tab by dropping tabs from the end of the shown ones.
+        loop {
+            let mut with_active = shown.clone();
+            with_active.push(active);
+            if shown.is_empty() || span(&with_active) <= limit {
+                break;
+            }
+            shown.pop();
+        }
+        shown.push(active);
+    }
+    if shown.is_empty() {
+        shown.push(0);
+    }
+    let hidden = all.into_iter().filter(|i| !shown.contains(i)).collect();
+    (shown, hidden)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_terminal_header_layout(
     panel_x: f32,
@@ -99,6 +152,7 @@ pub(crate) fn compute_terminal_header_layout(
     shell_label: &str,
     session_names: &[String],
     tab_offset: usize,
+    active_tab: TerminalHeaderTab,
 ) -> TerminalHeaderLayout {
     let cw = cell_width.max(4.0);
     let btn_y = panel_y + 5.0;
@@ -193,26 +247,51 @@ pub(crate) fn compute_terminal_header_layout(
     right_actions.push(shell_rect);
 
     // 2. Lay out left-side panel view tabs (`Problems`, `Output`, `Debug Console`, `Terminal`, `Ports`, `Comments`).
-    let mut tabs = Vec::with_capacity(tab_labels.len());
-    let mut tx = panel_x + 10.0;
+    let first_tab_x = panel_x + 10.0;
     let toolbar_min_x = shell_rect.x;
-    for (item, label) in tab_labels {
-        let w = label.chars().count() as f32 * cw + 16.0;
-        if !tabs.is_empty() && tx + w > toolbar_min_x - 8.0 {
-            break;
-        }
+    let widths: Vec<f32> = tab_labels
+        .iter()
+        .map(|(_, label)| label.chars().count() as f32 * cw + 16.0)
+        .collect();
+    let overflow_w = cw + 16.0;
+    let (shown, hidden_indices) = fit_tabs(
+        &widths,
+        tab_labels.iter().position(|(item, _)| *item == active_tab),
+        toolbar_min_x - 8.0 - first_tab_x,
+        6.0,
+        overflow_w,
+    );
+    let mut tabs = Vec::with_capacity(shown.len());
+    let mut tx = first_tab_x;
+    for index in shown {
+        let (item, _) = tab_labels[index];
         tabs.push(HeaderHitRect {
             item,
             x: tx,
             y: btn_y,
-            w,
+            w: widths[index],
             h: btn_h,
         });
-        tx += w + 6.0;
+        tx += widths[index] + 6.0;
     }
+    let hidden: Vec<TerminalHeaderTab> = hidden_indices
+        .iter()
+        .map(|&index| tab_labels[index].0)
+        .collect();
+    let overflow = (!hidden.is_empty()).then_some(HeaderHitRect {
+        item: (),
+        x: tx,
+        y: btn_y,
+        w: overflow_w,
+        h: btn_h,
+    });
 
     // 3. When multiple terminals exist, fit session switcher pills/arrows strictly between tabs and toolbar.
-    let tabs_right_edge = tabs.last().map_or(panel_x + 10.0, |t| t.x + t.w);
+    let tabs_right_edge = overflow
+        .as_ref()
+        .map(|rect| rect.x + rect.w)
+        .or_else(|| tabs.last().map(|t| t.x + t.w))
+        .unwrap_or(panel_x + 10.0);
     if session_names.len() > 1 && shell_rect.x - tabs_right_edge > 52.0 {
         let mut sx = shell_rect.x - 6.0;
         let arrow_w = 16.0;
@@ -257,6 +336,8 @@ pub(crate) fn compute_terminal_header_layout(
 
     TerminalHeaderLayout {
         tabs,
+        overflow,
+        hidden,
         actions: right_actions,
         shell_rect,
         shell_label: shell_label.to_owned(),
@@ -294,6 +375,11 @@ impl App {
             &shell_label,
             &self.terminal_names,
             self.terminal_tab_offset,
+            if self.terminal_problems {
+                TerminalHeaderTab::Problems
+            } else {
+                TerminalHeaderTab::Terminal
+            },
         )
     }
 
@@ -356,6 +442,19 @@ impl App {
                 } else {
                     0x9d9d9d
                 }),
+            );
+        }
+
+        if let Some(rect) = &layout.overflow {
+            let is_hovered = rect.contains(mx, my);
+            if is_hovered {
+                draw_pill_background(renderer, rect.x, rect.y, rect.w, rect.h, rgb(0x2a2d2e));
+            }
+            renderer.draw_text(
+                "…",
+                rect.x + 8.0,
+                text_y,
+                rgb(if is_hovered { 0xcccccc } else { 0x9d9d9d }),
             );
         }
 
@@ -822,8 +921,10 @@ mod tests {
                 "powershell",
                 &sessions,
                 0,
+                TerminalHeaderTab::Terminal,
             );
             assert_eq!(layout.tabs.len(), 6);
+            assert!(layout.overflow.is_none() && layout.hidden.is_empty());
             assert_non_overlapping(&layout.tabs);
             assert_non_overlapping(&layout.actions);
 
@@ -835,6 +936,84 @@ mod tests {
             );
             let last_action = layout.actions.last().unwrap();
             assert!(last_action.x + last_action.w <= 308.0 + 1100.0);
+        }
+    }
+
+    #[test]
+    fn tabs_that_do_not_fit_are_hidden_but_the_active_tab_always_shows() {
+        let widths = [80.0, 50.0, 130.0, 80.0, 50.0, 80.0];
+        // Everything fits: nothing hidden.
+        let (shown, hidden) = fit_tabs(&widths, Some(3), 600.0, 6.0, 24.0);
+        assert_eq!(shown, [0, 1, 2, 3, 4, 5]);
+        assert!(hidden.is_empty());
+        // Not everything fits: leading tabs stay and the rest go to the overflow.
+        let (shown, hidden) = fit_tabs(&widths, Some(0), 330.0, 6.0, 24.0);
+        assert_eq!(shown, [0, 1, 2]);
+        assert_eq!(hidden, [3, 4, 5]);
+        // The active tab is past the cut: it replaces trailing tabs, order preserved.
+        let (shown, hidden) = fit_tabs(&widths, Some(3), 330.0, 6.0, 24.0);
+        assert_eq!(shown, [0, 1, 3]);
+        assert_eq!(hidden, [2, 4, 5]);
+        // So narrow that only the active tab fits, and so narrow that nothing does.
+        let (shown, _) = fit_tabs(&widths, Some(5), 120.0, 6.0, 24.0);
+        assert_eq!(shown, [5]);
+        let (shown, hidden) = fit_tabs(&widths, None, 10.0, 6.0, 24.0);
+        assert_eq!(shown, [0]);
+        assert_eq!(hidden.len(), 5);
+    }
+
+    #[test]
+    fn a_narrow_panel_keeps_the_active_tab_and_offers_the_rest_in_an_overflow() {
+        let en = graphite_i18n::Translator::english();
+        let labels = [
+            (
+                TerminalHeaderTab::Problems,
+                en.text("terminal.tab.problems"),
+            ),
+            (TerminalHeaderTab::Output, en.text("terminal.tab.output")),
+            (
+                TerminalHeaderTab::DebugConsole,
+                en.text("terminal.tab.debug_console"),
+            ),
+            (
+                TerminalHeaderTab::Terminal,
+                en.text("terminal.tab.terminal"),
+            ),
+            (TerminalHeaderTab::Ports, en.text("terminal.tab.ports")),
+            (
+                TerminalHeaderTab::Comments,
+                en.text("terminal.tab.comments"),
+            ),
+        ];
+        for width in [420.0, 520.0, 640.0, 760.0] {
+            let layout = compute_terminal_header_layout(
+                0.0,
+                500.0,
+                width,
+                8.0,
+                labels,
+                "powershell",
+                &[],
+                0,
+                TerminalHeaderTab::Terminal,
+            );
+            assert!(
+                layout
+                    .tabs
+                    .iter()
+                    .any(|tab| tab.item == TerminalHeaderTab::Terminal),
+                "width {width}: the active tab is missing"
+            );
+            assert_eq!(layout.tabs.len() + layout.hidden.len(), 6, "width {width}");
+            assert_eq!(layout.overflow.is_some(), !layout.hidden.is_empty());
+            assert_non_overlapping(&layout.tabs);
+            assert_non_overlapping(&layout.actions);
+            if let Some(overflow) = &layout.overflow {
+                let last = layout.tabs.last().unwrap();
+                assert!(last.x + last.w <= overflow.x, "width {width}");
+                let first_action = layout.actions.first().unwrap();
+                assert!(overflow.x + overflow.w <= first_action.x, "width {width}");
+            }
         }
     }
 

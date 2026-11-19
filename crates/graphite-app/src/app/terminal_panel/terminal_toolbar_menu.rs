@@ -10,6 +10,8 @@ const MIN_ACTIONS_WIDTH: f32 = 340.0;
 pub(crate) enum TerminalToolbarMenuKind {
     ProfilePicker,
     MoreActions,
+    /// The panel tabs that did not fit in the header.
+    HiddenTabs,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +27,10 @@ pub(crate) enum TerminalToolbarMenuRow {
         command: &'static str,
         enabled: bool,
     },
+    /// A panel tab hidden by lack of room in the header.
+    Tab {
+        tab: super::terminal_drawing::TerminalHeaderTab,
+    },
     Unavailable,
     Separator,
 }
@@ -32,7 +38,7 @@ pub(crate) enum TerminalToolbarMenuRow {
 impl TerminalToolbarMenuRow {
     fn is_selectable(&self) -> bool {
         match self {
-            Self::Profile { .. } => true,
+            Self::Profile { .. } | Self::Tab { .. } => true,
             Self::Action { enabled, .. } => *enabled,
             Self::Unavailable | Self::Separator => false,
         }
@@ -47,6 +53,19 @@ pub(crate) struct TerminalToolbarMenu {
     pub width: f32,
     pub selected: usize,
     pub rows: Vec<TerminalToolbarMenuRow>,
+}
+
+/// The locale key of a panel tab's label.
+pub(crate) fn panel_tab_label_key(tab: super::terminal_drawing::TerminalHeaderTab) -> &'static str {
+    use super::terminal_drawing::TerminalHeaderTab as Tab;
+    match tab {
+        Tab::Problems => "terminal.tab.problems",
+        Tab::Output => "terminal.tab.output",
+        Tab::DebugConsole => "terminal.tab.debug_console",
+        Tab::Terminal => "terminal.tab.terminal",
+        Tab::Ports => "terminal.tab.ports",
+        Tab::Comments => "terminal.tab.comments",
+    }
 }
 
 fn row_height(row: &TerminalToolbarMenuRow) -> f32 {
@@ -123,6 +142,32 @@ impl App {
             return;
         }
         self.open_terminal_more_actions_menu(button, window_width, window_height);
+    }
+
+    /// Opens the list of panel tabs that did not fit in the header, below the "…" button.
+    pub(crate) fn open_terminal_hidden_tabs_menu(
+        &mut self,
+        button: (f32, f32, f32, f32),
+        hidden: &[super::terminal_drawing::TerminalHeaderTab],
+        window_width: f32,
+        window_height: f32,
+    ) {
+        let rows: Vec<TerminalToolbarMenuRow> = hidden
+            .iter()
+            .map(|&tab| TerminalToolbarMenuRow::Tab { tab })
+            .collect();
+        if rows.is_empty() {
+            return;
+        }
+        self.open_terminal_toolbar_menu(
+            TerminalToolbarMenuKind::HiddenTabs,
+            rows,
+            0,
+            MIN_ACTIONS_WIDTH,
+            button,
+            window_width,
+            window_height,
+        );
     }
 
     pub(crate) fn open_terminal_profile_menu(
@@ -281,6 +326,9 @@ impl App {
                     let gap = if shortcut.is_empty() { 0.0 } else { 28.0 };
                     36.0 + (label_len + shortcut_len) as f32 * char_width + gap
                 }
+                TerminalToolbarMenuRow::Tab { tab } => {
+                    36.0 + self.t(panel_tab_label_key(*tab)).chars().count() as f32 * char_width
+                }
                 TerminalToolbarMenuRow::Unavailable => {
                     32.0 + self.t("terminal.no_profiles").chars().count() as f32 * char_width
                 }
@@ -423,6 +471,7 @@ impl App {
             } => {
                 self.run_ui_command(command);
             }
+            TerminalToolbarMenuRow::Tab { tab } => self.activate_panel_tab(tab),
             TerminalToolbarMenuRow::Action { enabled: false, .. }
             | TerminalToolbarMenuRow::Unavailable
             | TerminalToolbarMenuRow::Separator => {}
@@ -486,6 +535,23 @@ impl App {
                         let sx = x + width - 14.0 - shortcut.chars().count() as f32 * char_width;
                         renderer.draw_text(shortcut, sx, top + 4.0, dim);
                     }
+                }
+                TerminalToolbarMenuRow::Tab { tab } => {
+                    if menu.selected == index {
+                        renderer.draw_rect(
+                            x + 2.0,
+                            top,
+                            width - 4.0,
+                            row_h,
+                            rgb(Theme::color(Theme::ACTIVE_ROW, 0x37373d)),
+                        );
+                    }
+                    renderer.draw_text(
+                        self.t(panel_tab_label_key(*tab)),
+                        x + 14.0,
+                        top + 4.0,
+                        text,
+                    );
                 }
                 TerminalToolbarMenuRow::Unavailable => {
                     renderer.draw_text(self.t("terminal.no_profiles"), x + 14.0, top + 4.0, dim);
@@ -558,6 +624,44 @@ mod tests {
         // Clicking the same button again toggles it closed.
         app.toggle_terminal_profile_menu((800.0, 620.0, 16.0, 22.0), 1000.0, 700.0);
         assert!(app.terminal_toolbar_menu.is_none());
+    }
+
+    #[test]
+    fn the_hidden_tabs_menu_lists_the_tabs_and_choosing_one_shows_it() {
+        use super::super::terminal_drawing::TerminalHeaderTab as Tab;
+        let (_temp, mut app) = temp_app();
+        app.terminal_problems = false;
+        app.terminal_focused = true;
+
+        app.open_terminal_hidden_tabs_menu(
+            (800.0, 620.0, 24.0, 22.0),
+            &[Tab::Problems, Tab::Comments],
+            1000.0,
+            700.0,
+        );
+        let menu = app.terminal_toolbar_menu.as_ref().unwrap();
+        assert_eq!(menu.kind, TerminalToolbarMenuKind::HiddenTabs);
+        assert_eq!(
+            menu.rows,
+            vec![
+                TerminalToolbarMenuRow::Tab { tab: Tab::Problems },
+                TerminalToolbarMenuRow::Tab { tab: Tab::Comments },
+            ]
+        );
+        assert_eq!(menu.selected, 0);
+
+        app.execute_terminal_toolbar_menu_row(TerminalToolbarMenuRow::Tab { tab: Tab::Problems });
+        assert!(app.terminal_toolbar_menu.is_none());
+        assert!(app.terminal_problems);
+        assert!(!app.terminal_focused);
+
+        // Nothing hidden: no menu.
+        app.open_terminal_hidden_tabs_menu((800.0, 620.0, 24.0, 22.0), &[], 1000.0, 700.0);
+        assert!(app.terminal_toolbar_menu.is_none());
+        assert_eq!(
+            panel_tab_label_key(Tab::DebugConsole),
+            "terminal.tab.debug_console"
+        );
     }
 
     #[test]

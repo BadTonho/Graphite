@@ -668,6 +668,31 @@ impl App {
         );
     }
 
+    /// Shows the panel tab `tab`, as clicking it in the header does.
+    pub(crate) fn activate_panel_tab(&mut self, tab: TerminalHeaderTab) {
+        match tab {
+            TerminalHeaderTab::Problems | TerminalHeaderTab::Comments => {
+                self.terminal_problems = true;
+                self.terminal_focused = false;
+            }
+            TerminalHeaderTab::Terminal => {
+                self.terminal_problems = false;
+                self.terminal_focused = true;
+            }
+            TerminalHeaderTab::Output => {
+                self.terminal_problems = false;
+                self.terminal_focused = false;
+                self.run_ui_command("workbench.action.showOutputChannels");
+            }
+            TerminalHeaderTab::DebugConsole => {
+                self.debug_panel_visible = !self.debug_panel_visible;
+            }
+            TerminalHeaderTab::Ports => {
+                self.run_ui_command("graphite.ports.open");
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn handle_terminal_panel_click(
         &mut self,
@@ -691,30 +716,25 @@ impl App {
         if my < panel_top + TERMINAL_HEADER_HEIGHT {
             let layout = self.terminal_header_layout(panel_x, panel_top, panel_width, cw);
             if let Some(hit) = layout.tabs.iter().find(|rect| rect.contains(mx, my)) {
-                match hit.item {
-                    TerminalHeaderTab::Problems => {
-                        self.terminal_problems = true;
-                        self.terminal_focused = false;
-                    }
-                    TerminalHeaderTab::Terminal => {
-                        self.terminal_problems = false;
-                        self.terminal_focused = true;
-                    }
-                    TerminalHeaderTab::Output => {
-                        self.terminal_problems = false;
-                        self.terminal_focused = false;
-                        self.run_ui_command("workbench.action.showOutputChannels");
-                    }
-                    TerminalHeaderTab::DebugConsole => {
-                        self.debug_panel_visible = !self.debug_panel_visible;
-                    }
-                    TerminalHeaderTab::Ports => {
-                        self.run_ui_command("graphite.ports.open");
-                    }
-                    TerminalHeaderTab::Comments => {
-                        self.terminal_problems = true;
-                        self.terminal_focused = false;
-                    }
+                self.activate_panel_tab(hit.item);
+                return;
+            }
+            if let Some(hit) = layout.overflow.filter(|rect| rect.contains(mx, my)) {
+                if prev_terminal_toolbar_menu
+                    != Some(super::terminal_panel::terminal_toolbar_menu::TerminalToolbarMenuKind::HiddenTabs)
+                {
+                    let (window_width, window_height) = self
+                        .gpu
+                        .as_ref()
+                        .map_or((panel_x + panel_width, panel_top + 200.0), |gpu| {
+                            gpu.renderer.size()
+                        });
+                    self.open_terminal_hidden_tabs_menu(
+                        (hit.x, hit.y, hit.w, hit.h),
+                        &layout.hidden,
+                        window_width,
+                        window_height,
+                    );
                 }
                 return;
             }

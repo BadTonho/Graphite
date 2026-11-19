@@ -17,3 +17,7 @@ Os grupos do editor e o painel dividem uma só coluna. As bordas esquerda e dire
 Há três divisórias arrastáveis: barra primária | coluna do editor, grupos do editor | painel e coluna do editor | barra secundária. Cada uma acende na cor de destaque enquanto o ponteiro está sobre ela ou ela está sendo arrastada, e um duplo clique devolve o bloco ao tamanho padrão (a barra secundária também esquece a largura salva). A barra secundária tem uma borda fina no lado que encara o editor, como os outros blocos.
 
 As larguras das duas barras laterais são salvas por perfil.
+
+## Abas do painel
+
+Quando o painel fica estreito demais para todas as abas (Problemas, Saída, Console de Depuração, Terminal, Portas, Comentários), as abas que não cabem são escondidas e um botão "…" aparece depois da última. A aba ativa sempre continua visível, e o botão "…" abre um menu com as abas escondidas; escolher uma a mostra. As abas voltam conforme o painel alarga.

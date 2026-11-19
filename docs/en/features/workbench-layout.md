@@ -17,3 +17,7 @@ The editor groups and the panel share one column. Its left and right edges are d
 There are three draggable dividers: primary side bar | editor column, editor groups | panel, and editor column | secondary side bar. Each one lights up in the accent color while the pointer is over it or it is being dragged, and a double click puts its block back to the default size (the secondary side bar also forgets its saved width). The secondary side bar has a thin border on the edge that faces the editor, like the other blocks.
 
 The widths of both side bars are saved per profile.
+
+## Panel tabs
+
+When the panel gets too narrow for all its tabs (Problems, Output, Debug Console, Terminal, Ports, Comments), the tabs that do not fit are hidden and a "…" button appears after the last one. The active tab always stays visible, and the "…" button opens a menu with the hidden tabs; choosing one shows it. The tabs come back as the panel widens.
