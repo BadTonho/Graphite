@@ -12,25 +12,7 @@ impl App {
         let (w, h) = r.size();
         let (lh, cw) = (r.line_height(), r.char_width());
         let sidebar_lh = lh;
-        let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
-            self.activity_bar_width_px() + self.secondary_sidebar_width()
-        } else {
-            if self.view_preferences.primary_sidebar_visible {
-                self.sidebar_width_px()
-            } else {
-                self.activity_bar_width_px()
-            }
-        };
-        let sec_width = self.secondary_sidebar_width();
-        let editor_right = if self.activity_bar_preferences.primary_sidebar_right {
-            if self.view_preferences.primary_sidebar_visible {
-                self.sidebar_width_px()
-            } else {
-                w
-            }
-        } else {
-            w - sec_width
-        };
+        let (editor_left, editor_right) = self.editor_column(w);
         let editor_width = (editor_right - editor_left).max(0.0);
 
         let visible = self.visible_lines(r);

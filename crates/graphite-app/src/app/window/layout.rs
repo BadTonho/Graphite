@@ -175,17 +175,7 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> Vec<GroupRect> {
-        let sidebar_boundary = self.sidebar_width_px();
-        let activity_width = self.activity_bar_width_px();
-        let primary_width = if !self.view_preferences.primary_sidebar_visible {
-            0.0
-        } else if self.activity_bar_preferences.primary_sidebar_right {
-            (width - sidebar_boundary).max(0.0)
-        } else {
-            (sidebar_boundary - activity_width).max(0.0)
-        };
-        let has_panel = self.view_preferences.panel_visible
-            && (self.terminal_visible || self.phase6_panel_visible());
+        let has_panel = self.has_panel();
         let panel =
             if !has_panel || self.view_preferences.panel_position == config::PanelPosition::Right {
                 0.0
@@ -196,38 +186,7 @@ impl App {
             } else {
                 0.0
             };
-        let right_panel_width =
-            if has_panel && self.view_preferences.panel_position == config::PanelPosition::Right {
-                (width * 0.32).min(520.0)
-            } else {
-                0.0
-            };
-        let sec_width = self.secondary_sidebar_width();
-        let (left_sidebar, right_sidebar) = if self.zen_mode {
-            (0.0, 0.0)
-        } else {
-            let primary_right = self.activity_bar_preferences.primary_sidebar_right;
-            (
-                if primary_right {
-                    activity_width + sec_width
-                } else {
-                    if self.view_preferences.primary_sidebar_visible {
-                        sidebar_boundary
-                    } else {
-                        activity_width
-                    }
-                },
-                if primary_right && self.view_preferences.primary_sidebar_visible {
-                    primary_width + right_panel_width
-                } else if primary_right {
-                    right_panel_width
-                } else {
-                    sec_width + right_panel_width
-                },
-            )
-        };
-        let editor_left = left_sidebar;
-        let editor_right = (width - right_sidebar).max(editor_left);
+        let (editor_left, editor_right) = self.editor_column(width);
         let available_editor_width = (editor_right - editor_left).max(0.0);
         let centered = self.centered_editor || self.zen_mode;
         let editor_width = if centered {
@@ -274,15 +233,72 @@ impl App {
         })
     }
 
+    /// Whether a panel (terminal, problems, debug console and the like) takes space.
+    pub(crate) fn has_panel(&self) -> bool {
+        self.view_preferences.panel_visible
+            && (self.terminal_visible || self.phase6_panel_visible())
+    }
+
+    /// Width of the panel when it sits to the right of the editor.
+    fn right_panel_width(&self, width: f32) -> f32 {
+        if self.has_panel()
+            && !self.zen_mode
+            && self.view_preferences.panel_position == config::PanelPosition::Right
+        {
+            (width * 0.32).min(520.0)
+        } else {
+            0.0
+        }
+    }
+
+    /// The left and right edges of the column that holds the editor groups and, below them, the
+    /// panel. The blocks around it (activity bar, primary and secondary side bars, and a panel
+    /// placed to the right) are subtracted, so the editor, the panel and everything that follows
+    /// their width read the same numbers.
+    pub(crate) fn editor_column(&self, width: f32) -> (f32, f32) {
+        if self.zen_mode {
+            return (0.0, width);
+        }
+        let activity_width = self.activity_bar_width_px();
+        let sidebar_boundary = self.sidebar_width_px();
+        let primary_visible = self.view_preferences.primary_sidebar_visible;
+        let primary_right = self.activity_bar_preferences.primary_sidebar_right;
+        let primary_width = if !primary_visible {
+            0.0
+        } else if primary_right {
+            (width - sidebar_boundary).max(0.0)
+        } else {
+            (sidebar_boundary - activity_width).max(0.0)
+        };
+        let secondary_width = self.secondary_sidebar_width();
+        let right_panel = self.right_panel_width(width);
+        let left = if primary_right {
+            activity_width + secondary_width
+        } else if primary_visible {
+            sidebar_boundary
+        } else {
+            activity_width
+        };
+        let right = if primary_right {
+            primary_width + right_panel
+        } else {
+            secondary_width + right_panel
+        };
+        (left, (width - right).max(left))
+    }
+
     pub(crate) fn panel_bounds(&self, width: f32, height: f32, line_height: f32) -> GroupRect {
+        let (column_left, column_right) = self.editor_column(width);
         if self.view_preferences.panel_position == config::PanelPosition::Right {
-            let x = (width - (width * 0.32).min(520.0)).max(0.0);
+            // Next to the editor column, on the side of the window the column does not reach.
+            let panel_width = self.right_panel_width(width);
+            let x = column_right.min((width - panel_width).max(0.0));
             let y = self.top_menu_height();
             return GroupRect {
                 id: 0,
                 x,
                 y,
-                width: width - x,
+                width: panel_width,
                 height: (height
                     - y
                     - if self.view_preferences.status_bar_visible {
@@ -297,8 +313,8 @@ impl App {
             let panel_height =
                 terminal_panel_height_with_delta(height, self.view_preferences.panel_height_delta);
             let y = height - line_height - panel_height;
-            let available_x = self.sidebar_width_px();
-            let available_width = (width - available_x).max(0.0);
+            let available_x = column_left;
+            let available_width = (column_right - column_left).max(0.0);
             let aligned_width = if self.view_preferences.panel_align_center
                 || self.view_preferences.panel_align_right
             {
@@ -309,7 +325,7 @@ impl App {
             let x = if self.view_preferences.panel_align_center {
                 available_x + (available_width - aligned_width) / 2.0
             } else if self.view_preferences.panel_align_right {
-                width - aligned_width
+                column_right - aligned_width
             } else {
                 available_x
             };
@@ -324,9 +340,9 @@ impl App {
             let panel_height = line_height * 9.0;
             GroupRect {
                 id: 0,
-                x: 0.0,
+                x: column_left,
                 y: height - panel_height,
-                width,
+                width: (column_right - column_left).max(0.0),
                 height: panel_height,
             }
         }
@@ -509,6 +525,118 @@ mod tests {
         assert_eq!(center.width, right.width);
         assert!(right.x > center.x);
         assert!((right.x + right.width - 1200.0).abs() < f32::EPSILON);
+    }
+
+    /// Every combination of block placements the layout supports.
+    fn layouts() -> Vec<(bool, bool, bool, bool, config::PanelPosition)> {
+        let mut all = Vec::new();
+        for primary_right in [false, true] {
+            for primary_visible in [true, false] {
+                for secondary in [true, false] {
+                    for zen in [false, true] {
+                        for position in
+                            [config::PanelPosition::Bottom, config::PanelPosition::Right]
+                        {
+                            all.push((primary_right, primary_visible, secondary, zen, position));
+                        }
+                    }
+                }
+            }
+        }
+        all
+    }
+
+    fn app_with_layout(
+        (primary_right, primary_visible, secondary, zen, position): (
+            bool,
+            bool,
+            bool,
+            bool,
+            config::PanelPosition,
+        ),
+    ) -> (App, crate::test_support::TempDir) {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.sidebar_window_width_px = 1400.0;
+        app.terminal_visible = true;
+        app.view_preferences.panel_visible = true;
+        app.view_preferences.panel_position = position;
+        app.view_preferences.primary_sidebar_visible = primary_visible;
+        app.view_preferences.secondary_sidebar_visible = secondary;
+        app.activity_bar_preferences.primary_sidebar_right = primary_right;
+        app.zen_mode = zen;
+        (app, temp)
+    }
+
+    #[test]
+    fn the_panel_and_the_editor_groups_stay_inside_the_editor_column() {
+        let (width, height, lh) = (1400.0, 800.0, 20.0);
+        for layout in layouts() {
+            let (app, _dir) = app_with_layout(layout);
+            let (left, right) = app.editor_column(width);
+            assert!(left <= right && right <= width, "{layout:?}");
+            let panel = app.panel_bounds(width, height, lh);
+            if layout.4 == config::PanelPosition::Bottom {
+                // Under the editor only: same left and right edges as the column.
+                assert!(
+                    (panel.x - left).abs() < 0.01,
+                    "{layout:?}: {panel:?} {left}"
+                );
+                assert!((panel.x + panel.width - right).abs() < 0.01, "{layout:?}");
+            } else if !layout.3 {
+                // Right of the editor column and before the block that follows it.
+                assert!(panel.x >= right - 0.01, "{layout:?}: {panel:?} {right}");
+            }
+            for rect in app.group_rectangles(width, height, lh) {
+                assert!(rect.x >= left - 0.01, "{layout:?}");
+                assert!(rect.x + rect.width <= right + 0.01, "{layout:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_panel_never_runs_under_a_side_bar() {
+        let (width, height, lh) = (1400.0, 800.0, 20.0);
+        for layout in layouts()
+            .into_iter()
+            .filter(|l| l.4 == config::PanelPosition::Bottom && !l.3)
+        {
+            let (app, _dir) = app_with_layout(layout);
+            let panel = app.panel_bounds(width, height, lh);
+            if layout.2 {
+                let secondary = app.secondary_sidebar_x(width);
+                let secondary_end = secondary + app.secondary_sidebar_width();
+                let overlaps =
+                    panel.x < secondary_end - 0.01 && panel.x + panel.width > secondary + 0.01;
+                assert!(!overlaps, "secondary: {layout:?}: {panel:?}");
+            }
+            if layout.1 {
+                let (primary_left, primary_width) = app.primary_sidebar_bounds(width);
+                let overlaps = panel.x < primary_left + primary_width - 0.01
+                    && panel.x + panel.width > primary_left + 0.01;
+                assert!(!overlaps, "primary: {layout:?}: {panel:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn widening_the_secondary_side_bar_narrows_the_editor_and_the_panel_together() {
+        let (width, height, lh) = (1400.0, 800.0, 20.0);
+        let (mut app, _dir) =
+            app_with_layout((false, true, true, false, config::PanelPosition::Bottom));
+        app.secondary_sidebar_user_width = Some(300.0);
+        let before = (
+            app.group_rectangles(width, height, lh)[0].width,
+            app.panel_bounds(width, height, lh).width,
+        );
+        app.secondary_sidebar_user_width = Some(500.0);
+        let after = (
+            app.group_rectangles(width, height, lh)[0].width,
+            app.panel_bounds(width, height, lh).width,
+        );
+        assert_eq!(before.0 - after.0, 200.0);
+        assert_eq!(before.1 - after.1, 200.0);
+        assert_eq!(after.0, after.1);
     }
 
     #[test]
