@@ -202,6 +202,25 @@ fn view_header(state: &WebviewViewState, fallback: &str) -> String {
 }
 
 impl App {
+    /// Returns keyboard focus to the application window after a click that did not land on a page.
+    /// A page that was clicked keeps the keyboard, so without this typing would stay in its
+    /// text box while the pointer works elsewhere.
+    pub(crate) fn return_focus_from_webviews(&self) {
+        let hosts = self
+            .sidebar_webviews
+            .values()
+            .map(|view| &view.host)
+            .chain(self.custom_editor_webviews.values().map(|view| &view.host))
+            .chain(self.webview.as_ref());
+        if let Some(error) = hosts.filter_map(|host| host.focus_parent().err()).next() {
+            crate::app::error_log::record(
+                crate::app::error_log::ErrorSeverity::Low,
+                "webview.focus",
+                &format!("Could not return keyboard focus to the window: {error}"),
+            );
+        }
+    }
+
     pub(super) fn handle_vsix_webview_view_request(
         &mut self,
         runtime: &mut Runtime,

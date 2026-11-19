@@ -202,7 +202,13 @@ pub(super) fn rewrite_webview_resource_uri(raw: &str, allowed_roots: &[PathBuf])
         canonicalize_or_normalize(root).is_some_and(|canon_root| resolved.starts_with(&canon_root))
     });
     if allowed {
-        Some(path_to_file_uri(&resolved))
+        let mut uri = path_to_file_uri(&resolved);
+        // A folder URL keeps its trailing slash: a page's `<base href>` depends on it to resolve
+        // relative paths inside that folder instead of next to it.
+        if decoded.ends_with('/') && !uri.ends_with('/') {
+            uri.push('/');
+        }
+        Some(uri)
     } else {
         Some("about:blank#blocked".into())
     }
@@ -277,18 +283,64 @@ pub(super) fn parse_webview_options(
 /// message as JSON text plus a `SerializableObjectWithBuffers` of attached buffers (none here);
 /// anything else makes it throw and drop the message.
 pub(super) fn page_message_call(handle: &str, message: &str) -> Value {
-    let json_text = if serde_json::from_str::<Value>(message).is_ok() {
-        message.to_owned()
+    let (message, buffers) = split_binary_message(message);
+    let json_text = if serde_json::from_str::<Value>(&message).is_ok() {
+        message
     } else {
-        Value::String(message.to_owned()).to_string()
+        Value::String(message).to_string()
     };
     json!({
         "type": "call",
         "actor": "ExtHostWebviews",
         "method": "$onMessage",
-        "args": [handle, json_text, []],
+        "args": [handle, json_text, buffers],
         "serializable": [2],
     })
+}
+
+/// Marks a page message that carries binary data: the prefix is followed by JSON holding the
+/// message text (with `$$vscode_array_buffer_reference$$` placeholders) and its buffers in base64.
+const BINARY_PREFIX: &str = "__graphite_bin:";
+
+/// Separates a page message into its JSON text and the buffers it carries, as bridge byte values.
+fn split_binary_message(message: &str) -> (String, Vec<Value>) {
+    let parsed = message
+        .strip_prefix(BINARY_PREFIX)
+        .and_then(|rest| serde_json::from_str::<Value>(rest).ok());
+    if let Some(parsed) = parsed {
+        if let (Some(text), Some(list)) = (parsed["message"].as_str(), parsed["buffers"].as_array())
+        {
+            let buffers = list
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|bytes| json!({ "$graphiteBytes": bytes }))
+                .collect();
+            return (text.to_owned(), buffers);
+        }
+    }
+    (message.to_owned(), Vec::new())
+}
+
+/// The script that delivers an extension's message to its page. A message with buffers goes
+/// through the page's `__graphiteDeliver`, which turns the buffer references back into typed
+/// arrays; any other message is posted as parsed JSON.
+pub(super) fn deliver_script(text: &str, buffers: &[&str]) -> String {
+    if buffers.is_empty() {
+        let encoded = serde_json::from_str::<Value>(text)
+            .ok()
+            .and_then(|value| serde_json::to_string(&value).ok())
+            .unwrap_or_else(|| Value::String(text.to_owned()).to_string());
+        format!(
+            "window.postMessage(JSON.parse({}), '*')",
+            Value::String(encoded)
+        )
+    } else {
+        format!(
+            "window.__graphiteDeliver({},{})",
+            Value::String(text.to_owned()),
+            Value::from(buffers.to_vec())
+        )
+    }
 }
 
 impl App {
@@ -465,11 +517,17 @@ impl App {
                 if let Some(panel) = runtime.webviews.panels.get_mut(handle) {
                     panel.outbound_messages.push(parsed.clone());
                 }
-                let encoded = serde_json::to_string(&parsed).map_err(|e| e.to_string())?;
-                let script = format!(
-                    "window.postMessage(JSON.parse({}), '*')",
-                    serde_json::to_string(&encoded).unwrap_or_default()
-                );
+                let text = match raw_message {
+                    Value::String(text) => text.clone(),
+                    other => other.to_string(),
+                };
+                // Buffers the extension attached follow the message as extra arguments.
+                let buffers: Vec<&str> = args
+                    .iter()
+                    .skip(2)
+                    .filter_map(|buffer| buffer["$bytes"].as_str())
+                    .collect();
+                let script = deliver_script(&text, &buffers);
                 if self.webview_handle.as_deref() == Some(handle) {
                     if let Some(webview) = &self.webview {
                         webview.evaluate_script(&script)?;

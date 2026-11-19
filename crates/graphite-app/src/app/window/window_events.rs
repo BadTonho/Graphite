@@ -348,6 +348,9 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                // A press that reaches the window was not on a page, so the keyboard belongs to
+                // the window again.
+                self.return_focus_from_webviews();
                 if self.error_notification_click(self.mouse.x as f32, self.mouse.y as f32) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();

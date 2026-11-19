@@ -3126,6 +3126,52 @@ fn page_messages_reach_the_host_as_json_text_with_wrapped_buffers() {
 }
 
 #[test]
+fn returning_focus_from_pages_is_harmless_when_there_are_none() {
+    let dir = TempDir::new();
+    let app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    app.return_focus_from_webviews();
+}
+
+#[test]
+fn binary_page_messages_carry_their_buffers_to_the_host() {
+    let envelope = json!({
+        "message": r#"{"bytes":{"$$vscode_array_buffer_reference$$":true,"index":0}}"#,
+        "buffers": ["AQID", "BAUG"],
+    });
+    let call = webviews::page_message_call("h", &format!("__graphite_bin:{envelope}"));
+    assert_eq!(
+        call["args"][1],
+        r#"{"bytes":{"$$vscode_array_buffer_reference$$":true,"index":0}}"#
+    );
+    assert_eq!(
+        call["args"][2],
+        json!([{"$graphiteBytes": "AQID"}, {"$graphiteBytes": "BAUG"}])
+    );
+    assert_eq!(call["serializable"], json!([2]));
+    // A damaged envelope is delivered as plain text instead of being dropped.
+    let broken = webviews::page_message_call("h", "__graphite_bin:{not json");
+    assert_eq!(broken["args"][2], json!([]));
+}
+
+#[test]
+fn messages_to_a_page_use_the_buffer_aware_delivery_only_when_they_have_buffers() {
+    let plain = webviews::deliver_script(r#"{"a":1}"#, &[]);
+    assert!(
+        plain.starts_with("window.postMessage(JSON.parse("),
+        "{plain}"
+    );
+    let binary = webviews::deliver_script(
+        r#"{"b":{"$$vscode_array_buffer_reference$$":true,"index":0}}"#,
+        &["AQID"],
+    );
+    assert!(
+        binary.starts_with("window.__graphiteDeliver(\""),
+        "{binary}"
+    );
+    assert!(binary.ends_with(r#",["AQID"])"#), "{binary}");
+}
+
+#[test]
 fn percent_encoded_resource_hosts_are_rewritten_to_allowed_local_files() {
     let dir = TempDir::new();
     let root = dir.path().join("ext/webview");
@@ -3159,4 +3205,29 @@ fn percent_encoded_resource_hosts_are_rewritten_to_allowed_local_files() {
         let html = webviews::sanitize_webview_html(&outside, &roots);
         assert!(html.contains("about:blank#blocked"), "{host}: {html}");
     }
+}
+
+#[test]
+fn a_base_href_keeps_its_trailing_slash_so_relative_assets_stay_inside_the_folder() {
+    let dir = TempDir::new();
+    let root = dir.path().join("ext/webview");
+    std::fs::create_dir_all(root.join("assets")).unwrap();
+    let text = std::fs::canonicalize(&root).unwrap();
+    let text = text.to_string_lossy().replace('\\', "/");
+    let text = text.strip_prefix("//?/").unwrap_or(&text).to_owned();
+    let encoded = text.replace(':', "%3A");
+    let roots = [root.clone()];
+
+    let with_slash = format!(
+        r#"<base href="https://file%2B.vscode-resource.vscode-cdn.net/{}/">"#,
+        encoded.trim_start_matches('/')
+    );
+    let html = webviews::sanitize_webview_html(&with_slash, &roots);
+    assert!(html.contains(r#"<base href="file:///"#), "{html}");
+    assert!(html.ends_with("/webview/\">"), "{html}");
+
+    // Without the slash in the source, none is invented.
+    let without = with_slash.replace("/\">", "\">");
+    let html = webviews::sanitize_webview_html(&without, &roots);
+    assert!(html.ends_with("/webview\">"), "{html}");
 }

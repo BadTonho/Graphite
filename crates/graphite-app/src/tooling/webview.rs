@@ -322,6 +322,12 @@ impl WebviewHost {
             .unwrap_or_default()
     }
 
+    /// Gives keyboard focus back to the application window. A page that was clicked keeps the
+    /// keyboard until this is called, even when the pointer is used elsewhere afterwards.
+    pub(crate) fn focus_parent(&self) -> Result<(), String> {
+        self.view.focus_parent().map_err(|error| error.to_string())
+    }
+
     pub(crate) fn evaluate_script(&self, script: &str) -> Result<(), String> {
         self.view
             .evaluate_script(script)
@@ -443,7 +449,29 @@ fn external_https_url(target: &str) -> Option<String> {
 /// Runs in every page: the `acquireVsCodeApi` shim and reports of the page's own failures.
 const PAGE_SCRIPT: &str = concat!(
         "(()=>{let state;",
-        "window.acquireVsCodeApi=()=>({postMessage:m=>window.ipc.postMessage(JSON.stringify(m)),",
+        // Binary data in messages, in both directions, travels as the extension host expects:
+        // the JSON text holds references into a list of buffers, sent as base64.
+        "const K=[null,Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,",
+        "Uint32Array,Float32Array,Float64Array,BigInt64Array,BigUint64Array];",
+        "const R='$$vscode_array_buffer_reference$$';",
+        "const enc=u=>{let s='';for(let i=0;i<u.length;i+=32768)",
+        "s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)};",
+        "const dec=t=>{const s=atob(t),u=new Uint8Array(s.length);",
+        "for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u.buffer};",
+        "const pack=m=>{const bufs=[];const add=b=>{let i=bufs.indexOf(b);",
+        "if(i<0){i=bufs.length;bufs.push(b)}return i};",
+        "const text=JSON.stringify(m,(k,v)=>{",
+        "if(v instanceof ArrayBuffer)return{[R]:true,index:add(v)};",
+        "if(ArrayBuffer.isView(v)){const t=K.indexOf(v.constructor);",
+        "if(t>0)return{[R]:true,index:add(v.buffer),view:{type:t,byteLength:v.byteLength,byteOffset:v.byteOffset}}}",
+        "return v});",
+        "return bufs.length?'__graphite_bin:'+JSON.stringify({message:text,buffers:bufs.map(b=>enc(new Uint8Array(b)))}):text};",
+        "window.__graphiteDeliver=(text,list)=>{const ab=list.map(dec);",
+        "const msg=JSON.parse(text,(k,v)=>{if(v&&typeof v==='object'&&v[R]){const a=ab[v.index];",
+        "if(!v.view)return a;const C=K[v.view.type];",
+        "return new C(a,v.view.byteOffset,v.view.byteLength/C.BYTES_PER_ELEMENT)}return v});",
+        "window.postMessage(msg,'*')};",
+        "window.acquireVsCodeApi=()=>({postMessage:m=>window.ipc.postMessage(pack(m)),",
         "getState:()=>state,setState:s=>(state=s)});",
         // Failures of the page itself, reported to the error log: script errors, rejected
         // promises, blocked resources and policy violations.
