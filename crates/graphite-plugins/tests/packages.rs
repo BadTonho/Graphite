@@ -188,7 +188,7 @@ fn vsix_installation_and_version_approval_do_not_run_code() {
     assert!(package::inspect(&path).is_err());
 }
 #[test]
-fn package_limits_reject_expansion_entries_and_special_files() {
+fn package_limits_reject_expansion_and_special_files() {
     let temp = Temp::new();
     let path = temp.0.join("large.VSIX");
     let manifest = br#"{"publisher":"example","name":"large","version":"1.0.0"}"#;
@@ -234,14 +234,50 @@ fn package_limits_reject_expansion_entries_and_special_files() {
         .unwrap();
     writer.finish().unwrap();
     assert!(package::inspect(&path).is_err());
-    let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
-    for i in 0..10_001 {
+}
+
+#[test]
+fn vsix_entry_limit_accepts_zip64_and_reports_counts_above_the_ceiling() {
+    let temp = Temp::new();
+    let path = temp.0.join("many-entries.vsix");
+    let write_archive = |count| {
+        let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
         writer
-            .start_file(format!("{i}"), zip::write::SimpleFileOptions::default())
+            .start_file("extension/package.json", options)
             .unwrap();
-    }
-    writer.finish().unwrap();
-    assert!(package::inspect(&path).unwrap_err().contains("too many"));
+        writer
+            .write_all(br#"{"publisher":"example","name":"many","version":"1.0.0"}"#)
+            .unwrap();
+        for index in 1..count {
+            writer
+                .start_file(format!("extension/{index}.txt"), options)
+                .unwrap();
+        }
+        writer.finish().unwrap();
+    };
+
+    write_archive(100_000);
+    assert_eq!(package::inspect(&path).unwrap().id(), "example.many");
+    let native = temp.0.join("same-entries.graphite-plugin");
+    fs::rename(&path, &native).unwrap();
+    let error = package::inspect(&native).unwrap_err();
+    assert_eq!(error, "Package has 100000 entries (limit 10000)");
+
+    write_archive(100_001);
+    let store = Store::new(temp.0.join("store"));
+    let error = store.install(&path).unwrap_err();
+    assert_eq!(error, "Package has 100001 entries (limit 100000)");
+    assert!(!store.root.exists());
+    assert_eq!(
+        package::entry_limit_diagnostic(&error),
+        Some(error.as_str())
+    );
+    assert_eq!(
+        package::entry_limit_diagnostic(&format!("{error} unexpected content")),
+        None
+    );
 }
 
 #[test]

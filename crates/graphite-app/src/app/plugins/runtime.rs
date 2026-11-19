@@ -210,7 +210,9 @@ impl App {
                     error_log::record(
                         ErrorSeverity::Medium,
                         "plugins.worker",
-                        "Plugin operation failed. See the Plugins panel for details.",
+                        graphite_plugins::package::entry_limit_diagnostic(&error).unwrap_or(
+                            "Plugin operation failed. See the Plugins panel for details.",
+                        ),
                     );
                     self.cleanup_plugin_download();
                     if let Some(repository) = self.plugins.graphite_details_loading.take() {

@@ -4,7 +4,21 @@ use crate::{
 use std::{collections::HashSet, fs, io::Read, path::Path};
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 const MAX_EXPANDED: u64 = 500 * 1024 * 1024;
-const MAX_ENTRIES: usize = 10_000;
+const MAX_NATIVE_ENTRIES: usize = 10_000;
+const MAX_VSIX_ENTRIES: usize = 100_000;
+const ENTRY_LIMIT_PREFIX: &str = "Package has ";
+const ENTRY_LIMIT_SEPARATOR: &str = " entries (limit ";
+
+/// Returns an archive entry limit error whose fields are safe to write to logs.
+pub fn entry_limit_diagnostic(error: &str) -> Option<&str> {
+    let (count, limit) = error
+        .strip_prefix(ENTRY_LIMIT_PREFIX)?
+        .strip_suffix(')')?
+        .split_once(ENTRY_LIMIT_SEPARATOR)?;
+    let count = count.parse::<usize>().ok()?;
+    let limit = limit.parse::<usize>().ok()?;
+    (matches!(limit, MAX_NATIVE_ENTRIES | MAX_VSIX_ENTRIES) && count > limit).then_some(error)
+}
 
 fn expanded_limit(path: &Path) -> u64 {
     if is_vsix(path) {
@@ -51,8 +65,16 @@ fn with_archive<T>(
         return Err(format!("Package exceeds {}", size_limit_label(vsix)));
     }
     let mut zip = ZipArchive::new(file).map_err(|e| e.to_string())?;
-    if zip.len() > MAX_ENTRIES {
-        return Err("Package has too many entries".into());
+    let limit = if vsix {
+        MAX_VSIX_ENTRIES
+    } else {
+        MAX_NATIVE_ENTRIES
+    };
+    let count = zip.len();
+    if count > limit {
+        return Err(format!(
+            "{ENTRY_LIMIT_PREFIX}{count}{ENTRY_LIMIT_SEPARATOR}{limit})"
+        ));
     }
     let mut size = 0u64;
     let mut names = HashSet::new();
@@ -266,7 +288,7 @@ pub fn pack(source: &Path) -> Result<std::path::PathBuf> {
                     }
                     *count += 1;
                     *total += meta.len();
-                    if *count > MAX_ENTRIES || *total > MAX_EXPANDED {
+                    if *count > MAX_NATIVE_ENTRIES || *total > MAX_EXPANDED {
                         return Err("Package limits exceeded".into());
                     }
                     zip.start_file(
