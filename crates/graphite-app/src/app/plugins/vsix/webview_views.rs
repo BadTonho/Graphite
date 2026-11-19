@@ -142,22 +142,29 @@ pub(crate) struct WebviewSlot {
 }
 
 /// Splits the side bar area below the container header between `view_ids`. When the container also
-/// has tree views, the webviews take the lower half.
+/// has tree views, the webviews take the lower half. A `compact` layout has no container header
+/// and no view header rows: the pages fill the whole area. It is only for containers made of
+/// webviews alone.
 pub(crate) fn webview_slots(
     view_ids: &[String],
     has_tree: bool,
     line_height: f32,
     area_bottom: f32,
+    compact: bool,
 ) -> Vec<WebviewSlot> {
     if view_ids.is_empty() {
         return Vec::new();
     }
-    let mut area_top = line_height * 4.0;
+    let mut area_top = if compact { 0.0 } else { line_height * 4.0 };
     if has_tree {
         area_top += (area_bottom - area_top).max(0.0) * 0.5;
     }
     let slot_height = ((area_bottom - area_top) / view_ids.len() as f32).max(0.0);
-    let header = line_height * HEADER_ROWS;
+    let header = if compact {
+        0.0
+    } else {
+        line_height * HEADER_ROWS
+    };
     view_ids
         .iter()
         .enumerate()
@@ -369,24 +376,28 @@ impl App {
             .filter(|_| self.view_preferences.primary_sidebar_visible);
         let (left, content_width) = self.primary_sidebar_bounds(width);
         let secondary = self.visible_secondary_plugin();
+        let secondary_compact = secondary
+            .as_ref()
+            .is_some_and(|entry| entry.only_webviews());
         let secondary_top = self.secondary_sidebar_top(lh);
         let secondary_width = self.secondary_sidebar_width();
         let mut added = BTreeSet::new();
         [
-            (primary, left, content_width, offset),
+            (primary, left, content_width, offset, false),
             (
                 secondary,
                 self.secondary_sidebar_x(width),
                 secondary_width,
                 secondary_top,
+                secondary_compact,
             ),
         ]
         .into_iter()
-        .flat_map(|(entry, left, content_width, top)| {
+        .flat_map(|(entry, left, content_width, top, compact)| {
             entry
                 .filter(|_| content_width > 0.0)
                 .map_or_else(Vec::new, |entry| {
-                    self.webview_slots_for(&entry, height - (top - offset), lh)
+                    self.webview_slots_for(&entry, height - (top - offset), lh, compact)
                         .into_iter()
                         .filter(|slot| added.insert(slot.view_id.clone()))
                         .map(|slot| {
@@ -410,6 +421,7 @@ impl App {
         entry: &crate::app::window::activity_bar::PluginActivityEntry,
         window_height: f32,
         line_height: f32,
+        compact: bool,
     ) -> Vec<WebviewSlot> {
         let sidebar_lh = line_height;
         let ids = entry
@@ -420,7 +432,7 @@ impl App {
             .collect::<Vec<_>>();
         let has_tree = entry.views.iter().any(|view| view.kind != "webview");
         let area_bottom = window_height - self.activity_bar_vertical_offset() - line_height;
-        webview_slots(&ids, has_tree, sidebar_lh, area_bottom)
+        webview_slots(&ids, has_tree, sidebar_lh, area_bottom, compact)
     }
 
     /// The header text of a webview view: its (possibly extension-set) title, description and badge.
@@ -721,15 +733,30 @@ mod tests {
     #[test]
     fn slots_split_the_area_and_leave_room_for_trees() {
         let ids = vec!["a".to_owned(), "b".to_owned()];
-        let slots = webview_slots(&ids, false, 20.0, 480.0);
+        let slots = webview_slots(&ids, false, 20.0, 480.0, false);
         assert_eq!(slots.len(), 2);
         assert_eq!(slots[0].header_y, 80.0);
         assert_eq!(slots[0].top, 105.0);
         assert_eq!(slots[1].header_y, 280.0);
         assert_eq!(slots[1].height, 175.0);
-        let mixed = webview_slots(&ids[..1], true, 20.0, 480.0);
+        let mixed = webview_slots(&ids[..1], true, 20.0, 480.0, false);
         assert_eq!(mixed[0].header_y, 280.0);
-        assert!(webview_slots(&[], true, 20.0, 480.0).is_empty());
-        assert_eq!(webview_slots(&ids, false, 20.0, 50.0)[0].height, 0.0);
+        assert!(webview_slots(&[], true, 20.0, 480.0, false).is_empty());
+        assert_eq!(webview_slots(&ids, false, 20.0, 50.0, false)[0].height, 0.0);
+    }
+
+    #[test]
+    fn a_compact_layout_has_no_headers_and_fills_the_area() {
+        let ids = vec!["a".to_owned(), "b".to_owned()];
+        let one = webview_slots(&ids[..1], false, 20.0, 480.0, true);
+        assert_eq!(one[0].header_y, 0.0);
+        assert_eq!(one[0].top, 0.0);
+        assert_eq!(one[0].height, 480.0);
+        let two = webview_slots(&ids, false, 20.0, 480.0, true);
+        assert_eq!((two[0].top, two[0].height), (0.0, 240.0));
+        assert_eq!((two[1].top, two[1].height), (240.0, 240.0));
+        // The regular layout still reserves the container header and a header row per view.
+        let regular = webview_slots(&ids[..1], false, 20.0, 480.0, false);
+        assert_eq!((regular[0].header_y, regular[0].top), (80.0, 105.0));
     }
 }

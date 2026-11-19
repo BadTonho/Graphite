@@ -41,6 +41,14 @@ pub(crate) struct PluginActivityEntry {
     pub views: Vec<graphite_plugins::manifest::ActivityBarView>,
 }
 
+impl PluginActivityEntry {
+    /// Whether every view of the container is a webview, so the page can fill the side bar
+    /// without the native container header.
+    pub(crate) fn only_webviews(&self) -> bool {
+        !self.views.is_empty() && self.views.iter().all(|view| view.kind == "webview")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum VisibleActivityItem {
     Builtin(Activity),
@@ -760,6 +768,7 @@ impl App {
             width,
             line_height,
             cell_width,
+            false,
         );
     }
 
@@ -773,6 +782,7 @@ impl App {
         width: f32,
         line_height: f32,
         cell_width: f32,
+        compact: bool,
     ) {
         renderer.draw_rect(
             ACTIVITY_BAR_WIDTH,
@@ -781,24 +791,26 @@ impl App {
             height,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
-        renderer.draw_text(
-            self.t("activity.plugin_view"),
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 0.25,
-            rgb(Theme::color(Theme::DIM, 0x616161)),
-        );
-        renderer.draw_text(
-            &entry.title,
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 1.6,
-            rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
-        );
-        renderer.draw_text(
-            &entry.plugin_id,
-            ACTIVITY_BAR_WIDTH + PAD,
-            line_height * 2.8,
-            rgb(Theme::color(Theme::DIM, 0x858585)),
-        );
+        if !compact {
+            renderer.draw_text(
+                self.t("activity.plugin_view"),
+                ACTIVITY_BAR_WIDTH + PAD,
+                line_height * 0.25,
+                rgb(Theme::color(Theme::DIM, 0x616161)),
+            );
+            renderer.draw_text(
+                &entry.title,
+                ACTIVITY_BAR_WIDTH + PAD,
+                line_height * 1.6,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            renderer.draw_text(
+                &entry.plugin_id,
+                ACTIVITY_BAR_WIDTH + PAD,
+                line_height * 2.8,
+                rgb(Theme::color(Theme::DIM, 0x858585)),
+            );
+        }
         let chars_per_row = ((width - PAD * 2.0) / cell_width.max(1.0)).max(1.0) as usize;
         let mut row = 0usize;
         for view in entry.views.iter().filter(|view| view.kind != "webview") {
@@ -856,8 +868,13 @@ impl App {
                 row += 1;
             }
         }
-        if let Some(lh) = self.gpu.as_ref().map(|gpu| gpu.renderer.line_height()) {
-            for slot in self.webview_slots_for(entry, slot_window_height, lh) {
+        if let Some(lh) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| gpu.renderer.line_height())
+            .filter(|_| !compact)
+        {
+            for slot in self.webview_slots_for(entry, slot_window_height, lh, false) {
                 let fallback = entry
                     .views
                     .iter()

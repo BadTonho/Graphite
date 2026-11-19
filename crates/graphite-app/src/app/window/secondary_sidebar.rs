@@ -301,7 +301,16 @@ impl App {
                 }
             } else {
                 r.push_translation(x - ACTIVITY_BAR_WIDTH, body);
-                self.draw_plugin_container(r, &entry, h - body, h - (body - top), width, lh, cw);
+                self.draw_plugin_container(
+                    r,
+                    &entry,
+                    h - body,
+                    h - (body - top),
+                    width,
+                    lh,
+                    cw,
+                    entry.only_webviews(),
+                );
                 r.pop_translation();
             }
         } else if selected.is_none() {
