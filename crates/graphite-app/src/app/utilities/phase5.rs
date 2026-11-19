@@ -531,7 +531,10 @@ impl TaskFile {
                 return Err("Task cancelled".into());
             }
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                while let Ok(line) = rx.try_recv() {
+                // The readers may not have delivered the last lines yet: wait until both
+                // pipes close. A grandchild that keeps a pipe open must not hang the task,
+                // so silence for a moment ends the wait too.
+                while let Ok(line) = rx.recv_timeout(TASK_OUTPUT_GRACE) {
                     output(&line);
                 }
                 return Ok(status.code().unwrap_or(1));
@@ -540,6 +543,9 @@ impl TaskFile {
         }
     }
 }
+
+/// How long a finished task may stay silent before its remaining output is given up on.
+const TASK_OUTPUT_GRACE: Duration = Duration::from_millis(250);
 
 fn shell_join(command: &str, args: &[String]) -> String {
     #[cfg(windows)]
@@ -704,6 +710,53 @@ mod tests {
         assert!(output.iter().any(|line| line.contains("task-output")));
         fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn the_last_output_of_a_fast_task_is_never_lost() {
+        let dir = temp();
+        #[cfg(windows)]
+        let source = r#"{"tasks":[{"label":"fixture","type":"process","command":"cmd.exe","args":["/C","echo last-line"]}]}"#;
+        #[cfg(not(windows))]
+        let source = r#"{"tasks":[{"label":"fixture","type":"process","command":"sh","args":["-c","echo last-line"]}]}"#;
+        let tasks = TaskFile::parse(source).unwrap();
+        // The task exits before its output is read on a busy machine; repeat to hit that.
+        for round in 0..40 {
+            let mut output = Vec::new();
+            tasks
+                .run("fixture", &dir, true, &AtomicBool::new(false), |line| {
+                    output.push(line.to_owned())
+                })
+                .unwrap();
+            assert!(
+                output.iter().any(|line| line.contains("last-line")),
+                "round {round}: {output:?}"
+            );
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_process_holding_the_pipe_does_not_hang_the_task() {
+        let dir = temp();
+        let source = r#"{"tasks":[{"label":"fixture","type":"process","command":"sh","args":["-c","echo started; sleep 6 & exit 0"]}]}"#;
+        let tasks = TaskFile::parse(source).unwrap();
+        let mut output = Vec::new();
+        let started = std::time::Instant::now();
+        let code = tasks
+            .run("fixture", &dir, true, &AtomicBool::new(false), |line| {
+                output.push(line.to_owned())
+            })
+            .unwrap();
+        assert_eq!(code, 0);
+        assert!(output.iter().any(|line| line.contains("started")));
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "the task waited for the background process"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn unsupported_or_malformed_tasks_fail_closed() {
         assert!(
