@@ -50,7 +50,7 @@ impl App {
 
     /// Where column 0 of the focused view's text starts on screen, after horizontal scrolling.
     pub(crate) fn text_origin_x(&self, rect: GroupRect, cw: f32) -> f32 {
-        let scrolled = if self.word_wrap {
+        let scrolled = if self.word_wrap() {
             0
         } else {
             self.editor_groups.active_view().scroll_col
@@ -60,7 +60,7 @@ impl App {
 
     /// Scrolls the focused view sideways until the caret is inside the text area.
     pub(crate) fn reveal_cursor_column(&mut self, rect: GroupRect, cw: f32) {
-        if self.word_wrap {
+        if self.word_wrap() {
             self.editor_groups.active_view_mut().scroll_col = 0;
             return;
         }
@@ -83,13 +83,9 @@ impl App {
     pub(crate) fn clamp_horizontal_scroll(&mut self, width: f32, height: f32, lh: f32, cw: f32) {
         let rects = self.group_rectangles(width, height, lh);
         let minimap = self.view_preferences.minimap_visible;
-        let wrap = self.word_wrap;
+        let setting = self.word_wrap_setting;
         let tabs = &self.documents;
         self.editor_groups.for_each_view_mut(|group, view| {
-            if wrap {
-                view.scroll_col = 0;
-                return;
-            }
             if view.scroll_col == 0 {
                 return;
             }
@@ -99,6 +95,15 @@ impl App {
             ) else {
                 return;
             };
+            let wraps = super::word_wrap::resolve_wrap(
+                setting,
+                view.wrap_choice,
+                super::word_wrap::wraps_by_default(tab.buffer.path(), tab.language),
+            );
+            if wraps {
+                view.scroll_col = 0;
+                return;
+            }
             let minimap_width = if minimap {
                 72.0_f32.min(rect.width * 0.22)
             } else {
@@ -121,7 +126,7 @@ impl App {
     /// Scrolls the focused view sideways by `columns` (negative is left). The result is clamped
     /// on the next frame, so a view cannot be scrolled into empty space.
     pub(crate) fn scroll_columns_by(&mut self, columns: isize) {
-        if self.word_wrap {
+        if self.word_wrap() {
             return;
         }
         let view = self.editor_groups.active_view_mut();
@@ -161,6 +166,8 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.sidebar_window_width_px = 1000.0;
         app.view_preferences.minimap_visible = false;
+        // A new file is plain text and would wrap by default; these tests are about not wrapping.
+        app.word_wrap_setting = Some(false);
         app.editor_mut().insert(text);
         (app, dir)
     }
@@ -219,7 +226,7 @@ mod tests {
         assert_eq!(app.editor_groups.active_view().scroll_col, 0);
 
         app.scroll_columns_by(30);
-        app.word_wrap = true;
+        app.word_wrap_setting = Some(true);
         app.clamp_horizontal_scroll(w, h, lh, cw);
         assert_eq!(app.editor_groups.active_view().scroll_col, 0);
         app.scroll_columns_by(30);

@@ -1154,7 +1154,7 @@ fn move_cursor(
 ) -> Result<(), CommandError> {
     app.command_view_mut().smart_selection_history.clear();
     app.command_view_mut().smart_selection_guard = None;
-    if app.word_wrap
+    if app.word_wrap()
         && matches!(
             motion,
             graphite_text::CursorMotion::Up | graphite_text::CursorMotion::Down

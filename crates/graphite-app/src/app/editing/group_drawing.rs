@@ -79,7 +79,8 @@ impl App {
             let bottom = rect.y + rect.height;
             // Text scrolls sideways under the line-number column, so it is drawn clipped to the
             // area right of it; the column's own items use the full clip.
-            let scrolled_columns = if self.word_wrap { 0 } else { view.scroll_col };
+            let wrapped = self.view_wraps(view);
+            let scrolled_columns = if wrapped { 0 } else { view.scroll_col };
             let text_x = text_left - scrolled_columns as f32 * cw;
             let full_clip = [rect.x, rect.y, right, bottom];
             let text_clip = [text_left, rect.y, right, bottom];
@@ -289,7 +290,7 @@ impl App {
                     rgb(chrome.tab_border),
                 );
             }
-            if self.word_wrap {
+            if wrapped {
                 let mut body_rect = *rect;
                 body_rect.y = body_y;
                 body_rect.height = body_height;
@@ -319,7 +320,7 @@ impl App {
             let rows = super::lens_rows::body_rows(&lines, visible, |line| {
                 decoration_uri
                     .as_deref()
-                    .is_some_and(|uri| self.lens_text_above(uri, line).is_some())
+                    .is_some_and(|uri| self.code_lens_text(uri, line).is_some())
             });
             r.set_clip(Some(text_clip));
             for (row, body_row) in rows.iter().enumerate() {
@@ -334,7 +335,7 @@ impl App {
                             .count();
                         if let Some(lens) = decoration_uri
                             .as_deref()
-                            .and_then(|uri| self.lens_text_above(uri, line))
+                            .and_then(|uri| self.code_lens_text(uri, line))
                         {
                             r.draw_text(
                                 &lens,

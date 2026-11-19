@@ -45,7 +45,7 @@ pub(crate) fn body_rows(
 impl App {
     /// The code lens text of `line` of the active document, when lenses are drawn above lines.
     pub(crate) fn lens_text_above(&self, uri: &str, line: usize) -> Option<String> {
-        if self.word_wrap {
+        if self.word_wrap() {
             return None;
         }
         self.code_lens_text(uri, line)

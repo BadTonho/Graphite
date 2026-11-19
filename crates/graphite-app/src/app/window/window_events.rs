@@ -697,7 +697,7 @@ impl ApplicationHandler<UserEvent> for App {
                         self.scroll_columns_by(sideways.round() as isize);
                     }
                     let tab = &self.documents[self.active_document()];
-                    let max = if self.word_wrap {
+                    let max = if self.word_wrap() {
                         if let Some(gpu) = &self.gpu {
                             let (width, height) = gpu.renderer.size();
                             let cw = gpu.renderer.char_width();

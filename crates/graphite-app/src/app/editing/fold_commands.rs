@@ -135,7 +135,7 @@ impl App {
     }
 
     pub(crate) fn fold_unavailable_with_wrap(&mut self) -> bool {
-        if self.word_wrap {
+        if self.word_wrap() {
             self.status = self.t("fold.unavailable_wrap").to_owned();
             true
         } else {
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn folding_is_refused_while_word_wrap_is_on() {
         let (_dir, mut app) = app_with(SAMPLE);
-        app.word_wrap = true;
+        app.word_wrap_setting = Some(true);
         cursor_to(&mut app, 0);
         app.run_ui_command("editor.fold");
         assert!(app.editor_groups.active_view().folded.is_empty());

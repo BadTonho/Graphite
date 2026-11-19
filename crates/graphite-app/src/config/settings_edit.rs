@@ -288,7 +288,7 @@ mod tests {
             || super::super::editor_prefs_for_workspace_in(&profile, &workspace, &translator);
         let prefs = load().unwrap();
         assert_eq!(prefs.tab_size, 2);
-        assert!(prefs.word_wrap);
+        assert_eq!(prefs.word_wrap, Some(true));
 
         let path = profile.join("settings.json");
         let saved = std::fs::read(&path).unwrap();
@@ -302,7 +302,7 @@ mod tests {
         set_user_setting(&profile, "editor.tabSize", None).unwrap();
         let prefs = load().unwrap();
         assert_eq!(prefs.tab_size, 4);
-        assert!(prefs.word_wrap);
+        assert_eq!(prefs.word_wrap, Some(true));
     }
 
     #[test]

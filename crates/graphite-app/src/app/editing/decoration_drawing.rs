@@ -81,8 +81,9 @@ impl App {
         geometry: (f32, f32, f32, f32, f32),
     ) {
         let line_chars = text.trim_end_matches(['\r', '\n']).chars().count();
-        // Unwrapped lines show their lenses in a row above, so the end of the line keeps its own.
-        let lens_above = !self.word_wrap;
+        // Only unwrapped lines are drawn here, and they show their lenses in a row above, so the
+        // end of the line keeps its own.
+        let lens_above = true;
         self.draw_marks(
             r,
             layer,

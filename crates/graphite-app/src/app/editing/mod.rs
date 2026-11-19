@@ -34,5 +34,6 @@ pub(crate) mod sticky_scroll;
 pub(crate) mod textmate;
 pub(crate) mod timeline;
 pub(crate) mod visual_lines;
+pub(crate) mod word_wrap;
 pub(crate) mod workspace_edit;
 pub(crate) mod wrap_drawing;

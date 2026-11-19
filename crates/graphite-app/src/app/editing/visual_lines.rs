@@ -238,9 +238,34 @@ pub(crate) fn document_offset(
     buffer.len_chars()
 }
 
+/// Keeps the text at the top of `view` at the top when its wrapping changes from `old` to `new`
+/// (wrapping on or off, and the wrap indent).
+pub(crate) fn rescroll(
+    view: &mut super::editor_groups::View,
+    tab: &Document,
+    columns: usize,
+    old: (bool, WrapIndent),
+    new: (bool, WrapIndent),
+) {
+    let tab_size = tab.indentation.tab_size;
+    let top = if old.0 {
+        document_offset(&tab.buffer, view.scroll_line, 0, columns, tab_size, old.1)
+    } else {
+        tab.buffer
+            .line_start_char(view.scroll_line.min(tab.buffer.len_lines() - 1))
+    };
+    view.scroll_line = if new.0 {
+        document_position(&tab.buffer, top, columns, tab_size, new.1).0
+    } else {
+        tab.buffer.rope().char_to_line(top)
+    };
+}
+
 impl App {
-    pub(crate) fn reconfigure_wrapping(&mut self, enabled: bool, indent: WrapIndent) {
-        if self.word_wrap == enabled && self.wrapping_indent == indent {
+    /// Applies new wrapping settings. Each view keeps the text at its top where it was, whatever its
+    /// wrapping was before and is now.
+    pub(crate) fn reconfigure_wrapping(&mut self, setting: Option<bool>, indent: WrapIndent) {
+        if self.word_wrap_setting == setting && self.wrapping_indent == indent {
             return;
         }
 
@@ -258,38 +283,38 @@ impl App {
             })
             .unwrap_or((1200.0, 760.0, 21.0, 9.0));
         let rects = self.group_rectangles(width, height, lh);
-        let old_enabled = self.word_wrap;
+        let old_setting = self.word_wrap_setting;
         let old_indent = self.wrapping_indent;
         let tabs = &self.documents;
         self.editor_groups.for_each_view_mut(|group, view| {
-            let Some(rect) = rects.iter().find(|rect| rect.id == group) else {
+            let Some(tab) = tabs.get(view.document) else {
                 return;
             };
-            let Some(tab) = tabs.get(view.document) else {
+            let by_default = super::word_wrap::wraps_by_default(tab.buffer.path(), tab.language);
+            let old_wraps =
+                super::word_wrap::resolve_wrap(old_setting, view.wrap_choice, by_default);
+            // A changed setting is what the user wants now: it replaces earlier per-view choices.
+            if setting != old_setting {
+                view.wrap_choice = None;
+            }
+            let new_wraps = super::word_wrap::resolve_wrap(setting, view.wrap_choice, by_default);
+            let Some(rect) = rects.iter().find(|rect| rect.id == group) else {
                 return;
             };
             let gutter = tab.buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
             let columns = (((rect.width - gutter).max(cw)) / cw) as usize;
-            let top = if old_enabled {
-                document_offset(
-                    &tab.buffer,
-                    view.scroll_line,
-                    0,
-                    columns,
-                    tab.indentation.tab_size,
-                    old_indent,
-                )
-            } else {
-                tab.buffer
-                    .line_start_char(view.scroll_line.min(tab.buffer.len_lines() - 1))
-            };
-            view.scroll_line = if enabled {
-                document_position(&tab.buffer, top, columns, tab.indentation.tab_size, indent).0
-            } else {
-                tab.buffer.rope().char_to_line(top)
-            };
+            rescroll(
+                view,
+                tab,
+                columns,
+                (old_wraps, old_indent),
+                (new_wraps, indent),
+            );
+            if new_wraps {
+                view.scroll_col = 0;
+            }
         });
-        self.word_wrap = enabled;
+        self.word_wrap_setting = setting;
         self.wrapping_indent = indent;
     }
 
@@ -460,10 +485,10 @@ mod tests {
         app.editor_groups.active_view_mut().scroll_line = 1;
         let other = app.split_editor_group(super::super::editor_groups::SplitDirection::Vertical);
         app.editor_groups.active_view_mut().scroll_line = 0;
-        app.reconfigure_wrapping(true, WrapIndent::Same);
+        app.reconfigure_wrapping(Some(true), WrapIndent::Same);
         assert!(app.focus_editor_group(0));
         assert!(app.editor_groups.active_view_mut().scroll_line > 1);
-        app.reconfigure_wrapping(false, WrapIndent::Same);
+        app.reconfigure_wrapping(Some(false), WrapIndent::Same);
         assert_eq!(app.editor_groups.active_view_mut().scroll_line, 1);
         assert!(app.focus_editor_group(other));
         assert_eq!(app.editor_groups.active_view_mut().scroll_line, 0);

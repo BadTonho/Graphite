@@ -246,7 +246,9 @@ struct App {
     /// Buffer revision when the last formatting request was sent; edits made since then are not applied.
     lsp_format_revision: Option<u64>,
     rulers: Vec<usize>,
-    word_wrap: bool,
+    /// `editor.wordWrap` when the user or the workspace set it; `None` means each file type's
+    /// default decides (see `app::editing::word_wrap`).
+    word_wrap_setting: Option<bool>,
     overtype_mode: bool,
     wrapping_indent: config::WrapIndent,
     read_only_patterns: Vec<String>,
@@ -570,7 +572,8 @@ impl App {
                 auto_save: None,
                 auto_save_delay_ms: 1000,
                 rulers: Vec::new(),
-                word_wrap: false,
+                // Tests start without wrapping, as before wrapping had file-type defaults.
+                word_wrap: Some(false),
                 wrapping_indent: config::WrapIndent::Same,
             }
         } else {
@@ -590,7 +593,7 @@ impl App {
                         auto_save: None,
                         auto_save_delay_ms: 1000,
                         rulers: Vec::new(),
-                        word_wrap: false,
+                        word_wrap: None,
                         wrapping_indent: config::WrapIndent::Same,
                     }
                 },
@@ -833,7 +836,7 @@ impl App {
             autosave_last_document: None,
             lsp_format_revision: None,
             rulers: prefs.rulers,
-            word_wrap: prefs.word_wrap,
+            word_wrap_setting: prefs.word_wrap,
             overtype_mode: false,
             wrapping_indent: prefs.wrapping_indent,
             read_only_patterns: prefs.read_only_patterns,

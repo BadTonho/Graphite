@@ -206,7 +206,7 @@ pub(super) fn read_editor_prefs(
         auto_save: None,
         auto_save_delay_ms: 1000,
         rulers: Vec::new(),
-        word_wrap: false,
+        word_wrap: None,
         wrapping_indent: WrapIndent::Same,
     };
     for path in paths {
@@ -252,8 +252,8 @@ pub(super) fn read_editor_prefs(
         }
         if let Some(value) = value.get("editor.wordWrap") {
             prefs.word_wrap = match value.as_str() {
-                Some("on") => true,
-                Some("off") => false,
+                Some("on") => Some(true),
+                Some("off") => Some(false),
                 _ => {
                     return Err(translator.format(
                         "config.settings.invalid_word_wrap",

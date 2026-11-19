@@ -327,7 +327,7 @@ impl ViewMenuState {
         for row in &mut rows {
             let Some(action) = row.action else { continue };
             row.checked = match action {
-                A::WordWrap => app.word_wrap,
+                A::WordWrap => app.word_wrap(),
                 A::FullScreen => app
                     .gpu
                     .as_ref()
@@ -919,9 +919,7 @@ impl App {
                 self.debug_panel_visible = true;
             }
             A::Terminal => self.toggle_terminal(),
-            A::WordWrap => {
-                self.word_wrap = !self.word_wrap;
-            }
+            A::WordWrap => self.toggle_word_wrap(),
             A::FullScreen => {
                 if let Some(gpu) = &self.gpu {
                     let fullscreen = gpu.window.fullscreen().is_none().then(|| {

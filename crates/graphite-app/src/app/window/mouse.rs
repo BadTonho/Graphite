@@ -515,7 +515,7 @@ impl App {
                 return;
             }
             let text_x = self.text_origin_x(rect, cw);
-            if self.word_wrap {
+            if self.word_wrap() {
                 let row = self.editor_groups.active_view_mut().scroll_line
                     + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
                 let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
@@ -601,7 +601,7 @@ impl App {
                 let document = self.active_document();
                 let tab_size = self.documents[document].indentation.tab_size;
                 let indent = self.wrapping_indent;
-                let wrap = self.word_wrap;
+                let wrap = self.word_wrap();
                 let mut editor = self.editor_mut();
                 let selections = super::selection_menu::rectangular_selections(
                     &editor,
@@ -616,7 +616,7 @@ impl App {
                 return;
             }
         }
-        if self.word_wrap {
+        if self.word_wrap() {
             let row = self.editor_groups.active_view_mut().scroll_line
                 + ((self.mouse.y as f32 - rect.y - tab_strip).max(0.0) / lh) as usize;
             let col = (((self.mouse.x as f32 - text_x) / cw).round().max(0.0)) as usize;

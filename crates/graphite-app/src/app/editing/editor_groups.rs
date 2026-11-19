@@ -29,6 +29,9 @@ pub(crate) struct View {
     pub scroll_line: usize,
     /// Columns the text is scrolled to the left, for views that do not wrap their lines.
     pub scroll_col: usize,
+    /// What the user chose for this view with Toggle Word Wrap; `None` follows the setting and the
+    /// file type's default.
+    pub wrap_choice: Option<bool>,
     /// Start lines of collapsed fold regions in this view, sorted ascending.
     pub folded: Vec<usize>,
     /// Document revision the fold list was built against; a change clears the folds.
@@ -99,6 +102,7 @@ impl EditorGroups {
             smart_selection_guard: None,
             scroll_line: 0,
             scroll_col: 0,
+            wrap_choice: None,
             folded: Vec::new(),
             folded_revision: 0,
             manual_folds: Vec::new(),
@@ -307,6 +311,7 @@ impl EditorGroups {
                 smart_selection_guard: None,
                 scroll_line: 0,
                 scroll_col: 0,
+                wrap_choice: None,
                 folded: Vec::new(),
                 folded_revision: 0,
                 manual_folds: Vec::new(),
@@ -364,6 +369,7 @@ impl EditorGroups {
                 smart_selection_guard: None,
                 scroll_line,
                 scroll_col: 0,
+                wrap_choice: None,
                 folded: Vec::new(),
                 folded_revision: 0,
                 manual_folds: Vec::new(),

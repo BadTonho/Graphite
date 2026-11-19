@@ -415,7 +415,7 @@ impl App {
         lh: f32,
         cw: f32,
     ) {
-        let line = if self.word_wrap {
+        let line = if self.word_wrap() {
             let rect = self.focused_group_rect(width, height, lh);
             let columns = (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
             let tab = &self.documents[self.active_document()];

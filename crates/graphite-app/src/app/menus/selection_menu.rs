@@ -336,7 +336,7 @@ impl App {
         }) else {
             return;
         };
-        let word_wrap = self.word_wrap;
+        let word_wrap = self.word_wrap();
         let indent = self.wrapping_indent;
         let document = self.active_document();
         let tab_size = self.documents[document].indentation.tab_size;

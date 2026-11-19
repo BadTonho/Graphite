@@ -583,7 +583,7 @@ mod tests {
         assert!(!app.run_code_lens_on_line(2));
 
         // With word wrap the lenses stay at the end of the line, so there are no lens rows.
-        app.word_wrap = true;
+        app.word_wrap_setting = Some(true);
         assert_eq!(app.body_rows_for_active(&lines, 10).len(), 4);
         assert_eq!(app.lens_rows_in_view(4), 0);
         assert_eq!(

@@ -126,7 +126,8 @@ pub struct EditorPrefs {
     pub auto_save: Option<AutoSaveMode>,
     pub auto_save_delay_ms: u64,
     pub rulers: Vec<usize>,
-    pub word_wrap: bool,
+    /// `editor.wordWrap` when set; `None` leaves wrapping to the default of each file type.
+    pub word_wrap: Option<bool>,
     pub wrapping_indent: WrapIndent,
 }
 
@@ -154,7 +155,7 @@ mod tests {
         fs::write(&workspace, r#"{"editor.wrappingIndent":"deepIndent"}"#).unwrap();
         let prefs = settings::read_editor_prefs(&[user, workspace.clone()], &Translator::english())
             .unwrap();
-        assert!(prefs.word_wrap);
+        assert_eq!(prefs.word_wrap, Some(true));
         assert_eq!(prefs.wrapping_indent, WrapIndent::DeepIndent);
         fs::write(&workspace, r#"{"editor.wordWrap":"bounded"}"#).unwrap();
         assert!(settings::read_editor_prefs(&[workspace], &Translator::english()).is_err());

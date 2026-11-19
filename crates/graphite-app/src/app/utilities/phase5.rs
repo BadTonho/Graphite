@@ -264,7 +264,7 @@ impl App {
             self.auto_save_setting = prefs.auto_save;
             self.auto_save_delay_ms = prefs.auto_save_delay_ms;
             self.rulers = prefs.rulers;
-            self.word_wrap = prefs.word_wrap;
+            self.word_wrap_setting = prefs.word_wrap;
             self.wrapping_indent = prefs.wrapping_indent;
             self.read_only_patterns = prefs.read_only_patterns;
         }
