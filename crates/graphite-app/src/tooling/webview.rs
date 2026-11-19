@@ -67,6 +67,30 @@ const DIAGNOSTIC_PREFIX: &str = "__graphite_diag:";
 const MAX_DIAGNOSTICS: usize = 20;
 static DIAGNOSTICS: AtomicUsize = AtomicUsize::new(0);
 
+/// Largest message a page may send to its extension. Extensions send file contents and images
+/// through messages, so the limit is generous; it only stops a runaway page from filling memory.
+const MAX_PAGE_MESSAGE: usize = 48 * 1024 * 1024;
+
+/// Queues a page's message for its extension. A message over the limit is not delivered, and the
+/// error log says so instead of the message vanishing: a protocol that numbers its messages would
+/// otherwise lose track of them.
+fn queue_page_message(sink: &Mutex<Vec<String>>, body: &str) {
+    if body.len() > MAX_PAGE_MESSAGE {
+        error_log::record(
+            ErrorSeverity::Medium,
+            "webview.message",
+            format!(
+                "A page sent a message of {} bytes, over the {MAX_PAGE_MESSAGE} byte limit; it was not delivered.",
+                body.len()
+            ),
+        );
+        return;
+    }
+    if let Ok(mut queue) = sink.lock() {
+        queue.push(body.to_owned());
+    }
+}
+
 /// Records a page diagnostic in the error log. Returns whether `body` was one.
 fn record_page_diagnostic(body: &str) -> bool {
     let Some(detail) = body.strip_prefix(DIAGNOSTIC_PREFIX) else {
@@ -92,11 +116,7 @@ impl WebviewHost {
                 if record_page_diagnostic(request.body()) {
                     return;
                 }
-                if request.body().len() <= 64 * 1024 {
-                    if let Ok(mut queue) = sink.lock() {
-                        queue.push(request.body().clone());
-                    }
-                }
+                queue_page_message(&sink, request.body());
             });
         #[cfg(windows)]
         let view = builder
@@ -211,11 +231,7 @@ impl WebviewHost {
                 if record_page_diagnostic(request.body()) {
                     return;
                 }
-                if request.body().len() <= 64 * 1024 {
-                    if let Ok(mut queue) = sink.lock() {
-                        queue.push(request.body().clone());
-                    }
-                }
+                queue_page_message(&sink, request.body());
             });
         Self::build_overlay(
             parent,
@@ -534,6 +550,24 @@ mod tests {
         assert!(html.contains("default-src 'none'"));
         assert!(html.contains("connect-src 'none'"));
         assert!(html.contains("<title>ok</title>"));
+    }
+
+    #[test]
+    fn large_page_messages_are_delivered_in_order_instead_of_being_dropped() {
+        // Messages that carry file contents or images are far larger than 64 KiB; losing one
+        // breaks protocols that number their messages.
+        let sink = Mutex::new(Vec::new());
+        let big = "x".repeat(300 * 1024);
+        queue_page_message(&sink, "first");
+        queue_page_message(&sink, &big);
+        queue_page_message(&sink, "last");
+        let queue = sink.lock().unwrap();
+        assert_eq!(queue.len(), 3);
+        assert_eq!(queue[0], "first");
+        assert_eq!(queue[1].len(), big.len());
+        assert_eq!(queue[2], "last");
+        // The limit still leaves room for the largest payload extensions use (45 MiB).
+        assert!(MAX_PAGE_MESSAGE >= 45 * 1024 * 1024);
     }
 
     #[test]
