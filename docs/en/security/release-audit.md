@@ -24,6 +24,8 @@ Run these again at the release revision. A real match must be removed from the h
 
 - The release workflow only creates a **draft**; publishing is manual.
 - Build jobs receive no signing key. Only the signing step reads `GRAPHITE_UPDATE_SIGNING_KEY`, from a temporary file that is removed afterwards. Never commit or upload a private key.
+- The signing key is stored as a secret of the `release` environment, and only the job that attaches the packages uses that environment. The environment requires a maintainer's approval, so pushing a tag alone never gives a workflow access to the key.
+- Release tags (`v*`) are protected by a repository ruleset, and every third-party action is pinned to a commit SHA.
 - Without the update signing key, assets get checksums only and the app refuses to install them as in-app updates.
 
 ## Manual checks

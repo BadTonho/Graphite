@@ -24,6 +24,8 @@ Repita essas verificações na revisão do lançamento. Uma ocorrência real dev
 
 - O workflow de lançamento só cria um **rascunho**; a publicação é manual.
 - Os jobs de compilação não recebem chave de assinatura. Só a etapa de assinatura lê `GRAPHITE_UPDATE_SIGNING_KEY`, de um arquivo temporário que é apagado depois. Nunca faça commit nem envie uma chave privada.
+- A chave de assinatura fica como secret do ambiente `release`, e só o job que anexa os pacotes usa esse ambiente. O ambiente exige a aprovação de um mantenedor, então apenas enviar uma tag nunca dá a um workflow acesso à chave.
+- As tags de versão (`v*`) são protegidas por um ruleset do repositório, e toda ação de terceiros é fixada por SHA de commit.
 - Sem a chave de assinatura de atualizações, os arquivos recebem só somas de verificação e o aplicativo se recusa a instalá-los como atualização interna.
 
 ## Verificações manuais

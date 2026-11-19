@@ -208,6 +208,8 @@ jobs:
     name: Attach packages to draft
     needs: [draft, desktop, distributions]
     runs-on: windows-2022
+    # The signing key lives in this environment, which requires a maintainer's approval.
+    environment: release
     permissions:
       contents: write
     steps:
