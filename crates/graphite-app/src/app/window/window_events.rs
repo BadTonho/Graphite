@@ -366,6 +366,15 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     return;
                 }
+                if let Some(sash) = self.sash_at(self.mouse.x as f32, self.mouse.y as f32) {
+                    if self.sash_double_click(sash, std::time::Instant::now()) {
+                        self.reset_sash(sash);
+                        if let Some(gpu) = &self.gpu {
+                            gpu.window.request_redraw();
+                        }
+                        return;
+                    }
+                }
                 if !self.zen_mode
                     && self
                         .is_over_secondary_resize_handle(self.mouse.x as f32, self.mouse.y as f32)

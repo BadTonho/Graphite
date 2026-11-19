@@ -18,21 +18,40 @@ impl App {
         }
     }
 
-    /// Widest the secondary side bar may be: 60% of the window, never below its minimum.
+    /// Widest the secondary side bar may be. It may push the primary side bar down to its
+    /// narrowest, but the editor keeps its minimum width.
     pub(crate) fn secondary_sidebar_max_width(&self) -> f32 {
-        (self.sidebar_window_width_px * 0.6).max(config::MIN_SECONDARY_SIDEBAR_WIDTH)
+        let window = self.sidebar_window_width_px;
+        let primary_min = if self.view_preferences.primary_sidebar_visible {
+            config::MIN_SIDEBAR_WIDTH * self.sidebar_scale_factor
+        } else {
+            0.0
+        };
+        (window - self.activity_bar_width_px() - primary_min - crate::app::layout::MIN_EDITOR_WIDTH)
+            .min(window * 0.7)
+            .max(config::MIN_SECONDARY_SIDEBAR_WIDTH)
     }
 
     pub(crate) fn secondary_sidebar_width(&self) -> f32 {
         if self.zen_mode || !self.view_preferences.secondary_sidebar_visible {
             return 0.0;
         }
-        self.secondary_sidebar_user_width
+        let wanted = self
+            .secondary_sidebar_user_width
             .unwrap_or_else(|| self.secondary_sidebar_default_width())
             .clamp(
                 config::MIN_SECONDARY_SIDEBAR_WIDTH,
                 self.secondary_sidebar_max_width(),
-            )
+            );
+        if !self.sidebar_priority_primary {
+            return wanted;
+        }
+        // The primary side bar is being shaped: it keeps its width and this one gives way.
+        let room = self.sidebar_window_width_px
+            - self.activity_bar_width_px()
+            - self.primary_requested_px()
+            - crate::app::layout::MIN_EDITOR_WIDTH;
+        wanted.min(room.max(config::MIN_SECONDARY_SIDEBAR_WIDTH))
     }
 
     pub(crate) fn toggle_chat_sidebar(&mut self) {

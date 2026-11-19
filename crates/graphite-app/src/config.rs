@@ -27,10 +27,12 @@ pub(crate) use settings_edit::set_user_setting;
 pub(crate) use sidebar_layout::clamp_width as clamp_sidebar_width;
 pub(crate) use sidebar_layout::MIN_SECONDARY_WIDTH as MIN_SECONDARY_SIDEBAR_WIDTH;
 pub(crate) use sidebar_layout::{
+    clear_secondary_sidebar_width, load_secondary_sidebar_width, save_secondary_sidebar_width,
+};
+pub(crate) use sidebar_layout::{
     load_activity_bar_preferences, save_activity_bar_preferences, ActivityBarPosition,
     ActivityBarPreferences, ActivityBarSize,
 };
-pub(crate) use sidebar_layout::{load_secondary_sidebar_width, save_secondary_sidebar_width};
 pub(crate) use sidebar_layout::{load_sidebar_width, save_sidebar_width};
 pub(crate) use sidebar_layout::{
     DEFAULT_WIDTH as DEFAULT_SIDEBAR_WIDTH, MAX_PERSISTED_WIDTH as MAX_PERSISTED_SIDEBAR_WIDTH,

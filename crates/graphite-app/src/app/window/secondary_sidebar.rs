@@ -251,6 +251,19 @@ impl App {
         let views = self.secondary_views();
 
         r.draw_rect(x, top, width, (h - lh - top).max(0.0), bg);
+        // A thin border on the edge that faces the editor, like the other blocks have.
+        let edge = if self.activity_bar_preferences.primary_sidebar_right {
+            x + width - 1.0
+        } else {
+            x
+        };
+        r.draw_rect(
+            edge,
+            top,
+            1.0,
+            (h - lh - top).max(0.0),
+            rgb(Theme::color(0x2b2b2b, 0xe5e5e5)),
+        );
         r.draw_rect(
             x,
             top,
@@ -426,8 +439,14 @@ mod tests {
             app.secondary_sidebar_width(),
             config::MIN_SECONDARY_SIDEBAR_WIDTH
         );
+        // As wide as the window allows: the primary side bar narrows to its minimum and the
+        // editor keeps its own.
         app.resize_secondary_sidebar_from_pointer(10.0);
-        assert_eq!(app.secondary_sidebar_width(), 720.0);
+        assert_eq!(
+            app.secondary_sidebar_width(),
+            app.secondary_sidebar_max_width()
+        );
+        assert_eq!(app.secondary_sidebar_width(), 652.0);
 
         app.activity_bar_preferences.primary_sidebar_right = true;
         let left = app.secondary_sidebar_x(w);
@@ -437,5 +456,71 @@ mod tests {
         app.run_ui_command("graphite.layout.toggleSecondarySidebar");
         assert_eq!(app.secondary_sidebar_width(), 0.0);
         assert!(!app.is_over_secondary_resize_handle(left + 400.0, y));
+    }
+
+    /// Width of the editor column for the current sizes.
+    fn editor_column_width(app: &App, w: f32) -> f32 {
+        let (left, right) = app.editor_column(w);
+        right - left
+    }
+
+    #[test]
+    fn the_side_bar_being_shaped_takes_the_space_and_its_neighbour_gives_way() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let w = 1400.0;
+        app.sidebar_window_width_px = w;
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        let activity = app.activity_bar_width_px();
+        let min_editor = crate::app::layout::MIN_EDITOR_WIDTH;
+
+        // Shaping the secondary side bar: the primary one gives way, down to its minimum.
+        app.resize_secondary_sidebar_from_pointer(w - 700.0);
+        assert_eq!(app.secondary_sidebar_width(), 700.0);
+        assert!(editor_column_width(&app, w) >= min_editor);
+        app.resize_secondary_sidebar_from_pointer(w - 1000.0);
+        assert!(app.secondary_sidebar_width() < 1000.0);
+        let primary = app.sidebar_width_px() - activity;
+        assert!(primary >= config::MIN_SIDEBAR_WIDTH - 0.01, "{primary}");
+        assert!((editor_column_width(&app, w) - min_editor).abs() < 0.01);
+
+        // Shaping the primary one: it gets what it asks for and the secondary one gives way.
+        app.resize_sidebar_from_pointer(activity + 700.0);
+        assert!((app.sidebar_width_px() - activity - 700.0).abs() < 0.01);
+        assert!(app.secondary_sidebar_width() >= config::MIN_SECONDARY_SIDEBAR_WIDTH);
+        assert!(app.secondary_sidebar_width() < 700.0);
+        assert!(editor_column_width(&app, w) >= min_editor - 0.01);
+
+        // Back to the secondary one: it gets its width again and the primary one yields.
+        app.resize_secondary_sidebar_from_pointer(w - 500.0);
+        assert_eq!(app.secondary_sidebar_width(), 500.0);
+        assert!(editor_column_width(&app, w) >= min_editor);
+    }
+
+    #[test]
+    fn the_blocks_never_overlap_while_either_side_bar_is_dragged_across_its_range() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let w = 1000.0;
+        app.sidebar_window_width_px = w;
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        let min_editor = crate::app::layout::MIN_EDITOR_WIDTH;
+        for pointer in (0..=1000).step_by(50) {
+            for secondary in [true, false] {
+                if secondary {
+                    app.resize_secondary_sidebar_from_pointer(pointer as f32);
+                } else {
+                    app.resize_sidebar_from_pointer(pointer as f32);
+                }
+                let (left, right) = app.editor_column(w);
+                assert!(left <= right && right <= w, "pointer {pointer}");
+                assert!(
+                    right - left >= min_editor - 0.01,
+                    "pointer {pointer} secondary {secondary}: {}",
+                    right - left
+                );
+                assert!(app.secondary_sidebar_x(w) >= right - 0.01);
+            }
+        }
     }
 }

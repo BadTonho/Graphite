@@ -113,6 +113,11 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    /// Set while the primary side bar is the one being resized: the secondary side bar then gives
+    /// way when space runs out, instead of the other way around.
+    sidebar_priority_primary: bool,
+    /// The last press on a divider, to tell a double click from two single ones.
+    last_sash_press: Option<(app::sashes::Sash, std::time::Instant)>,
     /// Width in pixels the user dragged the secondary side bar to; `None` uses the view default.
     secondary_sidebar_user_width: Option<f32>,
     secondary_resize_dragging: bool,
@@ -698,6 +703,8 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
+            sidebar_priority_primary: false,
+            last_sash_press: None,
             secondary_sidebar_user_width,
             secondary_resize_dragging: false,
             panel_resize_dragging: false,

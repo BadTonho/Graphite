@@ -633,6 +633,7 @@ impl App {
         self.draw_help_modal(r);
         self.draw_settings_editor(r);
         self.draw_unsaved_modal(r);
+        self.draw_sash_highlight(r, w, h, lh);
         self.draw_error_notification(r);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));

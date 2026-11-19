@@ -100,9 +100,24 @@ pub(crate) fn save_secondary_sidebar_width(profile_root: &Path, width: f32) -> R
     fs::write(profile_root.join(SECONDARY_LAYOUT_FILE), contents).map_err(|error| error.to_string())
 }
 
+/// Forgets the saved secondary side bar width, so it opens at its default size again.
+pub(crate) fn clear_secondary_sidebar_width(profile_root: &Path) {
+    let _ = fs::remove_file(profile_root.join(SECONDARY_LAYOUT_FILE));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_secondary_width_can_be_forgotten() {
+        let temp = crate::test_support::TempDir::new();
+        save_secondary_sidebar_width(temp.path(), 420.0).unwrap();
+        clear_secondary_sidebar_width(temp.path());
+        assert_eq!(load_secondary_sidebar_width(temp.path()), None);
+        // Nothing saved: nothing to do, and no error.
+        clear_secondary_sidebar_width(temp.path());
+    }
 
     #[test]
     fn secondary_width_round_trips_and_rejects_invalid_data() {

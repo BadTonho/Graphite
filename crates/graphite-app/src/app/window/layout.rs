@@ -1,6 +1,9 @@
 use super::editor_groups::GroupRect;
 use super::*;
 
+/// Narrowest the editor column may get: the side bars give way before it.
+pub(crate) const MIN_EDITOR_WIDTH: f32 = 320.0;
+
 pub(crate) fn ruler_positions(
     columns: &[usize],
     text_x: f32,
@@ -100,13 +103,47 @@ impl App {
         }
     }
 
+    /// What the primary side bar yields to: the secondary side bar, unless the primary one is the
+    /// block the user is shaping, in which case the secondary one gives way instead.
+    fn primary_yields_to(&self) -> f32 {
+        if self.sidebar_priority_primary {
+            self.secondary_sidebar_floor()
+        } else {
+            self.secondary_sidebar_width()
+        }
+    }
+
+    /// The least space the secondary side bar keeps while the primary one is being shaped.
+    fn secondary_sidebar_floor(&self) -> f32 {
+        if self.view_preferences.secondary_sidebar_visible && !self.zen_mode {
+            config::MIN_SECONDARY_SIDEBAR_WIDTH
+        } else {
+            0.0
+        }
+    }
+
+    /// Width in pixels of the primary side bar as set, within its own limits and without giving
+    /// way to the secondary side bar. Zero when it is hidden.
+    pub(crate) fn primary_requested_px(&self) -> f32 {
+        if !self.view_preferences.primary_sidebar_visible {
+            return 0.0;
+        }
+        effective_sidebar_content_width(
+            self.sidebar_width,
+            self.sidebar_scale_factor,
+            self.sidebar_window_width_px,
+            self.secondary_sidebar_floor(),
+            self.activity_bar_width_px(),
+        ) * self.sidebar_scale_factor
+    }
+
     pub(crate) fn sidebar_width_px(&self) -> f32 {
         let bar = self.activity_bar_width_px();
         let content = effective_sidebar_content_width(
             self.sidebar_width,
             self.sidebar_scale_factor,
             self.sidebar_window_width_px,
-            self.secondary_sidebar_width(),
+            self.primary_yields_to(),
             bar,
         );
         if self.activity_bar_preferences.primary_sidebar_right {
@@ -117,6 +154,7 @@ impl App {
     }
 
     pub(crate) fn resize_sidebar_from_pointer(&mut self, pointer_x: f32) {
+        self.sidebar_priority_primary = true;
         let scale = self.sidebar_scale_factor;
         let raw_width = if self.activity_bar_preferences.primary_sidebar_right {
             (self.sidebar_window_width_px - pointer_x) / scale
@@ -126,7 +164,7 @@ impl App {
         let available = max_sidebar_content_width(
             scale,
             self.sidebar_window_width_px,
-            self.secondary_sidebar_width(),
+            self.secondary_sidebar_floor(),
         );
         self.sidebar_width = if available >= config::MIN_SIDEBAR_WIDTH {
             config::clamp_sidebar_width(raw_width).min(available)
@@ -151,6 +189,7 @@ impl App {
     }
 
     pub(crate) fn resize_secondary_sidebar_from_pointer(&mut self, pointer_x: f32) {
+        self.sidebar_priority_primary = false;
         let width = if self.activity_bar_preferences.primary_sidebar_right {
             pointer_x - self.secondary_sidebar_x(self.sidebar_window_width_px)
         } else {
@@ -415,7 +454,8 @@ fn max_sidebar_content_width(scale: f32, window_width_px: f32, right_sidebar_wid
     let window_width = window_width_px / scale;
     let activity_width = ACTIVITY_BAR_WIDTH / scale;
     let maximum_by_percentage = window_width * 0.70 - activity_width;
-    let maximum_by_editor = window_width - activity_width - right_sidebar_width_px / scale - 320.0;
+    let maximum_by_editor =
+        window_width - activity_width - right_sidebar_width_px / scale - MIN_EDITOR_WIDTH;
     maximum_by_percentage
         .min(maximum_by_editor)
         .clamp(0.0, config::MAX_PERSISTED_SIDEBAR_WIDTH)
