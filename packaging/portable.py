@@ -41,6 +41,21 @@ def run(args, directory, env=None):
     subprocess.run(args, cwd=directory, env=env, check=True)
 
 
+def extract_regular_files(archive, destination):
+    """Extracts only the regular files and directories of a tar archive into `destination`."""
+    with tarfile.open(archive) as source:
+        members = [entry for entry in source if entry.isfile() or entry.isdir()]
+        if getattr(tarfile, "data_filter", None):
+            source.extractall(destination, members=members, filter="data")
+            return
+        # Python before 3.11.4 (the system Python of Debian 12) has no extraction filters.
+        root = Path(destination).resolve()
+        for entry in members:
+            if not (root / entry.name).resolve().is_relative_to(root):
+                raise ValueError("Archive path escapes extraction directory")
+        source.extractall(destination, members=members)
+
+
 def prune_native_build(module):
     """Keeps only the compiled `build/Release/*.node` files of a rebuilt native module.
 
@@ -72,10 +87,7 @@ def build(cache, runtime, work, windows):
         SOURCE_HASH,
     )
     shutil.unpack_archive(node_archive, work)
-    with tarfile.open(source_archive) as source:
-        # The host build only needs regular source files and directories.
-        source.extractall(work, members=(entry for entry in source if entry.isfile() or entry.isdir()),
-                          filter="data")
+    extract_regular_files(source_archive, work)
     node_home = work / f"node-v{NODE}-{node_suffix.split('.')[0]}"
     node_bin = node_home if windows else node_home / "bin"
     node = node_bin / ("node.exe" if windows else "node")

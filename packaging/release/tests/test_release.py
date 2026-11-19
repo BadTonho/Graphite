@@ -459,6 +459,48 @@ class PackageTests(unittest.TestCase):
         self.assertEqual((module / "build/Release/spdlog.node").read_bytes(), b"binary")
         portable.prune_native_build(self.root / "without-build")  # nothing to do, no error
 
+    def test_tar_archives_extract_safely_without_python_extraction_filters(self):
+        # Debian 12 ships a Python whose tarfile has no `filter` argument.
+        def tar_with(path, name, kind=tarfile.REGTYPE, link=""):
+            with tarfile.open(path, "w:gz") as output:
+                entry = tarfile.TarInfo(name)
+                entry.type, entry.linkname = kind, link
+                entry.size = 1 if kind == tarfile.REGTYPE else 0
+                output.addfile(entry, io.BytesIO(b"x") if kind == tarfile.REGTYPE else None)
+        with patch.object(tarfile, "data_filter", None):
+            for name, kind, link in (("../escaped.txt", tarfile.REGTYPE, ""),
+                                     ("bundle/link", tarfile.SYMTYPE, "../../outside"),
+                                     ("bundle/device", tarfile.CHRTYPE, "")):
+                archive = self.root / "unsafe.tar.gz"
+                tar_with(archive, name, kind, link)
+                extraction = self.root / "no-filter-unsafe"
+                extraction.mkdir(exist_ok=True)
+                with self.assertRaises(ValueError, msg=name):
+                    packages.unpack(archive, extraction)
+                with self.assertRaises(ValueError, msg=name):
+                    if kind == tarfile.REGTYPE:
+                        portable.extract_regular_files(archive, extraction)
+                    else:
+                        raise ValueError("only path traversal applies to the source extractor")
+            safe = self.root / "safe.tar.gz"
+            with tarfile.open(safe, "w:gz") as output:
+                for name, data in (("bundle/graphite", b"binary"), ("bundle/code", b"c"),
+                                   ("bundle/graphite-extension-host", b"h"),
+                                   ("bundle/code-oss/commit", b"c"),
+                                   ("bundle/THIRD_PARTY_NOTICES.txt", b"n"),
+                                   ("bundle/licenses/icon-font/NOTICE.md", b"f")):
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(data)
+                    output.addfile(entry, io.BytesIO(data))
+            extraction = self.root / "no-filter-safe"
+            extraction.mkdir()
+            bundle = packages.unpack(safe, extraction)
+            self.assertEqual((bundle / "graphite").read_bytes(), b"binary")
+            sources = self.root / "sources"
+            sources.mkdir()
+            portable.extract_regular_files(safe, sources)
+            self.assertEqual((sources / "bundle/code-oss/commit").read_bytes(), b"c")
+
     def test_complete_portable_archive_preserves_helpers_and_installs_license(self):
         archive = self.root / "complete.zip"
         with zipfile.ZipFile(archive, "w") as output:

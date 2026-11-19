@@ -41,6 +41,21 @@ def is_linux_x64_glibc_binary(path):
         and int.from_bytes(header[18:20], "little") == 0x3E
 
 
+def check_tar_members(package, destination):
+    """Refuses members that would land outside `destination` or are not files, folders or links."""
+    root = destination.resolve()
+    for member in package.getmembers():
+        target = (root / member.name).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError("Archive path escapes extraction directory")
+        if member.issym() or member.islnk():
+            base = target.parent if member.issym() else root
+            if not (base / member.linkname).resolve().is_relative_to(root):
+                raise ValueError("Archive link escapes extraction directory")
+        elif not (member.isfile() or member.isdir()):
+            raise ValueError("Archive contains an unsupported entry type")
+
+
 def unpack(archive, destination):
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as package:
@@ -51,7 +66,12 @@ def unpack(archive, destination):
             package.extractall(destination)
     else:
         with tarfile.open(archive) as package:
-            package.extractall(destination, filter="data")
+            if getattr(tarfile, "data_filter", None):
+                package.extractall(destination, filter="data")
+            else:
+                # Python before 3.11.4 (the system Python of Debian 12) has no extraction filters.
+                check_tar_members(package, destination)
+                package.extractall(destination)
     directories = list(destination.iterdir())
     if len(directories) != 1 or not directories[0].is_dir():
         raise ValueError("Portable archive must contain exactly one directory")
