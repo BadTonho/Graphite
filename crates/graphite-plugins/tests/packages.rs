@@ -190,14 +190,40 @@ fn vsix_installation_and_version_approval_do_not_run_code() {
 #[test]
 fn package_limits_reject_expansion_entries_and_special_files() {
     let temp = Temp::new();
-    let path = temp.0.join("large.vsix");
-    // Declared expanded size is checked before any decompression.
-    zip(&path, &[("x", b"a")]);
+    let path = temp.0.join("large.VSIX");
+    let manifest = br#"{"publisher":"example","name":"large","version":"1.0.0"}"#;
+    zip(
+        &path,
+        &[
+            ("extension/package.json", manifest),
+            ("a", b"a"),
+            ("b", b"b"),
+        ],
+    );
     let mut bytes = fs::read(&path).unwrap();
-    let central = bytes.windows(4).position(|w| w == b"PK\x01\x02").unwrap();
-    bytes[central + 24..central + 28].copy_from_slice(&(501u32 * 1024 * 1024).to_le_bytes());
+    let entries: Vec<_> = bytes
+        .windows(4)
+        .enumerate()
+        .filter_map(|(offset, sig)| (sig == b"PK\x01\x02").then_some(offset))
+        .collect();
+    let half = 2u32 * 1024 * 1024 * 1024;
+    for (offset, size) in [
+        (entries[1], half),
+        (entries[2], half - manifest.len() as u32),
+    ] {
+        bytes[offset + 24..offset + 28].copy_from_slice(&size.to_le_bytes());
+    }
+    // Inspection uses the central directory size and reads only the manifest.
+    fs::write(&path, &bytes).unwrap();
+    assert!(package::inspect(&path).is_ok());
+    let native = temp.0.join("large.graphite-plugin");
+    fs::write(&native, &bytes).unwrap();
+    assert!(package::inspect(&native).unwrap_err().contains("500 MiB"));
+    let second = entries[2];
+    bytes[second + 24..second + 28]
+        .copy_from_slice(&(half - manifest.len() as u32 + 1).to_le_bytes());
     fs::write(&path, bytes).unwrap();
-    assert!(package::inspect(&path).unwrap_err().contains("500 MiB"));
+    assert!(package::inspect(&path).unwrap_err().contains("4 GiB"));
     let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
     writer
         .add_symlink(
@@ -216,6 +242,45 @@ fn package_limits_reject_expansion_entries_and_special_files() {
     }
     writer.finish().unwrap();
     assert!(package::inspect(&path).unwrap_err().contains("too many"));
+}
+
+#[test]
+fn reviewed_update_cannot_overwrite_a_changed_installation() {
+    let temp = Temp::new();
+    let path = temp.0.join("sample.vsix");
+    let store = Store::new(temp.0.join("store"));
+    let write_version = |version: &str| {
+        let manifest = format!(r#"{{"publisher":"example","name":"test","version":"{version}"}}"#);
+        zip(&path, &[("extension/package.json", manifest.as_bytes())]);
+    };
+    write_version("1.0.0");
+    let initial = store.install(&path).unwrap();
+    store.enable("example.test", true).unwrap();
+    write_version("2.0.0");
+    assert!(store
+        .install_update(&path, "example.test", &initial.directory, "3.0.0")
+        .is_err());
+    assert_eq!(
+        store.get("example.test").unwrap().directory,
+        initial.directory
+    );
+    assert!(store.get("example.test").unwrap().enabled);
+    write_version("1.1.0");
+    let replacement = store.install(&path).unwrap();
+    write_version("2.0.0");
+    assert!(store
+        .install_update(&path, "example.test", &initial.directory, "2.0.0")
+        .is_err());
+    assert_eq!(
+        store.get("example.test").unwrap().directory,
+        replacement.directory
+    );
+    let updated = store
+        .install_update(&path, "example.test", &replacement.directory, "2.0.0")
+        .unwrap();
+    assert_eq!(updated.metadata.version(), "2.0.0");
+    assert!(!updated.enabled);
+    assert!(updated.trusted_version.is_none());
 }
 #[test]
 fn missing_node_has_an_actionable_error() {

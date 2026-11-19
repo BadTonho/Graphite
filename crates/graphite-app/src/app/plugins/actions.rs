@@ -1,7 +1,7 @@
 use super::*;
 impl App {
     pub(super) fn plugin_action(&mut self, action: char) {
-        if self.plugins.worker.is_some() {
+        if self.plugins.worker.is_some() || self.plugins.bisect.is_some() {
             return;
         }
         if action == 'o' || action == 'i' || action == 'g' {
@@ -59,32 +59,7 @@ impl App {
                 };
                 let (namespace, name) = (namespace.to_owned(), name.to_owned());
                 let installed_version = record.metadata.version().to_owned();
-                let root = self.plugins.store.as_ref().unwrap().root.clone();
-                let destination = root.join(format!(
-                    ".open-vsx-update-{}-{}.vsix",
-                    std::process::id(),
-                    self.plugins.next_session
-                ));
-                self.plugins.temporary = Some(destination.clone());
-                self.plugin_job(move |_| {
-                    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-                    let result = (|| {
-                        let registry = graphite_plugins::open_vsx::Registry::new()?;
-                        let latest = registry.download_latest(&namespace, &name, &destination)?;
-                        if latest.version == installed_version {
-                            let _ = std::fs::remove_file(&destination);
-                            return Ok(Outcome::Notice(format!(
-                                "{namespace}.{name} is already up to date ({installed_version})"
-                            )));
-                        }
-                        let metadata = graphite_plugins::package::inspect(&destination)?;
-                        Ok(Outcome::Preview(destination.clone(), metadata))
-                    })();
-                    if result.is_err() {
-                        let _ = std::fs::remove_file(destination);
-                    }
-                    result
-                });
+                self.update_one_plugin(namespace, name, installed_version, record.directory);
             }
             'e' if !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()) => {
                 if record.trusted_version.as_deref() != Some(record.metadata.version()) {
@@ -128,26 +103,13 @@ impl App {
     }
     /// Downloads the latest version of an Open VSX extension and shows it for approval.
     fn download_open_vsx_preview(&mut self, namespace: String, name: String) {
-        let Some(root) = self.plugins.store.as_ref().map(|store| store.root.clone()) else {
-            return;
-        };
-        let destination = root.join(format!(
-            ".open-vsx-{}-{}.vsix",
-            std::process::id(),
-            self.plugins.next_session
-        ));
-        self.plugins.temporary = Some(destination.clone());
-        self.plugin_job(move |_| {
-            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        self.plugin_job(move |store| {
+            let download = new_plugin_download(&store.root)?;
+            let destination = download.path().join("package.vsix");
             let registry = graphite_plugins::open_vsx::Registry::new()?;
             registry.download_latest(&namespace, &name, &destination)?;
-            match graphite_plugins::package::inspect(&destination) {
-                Ok(metadata) => Ok(Outcome::Preview(destination, metadata)),
-                Err(error) => {
-                    let _ = std::fs::remove_file(destination);
-                    Err(error)
-                }
-            }
+            let metadata = graphite_plugins::package::inspect(&destination)?;
+            Ok(Outcome::Preview(download, destination, metadata))
         });
     }
 
@@ -184,6 +146,9 @@ impl App {
         &mut self,
         id: &str,
     ) -> std::result::Result<(), String> {
+        if self.plugins.bisect.is_some() {
+            return Err(self.t("plugins.toolbar.busy").into());
+        }
         let (namespace, name) = id
             .split_once('.')
             .filter(|(namespace, name)| {
@@ -207,6 +172,9 @@ impl App {
         {
             return Err(self.tf("plugins.not_installed", &[("id", &id)]));
         }
+        if self.plugins.bisect.is_some() || self.plugins.worker.is_some() {
+            return Err(self.t("plugins.toolbar.busy").into());
+        }
         let id = id.to_owned();
         self.stop_plugin(&id);
         self.plugin_job(move |store| {
@@ -218,6 +186,9 @@ impl App {
 
     /// Disables every enabled extension.
     pub(crate) fn plugins_disable_all(&mut self) {
+        if self.plugins.bisect.is_some() {
+            return;
+        }
         let enabled: Vec<String> = self
             .plugins
             .installed
@@ -229,29 +200,52 @@ impl App {
             self.plugins.message = self.t("plugins.none_enabled").into();
             return;
         }
-        for id in &enabled {
-            self.stop_plugin(id);
+        if self.plugins.worker.is_some() {
+            return;
         }
+        self.plugins.trust_queue.clear();
+        self.plugins.trust = None;
         self.plugin_job(move |store| {
+            let mut failed = 0;
             for id in &enabled {
-                store.disable(id)?;
+                if store.disable(id).is_err() {
+                    failed += 1;
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Medium,
+                        "plugins.disable_all",
+                        format!("Could not disable {id}"),
+                    );
+                }
             }
-            Ok(Outcome::Refreshed(store.list()?))
+            Ok(Outcome::BulkChanged(store.list()?, failed))
         });
     }
 
-    /// Enables every disabled extension that was already trusted at its installed version.
-    /// The others need the trust prompt, so they are left disabled.
+    /// Enables approved versions and queues individual reviews for executable code.
     pub(crate) fn plugins_enable_all(&mut self) {
+        if self.plugins.worker.is_some() || self.plugins.bisect.is_some() {
+            return;
+        }
+        self.plugins.trust_queue = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|record| !record.enabled)
+            .filter(|record| record.trusted_version.as_deref() != Some(record.metadata.version()))
+            .filter(
+                |record| !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()),
+            )
+            .map(|record| record.metadata.id().to_owned())
+            .collect();
         let candidates: Vec<(String, String, bool)> = self
             .plugins
             .installed
             .iter()
             .filter(|record| !record.enabled)
-            .filter(|record| record.trusted_version.as_deref() == Some(record.metadata.version()))
-            .filter(
-                |record| !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()),
-            )
+            .filter(|record| {
+                record.trusted_version.as_deref() == Some(record.metadata.version())
+                    || matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none())
+            })
             .map(|record| {
                 (
                     record.metadata.id().to_owned(),
@@ -261,8 +255,16 @@ impl App {
             })
             .collect();
         if candidates.is_empty() {
-            self.plugins.message = self.t("plugins.none_to_enable").into();
+            if self.plugins.trust_queue.is_empty() {
+                self.plugins.message = self.t("plugins.none_to_enable").into();
+            } else {
+                self.open_plugins();
+                self.poll_plugin_trust_queue();
+            }
             return;
+        }
+        if !self.plugins.trust_queue.is_empty() {
+            self.open_plugins();
         }
         let mut stopped_vsix = false;
         for (id, _, native) in &candidates {
@@ -274,11 +276,36 @@ impl App {
             }
         }
         self.plugin_job(move |store| {
+            let mut failed = 0;
             for (id, directory, _) in &candidates {
-                store.enable_installation(id, directory, true)?;
+                if store.enable_installation(id, directory, true).is_err() {
+                    failed += 1;
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Medium,
+                        "plugins.enable_all",
+                        format!("Could not enable {id}"),
+                    );
+                }
             }
-            Ok(Outcome::Refreshed(store.list()?))
+            Ok(Outcome::BulkChanged(store.list()?, failed))
         });
+    }
+
+    pub(super) fn poll_plugin_trust_queue(&mut self) {
+        if self.plugins.worker.is_none()
+            && self.plugins.visible
+            && self.plugins.focused
+            && !self.plugins.editing
+            && !self.plugin_details_open()
+            && self.plugins.toolbar_menu.is_none()
+        {
+            if let Some(id) = self.plugins.trust_queue.pop_front() {
+                self.plugins.trust = Some(id);
+                if let Some(gpu) = &self.gpu {
+                    gpu.window.request_redraw();
+                }
+            }
+        }
     }
 
     pub(super) fn enable_plugin(&mut self, id: String) {
@@ -303,13 +330,18 @@ impl App {
     }
 
     fn queue_graphite_asset_download(&mut self, asset: graphite_plugins::catalog::Asset) {
-        let root = self.plugins.store.as_ref().unwrap().root.clone();
-        let destination = graphite_asset_destination(&root, self.plugins.next_session, &asset);
-        self.plugins.next_session += 1;
-        self.plugins.temporary = Some(destination.clone());
-        self.plugin_job(move |_| {
+        self.plugin_job(move |store| {
+            let download = new_plugin_download(&store.root)?;
+            let filename = if asset.name.ends_with(".graphite-plugin") {
+                "package.graphite-plugin"
+            } else {
+                "package.vsix"
+            };
+            let destination = download.path().join(filename);
             let mut catalog = graphite_plugins::catalog::Catalog::new()?;
-            download_graphite_asset(&mut catalog, &asset, &destination)
+            catalog.download(&asset, &destination)?;
+            let metadata = graphite_plugins::package::inspect(&destination)?;
+            Ok(Outcome::Preview(download, destination, metadata))
         });
     }
 
@@ -418,39 +450,4 @@ impl App {
             self.queue_graphite_asset_download(asset);
         }
     }
-}
-
-fn graphite_asset_destination(
-    root: &std::path::Path,
-    session: u64,
-    asset: &graphite_plugins::catalog::Asset,
-) -> std::path::PathBuf {
-    let extension = if asset.name.ends_with(".graphite-plugin") {
-        ".graphite-plugin"
-    } else {
-        ".vsix"
-    };
-    root.join(format!(
-        ".github-plugin-{}-{session}{extension}",
-        std::process::id()
-    ))
-}
-
-fn download_graphite_asset(
-    catalog: &mut graphite_plugins::catalog::Catalog,
-    asset: &graphite_plugins::catalog::Asset,
-    destination: &std::path::Path,
-) -> Result<Outcome> {
-    if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let result = (|| {
-        catalog.download(asset, destination)?;
-        let metadata = graphite_plugins::package::inspect(destination)?;
-        Ok(Outcome::Preview(destination.to_path_buf(), metadata))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(destination);
-    }
-    result
 }

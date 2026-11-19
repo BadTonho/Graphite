@@ -38,6 +38,36 @@ fn plugin_cli_creates_project_rejects_unbuilt_entry_and_packages_without_opening
     assert!(!cli(&["plugin", "unknown", "example"]).status.success());
 
     let store_dir = root.join("store");
+    let vsix = root.join("fixture.vsix");
+    {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(fs::File::create(&vsix).unwrap());
+        zip.start_file(
+            "extension/package.json",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(br#"{"publisher":"fixture","name":"vsix","version":"1.0.0"}"#)
+            .unwrap();
+        zip.finish().unwrap();
+    }
+    let installed = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .current_dir(&root)
+        .env("GRAPHITE_PLUGIN_STORE", &store_dir)
+        .args(["plugin", "install", "fixture.vsix"])
+        .output()
+        .unwrap();
+    assert!(
+        installed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&installed.stderr)
+    );
+    let record = graphite_plugins::store::Store::new(store_dir.clone())
+        .get("fixture.vsix")
+        .unwrap();
+    assert!(!record.enabled);
+    assert!(record.trusted_version.is_none());
+
     let dev_output = Command::new(env!("CARGO_BIN_EXE_graphite"))
         .current_dir(&root)
         .env("GRAPHITE_PLUGIN_STORE", &store_dir)

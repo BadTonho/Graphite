@@ -63,17 +63,14 @@ fn ext_open_folder(app: &mut App, _: &CommandInvocation) -> Result<(), CommandEr
 }
 
 fn ext_check_updates(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.plugins_show_installed();
-    app.status = format!(
-        "{} extension(s) checked for updates",
-        app.plugins.installed.len()
-    );
+    app.open_plugins();
+    app.plugins_check_updates();
     Ok(())
 }
 
 fn ext_update_all(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.plugins_show_installed();
-    app.status = format!("{} extension(s) up to date", app.plugins.installed.len());
+    app.open_plugins();
+    app.plugins_update_all();
     Ok(())
 }
 

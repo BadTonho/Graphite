@@ -229,7 +229,40 @@ impl Store {
         result
     }
     pub fn install(&self, package_path: &Path) -> Result<Installed> {
+        self.install_package(package_path, None, None)
+    }
+
+    pub fn install_reviewed(
+        &self,
+        package_path: &Path,
+        id: &str,
+        version: &str,
+    ) -> Result<Installed> {
+        self.install_package(package_path, Some((id, version)), None)
+    }
+
+    pub fn install_update(
+        &self,
+        package_path: &Path,
+        id: &str,
+        directory: &str,
+        version: &str,
+    ) -> Result<Installed> {
+        self.install_package(package_path, Some((id, version)), Some(directory))
+    }
+
+    fn install_package(
+        &self,
+        package_path: &Path,
+        reviewed: Option<(&str, &str)>,
+        replace_directory: Option<&str>,
+    ) -> Result<Installed> {
         let metadata = package::inspect(package_path)?;
+        if reviewed
+            .is_some_and(|(id, version)| metadata.id() != id || metadata.version() != version)
+        {
+            return Err("Package no longer matches the reviewed version".into());
+        }
         fs::create_dir_all(&self.root).map_err(|e| e.to_string())?;
         let unique = format!(
             "{}@{}-{}-{}",
@@ -253,7 +286,7 @@ impl Store {
                 directory: unique,
                 dev_path: None,
             };
-            self.publish(&record, None)?;
+            self.publish(&record, replace_directory)?;
             // Old immutable directories are deliberately retained until removal; a live host may own one.
             Ok(record)
         })();

@@ -1,4 +1,4 @@
-use crate::{Result, MAX_DOWNLOAD};
+use crate::{download_limit, is_vsix, size_limit_label, Result};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::{
@@ -99,6 +99,7 @@ impl Catalog {
         }
         let mut builder = Client::builder()
             .user_agent("Graphite-Plugins/0.1")
+            .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30));
         if is_loopback {
             builder = builder.no_proxy();
@@ -111,15 +112,23 @@ impl Catalog {
         })
     }
     fn get_raw(&mut self, url: &str) -> Result<reqwest::blocking::Response> {
+        self.get_raw_with_timeout(url, Duration::from_secs(30))
+    }
+    fn get_raw_with_timeout(
+        &mut self,
+        url: &str,
+        timeout: Duration,
+    ) -> Result<reqwest::blocking::Response> {
         if self.blocked_until.is_some_and(|t| Instant::now() < t) {
             return Err("GitHub rate limit reached; retry later".into());
         }
         let response = self
             .client
             .get(url)
+            .timeout(timeout)
             .header("Accept", "application/vnd.github+json")
             .send()
-            .map_err(|e| format!("{e:#}"))?;
+            .map_err(|error| format!("{:#}", error.without_url()))?;
         if response.status().as_u16() == 429
             || response
                 .headers()
@@ -215,7 +224,7 @@ impl Catalog {
         Ok(release
             .assets
             .into_iter()
-            .filter(|a| a.name.ends_with(".graphite-plugin") || a.name.ends_with(".vsix"))
+            .filter(|a| a.name.ends_with(".graphite-plugin") || is_vsix(Path::new(&a.name)))
             .collect())
     }
 
@@ -303,7 +312,7 @@ impl Catalog {
                         .into_iter()
                         .filter(|asset| {
                             asset.name.ends_with(".graphite-plugin")
-                                || asset.name.ends_with(".vsix")
+                                || is_vsix(Path::new(&asset.name))
                         })
                         .collect::<Vec<_>>();
                     let downloads = assets.iter().map(|asset| asset.download_count).sum();
@@ -333,15 +342,22 @@ impl Catalog {
         {
             return Err("Expected GitHub HTTPS release asset".into());
         }
-        if asset.size > MAX_DOWNLOAD {
-            return Err("Asset exceeds 100 MiB".into());
+        let vsix = is_vsix(Path::new(&asset.name));
+        let limit = download_limit(vsix);
+        let label = size_limit_label(vsix);
+        if asset.size > limit {
+            return Err(format!("Asset exceeds {label}"));
         }
-        let response = self.get(url.as_str())?;
+        let timeout = Duration::from_secs(if vsix { 30 * 60 } else { 30 });
+        let response = self
+            .get_raw_with_timeout(url.as_str(), timeout)?
+            .error_for_status()
+            .map_err(|error| error.without_url().to_string())?;
         if self.base.starts_with("https:") {
             validate_release_asset_final_url(response.url())?;
         }
-        if response.content_length().is_some_and(|n| n > MAX_DOWNLOAD) {
-            return Err("Download exceeds 100 MiB".into());
+        if response.content_length().is_some_and(|n| n > limit) {
+            return Err(format!("Download exceeds {label}"));
         }
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -349,9 +365,9 @@ impl Catalog {
             .open(destination)
             .map_err(|e| e.to_string())?;
         let result = (|| {
-            let count = std::io::copy(&mut response.take(MAX_DOWNLOAD + 1), &mut file)
+            let count = std::io::copy(&mut response.take(limit + 1), &mut file)
                 .map_err(|e| e.to_string())?;
-            if count > MAX_DOWNLOAD || count != asset.size {
+            if count > limit || count != asset.size {
                 return Err("Incomplete or oversized download".into());
             }
             file.sync_all().map_err(|e| e.to_string())

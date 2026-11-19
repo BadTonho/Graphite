@@ -10,12 +10,15 @@ use graphite_plugins::{
 use std::{collections::BTreeMap, sync::mpsc, time::Instant};
 mod accessibility;
 mod actions;
+mod bisect;
 pub(crate) mod drawing;
 mod layout;
 mod panel;
 mod runtime;
 #[cfg(test)]
 mod tests;
+mod toolbar;
+mod updates;
 pub(crate) mod vsix;
 use layout::PluginsTab;
 pub(crate) use vsix::eligible as vsix_extension_runnable;
@@ -24,15 +27,21 @@ pub(crate) use vsix::{file_changes, DecorationMark, FileChange, VsixLanguageFeat
 
 // Outcomes are short-lived messages from a worker thread; boxing the runtime would only add a hop.
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum Outcome {
+enum Outcome {
     Refreshed(Vec<Installed>),
+    Installed(String, Result<Vec<Installed>>),
+    BulkChanged(Vec<Installed>, usize),
+    SidebarReload(Vec<Installed>, Option<Result<updates::SearchResults>>),
+    UpdatesChecked(updates::CheckResult),
+    UpdatePreview(updates::DownloadedUpdate),
+    LocalPreview(PathBuf, Metadata),
     OpenVsx(Vec<Extension>),
     Graphite(Vec<Repository>),
     /// Handled when received; the sidebar does not request the asset list yet.
     #[cfg_attr(not(test), allow(dead_code))]
     GraphiteAssets(Repository, Vec<Asset>),
     GraphiteDetails(String, RepositoryDetails),
-    Preview(PathBuf, Metadata),
+    Preview(tempfile::TempDir, PathBuf, Metadata),
     Notice(String),
     Started(String, u64, super::extension_host::ExtensionRuntime),
 }
@@ -67,7 +76,14 @@ pub(crate) struct Plugins {
     starting: Option<String>,
     trust_generation: u64,
     errors: BTreeMap<String, String>,
-    temporary: Option<PathBuf>,
+    temporary: Option<tempfile::TempDir>,
+    downloaded_update: Option<updates::DownloadedUpdate>,
+    update_state: updates::UpdateState,
+    toolbar_menu: Option<toolbar::Menu>,
+    toolbar_focus: Option<usize>,
+    bisect: Option<bisect::Bisect>,
+    running_scroll: Option<usize>,
+    trust_queue: std::collections::VecDeque<String>,
     pub(crate) vsix: Option<vsix::Runtime>,
     vsix_generation: u64,
     /// Set while the extension host's messages are being handled (its runtime is taken out).
@@ -118,9 +134,6 @@ impl Drop for Plugins {
                 supervisor.shutdown();
             }
         }
-        if let Some(path) = self.temporary.take() {
-            let _ = std::fs::remove_file(path);
-        }
     }
 }
 impl App {
@@ -132,6 +145,10 @@ impl App {
         self.plugins.store = None;
         self.plugins.installed.clear();
         self.leave_plugin_details();
+        self.plugins.update_state = Default::default();
+        self.plugins.bisect = None;
+        self.plugins.running_scroll = None;
+        self.plugins.trust_queue.clear();
         self.initialize_plugins();
     }
 
@@ -174,6 +191,7 @@ impl App {
 
     pub(crate) fn initialize_plugins(&mut self) {
         self.plugins.store = Some(Store::new(self.profile_root.join("plugins")));
+        self.load_plugin_auto_updates();
         self.plugin_job(|store| Ok(Outcome::Refreshed(store.list()?)));
     }
     #[cfg(test)]
@@ -205,13 +223,11 @@ impl App {
     }
     pub(crate) fn close_plugins(&mut self) {
         self.leave_plugin_details();
+        self.plugins.running_scroll = None;
         self.plugins.visible = false;
         self.plugins.focused = false;
     }
-    pub(super) fn plugin_job(
-        &mut self,
-        job: impl FnOnce(Store) -> Result<Outcome> + Send + 'static,
-    ) {
+    fn plugin_job(&mut self, job: impl FnOnce(Store) -> Result<Outcome> + Send + 'static) {
         if self.plugins.worker.is_some() {
             return;
         }
@@ -254,4 +270,12 @@ impl App {
             PluginsTab::Installed => {}
         }
     }
+}
+
+fn new_plugin_download(root: &Path) -> Result<tempfile::TempDir> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    tempfile::Builder::new()
+        .prefix(".plugin-download-")
+        .tempdir_in(root)
+        .map_err(|error| error.to_string())
 }

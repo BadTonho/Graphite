@@ -77,6 +77,7 @@ impl ApplicationHandler<UserEvent> for App {
             .autosave_deadlines
             .values()
             .map(|(_, deadline)| *deadline)
+            .chain(self.plugin_auto_update_deadline())
             .min();
         event_loop.set_control_flow(
             if self.saving.pending()

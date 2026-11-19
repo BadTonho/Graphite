@@ -166,6 +166,7 @@ impl App {
             return;
         }
         if self.plugins.visible {
+            self.dismiss_plugin_menu();
             self.plugins.focused = false;
         }
 

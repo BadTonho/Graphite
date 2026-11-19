@@ -5,7 +5,6 @@ impl App {
         let content = NodeId(0x6000000000000000);
         let mut window = Node::new(Role::Window);
         window.set_label(self.t("plugins.window_title"));
-        window.set_children(vec![content]);
         let mut panel = Node::new(Role::Label);
         let selected = match self.plugins.tab {
             PluginsTab::OpenVsx => self
@@ -66,7 +65,9 @@ impl App {
                 )
             }),
         };
-        let prompt = if let Some((_, m)) = &self.plugins.preview {
+        let prompt = if self.plugins.running_scroll.is_some() {
+            self.plugin_running_summary()
+        } else if let Some((_, m)) = &self.plugins.preview {
             self.tf(
                 "plugins.accessibility.install_prompt",
                 &[("id", &m.id()), ("version", &m.version())],
@@ -105,11 +106,33 @@ impl App {
             "plugins.accessibility.panel",
             &[("prompt", &prompt), ("message", &self.plugins.message)],
         ));
+        let mut children = vec![content];
+        let mut nodes = vec![(content, panel)];
+        for (index, (action, name)) in self.plugin_toolbar_nodes().into_iter().enumerate() {
+            let id = NodeId(super::toolbar::ACTION_NODE_BASE + index as u64);
+            let mut button = Node::new(Role::Button);
+            button.set_label(name);
+            if self.plugin_toolbar_enabled(action) {
+                button.add_action(accesskit::Action::Click);
+            } else {
+                button.set_disabled();
+            }
+            children.push(id);
+            nodes.push((id, button));
+        }
+        let action_count = children.len() - 1;
+        window.set_children(children);
+        nodes.push((root, window));
         TreeUpdate {
-            nodes: vec![(root, window), (content, panel)],
+            nodes,
             tree: Some(Tree::new(root)),
             tree_id: accesskit::TreeId::ROOT,
-            focus: content,
+            focus: self
+                .plugin_toolbar_accessibility_focus()
+                .filter(|index| *index < action_count)
+                .map_or(content, |index| {
+                    NodeId(super::toolbar::ACTION_NODE_BASE + index as u64)
+                }),
         }
     }
 }

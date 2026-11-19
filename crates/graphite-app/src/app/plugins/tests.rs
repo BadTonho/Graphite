@@ -511,6 +511,119 @@ fn app_without_network() -> (App, crate::test_support::TempDir) {
     (app, temp)
 }
 
+fn local_vsix(root: &Path, name: &str) -> PathBuf {
+    use std::io::Write;
+    let file = root.join(format!("{name}.vsix"));
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&file).unwrap());
+    zip.start_file(
+        "extension/package.json",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    write!(
+        zip,
+        r#"{{"publisher":"fixture","name":"{name}","version":"1.0.0"}}"#
+    )
+    .unwrap();
+    zip.finish().unwrap();
+    file
+}
+
+#[test]
+fn local_vsix_review_can_be_cancelled_or_installed_without_deleting_the_source() {
+    use super::toolbar::Action;
+    let (mut app, temp) = app_without_network();
+    app.plugins.worker = None;
+    app.open_plugins();
+    let file = local_vsix(temp.path(), "review");
+    app.inspect_local_plugin(file.clone());
+    pump(&mut app, |a| a.plugins.preview.is_some());
+    assert!(app
+        .plugin_toolbar_nodes()
+        .iter()
+        .any(|(action, _)| *action == Action::CancelInstall));
+    app.plugin_toolbar_action(Action::CancelInstall);
+    assert!(file.is_file());
+    assert!(app
+        .plugins
+        .store
+        .as_ref()
+        .unwrap()
+        .list()
+        .unwrap()
+        .is_empty());
+
+    app.inspect_local_plugin(file.clone());
+    pump(&mut app, |a| a.plugins.preview.is_some());
+    app.plugin_toolbar_action(Action::ConfirmInstall);
+    pump(&mut app, |a| !a.plugins.installed.is_empty());
+    assert!(!app.plugins.installed[0].enabled);
+    assert!(file.is_file());
+}
+
+#[test]
+fn toolbar_menu_is_accessible_and_refresh_preserves_search_text() {
+    use super::toolbar::{Action, ACTION_NODE_BASE};
+    let (mut app, temp) = app_without_network();
+    app.plugins.worker = None;
+    app.open_plugins();
+    assert!(app.plugin_toolbar_key(&Key::Named(NamedKey::Tab), false));
+    assert_eq!(app.plugin_accessibility().focus, NodeId(ACTION_NODE_BASE));
+    assert!(app.plugin_accessibility_click(ACTION_NODE_BASE + 2));
+    assert!(app
+        .plugin_toolbar_nodes()
+        .iter()
+        .any(|(action, _)| *action == Action::Views));
+    assert!(app.plugin_toolbar_key(&Key::Named(NamedKey::Enter), false));
+    assert!(app
+        .plugin_toolbar_nodes()
+        .iter()
+        .any(|(action, _)| *action == Action::Section(PluginsTab::Graphite)));
+    assert!(app.plugin_toolbar_key(&Key::Named(NamedKey::Escape), false));
+    assert!(app.plugin_toolbar_key(&Key::Named(NamedKey::Escape), false));
+    assert!(app.plugins.toolbar_menu.is_none());
+
+    let file = local_vsix(temp.path(), "refresh");
+    app.plugins.store.as_ref().unwrap().install(&file).unwrap();
+    app.plugins.query = "existing search".into();
+    app.plugin_toolbar_action(Action::Reload);
+    pump(&mut app, |a| !a.plugins.installed.is_empty());
+    assert_eq!(app.plugins.query, "existing search");
+}
+
+#[test]
+fn bisection_rounds_change_effective_plugins_and_cancel_preserves_disk_state() {
+    use super::toolbar::Action;
+    let (mut app, temp) = app_without_network();
+    app.plugins.worker = None;
+    app.open_plugins();
+    let store = app.plugins.store.clone().unwrap();
+    for name in ["a", "b", "c"] {
+        store.install(&local_vsix(temp.path(), name)).unwrap();
+    }
+    for id in ["fixture.a", "fixture.b"] {
+        store.enable(id, true).unwrap();
+    }
+    app.plugins.installed = store.list().unwrap();
+    app.plugin_toolbar_action(Action::Bisect);
+    assert!(!app.plugins.installed.iter().any(|r| r.enabled));
+    app.plugin_toolbar_action(Action::ProblemGone);
+    assert_eq!(
+        app.plugins.installed.iter().filter(|r| r.enabled).count(),
+        1
+    );
+    assert_eq!(
+        store.list().unwrap().iter().filter(|r| r.enabled).count(),
+        2
+    );
+    app.plugin_toolbar_action(Action::StopBisect);
+    assert_eq!(
+        app.plugins.installed.iter().filter(|r| r.enabled).count(),
+        2
+    );
+    assert!(!app.plugins.installed[2].enabled);
+}
+
 fn run_with_argument(app: &mut App, id: &str, argument: &str) -> CommandResult {
     let ticket = app.execute_command(CommandRequest {
         id: id.into(),

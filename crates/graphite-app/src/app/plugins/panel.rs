@@ -47,6 +47,8 @@ impl App {
         self.plugins.preview.is_some()
             || self.plugins.trust.is_some()
             || self.plugins.inspecting.is_some()
+            || self.plugins.running_scroll.is_some()
+            || self.plugins.bisect.is_some()
     }
 
     /// Geometry of the sidebar for the list that is open and the current state.
@@ -94,7 +96,15 @@ impl App {
     }
 
     pub(crate) fn scroll_plugins(&mut self, lines: i32) {
+        if self.scroll_plugin_menu(lines) {
+            return;
+        }
+        if self.plugins.running_scroll.is_some() {
+            self.scroll_running_plugins(lines);
+            return;
+        }
         if !self.plugins.visible
+            || self.plugins.bisect.is_some()
             || self.plugins.preview.is_some()
             || self.plugins.inspecting.is_some()
             || self.plugins.trust.is_some()
@@ -112,9 +122,15 @@ impl App {
         if !self.plugin_owns_keyboard() {
             return false;
         }
+        if !self.modifiers.control_key()
+            && !self.modifiers.alt_key()
+            && self.plugin_toolbar_key(&event.logical_key, self.modifiers.shift_key())
+        {
+            return true;
+        }
         if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
-            if self.plugins.preview.take().is_some() {
-                self.cleanup_plugin_download();
+            if self.plugins.preview.is_some() {
+                self.cancel_plugin_install();
             } else if self.plugins.graphite_assets.take().is_some() {
                 self.cleanup_plugin_download();
                 self.plugins.index = 0;
@@ -155,39 +171,24 @@ impl App {
         if self.plugins.inspecting.is_some() {
             return true;
         }
-        if let Some(id) = self.plugins.trust.clone() {
+        if self.plugins.trust.is_some() {
             if event
                 .logical_key
                 .to_text()
                 .is_some_and(|s| s.eq_ignore_ascii_case("y"))
             {
-                self.plugins.trust = None;
-                self.enable_plugin(id);
+                self.confirm_plugin_trust();
             }
             return true;
         }
-        if let Some((path, metadata)) = self.plugins.preview.clone() {
-            if event
-                .logical_key
-                .to_text()
-                .is_some_and(|s| s.eq_ignore_ascii_case("y"))
+        if self.plugins.preview.is_some() {
+            if matches!(event.logical_key, Key::Named(NamedKey::Enter))
+                || event
+                    .logical_key
+                    .to_text()
+                    .is_some_and(|s| s.eq_ignore_ascii_case("y"))
             {
-                self.stop_plugin(metadata.id());
-                let temporary = self.plugins.temporary.take();
-                self.plugins.preview = None;
-                self.plugins.tab = PluginsTab::Installed;
-                self.plugins.index = 0;
-                self.plugins.scroll = 0;
-                self.plugin_job(move |store| {
-                    let result = store
-                        .install(&path)
-                        .and_then(|_| store.list())
-                        .map(Outcome::Refreshed);
-                    if let Some(path) = temporary {
-                        let _ = std::fs::remove_file(path);
-                    }
-                    result
-                });
+                self.confirm_plugin_install();
             }
             return true;
         }
@@ -200,12 +201,7 @@ impl App {
                     self.plugins.editing = false;
                     if self.plugins.path_input {
                         let path = PathBuf::from(self.plugins.query.trim().trim_matches('"'));
-                        self.plugin_job(move |_| {
-                            Ok(Outcome::Preview(
-                                path.clone(),
-                                graphite_plugins::package::inspect(&path)?,
-                            ))
-                        });
+                        self.inspect_local_plugin(path);
                     } else {
                         if self.plugins.tab == PluginsTab::Installed {
                             self.plugins.tab = PluginsTab::OpenVsx;
@@ -249,8 +245,10 @@ impl App {
 
     /// Leaves detail/confirmation state without hiding the sidebar.
     pub(super) fn leave_plugin_details(&mut self) {
-        if self.plugins.preview.take().is_some() {
-            self.cleanup_plugin_download();
+        self.dismiss_plugin_menu();
+        self.plugins.running_scroll = None;
+        if self.plugins.preview.is_some() {
+            self.cancel_plugin_install();
         }
         self.plugins.trust = None;
         self.plugins.inspecting = None;
@@ -261,8 +259,8 @@ impl App {
     }
 
     pub(super) fn cleanup_plugin_download(&mut self) {
-        if let Some(path) = self.plugins.temporary.take() {
-            let _ = std::fs::remove_file(path);
+        if let Some(download) = self.plugins.temporary.take() {
+            close_plugin_download(download);
         }
     }
 
@@ -280,6 +278,9 @@ impl App {
             return;
         }
         self.focus_plugins();
+        if self.plugin_toolbar_click(&layout, lh, height, x, y) {
+            return;
+        }
         if self.plugins.worker.is_some() {
             return;
         }
@@ -324,5 +325,15 @@ impl App {
             self.plugins.index = index;
             self.plugin_action('\n');
         }
+    }
+}
+
+pub(super) fn close_plugin_download(download: tempfile::TempDir) {
+    if let Err(error) = download.close() {
+        crate::app::error_log::record(
+            crate::app::error_log::ErrorSeverity::Low,
+            "plugins.download.cleanup",
+            error.to_string(),
+        );
     }
 }

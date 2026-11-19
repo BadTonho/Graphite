@@ -1031,6 +1031,19 @@ fn main() {
                 graphite_plugins::package::pack(&cwd.join(directory))
                     .map(|path| path.display().to_string())
             }
+            [_, action, package] if action == "install" => {
+                graphite_plugins::store::Store::new(store_root())
+                    .install(&cwd.join(package))
+                    .map(|record| {
+                        cli_translator.format(
+                            "cli.plugin_installed",
+                            &[
+                                ("id", &record.metadata.id()),
+                                ("version", &record.metadata.version()),
+                            ],
+                        )
+                    })
+            }
             [_, action, directory] if action == "dev" => {
                 let target = cwd.join(directory);
                 graphite_plugins::store::Store::new(store_root())

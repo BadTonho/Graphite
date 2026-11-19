@@ -1,8 +1,18 @@
-use crate::{manifest::*, Result, MAX_DOWNLOAD};
+use crate::{
+    download_limit, is_vsix, manifest::*, size_limit_label, Result, MAX_DOWNLOAD, MAX_VSIX_EXPANDED,
+};
 use std::{collections::HashSet, fs, io::Read, path::Path};
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 const MAX_EXPANDED: u64 = 500 * 1024 * 1024;
 const MAX_ENTRIES: usize = 10_000;
+
+fn expanded_limit(path: &Path) -> u64 {
+    if is_vsix(path) {
+        MAX_VSIX_EXPANDED
+    } else {
+        MAX_EXPANDED
+    }
+}
 
 // Treat both Windows and POSIX separators consistently, even on Linux.
 pub fn safe_path(name: &str) -> bool {
@@ -36,8 +46,9 @@ fn with_archive<T>(
     f: impl FnOnce(&mut ZipArchive<fs::File>) -> Result<T>,
 ) -> Result<T> {
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
-    if file.metadata().map_err(|e| e.to_string())?.len() > MAX_DOWNLOAD {
-        return Err("Package exceeds 100 MiB".into());
+    let vsix = is_vsix(path);
+    if file.metadata().map_err(|e| e.to_string())?.len() > download_limit(vsix) {
+        return Err(format!("Package exceeds {}", size_limit_label(vsix)));
     }
     let mut zip = ZipArchive::new(file).map_err(|e| e.to_string())?;
     if zip.len() > MAX_ENTRIES {
@@ -64,8 +75,9 @@ fn with_archive<T>(
         size = size
             .checked_add(entry.size())
             .ok_or("Package size overflow")?;
-        if size > MAX_EXPANDED {
-            return Err("Package exceeds 500 MiB expanded".into());
+        if size > expanded_limit(path) {
+            let limit = if vsix { "4 GiB" } else { "500 MiB" };
+            return Err(format!("Package exceeds {limit} expanded"));
         }
         if !entry.is_dir() {
             files.insert(key);
@@ -116,7 +128,7 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
             }
             Ok(Metadata::Native(m))
         }
-        Some("vsix") => {
+        _ if is_vsix(path) => {
             let m = json(zip, "extension/package.json")?;
             let text = |key| {
                 m.get(key)
@@ -163,6 +175,7 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
 pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
     with_archive(path, |zip| {
         let m = metadata(zip, path)?;
+        let limit = expanded_limit(path);
         fs::create_dir(destination).map_err(|e| e.to_string())?;
         let mut total = 0u64;
         for i in 0..zip.len() {
@@ -180,13 +193,10 @@ pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
                 .create_new(true)
                 .open(&out)
                 .map_err(|e| e.to_string())?;
-            let n = std::io::copy(
-                &mut entry.by_ref().take(MAX_EXPANDED - total + 1),
-                &mut file,
-            )
-            .map_err(|e| e.to_string())?;
+            let n = std::io::copy(&mut entry.by_ref().take(limit - total + 1), &mut file)
+                .map_err(|e| e.to_string())?;
             total += n;
-            if total > MAX_EXPANDED || n != entry.size() {
+            if total > limit || n != entry.size() {
                 return Err("Invalid expanded package size".into());
             }
             drop(file);

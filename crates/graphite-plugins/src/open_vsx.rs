@@ -1,6 +1,6 @@
 //! Open VSX registry client. Downloaded VSIX files still pass through `package::inspect` and
 //! `Store::install`; registry metadata is never treated as trusted executable code.
-use crate::{package, Result, MAX_DOWNLOAD};
+use crate::{package, Result, MAX_VSIX_DOWNLOAD};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::{io::Read, path::Path, time::Duration};
@@ -59,6 +59,7 @@ impl Registry {
         Ok(Self {
             client: Client::builder()
                 .user_agent("Graphite-OpenVSX/0.5")
+                .connect_timeout(Duration::from_secs(15))
                 .timeout(Duration::from_secs(30))
                 .build()
                 .map_err(|e| e.to_string())?,
@@ -89,34 +90,39 @@ impl Registry {
         Ok(items)
     }
     pub fn latest(&self, namespace: &str, name: &str) -> Result<Extension> {
+        self.find_latest(namespace, name)?
+            .ok_or_else(|| "Extension was not found on Open VSX".into())
+    }
+
+    pub fn find_latest(&self, namespace: &str, name: &str) -> Result<Option<Extension>> {
         if !valid_part(namespace) || !valid_part(name) {
             return Err("Invalid Open VSX extension identity".into());
         }
         let url = format!("{}/{namespace}/{name}/latest", self.base);
-        let version = self
-            .client
-            .get(url)
-            .send()
-            .map_err(|e| e.to_string())?
+        let response = self.client.get(url).send().map_err(|e| e.to_string())?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let version = response
             .error_for_status()
             .map_err(|e| e.to_string())?
             .json::<VersionResponse>()
             .map_err(|e| e.to_string())?;
         if !valid_part(&version.namespace)
             || !valid_part(&version.name)
-            || version.namespace != namespace
-            || version.name != name
+            || !version.namespace.eq_ignore_ascii_case(namespace)
+            || !version.name.eq_ignore_ascii_case(name)
             || semver::Version::parse(&version.version).is_err()
         {
             return Err("Invalid Open VSX version metadata".into());
         }
-        Ok(Extension {
+        Ok(Some(Extension {
             namespace: version.namespace,
             name: version.name,
             display_name: format!("{}.{}", namespace, name),
             version: version.version,
             description: version.description,
-        })
+        }))
     }
     pub fn download_latest(
         &self,
@@ -137,8 +143,8 @@ impl Registry {
             .map_err(|e| e.to_string())?
             .json::<VersionResponse>()
             .map_err(|e| e.to_string())?;
-        if metadata.namespace != namespace
-            || metadata.name != name
+        if !metadata.namespace.eq_ignore_ascii_case(namespace)
+            || !metadata.name.eq_ignore_ascii_case(name)
             || semver::Version::parse(&metadata.version).is_err()
         {
             return Err("Open VSX response identity mismatch".into());
@@ -155,10 +161,11 @@ impl Registry {
         let response = self
             .client
             .get(download)
+            .timeout(Duration::from_secs(30 * 60))
             .send()
-            .map_err(|e| e.to_string())?
+            .map_err(|error| error.without_url().to_string())?
             .error_for_status()
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.without_url().to_string())?;
         if response.url().scheme() != "https"
             && !(response.url().scheme() == "http"
                 && is_loopback(response.url().host_str())
@@ -166,32 +173,8 @@ impl Registry {
         {
             return Err("Open VSX redirected to an insecure download URL".into());
         }
-        if response
-            .content_length()
-            .is_some_and(|len| len > MAX_DOWNLOAD)
-        {
-            return Err("VSIX exceeds 100 MiB".into());
-        }
-        let mut bytes = Vec::new();
-        response
-            .take(MAX_DOWNLOAD + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > MAX_DOWNLOAD {
-            return Err("VSIX exceeds 100 MiB".into());
-        }
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(destination)
-            .map_err(|e| e.to_string())?;
-        use std::io::Write;
-        if let Err(error) = file.write_all(&bytes) {
-            drop(file);
-            let _ = std::fs::remove_file(destination);
-            return Err(error.to_string());
-        }
-        file.sync_all().map_err(|e| e.to_string())?;
+        let length = response.content_length();
+        write_download(response, length, destination, MAX_VSIX_DOWNLOAD)?;
         let inspected = match package::inspect(destination) {
             Ok(metadata) => metadata,
             Err(error) => {
@@ -238,6 +221,39 @@ impl Registry {
     }
 }
 
+fn write_download(
+    reader: impl Read,
+    length: Option<u64>,
+    destination: &Path,
+    limit: u64,
+) -> Result<()> {
+    let too_large = || format!("VSIX exceeds {}", crate::size_limit_label(true));
+    if length.is_some_and(|length| length > limit) {
+        return Err(too_large());
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(|error| error.to_string())?;
+    let result = (|| {
+        let count = std::io::copy(&mut reader.take(limit + 1), &mut file)
+            .map_err(|error| error.to_string())?;
+        if count > limit {
+            return Err(too_large());
+        }
+        if length.is_some_and(|length| count != length) {
+            return Err("Incomplete VSIX download".into());
+        }
+        file.sync_all().map_err(|error| error.to_string())
+    })();
+    drop(file);
+    if result.is_err() {
+        let _ = std::fs::remove_file(destination);
+    }
+    result
+}
+
 fn valid_part(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -257,6 +273,33 @@ fn is_loopback(host: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streaming_download_checks_lengths_and_only_removes_its_own_partial_file() {
+        let root = std::env::temp_dir().join(format!(
+            "graphite-vsix-size-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("fixture.vsix");
+        for (input, length) in [
+            (b"12345".as_slice(), None),
+            (b"12345".as_slice(), Some(5)),
+            (b"12".as_slice(), Some(4)),
+        ] {
+            assert!(write_download(input, length, &path, 4).is_err());
+            assert!(!path.exists());
+        }
+        write_download(b"1234".as_slice(), None, &path, 4).unwrap();
+        assert!(write_download(b"12".as_slice(), Some(2), &path, 4).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"1234");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     #[test]
     fn rejects_insecure_remote_registry_and_invalid_extension_ids() {
         assert!(Registry::with_base("http://registry.example").is_err());

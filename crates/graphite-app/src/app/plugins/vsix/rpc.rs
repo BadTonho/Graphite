@@ -248,10 +248,15 @@ impl App {
                 }
                 Ok(Value::Null)
             }
-            (
-                "MainThreadExtensionService",
-                "$onWillActivateExtension" | "$onDidActivateExtension",
-            )
+            ("MainThreadExtensionService", "$onDidActivateExtension") => {
+                if let Some(id) = args.first().and_then(|identifier| {
+                    identifier.as_str().or_else(|| identifier["value"].as_str())
+                }) {
+                    runtime.active_extensions.insert(id.to_ascii_lowercase());
+                }
+                Ok(Value::Null)
+            }
+            ("MainThreadExtensionService", "$onWillActivateExtension")
             | ("MainThreadExtensionService", "$setPerformanceMarks")
             | ("MainThreadConsole", "$logExtensionHostMessage")
             | ("MainThreadDebugService", "$registerDebugTypes")

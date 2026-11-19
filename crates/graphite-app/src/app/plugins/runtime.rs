@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::error_log::{self, ErrorSeverity};
 
 fn dev_watch_mtime(
     root: &std::path::Path,
@@ -50,6 +51,9 @@ impl App {
             .map(|store| store.root.join("logs").join(id).join("console.log"))
     }
     pub(crate) fn reload_plugin(&mut self, id: &str) {
+        if self.plugins.bisect.is_some() {
+            return;
+        }
         if let Some(store) = self.plugins.store.as_ref() {
             if let Ok(records) = store.list() {
                 self.plugins.installed = records;
@@ -203,6 +207,11 @@ impl App {
             let starting = self.plugins.starting.take();
             match result {
                 Err(error) => {
+                    error_log::record(
+                        ErrorSeverity::Medium,
+                        "plugins.worker",
+                        "Plugin operation failed. See the Plugins panel for details.",
+                    );
                     self.cleanup_plugin_download();
                     if let Some(repository) = self.plugins.graphite_details_loading.take() {
                         if let Some(tab) = self
@@ -220,41 +229,55 @@ impl App {
                     }
                     self.plugins.message = error;
                 }
-                Ok(Outcome::Refreshed(records)) => {
-                    if self.plugins.installed.is_empty() {
-                        self.plugins.startup = records
-                            .iter()
-                            .filter(|r| match &r.metadata {
-                                Metadata::Native(manifest) => {
-                                    r.enabled && Self::manifest_matches_startup(manifest)
-                                }
-                                Metadata::Vsix(_) => false,
-                            })
-                            .map(|r| r.metadata.id().to_owned())
-                            .collect();
+                Ok(Outcome::Refreshed(records)) => self.apply_plugin_records(records),
+                Ok(Outcome::BulkChanged(records, failed)) => {
+                    self.apply_plugin_records(records);
+                    if failed > 0 {
+                        self.plugins.message =
+                            self.tf("plugins.toolbar.bulk_failed", &[("count", &failed)]);
                     }
-                    self.plugins.installed = records;
-                    self.reload_extension_snippets();
-                    self.sync_extension_themes();
-                    self.sync_plugin_keybindings();
-                    if self.active_plugin_activity.as_ref().is_some_and(|active| {
-                        !self
-                            .plugin_activity_entries()
-                            .iter()
-                            .any(|entry| &entry.key == active)
-                    }) {
-                        self.active_plugin_activity = None;
-                        self.activate_activity(super::super::activity_bar::Activity::Explorer);
+                }
+                Ok(Outcome::Installed(_, Ok(records))) => self.apply_plugin_records(records),
+                Ok(Outcome::Installed(id, Err(error))) => {
+                    self.stop_plugin(&id);
+                    self.plugins
+                        .installed
+                        .retain(|record| record.metadata.id() != id);
+                    self.sync_plugin_contributions();
+                    error_log::record(
+                        ErrorSeverity::Medium,
+                        "plugins.install.refresh",
+                        "Could not read the plugin registry after installation.",
+                    );
+                    self.plugins.message = error;
+                }
+                Ok(Outcome::SidebarReload(records, search)) => {
+                    self.apply_plugin_records(records);
+                    match search {
+                        Some(Ok(updates::SearchResults::OpenVsx(items))) => {
+                            self.plugins.open_vsx = items
+                        }
+                        Some(Ok(updates::SearchResults::Graphite(items))) => {
+                            self.plugins.graphite_assets = None;
+                            self.plugins.graphite = items;
+                        }
+                        Some(Err(error)) => {
+                            error_log::record(
+                                ErrorSeverity::Medium,
+                                "plugins.reload.search",
+                                "Could not reload catalog search results.",
+                            );
+                            self.plugins.message = error;
+                        }
+                        None => {}
                     }
-                    self.plugins.index = self
-                        .plugins
-                        .index
-                        .min(self.plugins.installed.len().saturating_sub(1));
-                    let rows = self.plugin_visible_rows();
-                    self.plugins.scroll = self
-                        .plugins
-                        .scroll
-                        .min(self.plugins.installed.len().saturating_sub(rows));
+                    self.clamp_plugin_selection();
+                }
+                Ok(Outcome::UpdatesChecked(result)) => self.finish_plugin_update_check(result),
+                Ok(Outcome::UpdatePreview(update)) => self.finish_plugin_update_download(update),
+                Ok(Outcome::LocalPreview(path, metadata)) => {
+                    self.plugins.focused = true;
+                    self.plugins.preview = Some((path, metadata));
                 }
                 Ok(Outcome::OpenVsx(extensions)) => {
                     self.plugins.open_vsx = extensions;
@@ -290,8 +313,8 @@ impl App {
                     self.cleanup_plugin_download();
                     self.plugins.message = message;
                 }
-                Ok(Outcome::Preview(path, metadata)) => {
-                    self.plugins.temporary = Some(path.clone());
+                Ok(Outcome::Preview(download, path, metadata)) => {
+                    self.plugins.temporary = Some(download);
                     self.plugins.focused = true;
                     self.plugins.preview = Some((path, metadata))
                 }
@@ -424,5 +447,63 @@ impl App {
         }
         self.sync_native_webview_host();
         self.poll_vsix();
+        self.poll_plugin_trust_queue();
+        self.poll_plugin_updates();
+    }
+
+    pub(super) fn apply_plugin_records(&mut self, records: Vec<Installed>) {
+        if self.plugins.installed.is_empty() {
+            self.plugins.startup = records
+                .iter()
+                .filter(|record| {
+                    matches!(&record.metadata, Metadata::Native(manifest)
+                    if record.enabled && Self::manifest_matches_startup(manifest))
+                })
+                .map(|record| record.metadata.id().to_owned())
+                .collect();
+        }
+        let changed: Vec<_> = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|old| {
+                old.enabled
+                    && !records.iter().any(|new| {
+                        new.enabled
+                            && new.metadata.id() == old.metadata.id()
+                            && new.directory == old.directory
+                            && new.trusted_version == old.trusted_version
+                    })
+            })
+            .map(|record| record.metadata.id().to_owned())
+            .collect();
+        for id in changed {
+            self.stop_plugin(&id);
+        }
+        self.plugins.installed = records;
+        self.sync_plugin_contributions();
+        self.clamp_plugin_selection();
+    }
+
+    pub(super) fn sync_plugin_contributions(&mut self) {
+        self.reload_extension_snippets();
+        self.sync_extension_themes();
+        self.sync_plugin_keybindings();
+        if self.active_plugin_activity.as_ref().is_some_and(|active| {
+            !self
+                .plugin_activity_entries()
+                .iter()
+                .any(|entry| &entry.key == active)
+        }) {
+            self.active_plugin_activity = None;
+            self.activate_activity(super::super::activity_bar::Activity::Explorer);
+        }
+    }
+
+    fn clamp_plugin_selection(&mut self) {
+        let count = self.plugin_row_count();
+        self.plugins.index = self.plugins.index.min(count.saturating_sub(1));
+        let rows = self.plugin_visible_rows();
+        self.plugins.scroll = self.plugins.scroll.min(count.saturating_sub(rows));
     }
 }

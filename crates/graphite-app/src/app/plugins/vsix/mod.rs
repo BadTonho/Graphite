@@ -48,6 +48,7 @@ mod webviews;
 mod workbench;
 
 pub(crate) struct Runtime {
+    pub(in crate::app::plugins) active_extensions: BTreeSet<String>,
     session: Session,
     ready: bool,
     registered: BTreeSet<String>,
@@ -138,6 +139,7 @@ impl Runtime {
     /// A ready runtime around `session`, for tests that play the extension host.
     pub(super) fn for_test(session: Session) -> Self {
         Self {
+            active_extensions: BTreeSet::new(),
             session,
             ready: true,
             registered: BTreeSet::new(),
@@ -325,6 +327,7 @@ impl App {
             "configuration": self.vsix_configuration()?,
         }))?;
         self.plugins.vsix = Some(Runtime {
+            active_extensions: BTreeSet::new(),
             session,
             ready: false,
             registered: BTreeSet::new(),

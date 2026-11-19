@@ -19,6 +19,9 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
+        if request.action == Action::Click && self.plugin_accessibility_click(id) {
+            return;
+        }
         if request.target_node == super::accessibility::command_center_back_node() {
             if request.action == Action::Click && self.can_navigate_history(-1) {
                 self.run_ui_command("workbench.action.navigateBack");

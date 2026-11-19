@@ -38,7 +38,7 @@ fn avatar_color(id: &str) -> u32 {
     AVATAR_COLORS[hash as usize % AVATAR_COLORS.len()]
 }
 
-fn fit(text: &str, max: usize) -> String {
+pub(super) fn fit(text: &str, max: usize) -> String {
     let clean: String = text
         .chars()
         .map(|character| {
@@ -986,15 +986,19 @@ impl App {
                 rgb(color),
             );
         }
-        if self.plugins.preview.is_some()
-            || self.plugins.trust.is_some()
-            || self.plugins.inspecting.is_some()
-        {
+        if self.plugin_details_open() {
             self.draw_plugin_details(renderer, &layout, line_height, cell_width);
         } else {
             self.draw_plugin_cards(renderer, &layout, line_height, cell_width, empty_key);
         }
-        self.draw_plugin_footer(renderer, &layout, line_height, cell_width);
+        if self.plugins.preview.is_none()
+            && self.plugins.trust.is_none()
+            && self.plugins.bisect.is_none()
+            && self.plugins.running_scroll.is_none()
+        {
+            self.draw_plugin_footer(renderer, &layout, line_height, cell_width);
+        }
+        self.draw_plugin_toolbar(renderer, &layout, line_height, cell_width);
         renderer.set_clip(None);
     }
 
@@ -1463,6 +1467,14 @@ impl App {
         let error = 0x9b2226;
         let mut lines: Vec<(String, u32)> = Vec::new();
         if let Some((_, metadata)) = &self.plugins.preview {
+            if self.plugins.downloaded_update.is_some() {
+                push_lines(
+                    &mut lines,
+                    self.t("plugins.toolbar.update_source"),
+                    max,
+                    dim,
+                );
+            }
             push_lines(
                 &mut lines,
                 &self.tf(
