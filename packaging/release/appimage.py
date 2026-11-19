@@ -26,6 +26,10 @@ def checked_download(url, destination, expected):
     destination.chmod(0o755)
 
 
+# The deploy tool only accepts icons in the standard sizes (it refuses the 1000x1000 master).
+ICON_SOURCE = ROOT / "assets/branding/graphite-512.png"
+ICON_SIZES = (8, 16, 20, 22, 24, 28, 32, 36, 42, 48, 64, 72, 96, 128, 160, 192, 256, 384, 480, 512)
+
 # Packages whose libraries need dependencies that the package itself does not ship. They are
 # loaded from the bundled host's own folder, so the deploy tool has nothing to resolve for them.
 UNRESOLVABLE_PACKAGES = ("foundry-local-sdk",)
@@ -54,7 +58,7 @@ def build_appimage(bundle, output, work):
     desktop = appdir / "graphite.desktop"
     shutil.copy2(ROOT / "packaging/linux/graphite.desktop", desktop)
     icon = appdir / "graphite.png"
-    shutil.copy2(ROOT / "assets/branding/graphite.png", icon)
+    shutil.copy2(ICON_SOURCE, icon)
     native_lib = Path("/usr/lib/x86_64-linux-gnu")
     resources = [
         (native_lib / "webkit2gtk-4.1", appdir / "usr/lib/webkit2gtk-4.1"),

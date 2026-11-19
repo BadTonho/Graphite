@@ -542,6 +542,13 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(appimage.deployable_libraries(self.root / "host", self.root / "missing"),
                          [wanted])
 
+    def test_the_appimage_icon_has_a_size_the_deploy_tool_accepts(self):
+        header = appimage.ICON_SOURCE.read_bytes()[:24]
+        self.assertEqual(header[:8], bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A]))
+        width, height = int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
+        self.assertEqual(width, height)
+        self.assertIn(width, appimage.ICON_SIZES)
+
     def test_complete_portable_archive_preserves_helpers_and_installs_license(self):
         archive = self.root / "complete.zip"
         with zipfile.ZipFile(archive, "w") as output:
