@@ -41,6 +41,25 @@ def run(args, directory, env=None):
     subprocess.run(args, cwd=directory, env=env, check=True)
 
 
+def prune_native_build(module):
+    """Keeps only the compiled `build/Release/*.node` files of a rebuilt native module.
+
+    The rest of `build/` is compiler output (object files, `.tlog` state, a nested copy of
+    node-addon-api). It is never loaded, and its paths can pass the 260 characters that the
+    Windows installer compiler can open.
+    """
+    build_directory = module / "build"
+    if not build_directory.is_dir():
+        return
+    release = build_directory / "Release"
+    kept = {path.name: path.read_bytes() for path in release.glob("*.node")} if release.is_dir() else {}
+    shutil.rmtree(build_directory)
+    if kept:
+        release.mkdir(parents=True)
+        for name, content in kept.items():
+            (release / name).write_bytes(content)
+
+
 def build(cache, runtime, work, windows):
     node_suffix = "win-x64.zip" if windows else "linux-x64.tar.xz"
     node_name = f"node-v{NODE}-{node_suffix}"
@@ -74,6 +93,8 @@ def build(cache, runtime, work, windows):
     run([node, npm, "prune", "--omit=dev", *npm_flags], source, env)
     run([node, npm, "rebuild", "@vscode/native-watchdog", "@vscode/spdlog",
          "--no-audit", "--no-fund"], source, env)
+    for module in ("@vscode/native-watchdog", "@vscode/spdlog"):
+        prune_native_build(source / "node_modules" / module)
 
     runtime.mkdir()
     shutil.copy2(node, runtime)

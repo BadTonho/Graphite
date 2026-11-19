@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -12,7 +13,32 @@ from metadata import ROOT, release_version
 
 
 def run(args, **kwargs):
-    return subprocess.run(list(map(str, args)), check=True, **kwargs)
+    try:
+        return subprocess.run(list(map(str, args)), check=True, **kwargs)
+    except subprocess.CalledProcessError as error:
+        # Captured output would otherwise vanish with the exception and hide the cause.
+        for stream in (error.stdout, error.stderr):
+            if stream:
+                print(stream, file=sys.stderr)
+        raise
+
+
+def is_linux_x64_glibc_binary(path):
+    """Whether `path` is an x86-64 ELF file that a glibc system can link and load.
+
+    Native modules ship prebuilds for other systems (Windows, macOS, ARM, musl). The tool that
+    derives package dependencies can only analyze binaries for the system it runs on.
+    """
+    if "musl" in str(path).lower():
+        return False
+    try:
+        with open(path, "rb") as stream:
+            header = stream.read(20)
+    except OSError:
+        return False
+    # ELF magic, 64-bit, little endian, then e_machine 0x3E (x86-64) at offset 18.
+    return header[:4] == b"\x7fELF" and header[4] == 2 and header[5] == 1 \
+        and int.from_bytes(header[18:20], "little") == 0x3E
 
 
 def unpack(archive, destination):
@@ -81,7 +107,8 @@ def deb(root, output, version, work):
         "Description: Native code editor\n", encoding="utf-8")
     elf = [root / "usr/lib/graphite/graphite", root / "usr/lib/graphite/code",
            root / "usr/lib/graphite/graphite-extension-host", root / "usr/lib/graphite/code-oss/node"]
-    elf.extend((root / "usr/lib/graphite/code-oss").rglob("*.node"))
+    elf.extend(path for path in (root / "usr/lib/graphite/code-oss").rglob("*.node")
+               if is_linux_x64_glibc_binary(path))
     result = run(["dpkg-shlibdeps", "-O", "--ignore-missing-info",
                   *[f"-e{p}" for p in elf]], cwd=work, capture_output=True, text=True)
     dependencies = next(line.split("=", 1)[1] for line in result.stdout.splitlines()

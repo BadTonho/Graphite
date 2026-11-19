@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+from contextlib import redirect_stderr
 from pathlib import Path
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+import portable
 import appimage
 import assets
 import github_release
@@ -417,6 +420,44 @@ class PackageTests(unittest.TestCase):
         self.assertEqual((stage / "usr/share/licenses/graphite/THIRD_PARTY_NOTICES.txt").read_text(
             encoding="utf-8"), "notices fixture")
         self.assertTrue((stage / "usr/share/licenses/graphite/icon-font/NOTICE.md").is_file())
+
+    def test_a_failed_command_shows_its_captured_output(self):
+        script = "import sys; sys.stderr.write('the real reason'); sys.exit(2)"
+        captured = io.StringIO()
+        with redirect_stderr(captured), self.assertRaises(subprocess.CalledProcessError):
+            packages.run([sys.executable, "-c", script], capture_output=True, text=True)
+        self.assertIn("the real reason", captured.getvalue())
+
+    def test_only_x86_64_glibc_binaries_are_analyzed_for_dependencies(self):
+        def elf(name, machine=0x3E, bits=2, order=1):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            header = b"ELF" + bytes([bits, order]) + bytes(12) + machine.to_bytes(2, "little")
+            path.write_bytes(header + bytes(8))
+            return path
+        self.assertTrue(packages.is_linux_x64_glibc_binary(elf("linux-x64/pty.node")))
+        self.assertFalse(packages.is_linux_x64_glibc_binary(elf("linux-arm64/pty.node", machine=0xB7)))
+        self.assertFalse(packages.is_linux_x64_glibc_binary(elf("koffi/musl_x64/koffi.node")))
+        windows = self.root / "win32-x64/pty.node"
+        windows.parent.mkdir()
+        windows.write_bytes(b"MZ" + bytes(30))
+        self.assertFalse(packages.is_linux_x64_glibc_binary(windows))
+        self.assertFalse(packages.is_linux_x64_glibc_binary(self.root / "missing.node"))
+
+    def test_a_rebuilt_native_module_keeps_only_its_compiled_files(self):
+        module = self.root / "spdlog"
+        (module / "build/Release/obj/deep/state.tlog").mkdir(parents=True)
+        (module / "build/Release/obj/deep/state.tlog/x.lastbuildstate").write_text("x")
+        (module / "build/node_modules/node-addon-api").mkdir(parents=True)
+        (module / "build/Release/spdlog.node").write_bytes(b"binary")
+        (module / "build/Release/spdlog.pdb").write_bytes(b"symbols")
+        (module / "package.json").write_text("{}")
+        portable.prune_native_build(module)
+        self.assertEqual(sorted(str(p.relative_to(module)).replace("\\", "/")
+                                for p in module.rglob("*") if p.is_file()),
+                         ["build/Release/spdlog.node", "package.json"])
+        self.assertEqual((module / "build/Release/spdlog.node").read_bytes(), b"binary")
+        portable.prune_native_build(self.root / "without-build")  # nothing to do, no error
 
     def test_complete_portable_archive_preserves_helpers_and_installs_license(self):
         archive = self.root / "complete.zip"
