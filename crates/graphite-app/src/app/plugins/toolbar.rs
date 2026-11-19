@@ -237,27 +237,6 @@ impl App {
         }
     }
 
-    fn pick_local_vsix(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("VSIX", &["vsix", "VSIX"])
-            .pick_file()
-        {
-            if path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("vsix"))
-            {
-                self.inspect_local_plugin(path);
-            } else {
-                self.plugins.message = self.t("plugins.toolbar.expected_vsix").into();
-                crate::app::error_log::record(
-                    crate::app::error_log::ErrorSeverity::Medium,
-                    "plugins.install.picker",
-                    &self.plugins.message,
-                );
-            }
-        }
-    }
-
     pub(super) fn inspect_local_plugin(&mut self, path: PathBuf) {
         self.plugin_job(move |_| {
             let metadata = graphite_plugins::package::inspect(&path)?;

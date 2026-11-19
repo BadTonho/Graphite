@@ -14,6 +14,7 @@ mod bisect;
 pub(crate) mod drawing;
 mod layout;
 mod panel;
+mod picker;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -35,6 +36,7 @@ enum Outcome {
     UpdatesChecked(updates::CheckResult),
     UpdatePreview(updates::DownloadedUpdate),
     LocalPreview(PathBuf, Metadata),
+    VsixPicked(Option<PathBuf>),
     OpenVsx(Vec<Extension>),
     Graphite(Vec<Repository>),
     /// Handled when received; the sidebar does not request the asset list yet.
@@ -58,6 +60,7 @@ pub(crate) struct Plugins {
     pub(super) active_graphite_detail: Option<(u64, String)>,
     graphite_details_loading: Option<String>,
     preview: Option<(PathBuf, Metadata)>,
+    vsix_picker_directory: Option<PathBuf>,
     inspecting: Option<Metadata>,
     trust: Option<String>,
     tab: PluginsTab,
@@ -144,6 +147,7 @@ impl App {
         self.plugins.worker = None;
         self.plugins.store = None;
         self.plugins.installed.clear();
+        self.plugins.vsix_picker_directory = None;
         self.leave_plugin_details();
         self.plugins.update_state = Default::default();
         self.plugins.bisect = None;

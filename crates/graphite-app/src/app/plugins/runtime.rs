@@ -275,6 +275,7 @@ impl App {
                 }
                 Ok(Outcome::UpdatesChecked(result)) => self.finish_plugin_update_check(result),
                 Ok(Outcome::UpdatePreview(update)) => self.finish_plugin_update_download(update),
+                Ok(Outcome::VsixPicked(path)) => self.finish_local_vsix_pick(path),
                 Ok(Outcome::LocalPreview(path, metadata)) => {
                     self.plugins.focused = true;
                     self.plugins.preview = Some((path, metadata));

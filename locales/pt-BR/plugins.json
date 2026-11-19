@@ -106,6 +106,7 @@
   "plugins.sidebar.title_assets": "Ativos da versão",
   "plugins.toolbar.install": "Instalar de VSIX…",
   "plugins.toolbar.expected_vsix": "Escolha um arquivo .vsix",
+  "plugins.toolbar.all_files": "Todos os arquivos",
   "plugins.toolbar.reload": "Recarregar plugins",
   "plugins.toolbar.more": "Mais ações de plugins",
   "plugins.toolbar.views": "Exibições ›",

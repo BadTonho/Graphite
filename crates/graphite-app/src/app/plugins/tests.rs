@@ -562,6 +562,35 @@ fn local_vsix_review_can_be_cancelled_or_installed_without_deleting_the_source()
 }
 
 #[test]
+fn vsix_picker_only_opens_review_for_vsix_and_remembers_the_selected_folder() {
+    let (mut app, temp) = app_without_network();
+    app.plugins.worker = None;
+    let folder = temp.path().join("packages");
+    std::fs::create_dir(&folder).unwrap();
+    let other = folder.join("extension.vsix.zip");
+    std::fs::write(&other, b"fixture").unwrap();
+
+    app.finish_local_vsix_pick(None);
+    assert!(app.plugins.preview.is_none());
+    app.finish_local_vsix_pick(Some(other));
+    assert_eq!(app.plugins.message, app.t("plugins.toolbar.expected_vsix"));
+    assert!(app.plugins.worker.is_none());
+    assert!(app.plugins.vsix_picker_directory.is_none());
+
+    let original = local_vsix(&folder, "picker");
+    let mixed_case = folder.join("mixed-case.VsIx");
+    std::fs::rename(original, &mixed_case).unwrap();
+    app.finish_local_vsix_pick(Some(mixed_case.clone()));
+    pump(&mut app, |app| app.plugins.preview.is_some());
+    assert_eq!(
+        app.plugins.vsix_picker_directory.as_deref(),
+        Some(folder.as_path())
+    );
+    assert_eq!(app.plugins.preview.as_ref().unwrap().0, mixed_case);
+    assert!(app.plugins.installed.is_empty());
+}
+
+#[test]
 fn toolbar_menu_is_accessible_and_refresh_preserves_search_text() {
     use super::toolbar::{Action, ACTION_NODE_BASE};
     let (mut app, temp) = app_without_network();

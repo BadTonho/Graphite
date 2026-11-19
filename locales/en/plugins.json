@@ -106,6 +106,7 @@
   "plugins.sidebar.title_assets": "Release assets",
   "plugins.toolbar.install": "Install from VSIX…",
   "plugins.toolbar.expected_vsix": "Choose a .vsix file",
+  "plugins.toolbar.all_files": "All files",
   "plugins.toolbar.reload": "Refresh plugins",
   "plugins.toolbar.more": "More plugin actions",
   "plugins.toolbar.views": "Views ›",
