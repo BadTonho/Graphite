@@ -526,6 +526,22 @@ class PackageTests(unittest.TestCase):
             packages.check_path_lengths(bundle, limit=len(str(deep / "ok.txt")) - 1)
         self.assertIn("ok.txt", str(caught.exception))
 
+    def test_the_appimage_tool_only_analyzes_libraries_that_can_load_and_resolve(self):
+        def elf(relative, machine=0x3E):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"ELF" + bytes([2, 1]) + bytes(12) + machine.to_bytes(2, "little") + bytes(8))
+            return path
+        wanted = elf("host/node_modules/node-pty/prebuilds/linux-x64/pty.node")
+        elf("host/node_modules/node-pty/prebuilds/linux-arm64/pty.node", machine=0xB7)
+        elf("host/node_modules/@koromix/koffi-linux-x64/musl_x64/koffi.node")
+        elf("host/node_modules/foundry-local-sdk/prebuilds/linux-x64/libfoundry_local.so")
+        (self.root / "host/node_modules/other").mkdir(parents=True)
+        (self.root / "host/node_modules/other/win.node").write_bytes(b"MZ" + bytes(30))
+        (self.root / "host/node_modules/other/readme.txt").write_text("not a library")
+        self.assertEqual(appimage.deployable_libraries(self.root / "host", self.root / "missing"),
+                         [wanted])
+
     def test_complete_portable_archive_preserves_helpers_and_installs_license(self):
         archive = self.root / "complete.zip"
         with zipfile.ZipFile(archive, "w") as output:

@@ -8,7 +8,7 @@ import subprocess
 import urllib.request
 
 from metadata import ROOT
-from packages import run
+from packages import is_linux_x64_glibc_binary, run
 
 LINUXDEPLOY_URL = ("https://github.com/linuxdeploy/linuxdeploy/releases/download/"
                    "1-alpha-20251107-1/linuxdeploy-x86_64.AppImage")
@@ -24,6 +24,27 @@ def checked_download(url, destination, expected):
         destination.unlink()
         raise ValueError("AppImage tool checksum mismatch")
     destination.chmod(0o755)
+
+
+# Packages whose libraries need dependencies that the package itself does not ship. They are
+# loaded from the bundled host's own folder, so the deploy tool has nothing to resolve for them.
+UNRESOLVABLE_PACKAGES = ("foundry-local-sdk",)
+
+
+def deployable_libraries(*subtrees):
+    """Libraries the deploy tool should analyze: x86-64 glibc ELF files that can actually load."""
+    libraries = []
+    for subtree in subtrees:
+        for library in sorted(subtree.rglob("*")):
+            if not library.is_file() or library.is_symlink():
+                continue
+            if not (".so" in library.name or library.suffix == ".node"):
+                continue
+            if any(package in library.parts for package in UNRESOLVABLE_PACKAGES):
+                continue
+            if is_linux_x64_glibc_binary(library):
+                libraries.append(library)
+    return libraries
 
 
 def build_appimage(bundle, output, work):
@@ -61,12 +82,8 @@ def build_appimage(bundle, output, work):
     for binary in helpers:
         if binary.is_file():
             args += ["--executable", binary]
-    for subtree in (binaries / "code-oss", appdir / "usr/lib"):
-        for library in subtree.rglob("*"):
-            if library.is_file() and not library.is_symlink() and (".so" in library.name or library.suffix == ".node"):
-                with library.open("rb") as stream:
-                    if stream.read(4) == b"\x7fELF":
-                        args += ["--library", library]
+    for library in deployable_libraries(binaries / "code-oss", appdir / "usr/lib"):
+        args += ["--library", library]
     run([*args, "--output", "appimage"], cwd=work, env=env)
     if not output.is_file():
         raise ValueError("linuxdeploy did not produce the requested AppImage")
