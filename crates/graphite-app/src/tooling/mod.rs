@@ -12,3 +12,5 @@ pub(crate) mod terminal_links;
 pub(crate) mod terminal_shell;
 pub(crate) mod test_explorer;
 pub(crate) mod webview;
+pub(crate) mod webview_assets;
+pub(crate) mod webview_theme;

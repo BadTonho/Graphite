@@ -157,21 +157,30 @@ fn path_to_file_uri(path: &Path) -> String {
     }
 }
 
+/// Spellings of the webview resource host: the extension host percent-encodes the `+`.
+const CDN_AUTHORITIES: [&str; 3] = [
+    "https://file+.vscode-resource.vscode-cdn.net",
+    "https://file%2B.vscode-resource.vscode-cdn.net",
+    "https://file%2b.vscode-resource.vscode-cdn.net",
+];
+
 /// Decodes a VS Code webview asset URI (`vscode-resource:`, `vscode-webview-resource:`,
 /// `https://file+.vscode-resource.vscode-cdn.net/...`) into a local path if it stays strictly inside
 /// `allowed_roots`. Returns `Some("about:blank#blocked")` when blocked, or `None` if `raw` is not
 /// a webview resource URI.
 pub(super) fn rewrite_webview_resource_uri(raw: &str, allowed_roots: &[PathBuf]) -> Option<String> {
-    let encoded_path =
-        if let Some(rest) = raw.strip_prefix("https://file+.vscode-resource.vscode-cdn.net") {
-            rest
-        } else if let Some(rest) = raw.strip_prefix("vscode-webview-resource://") {
-            rest.find('/').map(|idx| &rest[idx..])?
-        } else if let Some(rest) = raw.strip_prefix("vscode-resource://") {
-            rest.strip_prefix("file").unwrap_or(rest)
-        } else {
-            raw.strip_prefix("vscode-resource:")?
-        };
+    let encoded_path = if let Some(rest) = CDN_AUTHORITIES
+        .iter()
+        .find_map(|prefix| raw.strip_prefix(prefix))
+    {
+        rest
+    } else if let Some(rest) = raw.strip_prefix("vscode-webview-resource://") {
+        rest.find('/').map(|idx| &rest[idx..])?
+    } else if let Some(rest) = raw.strip_prefix("vscode-resource://") {
+        rest.strip_prefix("file").unwrap_or(rest)
+    } else {
+        raw.strip_prefix("vscode-resource:")?
+    };
 
     let without_query = encoded_path
         .split(['?', '#'])
@@ -204,7 +213,9 @@ pub(super) fn sanitize_webview_html(html: &str, allowed_roots: &[PathBuf]) -> St
     let mut output = String::with_capacity(html.len());
     let mut rest = html;
     let prefixes = [
-        "https://file+.vscode-resource.vscode-cdn.net",
+        CDN_AUTHORITIES[0],
+        CDN_AUTHORITIES[1],
+        CDN_AUTHORITIES[2],
         "vscode-webview-resource://",
         "vscode-resource://",
         "vscode-resource:",
@@ -260,6 +271,24 @@ pub(super) fn parse_webview_options(
         enable_scripts,
         explicit_roots.or_else(|| Some(default_roots())),
     )
+}
+
+/// The call that delivers a page's message to its extension. The host's `$onMessage` takes the
+/// message as JSON text plus a `SerializableObjectWithBuffers` of attached buffers (none here);
+/// anything else makes it throw and drop the message.
+pub(super) fn page_message_call(handle: &str, message: &str) -> Value {
+    let json_text = if serde_json::from_str::<Value>(message).is_ok() {
+        message.to_owned()
+    } else {
+        Value::String(message.to_owned()).to_string()
+    };
+    json!({
+        "type": "call",
+        "actor": "ExtHostWebviews",
+        "method": "$onMessage",
+        "args": [handle, json_text, []],
+        "serializable": [2],
+    })
 }
 
 impl App {
@@ -321,6 +350,7 @@ impl App {
                     .ok_or("Missing webview handle")?;
                 runtime.webviews.panels.remove(handle);
                 runtime.webview_views.forget_handle(handle);
+                self.page_gate.forget(handle);
                 if runtime.webviews.active.as_deref() == Some(handle) {
                     runtime.webviews.active = runtime.webviews.panels.keys().next().cloned();
                 }
@@ -369,6 +399,8 @@ impl App {
                 Ok(Value::Null)
             }
             "$setIconPath" => Ok(Value::Null),
+            // Panels are not restored after a restart, so a serializer has nothing to do yet.
+            "$registerSerializer" | "$unregisterSerializer" => Ok(Value::Null),
             _ => {
                 self.record_unsupported_vsix_call(runtime, "MainThreadWebviewPanels", method);
                 Err(format!(
@@ -442,10 +474,12 @@ impl App {
                     if let Some(webview) = &self.webview {
                         webview.evaluate_script(&script)?;
                     }
-                } else if let Some(sidebar) = self.sidebar_webviews.get(handle) {
-                    sidebar.host.evaluate_script(&script)?;
-                } else if let Some(editor) = self.custom_editor_webviews.get(handle) {
-                    editor.host.evaluate_script(&script)?;
+                } else if let Some(script) = self.page_gate.post(handle, script) {
+                    if let Some(sidebar) = self.sidebar_webviews.get(handle) {
+                        sidebar.host.evaluate_script(&script)?;
+                    } else if let Some(editor) = self.custom_editor_webviews.get(handle) {
+                        editor.host.evaluate_script(&script)?;
+                    }
                 }
                 Ok(json!(true))
             }
@@ -465,16 +499,23 @@ impl App {
             .iter()
             .map(|(h, o)| (h, &o.host));
         let sidebars = self.sidebar_webviews.iter().map(|(h, s)| (h, &s.host));
+        let mut loaded = Vec::new();
         for (handle, host) in sidebars.chain(editors) {
             for message in host.take_messages() {
-                let value =
-                    serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
-                runtime.session.send(json!({
-                    "type": "call",
-                    "actor": "ExtHostWebviews",
-                    "method": "$onMessage",
-                    "args": [handle, value],
-                }))?;
+                if message == crate::webview::PAGE_LOADED {
+                    loaded.push(handle.clone());
+                    continue;
+                }
+                runtime.session.send(page_message_call(handle, &message))?;
+            }
+        }
+        for handle in loaded {
+            for script in self.page_gate.mark_loaded(&handle) {
+                if let Some(sidebar) = self.sidebar_webviews.get(&handle) {
+                    sidebar.host.evaluate_script(&script)?;
+                } else if let Some(editor) = self.custom_editor_webviews.get(&handle) {
+                    editor.host.evaluate_script(&script)?;
+                }
             }
         }
         let Some(handle) = self.webview_handle.as_deref() else {
@@ -487,13 +528,7 @@ impl App {
             return Ok(());
         };
         for message in webview.take_messages() {
-            let value = serde_json::from_str::<Value>(&message).unwrap_or(Value::String(message));
-            runtime.session.send(json!({
-                "type": "call",
-                "actor": "ExtHostWebviews",
-                "method": "$onMessage",
-                "args": [handle, value],
-            }))?;
+            runtime.session.send(page_message_call(handle, &message))?;
         }
         Ok(())
     }
@@ -504,12 +539,9 @@ impl App {
         if !runtime.webviews.contains(handle) {
             return Err(format!("Unknown VSIX webview panel: {handle}"));
         }
-        runtime.session.send(json!({
-            "type": "call",
-            "actor": "ExtHostWebviews",
-            "method": "$onMessage",
-            "args": [handle, message],
-        }))
+        runtime
+            .session
+            .send(page_message_call(handle, &message.to_string()))
     }
 
     #[cfg(test)]

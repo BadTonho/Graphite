@@ -393,6 +393,8 @@ struct App {
     webview_handle: Option<String>,
     /// Pages of extension webview views hosted over the side bar, by webview handle.
     sidebar_webviews: std::collections::BTreeMap<String, app::plugins::vsix::SidebarWebview>,
+    /// Messages for extension view and editor pages that have not finished loading.
+    page_gate: app::plugins::vsix::PageGate,
     /// Gutter icon images of decorations by file; `None` for a file that could not be read.
     decoration_icons: std::cell::RefCell<
         std::collections::HashMap<PathBuf, Option<std::sync::Arc<graphite_render::Image>>>,
@@ -489,13 +491,13 @@ impl App {
         } else {
             config::load_sidebar_width(&profile_root)
         };
-        let activity_bar_preferences = if isolated {
-            config::ActivityBarPreferences::default()
         let secondary_sidebar_user_width = if isolated {
             None
         } else {
             config::load_secondary_sidebar_width(&profile_root)
         };
+        let activity_bar_preferences = if isolated {
+            config::ActivityBarPreferences::default()
         } else {
             config::load_activity_bar_preferences(&profile_root)
         };
@@ -696,10 +698,10 @@ impl App {
             sidebar_scale_factor: 1.0,
             sidebar_window_width_px: 1200.0,
             sidebar_resize_dragging: false,
-            panel_resize_dragging: false,
-            explorer_selected: None,
             secondary_sidebar_user_width,
             secondary_resize_dragging: false,
+            panel_resize_dragging: false,
+            explorer_selected: None,
             explorer_clipboard: None,
             explorer_focused: false,
             explorer_multi_selected: std::collections::BTreeSet::new(),
@@ -958,6 +960,7 @@ impl App {
             webview_html: String::new(),
             webview_handle: None,
             sidebar_webviews: std::collections::BTreeMap::new(),
+            page_gate: Default::default(),
             textmate: None,
             decoration_icons: Default::default(),
             custom_editor_webviews: std::collections::BTreeMap::new(),

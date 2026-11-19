@@ -188,7 +188,10 @@ pub(crate) fn set_event_proxy(
 }
 
 fn should_notify_ui(severity: ErrorSeverity, source: &str) -> bool {
-    !(severity == ErrorSeverity::Low && source == "updates.background_check")
+    // Page diagnostics go to the log only: the pages are the extension's, not something the
+    // user can act on from a pop-up.
+    source != "webview.page"
+        && !(severity == ErrorSeverity::Low && source == "updates.background_check")
 }
 
 /// Records an error into the global four-tier error log if initialized.
@@ -206,6 +209,20 @@ pub(crate) fn record(severity: ErrorSeverity, source: &str, message: impl AsRef<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_diagnostics_are_logged_without_a_popup() {
+        assert!(!should_notify_ui(ErrorSeverity::Medium, "webview.page"));
+        assert!(!should_notify_ui(
+            ErrorSeverity::Low,
+            "updates.background_check"
+        ));
+        assert!(should_notify_ui(ErrorSeverity::Medium, "plugins.worker"));
+        assert!(should_notify_ui(
+            ErrorSeverity::High,
+            "updates.background_check"
+        ));
+    }
 
     #[test]
     fn writes_each_severity_to_its_own_jsonl_file() {

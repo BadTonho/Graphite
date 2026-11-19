@@ -154,7 +154,38 @@ fn wrap_preview_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<Str
     lines
 }
 
+/// Shortens a native overlay (`[x, y, width, height]`) so it ends above `card`. Native webview
+/// surfaces are drawn over everything the renderer paints, so without this they would hide the
+/// card. An overlay that does not overlap the card horizontally, or that starts below its top, is
+/// returned unchanged; one with no room above it keeps a single row of pixels.
+pub(crate) fn clip_overlay_above(bounds: [f64; 4], card: ToastRect) -> [f64; 4] {
+    let [x, y, w, h] = bounds;
+    let (card_x, card_y) = (f64::from(card.x), f64::from(card.y));
+    let overlaps_horizontally = x < card_x + f64::from(card.w) && x + w > card_x;
+    let reaches_card = y + h > card_y;
+    if !overlaps_horizontally || !reaches_card {
+        return bounds;
+    }
+    [x, y, w, (card_y - 4.0 - y).max(1.0)]
+}
+
 impl App {
+    /// `bounds` made to leave room for the visible error notification, if any.
+    pub(crate) fn clip_overlay_for_notification(&self, bounds: [f64; 4]) -> [f64; 4] {
+        let (Some(gpu), Some(_)) = (&self.gpu, &self.error_notifications.active) else {
+            return bounds;
+        };
+        let (width, height) = gpu.renderer.size();
+        let layout = error_notification_layout(
+            width,
+            height,
+            self.view_preferences.status_bar_visible && !self.zen_mode,
+            gpu.renderer.line_height(),
+            gpu.renderer.char_width(),
+        );
+        clip_overlay_above(bounds, layout.card_rect)
+    }
+
     pub(crate) fn push_error_notification(&mut self, item: ErrorNotificationItem) {
         if self.error_notifications.active.is_none() {
             self.error_notifications.active = Some(item);
@@ -310,6 +341,31 @@ mod tests {
         assert!(layout.card_rect.y + layout.card_rect.h <= 720.0 - 18.0);
         assert!(layout.view_full_rect.x + layout.view_full_rect.w < layout.report_issue_rect.x);
         assert!(layout.close_rect.y < layout.view_full_rect.y);
+    }
+
+    #[test]
+    fn overlays_stop_above_the_notification_card_and_are_otherwise_untouched() {
+        let card = ToastRect {
+            x: 800.0,
+            y: 600.0,
+            w: 400.0,
+            h: 120.0,
+        };
+        // A side bar column reaching the bottom is cut off above the card.
+        assert_eq!(
+            clip_overlay_above([900.0, 100.0, 300.0, 900.0], card),
+            [900.0, 100.0, 300.0, 496.0]
+        );
+        // Left of the card, or ending above it: unchanged.
+        let left = [0.0, 100.0, 500.0, 900.0];
+        assert_eq!(clip_overlay_above(left, card), left);
+        let short = [900.0, 100.0, 300.0, 400.0];
+        assert_eq!(clip_overlay_above(short, card), short);
+        // No room above the card: one row stays so the surface is still valid.
+        assert_eq!(
+            clip_overlay_above([900.0, 610.0, 300.0, 50.0], card)[3],
+            1.0
+        );
     }
 
     #[test]

@@ -777,13 +777,17 @@ impl App {
                 let Some(panel) = runtime.webviews.panels.get(&instance.handle) else {
                     continue;
                 };
-                let bounds = [
+                let bounds = self.clip_overlay_for_notification([
                     f64::from(rect.x),
                     f64::from(rect.y + tab_height),
                     f64::from(rect.width),
                     f64::from((rect.height - tab_height).max(0.0)),
-                ];
-                let (html, scripts) = (panel.html.clone(), panel.enable_scripts);
+                ]);
+                let (html, scripts, roots) = (
+                    panel.html.clone(),
+                    panel.enable_scripts,
+                    panel.local_resource_roots.clone(),
+                );
                 let handle = instance.handle.clone();
                 shown.insert(handle.clone());
                 if let Some(overlay) = self.custom_editor_webviews.get_mut(&handle) {
@@ -798,9 +802,10 @@ impl App {
                     }
                 }
                 match crate::webview::WebviewHost::open_extension_overlay(
-                    &window, &html, bounds, scripts,
+                    &window, &html, bounds, scripts, roots,
                 ) {
                     Ok(host) => {
+                        self.page_gate.reset(&handle);
                         self.custom_editor_webviews.insert(
                             handle,
                             EditorOverlay {

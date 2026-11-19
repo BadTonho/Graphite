@@ -282,6 +282,7 @@ impl App {
     fn discard_webview_view(&mut self, runtime: &mut Runtime, handle: &str) {
         runtime.webviews.panels.remove(handle);
         self.sidebar_webviews.remove(handle);
+        self.page_gate.forget(handle);
         let _ = runtime.session.send(json!({
             "type": "call",
             "actor": "ExtHostWebviewViews",
@@ -389,12 +390,12 @@ impl App {
                         .into_iter()
                         .filter(|slot| added.insert(slot.view_id.clone()))
                         .map(|slot| {
-                            let bounds = [
+                            let bounds = self.clip_overlay_for_notification([
                                 f64::from(left),
                                 f64::from(top + slot.top),
                                 f64::from(content_width),
                                 f64::from(slot.height),
-                            ];
+                            ]);
                             (slot, bounds)
                         })
                         .collect()
@@ -532,7 +533,11 @@ impl App {
             let Some(panel) = runtime.webviews.panels.get(&handle) else {
                 continue;
             };
-            let (html, scripts) = (panel.html.clone(), panel.enable_scripts);
+            let (html, scripts, roots) = (
+                panel.html.clone(),
+                panel.enable_scripts,
+                panel.local_resource_roots.clone(),
+            );
             if let Some(sidebar) = self.sidebar_webviews.get_mut(&handle) {
                 if sidebar.html == html && sidebar.scripts == scripts {
                     if sidebar.hidden {
@@ -548,9 +553,10 @@ impl App {
                 }
             }
             match crate::webview::WebviewHost::open_extension_overlay(
-                &window, &html, bounds, scripts,
+                &window, &html, bounds, scripts, roots,
             ) {
                 Ok(host) => {
+                    self.page_gate.reset(&handle);
                     self.sidebar_webviews.insert(
                         handle,
                         SidebarWebview {

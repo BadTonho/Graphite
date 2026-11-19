@@ -2493,7 +2493,12 @@ fn vsix_webview_enforces_local_resource_roots_and_handles_bidirectional_messages
     let inbound = host.next_sent().expect("inbound $onMessage");
     assert_eq!(inbound["actor"], "ExtHostWebviews");
     assert_eq!(inbound["method"], "$onMessage");
-    assert_eq!(inbound["args"], json!(["panel-1", { "action": "save" }]));
+    // The host's `$onMessage(handle, jsonMessage, buffers)` takes JSON text and wrapped buffers.
+    assert_eq!(
+        inbound["args"],
+        json!(["panel-1", r#"{"action":"save"}"#, []])
+    );
+    assert_eq!(inbound["serializable"], json!([2]));
 
     app.close_vsix_webview("panel-1").unwrap();
     let disposed = host.next_sent().expect("disposal notification");
@@ -3075,4 +3080,83 @@ fn vsix_language_model_tools_register_bridge_to_chat_and_invoke() {
     .unwrap();
     app.plugins.vsix = Some(runtime);
     assert!(app.plugin_chat_tool_specs().is_empty());
+}
+
+#[test]
+fn command_activation_notices_are_accepted_without_an_error() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id":7,"actor":"MainThreadCommands","method":"$fireCommandActivationEvent",
+            "args":["claude-vscode.sidebar.open"]
+        }),
+    )
+    .unwrap();
+    let reply = host.next_sent().unwrap();
+    assert_eq!(reply["id"], 7);
+    assert!(reply.get("error").is_none(), "{reply}");
+    assert!(runtime.unsupported.is_empty());
+
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id":8,"actor":"MainThreadWebviewPanels","method":"$registerSerializer",
+            "args":["claudeVSCodePanel", {}]
+        }),
+    )
+    .unwrap();
+    let reply = host.next_sent().unwrap();
+    assert_eq!(reply["id"], 8);
+    assert!(reply.get("error").is_none(), "{reply}");
+}
+
+#[test]
+fn page_messages_reach_the_host_as_json_text_with_wrapped_buffers() {
+    let json = webviews::page_message_call("h", r#"{"type":"request","requestId":"1"}"#);
+    assert_eq!(json["args"][1], r#"{"type":"request","requestId":"1"}"#);
+    assert_eq!(json["args"][2], json!([]));
+    assert_eq!(json["serializable"], json!([2]));
+    // Text that is not JSON is delivered as a JSON string, so the host can still parse it.
+    let text = webviews::page_message_call("h", "plain words");
+    assert_eq!(text["args"][1], r#""plain words""#);
+}
+
+#[test]
+fn percent_encoded_resource_hosts_are_rewritten_to_allowed_local_files() {
+    let dir = TempDir::new();
+    let root = dir.path().join("ext/webview");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("index.js"), "x").unwrap();
+    std::fs::write(dir.path().join("secret.js"), "x").unwrap();
+    let encoded = |path: &Path| {
+        let text = std::fs::canonicalize(path).unwrap();
+        let text = text.to_string_lossy().replace('\\', "/");
+        let text = text.strip_prefix("//?/").unwrap_or(&text).to_owned();
+        text.replace(':', "%3A").replace('@', "%40")
+    };
+    let roots = [root.clone()];
+    for host in [
+        "https://file%2B.vscode-resource.vscode-cdn.net",
+        "https://file%2b.vscode-resource.vscode-cdn.net",
+        "https://file+.vscode-resource.vscode-cdn.net",
+    ] {
+        let allowed = format!(
+            r#"<script src="{host}/{}"></script>"#,
+            encoded(&root.join("index.js")).trim_start_matches('/')
+        );
+        let html = webviews::sanitize_webview_html(&allowed, &roots);
+        assert!(html.contains(r#"src="file:///"#), "{host}: {html}");
+        assert!(!html.contains("vscode-cdn"), "{host}: {html}");
+
+        let outside = format!(
+            r#"<script src="{host}/{}"></script>"#,
+            encoded(&dir.path().join("secret.js")).trim_start_matches('/')
+        );
+        let html = webviews::sanitize_webview_html(&outside, &roots);
+        assert!(html.contains("about:blank#blocked"), "{host}: {html}");
+    }
 }

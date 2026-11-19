@@ -174,6 +174,8 @@ impl App {
                 runtime.registered.insert(text(0)?.to_owned());
                 Ok(Value::Null)
             }
+            // A notice that a command triggered its extension's activation; nothing to answer.
+            ("MainThreadCommands", "$fireCommandActivationEvent") => Ok(Value::Null),
             ("MainThreadCommands", "$unregisterCommand") => {
                 runtime.registered.remove(text(0)?);
                 Ok(Value::Null)
