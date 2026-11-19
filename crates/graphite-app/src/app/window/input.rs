@@ -88,6 +88,9 @@ impl App {
         if self.activity_bar_menu_key(&event.logical_key) {
             return;
         }
+        if self.secondary_picker_key(&event.logical_key) {
+            return;
+        }
         if self.graphite_detail_key(event) {
             return;
         }

@@ -19,6 +19,40 @@ impl App {
                     .session
                     .send(json!({"type":"reply","id":id,"error":"Invalid command ID"}));
             };
+            let values = args.get(1).unwrap_or(&Value::Null);
+            let values = values.as_array().or_else(|| values["value"].as_array());
+            if command == "setContext" {
+                let key = values.and_then(|args| args.first()).and_then(Value::as_str);
+                if let Some(key) = key.filter(|key| !key.is_empty()) {
+                    match values
+                        .and_then(|args| args.get(1))
+                        .filter(|value| !value.is_null())
+                    {
+                        Some(value) => {
+                            self.vsix_context.insert(
+                                key.to_owned(),
+                                value
+                                    .as_str()
+                                    .map_or_else(|| value.to_string(), str::to_owned),
+                            );
+                        }
+                        None => {
+                            self.vsix_context.remove(key);
+                        }
+                    }
+                    return runtime
+                        .session
+                        .send(json!({"type":"reply","id":id,"result":null}));
+                }
+                crate::app::error_log::record(
+                    crate::app::error_log::ErrorSeverity::Medium,
+                    "plugins.vsix.set_context",
+                    "A VSIX extension provided an invalid context key.",
+                );
+                return runtime
+                    .session
+                    .send(json!({"type":"reply","id":id,"error":"Invalid context key"}));
+            }
             if crate::app::command_registry::registry()
                 .get(command)
                 .is_none()
@@ -30,8 +64,6 @@ impl App {
                 );
                 return runtime.session.send(json!({"type":"reply","id":id,"error":format!("Unknown Graphite command: {command}")}));
             }
-            let values = args.get(1).unwrap_or(&Value::Null);
-            let values = values.as_array().or_else(|| values["value"].as_array());
             let arguments = values
                 .and_then(|args| args.first())
                 .cloned()

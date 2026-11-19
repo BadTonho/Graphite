@@ -15,7 +15,7 @@ impl App {
         } else if self.outline_visible {
             240.0
         } else {
-            0.0
+            320.0
         }
     }
 
@@ -208,16 +208,16 @@ impl App {
     ) -> (f32, f32, f32, f32) {
         match self.chat.surface {
             ChatSurface::SideBar => {
-                let sec_w = self.secondary_sidebar_width();
-                let top = self.activity_bar_vertical_offset();
-                let x = if self.activity_bar_preferences.primary_sidebar_right
-                    && self.view_preferences.primary_sidebar_visible
-                {
-                    self.sidebar_width_px() - sec_w
-                } else {
-                    width - sec_w
-                };
-                (x, top, sec_w, (height - top - lh).max(lh * 4.0))
+                if self.secondary_picker.is_some() || self.secondary_plugin.is_some() {
+                    return (0.0, 0.0, 0.0, 0.0);
+                }
+                let top = self.secondary_sidebar_top(lh);
+                (
+                    self.secondary_sidebar_x(width),
+                    top,
+                    self.secondary_sidebar_width(),
+                    (height - top - lh).max(0.0),
+                )
             }
             ChatSurface::Editor => {
                 let rect = self.focused_group_rect(width, height, lh);

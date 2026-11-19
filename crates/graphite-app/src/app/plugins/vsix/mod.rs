@@ -370,6 +370,8 @@ impl App {
     }
 
     pub(in crate::app::plugins) fn stop_vsix(&mut self) {
+        self.vsix_context.clear();
+        self.secondary_trees.clear();
         self.plugins.vsix_generation = self.plugins.vsix_generation.wrapping_add(1);
         if self.plugins.vsix.take().is_some() {
             // An open palette may still contain rows from the old session.

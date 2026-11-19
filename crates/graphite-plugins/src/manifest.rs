@@ -127,6 +127,8 @@ pub struct ActivityBarContainer {
     pub title: String,
     #[serde(default)]
     pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
     #[serde(default)]
     pub views: Vec<ActivityBarView>,
 }
@@ -138,6 +140,8 @@ pub struct ActivityBarView {
     pub title: String,
     #[serde(default = "default_view_kind")]
     pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
 }
 
 fn default_view_kind() -> String {
@@ -323,6 +327,8 @@ pub struct Vsix {
     pub commands: Vec<Command>,
     #[serde(default)]
     pub activity_bar: Vec<ActivityBarContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secondary_sidebar: Option<Vec<ActivityBarContainer>>,
     #[serde(default)]
     pub language_comments: Vec<LanguageComments>,
     /// Snippet files the extension contributes (`contributes.snippets`).
@@ -658,8 +664,16 @@ pub(crate) fn vsix_language_comments(
 }
 
 pub(crate) fn vsix_activity_bar(manifest: &Value) -> Vec<ActivityBarContainer> {
+    vsix_sidebar_containers(manifest, "activitybar")
+}
+
+pub(crate) fn vsix_sidebar_containers(
+    manifest: &Value,
+    location: &str,
+) -> Vec<ActivityBarContainer> {
     let containers = manifest
-        .pointer("/contributes/viewsContainers/activitybar")
+        .pointer("/contributes/viewsContainers")
+        .and_then(|containers| containers.get(location))
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
@@ -689,6 +703,7 @@ pub(crate) fn vsix_activity_bar(manifest: &Value) -> Vec<ActivityBarContainer> {
                             Some("webview") => "webview".into(),
                             _ => "tree".into(),
                         },
+                        when: view.get("when").and_then(Value::as_str).map(str::to_owned),
                     })
                 })
                 .collect();
@@ -697,6 +712,10 @@ pub(crate) fn vsix_activity_bar(manifest: &Value) -> Vec<ActivityBarContainer> {
                 title: title.into(),
                 icon: container
                     .get("icon")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                when: container
+                    .get("when")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
                 views,

@@ -119,6 +119,14 @@ impl App {
 
     pub(crate) fn toggle_outline(&mut self) {
         self.outline_visible = !self.outline_visible;
+        if self.outline_visible {
+            self.secondary_plugin = None;
+            if self.chat.surface == crate::app::chat::ChatSurface::SideBar {
+                self.chat.visible = false;
+                self.chat.focused = false;
+            }
+            self.set_secondary_sidebar_visible(true);
+        }
         self.status = if self.outline_visible {
             self.t("status.outline.visible")
         } else {

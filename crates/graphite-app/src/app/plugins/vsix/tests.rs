@@ -2752,6 +2752,124 @@ fn vsix_tasks_provider_custom_execution_and_cwd_confinement() {
 }
 
 #[test]
+#[ignore = "manual check with a packaged Code OSS runtime and an explicit VSIX fixture"]
+fn packaged_host_resolves_a_secondary_sidebar_view() {
+    let runtime_path = PathBuf::from(std::env::var_os("GRAPHITE_TEST_CODE_OSS").unwrap());
+    let package = PathBuf::from(std::env::var_os("GRAPHITE_TEST_SECONDARY_VSIX").unwrap());
+    let view_id = std::env::var("GRAPHITE_TEST_SECONDARY_VIEW").unwrap();
+    let dir = TempDir::new();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let mut app = App::new_with_options(workspace.clone(), None, true);
+    app.profile_root = dir.path().join("profile");
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap();
+    trust.trust(&workspace).unwrap();
+    app.workspace_trust = Some(trust);
+    let store = Store::new(app.profile_root.join("plugins"));
+    let record = store.install(&package).unwrap();
+    let id = record.metadata.id().to_owned();
+    store
+        .enable_installation(&id, &record.directory, true)
+        .unwrap();
+    app.plugins.installed = store.list().unwrap();
+    app.plugins.store = Some(store);
+    app.start_vsix_host(Some(runtime_path)).unwrap();
+    assert!(app.open_secondary_extension_view(&view_id));
+
+    let deadline = Instant::now() + Duration::from_secs(45);
+    while Instant::now() < deadline {
+        app.poll_vsix();
+        let Some(mut runtime) = app.plugins.vsix.take() else {
+            panic!("Code OSS host stopped: {}", app.status);
+        };
+        // Resolve the same registered provider used by the native overlay, without a GPU window.
+        if runtime.webview_views.has_provider(&view_id) {
+            app.resolve_webview_view(&mut runtime, &view_id, "Secondary sidebar");
+        }
+        let html_ready = runtime
+            .webview_views
+            .view(&view_id)
+            .and_then(|view| runtime.webviews.panels.get(&view.handle))
+            .is_some_and(|panel| !panel.html.is_empty() && panel.html != webviews::DEFAULT_HTML);
+        let active = runtime.active_extensions.contains(&id);
+        app.plugins.vsix = Some(runtime);
+        if html_ready && active {
+            println!("{id}: activated and sent HTML for {view_id}");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("{id} did not provide HTML for {view_id}: {}", app.status);
+}
+
+#[test]
+fn secondary_views_activate_and_respect_extension_context_without_changing_the_primary_view() {
+    use graphite_plugins::manifest::{ActivityBarContainer, ActivityBarView, Vsix};
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().into(), None, true);
+    let mut trust =
+        crate::app::phase5::WorkspaceTrust::open(dir.path().join("trust.json")).unwrap();
+    trust.trust(dir.path()).unwrap();
+    app.workspace_trust = Some(trust);
+    app.active_plugin_activity = Some("primary".into());
+    let view_id = "test.secondary";
+    app.plugins.installed_plugins_mut().push(Installed {
+        metadata: Metadata::Vsix(Vsix {
+            id: "test.sidebar".into(),
+            version: "1.0.0".into(),
+            main: Some("index.js".into()),
+            activation_events: vec![format!("onView:{view_id}")],
+            secondary_sidebar: Some(vec![ActivityBarContainer {
+                id: "aux".into(),
+                title: "Tools".into(),
+                icon: None,
+                when: Some("!test:hide".into()),
+                views: vec![ActivityBarView {
+                    id: view_id.into(),
+                    title: "Tools".into(),
+                    kind: "webview".into(),
+                    when: None,
+                }],
+            }]),
+            ..Default::default()
+        }),
+        enabled: true,
+        trusted_version: Some("1.0.0".into()),
+        directory: "fixture".into(),
+        dev_path: None,
+    });
+    let (session, host) = Session::loopback();
+    app.plugins.vsix = Some(Runtime::for_test(session));
+    assert!(app.open_secondary_extension_view(view_id));
+    assert_eq!(
+        host.next_sent().unwrap()["event"],
+        format!("onView:{view_id}")
+    );
+    assert_eq!(app.active_plugin_activity.as_deref(), Some("primary"));
+    assert!(app.visible_secondary_plugin().is_some());
+    app.set_secondary_sidebar_visible(false);
+    assert!(app.visible_secondary_plugin().is_none());
+    app.set_secondary_sidebar_visible(true);
+    assert!(app.visible_secondary_plugin().is_some());
+    assert!(host.next_sent().is_none());
+    let mut runtime = app.plugins.vsix.take().unwrap();
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id":1,"actor":"MainThreadCommands","method":"$executeCommand",
+            "args":["setContext",["test:hide",true]]
+        }),
+    )
+    .unwrap();
+    app.plugins.vsix = Some(runtime);
+    assert!(app.secondary_plugin_entries().is_empty());
+    app.vsix_context.clear();
+    app.plugins.installed_plugins_mut()[0].enabled = false;
+    assert!(app.secondary_plugin_entries().is_empty());
+}
+
+#[test]
 fn vsix_activation_events_menus_keybindings_and_open_uri() {
     let dir = TempDir::new();
     let work = dir.path().join("work");

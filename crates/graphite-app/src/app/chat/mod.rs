@@ -189,7 +189,7 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         assert_eq!(app.secondary_sidebar_width(), 0.0);
 
-        app.outline_visible = true;
+        app.toggle_outline();
         assert_eq!(app.secondary_sidebar_width(), 240.0);
 
         app.open_chat_sidebar();

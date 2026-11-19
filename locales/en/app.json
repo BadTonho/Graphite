@@ -1,4 +1,10 @@
 {
+  "secondary_sidebar.choose": "Choose a view",
+  "secondary_sidebar.chat": "Chat",
+  "secondary_sidebar.empty": "Select a view to open it.",
+  "secondary_sidebar.trust": "Trust the workspace to open this extension view.",
+  "secondary_sidebar.host_unavailable": "The extension host is unavailable. Reopen the view to retry.",
+  "secondary_sidebar.runtime_missing": "To open this view, run Graphite from the portable package with Code OSS.",
   "activity.bar": "Activity bar",
   "activity.show": "Show Activity Bar",
   "activity.move_sidebar_right": "Move Primary Side Bar Right",

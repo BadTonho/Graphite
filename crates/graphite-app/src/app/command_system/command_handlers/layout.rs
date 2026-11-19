@@ -161,8 +161,7 @@ fn toggle_secondary_sidebar(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
-    app.view_preferences.secondary_sidebar_visible =
-        !app.view_preferences.secondary_sidebar_visible;
+    app.set_secondary_sidebar_visible(!app.view_preferences.secondary_sidebar_visible);
     app.save_view_preferences_for_command();
     Ok(())
 }

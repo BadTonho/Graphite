@@ -186,6 +186,10 @@ struct App {
     current_workspace_file: Option<PathBuf>,
     recent_workspaces: Vec<PathBuf>,
     active_plugin_activity: Option<String>,
+    secondary_plugin: Option<String>,
+    secondary_picker: Option<usize>,
+    secondary_trees: std::collections::BTreeSet<String>,
+    vsix_context: std::collections::HashMap<String, String>,
     /// Isolated constructors inject configuration so tests never read user settings.
     service_configuration_override: Option<serde_json::Value>,
     translator: graphite_i18n::Translator,
@@ -748,6 +752,10 @@ impl App {
             current_workspace_file: None,
             recent_workspaces,
             active_plugin_activity: None,
+            secondary_plugin: None,
+            secondary_picker: None,
+            secondary_trees: Default::default(),
+            vsix_context: Default::default(),
             workspace_trust: if isolated {
                 None
             } else {
@@ -1745,7 +1753,7 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.centered_editor = true;
-        app.outline_visible = true;
+        app.toggle_outline();
         let rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
         assert!(rect.x > 300.0);
         assert!(rect.width <= 680.0);

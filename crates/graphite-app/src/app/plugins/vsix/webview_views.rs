@@ -353,35 +353,54 @@ impl App {
 
     /// The webview views of the active container with their absolute overlay rectangles.
     fn active_webview_slots(&self) -> Vec<(WebviewSlot, [f64; 4])> {
-        if self.zen_mode
-            || !self.view_preferences.primary_sidebar_visible
-            || self.command_palette.is_some()
-        {
+        if self.zen_mode || self.command_palette.is_some() || !self.vsix_workspace_trusted() {
             return Vec::new();
         }
-        let Some(entry) = self.active_plugin_entry() else {
-            return Vec::new();
-        };
         let Some((width, height, lh)) = self.gpu.as_ref().map(|gpu| {
             let (width, height) = gpu.renderer.size();
             (width, height, gpu.renderer.line_height())
         }) else {
             return Vec::new();
         };
-        let (left, content_width) = self.primary_sidebar_bounds(width);
         let offset = self.activity_bar_vertical_offset();
-        self.webview_slots_for(&entry, height, lh)
-            .into_iter()
-            .map(|slot| {
-                let bounds = [
-                    f64::from(left),
-                    f64::from(offset + slot.top),
-                    f64::from(content_width),
-                    f64::from(slot.height),
-                ];
-                (slot, bounds)
-            })
-            .collect()
+        let primary = self
+            .active_plugin_entry()
+            .filter(|_| self.view_preferences.primary_sidebar_visible);
+        let (left, content_width) = self.primary_sidebar_bounds(width);
+        let secondary = self.visible_secondary_plugin();
+        let secondary_top = self.secondary_sidebar_top(lh);
+        let secondary_width = self.secondary_sidebar_width();
+        let mut added = BTreeSet::new();
+        [
+            (primary, left, content_width, offset),
+            (
+                secondary,
+                self.secondary_sidebar_x(width),
+                secondary_width,
+                secondary_top,
+            ),
+        ]
+        .into_iter()
+        .flat_map(|(entry, left, content_width, top)| {
+            entry
+                .filter(|_| content_width > 0.0)
+                .map_or_else(Vec::new, |entry| {
+                    self.webview_slots_for(&entry, height - (top - offset), lh)
+                        .into_iter()
+                        .filter(|slot| added.insert(slot.view_id.clone()))
+                        .map(|slot| {
+                            let bounds = [
+                                f64::from(left),
+                                f64::from(top + slot.top),
+                                f64::from(content_width),
+                                f64::from(slot.height),
+                            ];
+                            (slot, bounds)
+                        })
+                        .collect()
+                })
+        })
+        .collect()
     }
 
     /// Slots of the webview views in `entry`, in side bar coordinates.
@@ -421,15 +440,25 @@ impl App {
             .as_mut()
             .and_then(|runtime| runtime.webview_views.pending_show.take())
         {
-            if let Some(entry) = self
-                .plugin_activity_entries()
-                .into_iter()
-                .find(|entry| entry.views.iter().any(|view| view.id == view_id))
-            {
-                self.view_preferences.primary_sidebar_visible = true;
-                self.activate_plugin_activity(entry);
+            if !self.open_secondary_extension_view(&view_id) {
+                if let Some(entry) = self
+                    .plugin_activity_entries()
+                    .into_iter()
+                    .find(|entry| entry.views.iter().any(|view| view.id == view_id))
+                {
+                    self.view_preferences.primary_sidebar_visible = true;
+                    self.activate_plugin_activity(entry);
+                }
             }
         }
+        if self.plugins.vsix.is_some() && self.vsix_workspace_trusted() {
+            if let Some(entry) = self.visible_secondary_plugin() {
+                for view in entry.views {
+                    self.trigger_vsix_activation_event(&format!("onView:{}", view.id));
+                }
+            }
+        }
+        self.sync_secondary_tree_views();
         let Some(mut runtime) = self.plugins.vsix.take() else {
             self.stop_sidebar_webviews();
             return;
@@ -439,17 +468,16 @@ impl App {
     }
 
     fn sync_sidebar_webviews_with(&mut self, runtime: &mut Runtime) {
+        self.sync_webview_slots(runtime, self.active_webview_slots());
+    }
+
+    fn sync_webview_slots(&mut self, runtime: &mut Runtime, slots: Vec<(WebviewSlot, [f64; 4])>) {
         let titles: BTreeMap<String, String> = self
             .active_plugin_entry()
-            .map(|entry| {
-                entry
-                    .views
-                    .into_iter()
-                    .map(|view| (view.id, view.title))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let slots = self.active_webview_slots();
+            .into_iter()
+            .chain(self.visible_secondary_plugin())
+            .flat_map(|entry| entry.views.into_iter().map(|view| (view.id, view.title)))
+            .collect();
         let shown: BTreeSet<String> = slots.iter().map(|(slot, _)| slot.view_id.clone()).collect();
 
         for (slot, _) in &slots {
@@ -577,6 +605,41 @@ mod tests {
             extension_root: None,
             retain_context: retain,
         }
+    }
+
+    #[test]
+    fn webview_slots_report_visibility_independently_for_each_sidebar() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        let (session, host) = Session::loopback();
+        let mut runtime = Runtime::for_test(session);
+        let slot = |id: &str| {
+            (
+                WebviewSlot {
+                    view_id: id.into(),
+                    header_y: 0.0,
+                    top: 20.0,
+                    height: 40.0,
+                },
+                [0.0; 4],
+            )
+        };
+        for view in ["primary", "secondary"] {
+            runtime.webview_views.register(view, provider(false));
+        }
+        app.sync_webview_slots(&mut runtime, vec![slot("primary"), slot("secondary")]);
+        assert!(runtime.webview_views.view("primary").unwrap().visible);
+        let secondary = runtime.webview_views.view("secondary").unwrap();
+        assert!(secondary.visible);
+        let handle = secondary.handle.clone();
+        while host.next_sent().is_some() {}
+        app.sync_webview_slots(&mut runtime, vec![slot("primary")]);
+        assert!(runtime.webview_views.view("primary").unwrap().visible);
+        assert!(!runtime.webview_views.view("secondary").unwrap().visible);
+        let notification = host.next_sent().unwrap();
+        assert_eq!(notification["method"], "$onDidChangeWebviewViewVisibility");
+        assert_eq!(notification["args"], json!([handle, false]));
+        assert!(host.next_sent().is_none());
     }
 
     #[test]

@@ -1,4 +1,10 @@
 {
+  "secondary_sidebar.choose": "Escolher visualização",
+  "secondary_sidebar.chat": "Chat",
+  "secondary_sidebar.empty": "Selecione uma visualização para abri-la.",
+  "secondary_sidebar.trust": "Confie no workspace para abrir esta visualização.",
+  "secondary_sidebar.host_unavailable": "O host de extensões está indisponível. Reabra a visualização para tentar novamente.",
+  "secondary_sidebar.runtime_missing": "Para abrir esta visualização, use o pacote portátil do Graphite com Code OSS.",
   "activity.bar": "Barra de atividades",
   "activity.show": "Mostrar barra de atividades",
   "activity.move_sidebar_right": "Mover barra lateral principal para a direita",

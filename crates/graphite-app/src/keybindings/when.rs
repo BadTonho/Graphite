@@ -121,11 +121,12 @@ fn tokenize(source: &str, translator: &Translator) -> Result<Vec<Token>, String>
                 }
                 out.push(Token::Atom(value));
             }
-            c if c.is_alphanumeric() || matches!(c, '_' | '.' | '-' | '/') => {
+            c if c.is_alphanumeric() || matches!(c, '_' | '.' | '-' | '/' | ':') => {
                 let start = i;
                 i += 1;
                 while i < chars.len()
-                    && (chars[i].is_alphanumeric() || matches!(chars[i], '_' | '.' | '-' | '/'))
+                    && (chars[i].is_alphanumeric()
+                        || matches!(chars[i], '_' | '.' | '-' | '/' | ':'))
                 {
                     i += 1;
                 }

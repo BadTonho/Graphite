@@ -361,15 +361,28 @@ impl App {
             return false;
         };
         let _ = mx;
+        self.plugin_tree_click(&entry, my, line_height)
+    }
+
+    pub(crate) fn plugin_tree_click(
+        &mut self,
+        entry: &crate::app::window::activity_bar::PluginActivityEntry,
+        my: f32,
+        line_height: f32,
+    ) -> bool {
         let clicked_row = ((my / line_height.max(1.0)) - 4.0).floor();
         if clicked_row < 0.0 {
             return true;
         }
         let mut target_row = clicked_row as usize;
-        for view in &entry.views {
+        for view in entry.views.iter().filter(|view| view.kind != "webview") {
             if target_row == 0 {
                 if view.kind == "tree" {
-                    self.request_native_tree_children(&view.id, None);
+                    if self.is_vsix_tree_view(&view.id) {
+                        self.request_vsix_tree_children(&view.id, None);
+                    } else {
+                        self.request_native_tree_children(&view.id, None);
+                    }
                 }
                 return true;
             }

@@ -141,6 +141,8 @@ impl Drop for Plugins {
 }
 impl App {
     pub(crate) fn refresh_plugins_for_profile(&mut self) {
+        self.secondary_plugin = None;
+        self.secondary_picker = None;
         self.stop_workspace_plugins();
         // Discard any in-flight UI result from the previous profile. Its worker
         // owns a clone of the old profile's store and may safely finish there.
@@ -157,6 +159,7 @@ impl App {
     }
 
     pub(crate) fn start_workspace_trusted_plugins(&mut self) {
+        self.activate_secondary_plugin();
         let mut startup = std::mem::take(&mut self.plugins.startup);
         if let Some(starting) = &self.plugins.starting {
             if !startup.contains(starting) {

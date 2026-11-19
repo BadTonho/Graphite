@@ -13,7 +13,7 @@ impl App {
         let (lh, cw) = (r.line_height(), r.char_width());
         let sidebar_lh = lh;
         let editor_left = if self.activity_bar_preferences.primary_sidebar_right {
-            self.activity_bar_width_px()
+            self.activity_bar_width_px() + self.secondary_sidebar_width()
         } else {
             if self.view_preferences.primary_sidebar_visible {
                 self.sidebar_width_px()
@@ -23,7 +23,11 @@ impl App {
         };
         let sec_width = self.secondary_sidebar_width();
         let editor_right = if self.activity_bar_preferences.primary_sidebar_right {
-            self.sidebar_width_px() - sec_width
+            if self.view_preferences.primary_sidebar_visible {
+                self.sidebar_width_px()
+            } else {
+                w
+            }
         } else {
             w - sec_width
         };
@@ -797,6 +801,7 @@ impl App {
             r.draw_rect(0.0, h - lh, w, lh, rgb(Theme::color(Theme::BG, 0xffffff)));
         }
         if !self.zen_mode {
+            self.draw_secondary_sidebar(r, w, h, lh, cw);
             self.draw_phase4_overlays(r, w, h, lh);
             self.draw_phase6_overlays(r, w, h, lh);
             self.draw_merge_editor(r, w, h, lh);

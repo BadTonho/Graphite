@@ -1999,20 +1999,23 @@ impl App {
             && self.view_preferences.secondary_sidebar_visible
             && !self.zen_mode
             && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
+            && self.secondary_picker.is_none()
+            && self.secondary_plugin.is_none()
         {
-            let outline_width = 240.0;
-            let x = width - outline_width;
+            let outline_width = self.secondary_sidebar_width();
+            let x = self.secondary_sidebar_x(width);
+            let top = self.secondary_sidebar_top(line_height);
             renderer.draw_rect(
                 x,
-                0.0,
+                top,
                 outline_width,
-                height,
+                (height - top - line_height).max(0.0),
                 rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
             );
             renderer.draw_text(
                 self.t("scm.outline.title"),
                 x + PAD,
-                PAD,
+                top + PAD,
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
             let char_width = renderer.char_width();
@@ -2020,7 +2023,7 @@ impl App {
                 renderer.draw_text(
                     &format!("\u{2315} {}\u{258f}", self.outline.filter),
                     x + PAD,
-                    line_height * 1.5,
+                    top + line_height * 1.5,
                     rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
                 );
             }
@@ -2029,10 +2032,10 @@ impl App {
             } else {
                 1.5
             };
-            let chars = ((outline_width - PAD * 2.0) / char_width.max(1.0)) as usize;
+            let chars = ((outline_width - PAD * 2.0) / char_width.max(1.0)).max(0.0) as usize;
             for (i, row) in self.outline_rows().iter().enumerate() {
-                let y = line_height * (i as f32 + first_row);
-                if y + line_height > height {
+                let y = top + line_height * (i as f32 + first_row);
+                if y + line_height > height - line_height {
                     break;
                 }
                 if row.current {

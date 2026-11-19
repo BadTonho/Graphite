@@ -67,7 +67,7 @@ impl Default for ViewLayoutPreferences {
         Self {
             menu_bar_visible: true,
             primary_sidebar_visible: true,
-            secondary_sidebar_visible: true,
+            secondary_sidebar_visible: false,
             status_bar_visible: true,
             panel_visible: true,
             panel_position: PanelPosition::Bottom,

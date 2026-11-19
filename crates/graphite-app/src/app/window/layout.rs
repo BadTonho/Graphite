@@ -126,7 +126,7 @@ impl App {
         let available = max_sidebar_content_width(
             scale,
             self.sidebar_window_width_px,
-            if self.outline_visible { 240.0 } else { 0.0 },
+            self.secondary_sidebar_width(),
         );
         self.sidebar_width = if available >= config::MIN_SIDEBAR_WIDTH {
             config::clamp_sidebar_width(raw_width).min(available)
@@ -182,7 +182,7 @@ impl App {
             let primary_right = self.activity_bar_preferences.primary_sidebar_right;
             (
                 if primary_right {
-                    activity_width
+                    activity_width + sec_width
                 } else {
                     if self.view_preferences.primary_sidebar_visible {
                         sidebar_boundary
@@ -191,7 +191,9 @@ impl App {
                     }
                 },
                 if primary_right && self.view_preferences.primary_sidebar_visible {
-                    primary_width + sec_width + right_panel_width
+                    primary_width + right_panel_width
+                } else if primary_right {
+                    right_panel_width
                 } else {
                     sec_width + right_panel_width
                 },

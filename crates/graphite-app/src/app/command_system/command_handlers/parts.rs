@@ -17,7 +17,7 @@ fn close_panel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
 }
 
 fn close_auxiliary_bar(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.view_preferences.secondary_sidebar_visible = false;
+    app.set_secondary_sidebar_visible(false);
     app.save_view_preferences_for_command();
     Ok(())
 }
@@ -126,23 +126,13 @@ fn previous_panel_view(app: &mut App, _: &CommandInvocation) -> Result<(), Comma
     Ok(())
 }
 
-fn cycle_auxiliary_bar_view(app: &mut App) {
-    use crate::app::chat::state::ChatSurface;
-    app.view_preferences.secondary_sidebar_visible = true;
-    let in_chat = app.chat.visible && app.chat.surface == ChatSurface::SideBar;
-    if in_chat {
-        app.chat.visible = false;
-        app.chat.focused = false;
-        app.outline_visible = true;
-    } else {
-        app.outline_visible = false;
-        app.open_chat_sidebar();
-    }
-    app.save_view_preferences_for_command();
+fn next_auxiliary_bar_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.cycle_secondary_view(false);
+    Ok(())
 }
 
-fn next_auxiliary_bar_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    cycle_auxiliary_bar_view(app);
+fn previous_auxiliary_bar_view(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.cycle_secondary_view(true);
     Ok(())
 }
 
@@ -258,7 +248,7 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "workbench.action.previousAuxiliaryBarView",
             "Previous Secondary Side Bar View",
             "View",
-            next_auxiliary_bar_view,
+            previous_auxiliary_bar_view,
         ),
         (
             "workbench.action.editor.changeEOL",

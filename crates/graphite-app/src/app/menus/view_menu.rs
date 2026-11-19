@@ -940,8 +940,7 @@ impl App {
                     !self.view_preferences.primary_sidebar_visible
             }
             A::SecondarySidebar => {
-                self.view_preferences.secondary_sidebar_visible =
-                    !self.view_preferences.secondary_sidebar_visible
+                self.set_secondary_sidebar_visible(!self.view_preferences.secondary_sidebar_visible)
             }
             A::StatusBar => {
                 self.view_preferences.status_bar_visible = !self.view_preferences.status_bar_visible

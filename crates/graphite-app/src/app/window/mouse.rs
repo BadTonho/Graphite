@@ -174,6 +174,9 @@ impl App {
             return;
         }
 
+        if self.secondary_sidebar_click(mx, my, window_width, window_height, lh) {
+            return;
+        }
         if self.handle_chat_click(mx, my, window_width, window_height, lh) {
             return;
         }
@@ -182,18 +185,23 @@ impl App {
             && self.view_preferences.secondary_sidebar_visible
             && !self.zen_mode
             && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
-            && mx >= window_width - 240.0
+            && self.secondary_plugin.is_none()
+            && mx >= self.secondary_sidebar_x(window_width)
+            && mx < self.secondary_sidebar_x(window_width) + self.secondary_sidebar_width()
+            && my >= self.secondary_sidebar_top(lh)
+            && my < window_height - lh
         {
             let first_row = if self.outline.filter_on_type {
                 2.5
             } else {
                 1.5
             };
-            let row = ((my / lh) - first_row).floor();
+            let row = (((my - self.secondary_sidebar_top(lh)) / lh) - first_row).floor();
             if row >= 0.0 {
                 let row = row as usize;
                 let depth = self.outline_rows().get(row).map_or(0, |entry| entry.depth);
-                let chevron_start = window_width - 240.0 + PAD + depth as f32 * 2.0 * cw;
+                let chevron_start =
+                    self.secondary_sidebar_x(window_width) + PAD + depth as f32 * 2.0 * cw;
                 self.outline_click(row, mx < chevron_start + cw * 2.0);
             }
             return;

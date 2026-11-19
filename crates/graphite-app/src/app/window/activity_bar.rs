@@ -752,6 +752,28 @@ impl App {
             return;
         };
         let width = self.sidebar_layout_width_px() - ACTIVITY_BAR_WIDTH;
+        self.draw_plugin_container(
+            renderer,
+            &entry,
+            height,
+            height,
+            width,
+            line_height,
+            cell_width,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn draw_plugin_container(
+        &self,
+        renderer: &mut Renderer,
+        entry: &PluginActivityEntry,
+        height: f32,
+        slot_window_height: f32,
+        width: f32,
+        line_height: f32,
+        cell_width: f32,
+    ) {
         renderer.draw_rect(
             ACTIVITY_BAR_WIDTH,
             0.0,
@@ -835,7 +857,7 @@ impl App {
             }
         }
         if let Some(lh) = self.gpu.as_ref().map(|gpu| gpu.renderer.line_height()) {
-            for slot in self.webview_slots_for(&entry, height, lh) {
+            for slot in self.webview_slots_for(entry, slot_window_height, lh) {
                 let fallback = entry
                     .views
                     .iter()
@@ -1830,10 +1852,12 @@ mod tests {
                         permissions: vec![],
                         commands: vec![],
                         activity_bar: vec![graphite_plugins::manifest::ActivityBarContainer {
+                            when: None,
                             id: "sample.plugin.tools".into(),
                             title: "Tools".into(),
                             icon: None,
                             views: vec![graphite_plugins::manifest::ActivityBarView {
+                                when: None,
                                 id: "sample.plugin.items".into(),
                                 title: "Items".into(),
                                 kind: "tree".into(),
@@ -1888,10 +1912,12 @@ mod tests {
                     contributions: vec![],
                     commands: vec![],
                     activity_bar: vec![graphite_plugins::manifest::ActivityBarContainer {
+                        when: None,
                         id: "sample.tools".into(),
                         title: "Tools".into(),
                         icon: None,
                         views: vec![graphite_plugins::manifest::ActivityBarView {
+                            when: None,
                             id: "sample.tools.tree".into(),
                             title: "Tree".into(),
                             kind: "tree".into(),

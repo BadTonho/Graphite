@@ -281,6 +281,42 @@ fn vsix_entry_limit_accepts_zip64_and_reports_counts_above_the_ceiling() {
 }
 
 #[test]
+fn installed_vsix_backfills_secondary_sidebar_from_its_extracted_manifest() {
+    let temp = Temp::new();
+    let path = temp.0.join("sample.vsix");
+    let manifest = br#"{"publisher":"example","name":"sidebar","version":"1.0.0","main":"index.js","contributes":{"viewsContainers":{"activitybar":[{"id":"main","title":"Primary"}],"secondarySidebar":[{"id":"aux","title":"Secondary","when":"!example:hide"}]},"views":{"main":[{"id":"main.view","name":"Primary"}],"aux":[{"id":"aux.view","name":"Secondary","type":"webview","when":"!example.hide"}]}}}"#;
+    zip(
+        &path,
+        &[
+            ("extension/package.json", manifest),
+            ("extension/index.js", b""),
+        ],
+    );
+    let store = Store::new(temp.0.join("store"));
+    let record = store.install(&path).unwrap();
+    let mut previous = serde_json::to_value(&record).unwrap();
+    previous["metadata"]["manifest"]
+        .as_object_mut()
+        .unwrap()
+        .remove("secondary_sidebar");
+    let path = store.root.join("example.sidebar.json");
+    fs::write(&path, serde_json::to_vec(&previous).unwrap()).unwrap();
+    let restored = store.get("example.sidebar").unwrap();
+    let graphite_plugins::manifest::Metadata::Vsix(vsix) = restored.metadata else {
+        panic!()
+    };
+    assert_eq!(vsix.activity_bar[0].id, "main");
+    let secondary = &vsix.secondary_sidebar.unwrap()[0];
+    assert_eq!(secondary.id, "aux");
+    assert_eq!(secondary.when.as_deref(), Some("!example:hide"));
+    assert_eq!(secondary.views[0].kind, "webview");
+    assert_eq!(secondary.views[0].when.as_deref(), Some("!example.hide"));
+    assert!(vsix
+        .activation_events
+        .contains(&"onView:aux.view".to_owned()));
+}
+
+#[test]
 fn reviewed_update_cannot_overwrite_a_changed_installation() {
     let temp = Temp::new();
     let path = temp.0.join("sample.vsix");

@@ -1,0 +1,410 @@
+use super::activity_bar::PluginActivityEntry;
+use super::*;
+use crate::app::chat::ChatSurface;
+use crate::app::error_log::{self, ErrorSeverity};
+use graphite_extension_host::code_oss::Session;
+use graphite_plugins::manifest::Metadata;
+
+#[derive(Clone, PartialEq, Eq)]
+enum View {
+    Chat,
+    Outline,
+    Extension(String),
+}
+
+impl App {
+    pub(crate) fn secondary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
+        let mut context = self.context_keys.resolve(None);
+        context.extend(self.vsix_context.clone());
+        let matches = |when: Option<&str>| {
+            when.is_none_or(|when| {
+                crate::keybindings::Condition::parse(when)
+                    .is_ok_and(|condition| condition.evaluate(&context))
+            })
+        };
+        self.plugins
+            .installed_plugins()
+            .iter()
+            .filter(|record| crate::app::plugins::vsix_extension_runnable(record))
+            .flat_map(|record| {
+                let Metadata::Vsix(vsix) = &record.metadata else {
+                    return Vec::new();
+                };
+                vsix.secondary_sidebar
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|container| matches(container.when.as_deref()))
+                    .filter_map(|container| {
+                        let views: Vec<_> = container
+                            .views
+                            .iter()
+                            .filter(|view| matches(view.when.as_deref()))
+                            .cloned()
+                            .collect();
+                        (!views.is_empty()).then(|| PluginActivityEntry {
+                            key: format!("plugin:{}:{}", vsix.id, container.id),
+                            plugin_id: vsix.id.clone(),
+                            container_id: container.id.clone(),
+                            title: container.title.clone(),
+                            views,
+                        })
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub(crate) fn selected_secondary_plugin(&self) -> Option<PluginActivityEntry> {
+        let key = self.secondary_plugin.as_deref()?;
+        self.secondary_plugin_entries()
+            .into_iter()
+            .find(|entry| entry.key == key)
+    }
+
+    pub(crate) fn visible_secondary_plugin(&self) -> Option<PluginActivityEntry> {
+        (self.secondary_sidebar_width() > 0.0 && self.secondary_picker.is_none())
+            .then(|| self.selected_secondary_plugin())
+            .flatten()
+    }
+
+    pub(crate) fn sync_secondary_tree_views(&mut self) {
+        let views: std::collections::BTreeSet<_> = self
+            .visible_secondary_plugin()
+            .into_iter()
+            .flat_map(|entry| entry.views)
+            .filter(|view| view.kind == "tree" && self.is_vsix_tree_view(&view.id))
+            .map(|view| view.id)
+            .collect();
+        let previous = std::mem::replace(&mut self.secondary_trees, views.clone());
+        for view in previous.difference(&views) {
+            self.notify_vsix_tree_visible(view, false);
+        }
+        for view in views.difference(&previous) {
+            self.notify_vsix_tree_visible(view, true);
+            self.request_vsix_tree_children(view, None);
+        }
+    }
+
+    pub(crate) fn set_secondary_sidebar_visible(&mut self, visible: bool) {
+        self.view_preferences.secondary_sidebar_visible = visible;
+        self.secondary_picker = None;
+        if visible {
+            self.activate_secondary_plugin();
+        } else if self.chat.surface == ChatSurface::SideBar {
+            self.chat.focused = false;
+        }
+    }
+
+    pub(crate) fn open_secondary_extension_view(&mut self, view_id: &str) -> bool {
+        let Some(entry) = self
+            .secondary_plugin_entries()
+            .into_iter()
+            .find(|entry| entry.views.iter().any(|view| view.id == view_id))
+        else {
+            return false;
+        };
+        self.select_secondary_view(View::Extension(entry.key));
+        true
+    }
+
+    pub(crate) fn activate_secondary_plugin(&mut self) {
+        let Some(entry) = self.selected_secondary_plugin() else {
+            return;
+        };
+        if self.secondary_sidebar_width() <= 0.0 || !self.vsix_workspace_trusted() {
+            return;
+        }
+        if self.plugins.vsix.is_none() {
+            let Some(path) = Session::bundled_runtime() else {
+                return;
+            };
+            if let Err(error) = self.start_vsix_host(Some(path)) {
+                error_log::record(
+                    ErrorSeverity::Medium,
+                    "plugins.secondary_sidebar",
+                    "Could not start the VSIX host.",
+                );
+                self.status = error;
+                return;
+            }
+        }
+        for view in &entry.views {
+            self.trigger_vsix_activation_event(&format!("onView:{}", view.id));
+        }
+    }
+
+    fn selected_secondary_view(&self) -> Option<View> {
+        if let Some(entry) = self.selected_secondary_plugin() {
+            Some(View::Extension(entry.key))
+        } else if self.chat.visible && self.chat.surface == ChatSurface::SideBar {
+            Some(View::Chat)
+        } else if self.outline_visible {
+            Some(View::Outline)
+        } else {
+            None
+        }
+    }
+
+    fn secondary_views(&self) -> Vec<(View, String)> {
+        let mut views = vec![
+            (View::Chat, self.t("secondary_sidebar.chat").into()),
+            (View::Outline, self.t("scm.outline.title").into()),
+        ];
+        views.extend(
+            self.secondary_plugin_entries()
+                .into_iter()
+                .map(|entry| (View::Extension(entry.key), entry.title)),
+        );
+        views
+    }
+
+    fn select_secondary_view(&mut self, view: View) {
+        self.secondary_picker = None;
+        if self.chat.surface == ChatSurface::SideBar {
+            self.chat.visible = false;
+            self.chat.focused = false;
+        }
+        self.outline_visible = view == View::Outline;
+        self.secondary_plugin = None;
+        match view {
+            View::Chat => self.open_chat_sidebar(),
+            View::Outline => self.set_secondary_sidebar_visible(true),
+            View::Extension(key) => {
+                self.secondary_plugin = Some(key);
+                self.set_secondary_sidebar_visible(true);
+            }
+        }
+        self.save_view_preferences_for_command();
+    }
+
+    pub(crate) fn cycle_secondary_view(&mut self, reverse: bool) {
+        let views = self.secondary_views();
+        let current = self.selected_secondary_view();
+        let index = current.and_then(|current| views.iter().position(|(view, _)| *view == current));
+        let next = match index {
+            Some(index) if reverse => (index + views.len() - 1) % views.len(),
+            Some(index) => (index + 1) % views.len(),
+            None if reverse => views.len() - 1,
+            None => 0,
+        };
+        self.select_secondary_view(views[next].0.clone());
+    }
+
+    pub(crate) fn secondary_sidebar_x(&self, width: f32) -> f32 {
+        if self.activity_bar_preferences.primary_sidebar_right {
+            self.activity_bar_width_px()
+        } else {
+            width - self.secondary_sidebar_width()
+        }
+    }
+
+    pub(crate) fn secondary_sidebar_top(&self, lh: f32) -> f32 {
+        self.activity_bar_vertical_offset() + lh * 1.65
+    }
+
+    pub(crate) fn draw_secondary_sidebar(
+        &self,
+        r: &mut Renderer,
+        w: f32,
+        h: f32,
+        lh: f32,
+        cw: f32,
+    ) {
+        let width = self.secondary_sidebar_width();
+        if width <= 0.0 {
+            return;
+        }
+        let x = self.secondary_sidebar_x(w);
+        let top = self.activity_bar_vertical_offset();
+        let body = self.secondary_sidebar_top(lh);
+        let bg = rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3));
+        let fg = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
+        let dim = rgb(Theme::color(Theme::DIM, 0x616161));
+        let max_chars = ((width - PAD * 2.0) / cw.max(1.0)).max(1.0) as usize;
+        let draw_label = |r: &mut Renderer, label: &str, y: f32, color| {
+            r.draw_text(
+                &label.chars().take(max_chars).collect::<String>(),
+                x + PAD,
+                y,
+                color,
+            );
+        };
+        let selected = self.selected_secondary_view();
+        let views = self.secondary_views();
+        let title = views
+            .iter()
+            .find(|(view, _)| Some(view) == selected.as_ref())
+            .map_or(self.t("secondary_sidebar.choose"), |(_, label)| label);
+
+        r.draw_rect(x, top, width, (h - lh - top).max(0.0), bg);
+        r.draw_rect(
+            x,
+            top,
+            width,
+            body - top,
+            rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+        );
+        draw_label(r, &format!("{title} ▾"), top + lh * 0.25, fg);
+        if let Some(index) = self.secondary_picker {
+            for (row, (_, label)) in views.iter().enumerate() {
+                let y = body + row as f32 * lh * 1.5;
+                if y + lh > h - lh {
+                    break;
+                }
+                if row == index {
+                    r.draw_rect(
+                        x,
+                        y,
+                        width,
+                        lh * 1.5,
+                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                    );
+                }
+                draw_label(r, label, y + lh * 0.2, fg);
+            }
+            return;
+        }
+        if let Some(entry) = self.selected_secondary_plugin() {
+            let message = if !self.vsix_workspace_trusted() {
+                Some(self.t("secondary_sidebar.trust"))
+            } else if self.plugins.vsix.is_none() {
+                Some(if Session::bundled_runtime().is_some() {
+                    self.t("secondary_sidebar.host_unavailable")
+                } else {
+                    self.t("secondary_sidebar.runtime_missing")
+                })
+            } else {
+                None
+            };
+            if let Some(message) = message {
+                for (index, line) in wrap_sidebar_message(message, max_chars)
+                    .into_iter()
+                    .enumerate()
+                {
+                    draw_label(r, &line, body + (index as f32 + 0.4) * lh, dim);
+                }
+            } else {
+                r.push_translation(x - ACTIVITY_BAR_WIDTH, body);
+                self.draw_plugin_container(r, &entry, h - body, h - (body - top), width, lh, cw);
+                r.pop_translation();
+            }
+        } else if selected.is_none() {
+            draw_label(r, self.t("secondary_sidebar.empty"), body + lh * 0.4, dim);
+        }
+    }
+
+    pub(crate) fn secondary_sidebar_click(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        lh: f32,
+    ) -> bool {
+        let left = self.secondary_sidebar_x(w);
+        let width = self.secondary_sidebar_width();
+        let top = self.activity_bar_vertical_offset();
+        let body = self.secondary_sidebar_top(lh);
+        if width <= 0.0 || x < left || x >= left + width || y < top || y >= h - lh {
+            self.secondary_picker = None;
+            return false;
+        }
+        if y < body {
+            self.secondary_picker = if self.secondary_picker.is_some() {
+                None
+            } else {
+                Some(0)
+            };
+            return true;
+        }
+        if self.secondary_picker.take().is_some() {
+            let index = ((y - body) / (lh * 1.5)) as usize;
+            if let Some((view, _)) = self.secondary_views().get(index) {
+                self.select_secondary_view(view.clone());
+            }
+            return true;
+        }
+        if let Some(entry) = self.selected_secondary_plugin() {
+            if self.vsix_workspace_trusted() {
+                self.plugin_tree_click(&entry, y - body, lh);
+            }
+            true
+        } else {
+            self.selected_secondary_view().is_none()
+        }
+    }
+
+    pub(crate) fn secondary_picker_key(&mut self, key: &Key) -> bool {
+        let Some(index) = self.secondary_picker else {
+            return false;
+        };
+        let views = self.secondary_views();
+        match key {
+            Key::Named(NamedKey::Escape) => self.secondary_picker = None,
+            Key::Named(NamedKey::ArrowUp) => self.secondary_picker = Some(index.saturating_sub(1)),
+            Key::Named(NamedKey::ArrowDown) => {
+                self.secondary_picker = Some((index + 1).min(views.len() - 1))
+            }
+            Key::Named(NamedKey::Enter) => {
+                if let Some((view, _)) = views.get(index) {
+                    self.select_secondary_view(view.clone());
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
+fn wrap_sidebar_message(message: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in message.split_whitespace() {
+        let line = lines.last_mut().unwrap();
+        if line.is_empty() {
+            line.push_str(word);
+        } else if line.chars().count() + word.chars().count() < width {
+            line.push(' ');
+            line.push_str(word);
+        } else {
+            lines.push(word.to_owned());
+        }
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toggle_opens_empty_secondary_sidebar_and_reserves_the_opposite_side() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let (w, h, lh) = (1200.0, 800.0, 20.0);
+        let before = app.group_rectangles(w, h, lh)[0];
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        let after = app.group_rectangles(w, h, lh)[0];
+        assert!(app.selected_secondary_view().is_none());
+        assert_eq!(before.width - after.width, app.secondary_sidebar_width());
+        assert_eq!(after.x + after.width, app.secondary_sidebar_x(w));
+
+        app.activity_bar_preferences.primary_sidebar_right = true;
+        let mirrored = app.group_rectangles(w, h, lh)[0];
+        assert_eq!(
+            mirrored.x,
+            app.secondary_sidebar_x(w) + app.secondary_sidebar_width()
+        );
+
+        let x = app.secondary_sidebar_x(w) + 8.0;
+        let y = app.activity_bar_vertical_offset() + 2.0;
+        assert!(app.secondary_sidebar_click(x, y, w, h, lh));
+        assert!(app.secondary_picker_key(&Key::Named(NamedKey::ArrowDown)));
+        assert!(app.secondary_picker_key(&Key::Named(NamedKey::Enter)));
+        assert!(app.selected_secondary_view() == Some(View::Outline));
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        assert_eq!(app.secondary_sidebar_width(), 0.0);
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        assert!(app.selected_secondary_view() == Some(View::Outline));
+    }
+}

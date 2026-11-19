@@ -76,7 +76,7 @@ impl Store {
                             }
                         }
                     }
-                    if vsix.activity_bar.is_empty() {
+                    if vsix.activity_bar.is_empty() || vsix.secondary_sidebar.is_none() {
                         let path = self
                             .root
                             .join(&record.directory)
@@ -86,7 +86,19 @@ impl Store {
                             if let Ok(manifest) =
                                 serde_json::from_reader(file.take(1024 * 1024 + 1))
                             {
-                                vsix.activity_bar = crate::manifest::vsix_activity_bar(&manifest);
+                                if vsix.activity_bar.is_empty() {
+                                    vsix.activity_bar =
+                                        crate::manifest::vsix_activity_bar(&manifest);
+                                }
+                                if vsix.secondary_sidebar.is_none() {
+                                    vsix.secondary_sidebar =
+                                        Some(crate::manifest::vsix_sidebar_containers(
+                                            &manifest,
+                                            "secondarySidebar",
+                                        ));
+                                    vsix.activation_events =
+                                        crate::manifest::vsix_activation_events(&manifest);
+                                }
                             }
                         }
                     }

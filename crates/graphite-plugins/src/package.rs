@@ -172,6 +172,7 @@ fn metadata(zip: &mut ZipArchive<fs::File>, path: &Path) -> Result<Metadata> {
                 main: text("main").ok(),
                 commands: vsix_commands(&m),
                 activity_bar: vsix_activity_bar(&m),
+                secondary_sidebar: Some(vsix_sidebar_containers(&m, "secondarySidebar")),
                 snippets: vsix_snippets(&m),
                 debuggers: vsix_debuggers(&m),
                 activation_events: vsix_activation_events(&m),

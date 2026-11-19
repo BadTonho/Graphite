@@ -283,7 +283,11 @@ impl App {
         if !self.outline.filter_on_type {
             self.outline.filter.clear();
         } else {
-            self.outline_visible = true;
+            if !self.outline_visible || self.secondary_plugin.is_some() {
+                self.outline_visible = false;
+                self.toggle_outline();
+            }
+            self.set_secondary_sidebar_visible(true);
             self.outline.focused = true;
         }
     }

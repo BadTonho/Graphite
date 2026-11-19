@@ -212,6 +212,9 @@ async function start({ packages, root, rootUri, storage, locale, configuration }
                         get: (_, method) => typeof method === 'string' && method.startsWith('$')
                             ? (...args) => {
                                 if (name === 'MainThreadDebugService') trackDebugFactory(method, args);
+                                if (name === 'MainThreadCommands' && method === '$executeCommand' && args[0] === '_setContext') {
+                                    args[0] = 'setContext';
+                                }
                                 if (name === 'MainThreadCommands' && method === '$executeCommand' && declared.has(args[0])) {
                                     const owner = declared.get(args[0]);
                                     if (!owner) throw new Error(`Multiple VSIX extensions declare ${args[0]}`);
@@ -401,11 +404,19 @@ function words(buffer) {
     return result;
 }
 
+let startup;
+
 async function receive(message) {
+    // Replies must still flow while the host is initializing, since startup RPCs may await them.
+    if (message.type !== 'start' && message.type !== 'reply' && message.type !== 'cancelCall') {
+        if (!startup) throw new Error('Code OSS session is not initialized');
+        await startup;
+    }
     switch (message.type) {
         case 'start':
-            if (server) throw new Error('Code OSS session already initialized');
-            await start(message);
+            if (startup) throw new Error('Code OSS session already initialized');
+            startup = start(message);
+            await startup;
             break;
         case 'reply': {
             const waiter = pending.get(message.id);
