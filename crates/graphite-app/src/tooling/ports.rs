@@ -11,6 +11,7 @@ pub(crate) struct LocalPort {
     pub state: String,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_windows_netstat(text: &str, owned: &BTreeSet<u32>) -> Vec<LocalPort> {
     let mut listeners = Vec::new();
     for line in text.lines() {
@@ -45,7 +46,6 @@ pub(crate) fn parse_windows_netstat(text: &str, owned: &BTreeSet<u32>) -> Vec<Lo
     listeners
 }
 
-#[cfg(test)]
 pub(crate) fn parse_linux_ss(text: &str, owned: &BTreeSet<u32>) -> Vec<LocalPort> {
     let mut listeners = Vec::new();
     for line in text.lines() {
@@ -99,8 +99,13 @@ impl PortManager {
         self.owned_processes.contains(&process_id)
     }
 
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn refresh_from_netstat(&mut self, text: &str) {
         self.listeners = parse_windows_netstat(text, &self.owned_processes);
+    }
+
+    pub(crate) fn refresh_from_ss(&mut self, text: &str) {
+        self.listeners = parse_linux_ss(text, &self.owned_processes);
     }
 
     pub(crate) fn remove_process(&mut self, process_id: u32) {
@@ -125,6 +130,16 @@ mod tests {
         assert!(!manager.can_stop(99));
         manager.remove_process(1234);
         assert!(manager.listeners.is_empty());
+    }
+
+    #[test]
+    fn refreshes_linux_listeners_through_the_manager() {
+        let mut manager = PortManager::default();
+        manager.register_process(7);
+        manager.refresh_from_ss("LISTEN 0 128 [::1]:5173 [::]:* users:((\"vite\",pid=7,fd=11))\nLISTEN 0 64 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=99,fd=3))");
+        assert_eq!(manager.listeners.len(), 1);
+        assert_eq!(manager.listeners[0].address, "::1");
+        assert!(!manager.can_stop(99));
     }
 
     #[test]
