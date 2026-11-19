@@ -75,6 +75,18 @@ def prune_native_build(module):
             (release / name).write_bytes(content)
 
 
+def prune_native_builds(node_modules):
+    """Applies `prune_native_build` to every module that was built with node-gyp.
+
+    node-gyp leaves `config.gypi` or `binding.sln` in the `build` folder; which one depends on
+    the module and the platform.
+    """
+    markers = list(node_modules.rglob("config.gypi")) + list(node_modules.rglob("binding.sln"))
+    for marker in markers:
+        if marker.parent.name == "build" and marker.parent.is_dir():
+            prune_native_build(marker.parent.parent)
+
+
 def build(cache, runtime, work, windows):
     node_suffix = "win-x64.zip" if windows else "linux-x64.tar.xz"
     node_name = f"node-v{NODE}-{node_suffix}"
@@ -105,8 +117,7 @@ def build(cache, runtime, work, windows):
     run([node, npm, "prune", "--omit=dev", *npm_flags], source, env)
     run([node, npm, "rebuild", "@vscode/native-watchdog", "@vscode/spdlog",
          "--no-audit", "--no-fund"], source, env)
-    for module in ("@vscode/native-watchdog", "@vscode/spdlog"):
-        prune_native_build(source / "node_modules" / module)
+    prune_native_builds(source / "node_modules")
 
     runtime.mkdir()
     shutil.copy2(node, runtime)

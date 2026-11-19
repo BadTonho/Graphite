@@ -501,6 +501,31 @@ class PackageTests(unittest.TestCase):
             portable.extract_regular_files(safe, sources)
             self.assertEqual((sources / "bundle/code-oss/commit").read_bytes(), b"c")
 
+    def test_every_node_gyp_module_is_pruned_and_other_modules_are_left_alone(self):
+        modules = self.root / "node_modules"
+        for name in ("@vscode/windows-process-tree", "plain-module"):
+            module = modules / name
+            (module / "build/Release/obj").mkdir(parents=True)
+            (module / "build/Release/obj/x.tlog").write_text("x")
+            (module / "build/Release/addon.node").write_bytes(b"binary")
+            (module / "build/Release/addon.pdb").write_bytes(b"symbols")
+        (modules / "@vscode/windows-process-tree/build/binding.sln").write_text("{}")
+        portable.prune_native_builds(modules)
+        pruned = modules / "@vscode/windows-process-tree/build"
+        self.assertEqual([p.name for p in pruned.rglob("*") if p.is_file()], ["addon.node"])
+        # A `build` folder that is not node-gyp output (no config.gypi or binding.sln) is left alone.
+        self.assertTrue((modules / "plain-module/build/Release/addon.pdb").is_file())
+
+    def test_windows_installer_inputs_with_paths_past_the_limit_are_named_before_building(self):
+        bundle = self.root / "bundle"
+        deep = bundle / ("d" * 40) / ("e" * 40)
+        deep.mkdir(parents=True)
+        (deep / "ok.txt").write_text("x")
+        packages.check_path_lengths(bundle, limit=len(str(deep / "ok.txt")))
+        with self.assertRaises(ValueError) as caught:
+            packages.check_path_lengths(bundle, limit=len(str(deep / "ok.txt")) - 1)
+        self.assertIn("ok.txt", str(caught.exception))
+
     def test_complete_portable_archive_preserves_helpers_and_installs_license(self):
         archive = self.root / "complete.zip"
         with zipfile.ZipFile(archive, "w") as output:

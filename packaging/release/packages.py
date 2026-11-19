@@ -186,7 +186,21 @@ def arch(root, output, version, work):
     run(["bsdtar", "-xOf", output, ".PKGINFO"])
 
 
+# The installer compiler opens files through APIs limited to 260 characters (MAX_PATH).
+WINDOWS_PATH_LIMIT = 259
+
+
+def check_path_lengths(bundle, limit=WINDOWS_PATH_LIMIT):
+    """Fails early, naming the files, when the installer compiler could not open some of them."""
+    too_long = sorted(str(path.relative_to(bundle)) for path in bundle.rglob("*")
+                      if len(str(path)) > limit)
+    if too_long:
+        raise ValueError(f"{len(too_long)} files have paths longer than {limit} characters "
+                         f"(first: {too_long[0]})")
+
+
 def windows_installer(bundle, output, version, work):
+    check_path_lengths(bundle)
     compiler = shutil.which("makensis") or str(Path(r"C:\Program Files (x86)\NSIS\makensis.exe"))
     source = (ROOT / "packaging/release/windows.nsi").read_text(encoding="utf-8")
     for key, value in {"@BUNDLE@": str(bundle), "@OUTPUT@": str(output), "@VERSION@": version}.items():
