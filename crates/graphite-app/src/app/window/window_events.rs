@@ -261,7 +261,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 let pointer_x = position.x as f32;
                 let pointer_y = position.y as f32;
-                if self.sidebar_resize_dragging {
+                if self.secondary_resize_dragging {
+                    self.resize_secondary_sidebar_from_pointer(pointer_x);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                } else if self.sidebar_resize_dragging {
                     self.resize_sidebar_from_pointer(pointer_x);
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
@@ -278,12 +283,17 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 } else {
                     let separator_x = self.sidebar_width_px();
-                    let over_separator = !self.zen_mode
-                        && (pointer_x - separator_x).abs() <= 4.0
-                        && pointer_y
-                            < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
-                                gpu.renderer.size().1 - gpu.renderer.line_height()
-                            });
+                    let over_secondary_separator = !self.zen_mode
+                        && self.is_over_secondary_resize_handle(pointer_x, pointer_y);
+                    let was_over_secondary_separator = !self.zen_mode
+                        && self.is_over_secondary_resize_handle(previous_x, previous_y);
+                    let over_separator = over_secondary_separator
+                        || !self.zen_mode
+                            && (pointer_x - separator_x).abs() <= 4.0
+                            && pointer_y
+                                < self.gpu.as_ref().map_or(f32::MAX, |gpu| {
+                                    gpu.renderer.size().1 - gpu.renderer.line_height()
+                                });
                     let over_panel_separator = self
                         .is_over_terminal_resize_handle(pointer_x, pointer_y)
                         || self.is_over_scm_graph_resize_handle(pointer_x, pointer_y);
@@ -313,6 +323,7 @@ impl ApplicationHandler<UserEvent> for App {
                             winit::window::CursorIcon::Default
                         });
                         if over_separator
+                            || was_over_secondary_separator
                             || (previous_x - separator_x).abs() <= 4.0
                             || over_panel_separator
                             || was_over_panel_separator
@@ -353,6 +364,14 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
                     }
+                    return;
+                }
+                if !self.zen_mode
+                    && self
+                        .is_over_secondary_resize_handle(self.mouse.x as f32, self.mouse.y as f32)
+                {
+                    self.secondary_resize_dragging = true;
+                    self.selecting = false;
                     return;
                 }
                 let separator_x = self.sidebar_width_px();
@@ -461,6 +480,27 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 } else if self.scm_graph_resize_dragging {
                     self.scm_graph_resize_dragging = false;
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.set_cursor(winit::window::CursorIcon::Default);
+                        gpu.window.request_redraw();
+                    }
+                } else if self.secondary_resize_dragging {
+                    self.secondary_resize_dragging = false;
+                    if self.profiles.is_some() {
+                        if let Some(width) = self.secondary_sidebar_user_width {
+                            if let Err(error) =
+                                config::save_secondary_sidebar_width(&self.profile_root, width)
+                            {
+                                self.status =
+                                    format!("Secondary side bar width could not be saved: {error}");
+                                error_log::record(
+                                    error_log::ErrorSeverity::Low,
+                                    "layout.secondary_sidebar",
+                                    "Could not save the secondary side bar width.",
+                                );
+                            }
+                        }
+                    }
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
                         gpu.window.request_redraw();

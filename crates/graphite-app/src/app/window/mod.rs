@@ -14,6 +14,7 @@ pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod mouse;
 mod secondary_sidebar;
+mod secondary_tabs;
 pub(crate) mod theme;
 pub(crate) mod titlebar_layout_controls;
 pub(crate) mod window_events;

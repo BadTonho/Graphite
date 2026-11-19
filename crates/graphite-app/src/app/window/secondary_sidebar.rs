@@ -1,4 +1,5 @@
 use super::activity_bar::PluginActivityEntry;
+use super::secondary_tabs::{layout_tabs, tab_at, TabSlot};
 use super::*;
 use crate::app::chat::ChatSurface;
 use crate::app::error_log::{self, ErrorSeverity};
@@ -63,7 +64,7 @@ impl App {
     }
 
     pub(crate) fn visible_secondary_plugin(&self) -> Option<PluginActivityEntry> {
-        (self.secondary_sidebar_width() > 0.0 && self.secondary_picker.is_none())
+        (self.secondary_sidebar_width() > 0.0)
             .then(|| self.selected_secondary_plugin())
             .flatten()
     }
@@ -88,7 +89,6 @@ impl App {
 
     pub(crate) fn set_secondary_sidebar_visible(&mut self, visible: bool) {
         self.view_preferences.secondary_sidebar_visible = visible;
-        self.secondary_picker = None;
         if visible {
             self.activate_secondary_plugin();
         } else if self.chat.surface == ChatSurface::SideBar {
@@ -159,8 +159,25 @@ impl App {
         views
     }
 
+    /// The tabs of the header strip that fit in the secondary side bar.
+    fn secondary_tab_slots(&self, cw: f32) -> Vec<TabSlot> {
+        let views = self.secondary_views();
+        let active = self.selected_secondary_view();
+        let labels: Vec<usize> = views
+            .iter()
+            .map(|(_, label)| label.chars().count())
+            .collect();
+        let active = active.and_then(|active| views.iter().position(|(view, _)| *view == active));
+        layout_tabs(
+            &labels,
+            active,
+            self.secondary_sidebar_width(),
+            cw.max(1.0),
+            PAD,
+        )
+    }
+
     fn select_secondary_view(&mut self, view: View) {
-        self.secondary_picker = None;
         if self.chat.surface == ChatSurface::SideBar {
             self.chat.visible = false;
             self.chat.focused = false;
@@ -232,10 +249,6 @@ impl App {
         };
         let selected = self.selected_secondary_view();
         let views = self.secondary_views();
-        let title = views
-            .iter()
-            .find(|(view, _)| Some(view) == selected.as_ref())
-            .map_or(self.t("secondary_sidebar.choose"), |(_, label)| label);
 
         r.draw_rect(x, top, width, (h - lh - top).max(0.0), bg);
         r.draw_rect(
@@ -245,25 +258,27 @@ impl App {
             body - top,
             rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
         );
-        draw_label(r, &format!("{title} ▾"), top + lh * 0.25, fg);
-        if let Some(index) = self.secondary_picker {
-            for (row, (_, label)) in views.iter().enumerate() {
-                let y = body + row as f32 * lh * 1.5;
-                if y + lh > h - lh {
-                    break;
-                }
-                if row == index {
-                    r.draw_rect(
-                        x,
-                        y,
-                        width,
-                        lh * 1.5,
-                        rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
-                    );
-                }
-                draw_label(r, label, y + lh * 0.2, fg);
+        for slot in self.secondary_tab_slots(cw) {
+            let Some((view, label)) = views.get(slot.index) else {
+                continue;
+            };
+            let active = Some(view) == selected.as_ref();
+            let chars = ((slot.width - PAD * 2.0) / cw.max(1.0)).max(0.0) as usize;
+            r.draw_text(
+                &label.chars().take(chars).collect::<String>(),
+                x + slot.x + PAD,
+                top + lh * 0.25,
+                if active { fg } else { dim },
+            );
+            if active {
+                r.draw_rect(
+                    x + slot.x,
+                    body - 2.0,
+                    slot.width,
+                    2.0,
+                    rgb(Theme::color(Theme::STATUS, 0x005fb8)),
+                );
             }
-            return;
         }
         if let Some(entry) = self.selected_secondary_plugin() {
             let message = if !self.vsix_workspace_trusted() {
@@ -301,27 +316,21 @@ impl App {
         w: f32,
         h: f32,
         lh: f32,
+        cw: f32,
     ) -> bool {
         let left = self.secondary_sidebar_x(w);
         let width = self.secondary_sidebar_width();
         let top = self.activity_bar_vertical_offset();
         let body = self.secondary_sidebar_top(lh);
         if width <= 0.0 || x < left || x >= left + width || y < top || y >= h - lh {
-            self.secondary_picker = None;
             return false;
         }
         if y < body {
-            self.secondary_picker = if self.secondary_picker.is_some() {
-                None
-            } else {
-                Some(0)
-            };
-            return true;
-        }
-        if self.secondary_picker.take().is_some() {
-            let index = ((y - body) / (lh * 1.5)) as usize;
-            if let Some((view, _)) = self.secondary_views().get(index) {
-                self.select_secondary_view(view.clone());
+            let slots = self.secondary_tab_slots(cw);
+            if let Some((view, _)) = tab_at(&slots, x - left)
+                .and_then(|index| self.secondary_views().into_iter().nth(index))
+            {
+                self.select_secondary_view(view);
             }
             return true;
         }
@@ -333,27 +342,6 @@ impl App {
         } else {
             self.selected_secondary_view().is_none()
         }
-    }
-
-    pub(crate) fn secondary_picker_key(&mut self, key: &Key) -> bool {
-        let Some(index) = self.secondary_picker else {
-            return false;
-        };
-        let views = self.secondary_views();
-        match key {
-            Key::Named(NamedKey::Escape) => self.secondary_picker = None,
-            Key::Named(NamedKey::ArrowUp) => self.secondary_picker = Some(index.saturating_sub(1)),
-            Key::Named(NamedKey::ArrowDown) => {
-                self.secondary_picker = Some((index + 1).min(views.len() - 1))
-            }
-            Key::Named(NamedKey::Enter) => {
-                if let Some((view, _)) = views.get(index) {
-                    self.select_secondary_view(view.clone());
-                }
-            }
-            _ => return false,
-        }
-        true
     }
 }
 
@@ -396,15 +384,49 @@ mod tests {
             app.secondary_sidebar_x(w) + app.secondary_sidebar_width()
         );
 
-        let x = app.secondary_sidebar_x(w) + 8.0;
+        let cw = 10.0;
         let y = app.activity_bar_vertical_offset() + 2.0;
-        assert!(app.secondary_sidebar_click(x, y, w, h, lh));
-        assert!(app.secondary_picker_key(&Key::Named(NamedKey::ArrowDown)));
-        assert!(app.secondary_picker_key(&Key::Named(NamedKey::Enter)));
+        let slots = app.secondary_tab_slots(cw);
+        assert!(slots.len() >= 2, "Chat and Outline are always present");
+        let outline = slots[1];
+        let x = app.secondary_sidebar_x(w) + outline.x + 2.0;
+        assert!(app.secondary_sidebar_click(x, y, w, h, lh, cw));
         assert!(app.selected_secondary_view() == Some(View::Outline));
         app.run_ui_command("graphite.layout.toggleSecondarySidebar");
         assert_eq!(app.secondary_sidebar_width(), 0.0);
         app.run_ui_command("graphite.layout.toggleSecondarySidebar");
         assert!(app.selected_secondary_view() == Some(View::Outline));
+    }
+
+    #[test]
+    fn dragging_the_secondary_sidebar_edge_resizes_within_limits_on_both_sides() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.sidebar_window_width_px = 1200.0;
+        let w = 1200.0;
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        assert_eq!(app.secondary_sidebar_width(), 320.0);
+        let y = app.activity_bar_vertical_offset() + 4.0;
+        assert!(app.is_over_secondary_resize_handle(w - 320.0, y));
+        assert!(!app.is_over_secondary_resize_handle(w - 320.0 - 40.0, y));
+
+        app.resize_secondary_sidebar_from_pointer(w - 500.0);
+        assert_eq!(app.secondary_sidebar_width(), 500.0);
+        app.resize_secondary_sidebar_from_pointer(w - 20.0);
+        assert_eq!(
+            app.secondary_sidebar_width(),
+            config::MIN_SECONDARY_SIDEBAR_WIDTH
+        );
+        app.resize_secondary_sidebar_from_pointer(10.0);
+        assert_eq!(app.secondary_sidebar_width(), 720.0);
+
+        app.activity_bar_preferences.primary_sidebar_right = true;
+        let left = app.secondary_sidebar_x(w);
+        app.resize_secondary_sidebar_from_pointer(left + 400.0);
+        assert_eq!(app.secondary_sidebar_width(), 400.0);
+        assert!(app.is_over_secondary_resize_handle(left + 400.0, y));
+        app.run_ui_command("graphite.layout.toggleSecondarySidebar");
+        assert_eq!(app.secondary_sidebar_width(), 0.0);
+        assert!(!app.is_over_secondary_resize_handle(left + 400.0, y));
     }
 }

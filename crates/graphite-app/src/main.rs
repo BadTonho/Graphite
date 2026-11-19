@@ -113,6 +113,9 @@ struct App {
     sidebar_scale_factor: f32,
     sidebar_window_width_px: f32,
     sidebar_resize_dragging: bool,
+    /// Width in pixels the user dragged the secondary side bar to; `None` uses the view default.
+    secondary_sidebar_user_width: Option<f32>,
+    secondary_resize_dragging: bool,
     panel_resize_dragging: bool,
     /// Explorer entry selected by the last click; target of F2 and Delete.
     explorer_selected: Option<PathBuf>,
@@ -187,7 +190,6 @@ struct App {
     recent_workspaces: Vec<PathBuf>,
     active_plugin_activity: Option<String>,
     secondary_plugin: Option<String>,
-    secondary_picker: Option<usize>,
     secondary_trees: std::collections::BTreeSet<String>,
     vsix_context: std::collections::HashMap<String, String>,
     /// Isolated constructors inject configuration so tests never read user settings.
@@ -489,6 +491,11 @@ impl App {
         };
         let activity_bar_preferences = if isolated {
             config::ActivityBarPreferences::default()
+        let secondary_sidebar_user_width = if isolated {
+            None
+        } else {
+            config::load_secondary_sidebar_width(&profile_root)
+        };
         } else {
             config::load_activity_bar_preferences(&profile_root)
         };
@@ -691,6 +698,8 @@ impl App {
             sidebar_resize_dragging: false,
             panel_resize_dragging: false,
             explorer_selected: None,
+            secondary_sidebar_user_width,
+            secondary_resize_dragging: false,
             explorer_clipboard: None,
             explorer_focused: false,
             explorer_multi_selected: std::collections::BTreeSet::new(),
@@ -753,7 +762,6 @@ impl App {
             recent_workspaces,
             active_plugin_activity: None,
             secondary_plugin: None,
-            secondary_picker: None,
             secondary_trees: Default::default(),
             vsix_context: Default::default(),
             workspace_trust: if isolated {

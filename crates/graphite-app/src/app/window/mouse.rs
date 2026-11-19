@@ -172,7 +172,7 @@ impl App {
             return;
         }
 
-        if self.secondary_sidebar_click(mx, my, window_width, window_height, lh) {
+        if self.secondary_sidebar_click(mx, my, window_width, window_height, lh, cw) {
             return;
         }
         if self.handle_chat_click(mx, my, window_width, window_height, lh) {

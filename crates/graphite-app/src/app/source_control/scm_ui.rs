@@ -1999,7 +1999,6 @@ impl App {
             && self.view_preferences.secondary_sidebar_visible
             && !self.zen_mode
             && !(self.chat.visible && self.chat.surface == super::chat::ChatSurface::SideBar)
-            && self.secondary_picker.is_none()
             && self.secondary_plugin.is_none()
         {
             let outline_width = self.secondary_sidebar_width();

@@ -6,10 +6,9 @@ use graphite_chat::{AgentMode, ApprovalDecision, ChatSession, ProviderKind};
 use winit::keyboard::{Key, NamedKey};
 
 impl App {
-    pub(crate) fn secondary_sidebar_width(&self) -> f32 {
-        if self.zen_mode || !self.view_preferences.secondary_sidebar_visible {
-            return 0.0;
-        }
+    /// The width the secondary side bar would have for the selected view when the user has not
+    /// resized it.
+    fn secondary_sidebar_default_width(&self) -> f32 {
         if self.chat.visible && self.chat.surface == ChatSurface::SideBar {
             320.0
         } else if self.outline_visible {
@@ -17,6 +16,23 @@ impl App {
         } else {
             320.0
         }
+    }
+
+    /// Widest the secondary side bar may be: 60% of the window, never below its minimum.
+    pub(crate) fn secondary_sidebar_max_width(&self) -> f32 {
+        (self.sidebar_window_width_px * 0.6).max(config::MIN_SECONDARY_SIDEBAR_WIDTH)
+    }
+
+    pub(crate) fn secondary_sidebar_width(&self) -> f32 {
+        if self.zen_mode || !self.view_preferences.secondary_sidebar_visible {
+            return 0.0;
+        }
+        self.secondary_sidebar_user_width
+            .unwrap_or_else(|| self.secondary_sidebar_default_width())
+            .clamp(
+                config::MIN_SECONDARY_SIDEBAR_WIDTH,
+                self.secondary_sidebar_max_width(),
+            )
     }
 
     pub(crate) fn toggle_chat_sidebar(&mut self) {
@@ -208,7 +224,7 @@ impl App {
     ) -> (f32, f32, f32, f32) {
         match self.chat.surface {
             ChatSurface::SideBar => {
-                if self.secondary_picker.is_some() || self.secondary_plugin.is_some() {
+                if self.secondary_plugin.is_some() {
                     return (0.0, 0.0, 0.0, 0.0);
                 }
                 let top = self.secondary_sidebar_top(lh);

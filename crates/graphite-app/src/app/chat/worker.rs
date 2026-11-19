@@ -606,7 +606,6 @@ impl App {
 
     pub(crate) fn open_chat_sidebar(&mut self) {
         self.secondary_plugin = None;
-        self.secondary_picker = None;
         self.chat.visible = true;
         self.chat.focused = true;
         self.chat.surface = super::state::ChatSurface::SideBar;

@@ -142,7 +142,6 @@ impl Drop for Plugins {
 impl App {
     pub(crate) fn refresh_plugins_for_profile(&mut self) {
         self.secondary_plugin = None;
-        self.secondary_picker = None;
         self.stop_workspace_plugins();
         // Discard any in-flight UI result from the previous profile. Its worker
         // owns a clone of the old profile's store and may safely finish there.

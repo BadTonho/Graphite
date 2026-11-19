@@ -135,6 +135,33 @@ impl App {
         };
     }
 
+    /// The x position of the draggable edge of the secondary side bar, which faces the editor.
+    pub(crate) fn secondary_separator_x(&self, window_width: f32) -> f32 {
+        if self.activity_bar_preferences.primary_sidebar_right {
+            self.secondary_sidebar_x(window_width) + self.secondary_sidebar_width()
+        } else {
+            self.secondary_sidebar_x(window_width)
+        }
+    }
+
+    pub(crate) fn is_over_secondary_resize_handle(&self, pointer_x: f32, pointer_y: f32) -> bool {
+        self.secondary_sidebar_width() > 0.0
+            && pointer_y >= self.activity_bar_vertical_offset()
+            && (pointer_x - self.secondary_separator_x(self.sidebar_window_width_px)).abs() <= 4.0
+    }
+
+    pub(crate) fn resize_secondary_sidebar_from_pointer(&mut self, pointer_x: f32) {
+        let width = if self.activity_bar_preferences.primary_sidebar_right {
+            pointer_x - self.secondary_sidebar_x(self.sidebar_window_width_px)
+        } else {
+            self.sidebar_window_width_px - pointer_x
+        };
+        self.secondary_sidebar_user_width = Some(width.clamp(
+            config::MIN_SECONDARY_SIDEBAR_WIDTH,
+            self.secondary_sidebar_max_width(),
+        ));
+    }
+
     pub(crate) fn visible_lines(&self, renderer: &Renderer) -> usize {
         let (width, height) = renderer.size();
         let rect = self.focused_group_rect(width, height, renderer.line_height());
