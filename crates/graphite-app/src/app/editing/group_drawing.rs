@@ -69,7 +69,7 @@ impl App {
             let tab = &self.documents[document];
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
-            let text_x = rect.x + gutter;
+            let text_left = rect.x + gutter;
             let minimap_width = if self.view_preferences.minimap_visible {
                 72.0_f32.min(rect.width * 0.22)
             } else {
@@ -77,6 +77,12 @@ impl App {
             };
             let right = rect.x + rect.width - minimap_width;
             let bottom = rect.y + rect.height;
+            // Text scrolls sideways under the line-number column, so it is drawn clipped to the
+            // area right of it; the column's own items use the full clip.
+            let scrolled_columns = if self.word_wrap { 0 } else { view.scroll_col };
+            let text_x = text_left - scrolled_columns as f32 * cw;
+            let full_clip = [rect.x, rect.y, right, bottom];
+            let text_clip = [text_left, rect.y, right, bottom];
             let sticky_height = sticky_headers.len() as f32 * lh;
             let tab_height = self.editor_tab_strip_height(lh);
             let breadcrumb_height = if self.view_preferences.breadcrumbs_visible && !self.zen_mode {
@@ -268,7 +274,7 @@ impl App {
             // thin line closes the tab strip, so the file reads as a surface of its own.
             r.draw_rect(rect.x, body_y, gutter, body_height, rgb(chrome.gutter));
             r.draw_rect(
-                text_x - 1.0,
+                text_left - 1.0,
                 body_y,
                 1.0,
                 body_height,
@@ -315,6 +321,7 @@ impl App {
                     .as_deref()
                     .is_some_and(|uri| self.lens_text_above(uri, line).is_some())
             });
+            r.set_clip(Some(text_clip));
             for (row, body_row) in rows.iter().enumerate() {
                 let y = body_y + row as f32 * lh;
                 let line = match *body_row {
@@ -342,9 +349,9 @@ impl App {
                 };
                 if highlight_current_line && line == cur_line {
                     r.draw_rect(
-                        text_x,
+                        text_left,
                         y,
-                        (right - text_x).max(0.0),
+                        (right - text_left).max(0.0),
                         lh,
                         rgb(chrome.current_line),
                     );
@@ -366,7 +373,9 @@ impl App {
                     })
                     .collect();
                 if let Some(uri) = &decoration_uri {
+                    r.set_clip(Some(full_clip));
                     self.draw_gutter_icons(r, uri, line, rect.x, y, lh);
+                    r.set_clip(Some(text_clip));
                     self.draw_line_decorations(
                         r,
                         super::decoration_drawing::DecorationLayer::Under,
@@ -377,7 +386,9 @@ impl App {
                         (text_x, y, cw, lh, right),
                     );
                 }
+                r.set_clip(Some(full_clip));
                 self.draw_debug_and_test_gutter(r, buffer.path(), line, rect.x, y, lh);
+                r.set_clip(Some(text_clip));
                 for selection in &view.selection_state.selections() {
                     let start = selection.anchor.min(selection.head).max(line_start);
                     let end = selection.anchor.max(selection.head).min(line_end);
@@ -402,6 +413,7 @@ impl App {
                 } else {
                     Theme::color(Theme::DIM, 0x616161)
                 };
+                r.set_clip(Some(full_clip));
                 if tab
                     .diagnostics
                     .iter()
@@ -443,6 +455,7 @@ impl App {
                     y,
                     rgb(color),
                 );
+                r.set_clip(Some(text_clip));
                 for column in
                     super::drawing_helpers::indent_guide_columns(&text, tab.indentation.tab_size)
                 {
@@ -644,12 +657,13 @@ impl App {
                     );
                 }
             }
+            r.set_clip(Some(full_clip));
             draw_sticky_headers(
                 r,
                 *rect,
                 &sticky_headers,
                 sticky_focus,
-                text_x,
+                text_left,
                 tab_height,
                 lh,
                 cw,

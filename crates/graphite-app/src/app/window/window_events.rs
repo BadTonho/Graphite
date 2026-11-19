@@ -670,6 +670,23 @@ impl ApplicationHandler<UserEvent> for App {
                 } else if self.active_notebook().is_some() {
                     self.notebook_scroll(lines);
                 } else {
+                    // A sideways swipe, or the wheel with Shift held, scrolls the text sideways.
+                    let char_width = self
+                        .gpu
+                        .as_ref()
+                        .map_or(8.0, |gpu| gpu.renderer.char_width());
+                    let mut sideways = match delta {
+                        MouseScrollDelta::LineDelta(x, _) => -x * 3.0,
+                        MouseScrollDelta::PixelDelta(p) => -(p.x as f32) / char_width,
+                    };
+                    let mut lines = lines;
+                    if self.modifiers.shift_key() {
+                        sideways += lines;
+                        lines = 0.0;
+                    }
+                    if sideways != 0.0 {
+                        self.scroll_columns_by(sideways.round() as isize);
+                    }
                     let tab = &self.documents[self.active_document()];
                     let max = if self.word_wrap {
                         if let Some(gpu) = &self.gpu {

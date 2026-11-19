@@ -514,7 +514,7 @@ impl App {
                 self.notebook_click(mx, my, rect);
                 return;
             }
-            let text_x = rect.x + self.gutter_width(cw);
+            let text_x = self.text_origin_x(rect, cw);
             if self.word_wrap {
                 let row = self.editor_groups.active_view_mut().scroll_line
                     + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
@@ -590,7 +590,7 @@ impl App {
         let (width, height) = gpu.renderer.size();
         let rect = self.focused_group_rect(width, height, lh);
         let tab_strip = self.editor_tab_strip_height(lh);
-        let text_x = rect.x + self.gutter_width(cw);
+        let text_x = self.text_origin_x(rect, cw);
         if self.view_preferences.column_selection_mode {
             if let Some((anchor_row, anchor_column)) = self.column_selection_anchor {
                 let row = self.editor_line_at_row(

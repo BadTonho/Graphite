@@ -380,6 +380,8 @@ impl App {
         } else if line >= self.editor_groups.active_view_mut().scroll_line + visible {
             self.editor_groups.active_view_mut().scroll_line = line + 1 - visible;
         }
+        let rect = self.focused_group_rect(width, height, lh);
+        self.reveal_cursor_column(rect, cw);
     }
 
     pub(crate) fn gutter_width(&self, char_w: f32) -> f32 {

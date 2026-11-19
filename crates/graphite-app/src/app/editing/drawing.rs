@@ -42,6 +42,7 @@ impl App {
             self.keep_cursor_visible(for_lines, w, h, lh, cw);
             self.reveal_cursor = false;
         }
+        self.clamp_horizontal_scroll(w, h, lh, cw);
         self.refresh_highlights();
         gpu.accessibility
             .update_if_active(|| self.grouped_accessibility_tree(w, h, lh));
@@ -213,7 +214,7 @@ impl App {
         let rects = self.group_rectangles(w, h, lh);
         self.draw_editor_groups(r, &rects, lh, cw);
         let focused_rect = self.focused_group_rect(w, h, lh);
-        let text_x = focused_rect.x + self.gutter_width(cw);
+        let text_x = self.text_origin_x(focused_rect, cw);
         let (cur_line, cur_col) = self.editor().cursor_line_col();
         // Status bar
         r.set_clip(None);

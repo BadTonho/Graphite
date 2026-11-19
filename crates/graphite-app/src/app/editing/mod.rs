@@ -24,6 +24,7 @@ pub(crate) mod fold_actions;
 pub(crate) mod fold_commands;
 pub(crate) mod folding;
 pub(crate) mod group_drawing;
+pub(crate) mod horizontal_scroll;
 pub(crate) mod lens_rows;
 pub(crate) mod local_history;
 pub(crate) mod outline;

@@ -27,6 +27,8 @@ pub(crate) struct View {
     pub smart_selection_history: Vec<Selection>,
     pub smart_selection_guard: Option<(DocumentId, u64, Selection)>,
     pub scroll_line: usize,
+    /// Columns the text is scrolled to the left, for views that do not wrap their lines.
+    pub scroll_col: usize,
     /// Start lines of collapsed fold regions in this view, sorted ascending.
     pub folded: Vec<usize>,
     /// Document revision the fold list was built against; a change clears the folds.
@@ -96,6 +98,7 @@ impl EditorGroups {
             smart_selection_history: Vec::new(),
             smart_selection_guard: None,
             scroll_line: 0,
+            scroll_col: 0,
             folded: Vec::new(),
             folded_revision: 0,
             manual_folds: Vec::new(),
@@ -303,6 +306,7 @@ impl EditorGroups {
                 smart_selection_history: Vec::new(),
                 smart_selection_guard: None,
                 scroll_line: 0,
+                scroll_col: 0,
                 folded: Vec::new(),
                 folded_revision: 0,
                 manual_folds: Vec::new(),
@@ -359,6 +363,7 @@ impl EditorGroups {
                 smart_selection_history: Vec::new(),
                 smart_selection_guard: None,
                 scroll_line,
+                scroll_col: 0,
                 folded: Vec::new(),
                 folded_revision: 0,
                 manual_folds: Vec::new(),
