@@ -432,25 +432,6 @@ impl App {
         )
     }
 
-    pub(crate) fn command_center_popup_bounds(
-        &self,
-        width: f32,
-        char_width: f32,
-        line_height: f32,
-        rows: usize,
-    ) -> (f32, f32, f32, f32) {
-        let layout = self.titlebar_layout(width, char_width);
-        let popup_width = (layout.command_center.field.width + 120.0 * self.sidebar_scale_factor)
-            .max(300.0 * self.sidebar_scale_factor)
-            .min((width - 8.0).max(0.0));
-        let x = (layout.command_center.field.x + layout.command_center.field.width * 0.5
-            - popup_width * 0.5)
-            .clamp(4.0, (width - popup_width - 4.0).max(4.0));
-        let y = layout.height;
-        let height = line_height * (rows.min(8) as f32 + 1.5);
-        (x, y, popup_width, height)
-    }
-
     pub(crate) fn titlebar_layout(&self, width: f32, char_width: f32) -> TitlebarLayout {
         let scale = self.sidebar_scale_factor.max(0.5);
         let localized_widths = WorkbenchMenu::ALL.map(|menu| {

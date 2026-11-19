@@ -210,22 +210,6 @@ impl App {
             _ => {}
         }
     }
-    pub(crate) fn command_palette_rows(&self) -> Vec<&PaletteItem> {
-        let Some(palette) = &self.command_palette else {
-            return Vec::new();
-        };
-        let matching: Vec<_> = palette
-            .items
-            .iter()
-            .filter(|item| matches(item, &palette.query))
-            .collect();
-        let start = palette
-            .selected
-            .saturating_sub(7)
-            .min(matching.len().saturating_sub(8));
-        matching.into_iter().skip(start).take(8).collect()
-    }
-
     pub(crate) fn execute_command_palette_selection(&mut self) {
         let Some(palette) = self.command_palette.as_ref() else {
             return;
@@ -286,7 +270,7 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_command_palette();
-        assert!(!app.command_palette_rows().is_empty());
+        assert!(!app.quick_input_model().unwrap().rows.is_empty());
         app.command_palette.as_mut().unwrap().query = "quickOpen".into();
         // Many commands match, and only a page of them is shown, so look at all the matches.
         let palette = app.command_palette.as_ref().unwrap();

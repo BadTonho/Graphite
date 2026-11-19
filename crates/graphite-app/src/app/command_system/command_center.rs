@@ -228,7 +228,7 @@ impl App {
         }
     }
 
-    fn command_center_accept(&mut self) {
+    pub(crate) fn command_center_accept(&mut self) {
         let Some(mode) = self.command_center.as_ref().map(|center| center.mode) else {
             return;
         };
@@ -251,197 +251,22 @@ impl App {
     }
 
     pub(crate) fn command_center_rows(&self) -> Vec<String> {
-        match self.command_center.as_ref().map(|center| center.mode) {
-            Some(CommandCenterMode::Files) => self
-                .quick_open
-                .as_ref()
-                .map(|quick| {
-                    let start = quick
-                        .index
-                        .saturating_sub(7)
-                        .min(quick.paths.len().saturating_sub(8));
-                    quick
-                        .paths
-                        .iter()
-                        .skip(start)
-                        .take(8)
-                        .map(|path| self.tree.relative_path(path).display().to_string())
-                        .collect()
-                })
-                .unwrap_or_default(),
-            Some(CommandCenterMode::Commands) => self
-                .command_palette_rows()
-                .iter()
-                .map(|item| item.title.clone())
-                .collect(),
-            Some(CommandCenterMode::WorkspaceSymbols) | Some(CommandCenterMode::EditorSymbols) => {
-                self.go_picker_rows()
-                    .iter()
-                    .take(8)
-                    .map(|item| {
-                        format!(
-                            "{}  {}",
-                            item.name,
-                            self.tree.relative_path(&item.path).display()
-                        )
-                    })
-                    .collect()
-            }
-            Some(CommandCenterMode::LineColumn) | None => Vec::new(),
+        if self.command_center.is_none() {
+            return Vec::new();
         }
+        self.quick_input_model()
+            .map(|model| model.rows.into_iter().map(|row| row.accessible).collect())
+            .unwrap_or_default()
     }
 
     pub(crate) fn command_center_selected_index(&self) -> Option<usize> {
-        match self.command_center.as_ref()?.mode {
-            CommandCenterMode::Files => {
-                let quick = self.quick_open.as_ref()?;
-                let start = quick
-                    .index
-                    .saturating_sub(7)
-                    .min(quick.paths.len().saturating_sub(8));
-                quick.index.checked_sub(start)
-            }
-            CommandCenterMode::Commands => {
-                let palette = self.command_palette.as_ref()?;
-                let count = palette
-                    .items
-                    .iter()
-                    .filter(|item| command_palette::matches(item, &palette.query))
-                    .count();
-                let start = palette
-                    .selected
-                    .saturating_sub(7)
-                    .min(count.saturating_sub(8));
-                palette.selected.checked_sub(start)
-            }
-            CommandCenterMode::WorkspaceSymbols | CommandCenterMode::EditorSymbols => {
-                self.go_picker.as_ref().map(|picker| picker.selected)
-            }
-            CommandCenterMode::LineColumn => None,
-        }
+        self.command_center.as_ref()?;
+        self.quick_input_model()?.selected
     }
 
     pub(crate) fn command_center_activate_index(&mut self, index: usize) {
-        let Some(mode) = self.command_center.as_ref().map(|center| center.mode) else {
-            return;
-        };
-        match mode {
-            CommandCenterMode::Files => {
-                if let Some(quick) = self.quick_open.as_mut() {
-                    let start = quick
-                        .index
-                        .saturating_sub(7)
-                        .min(quick.paths.len().saturating_sub(8));
-                    if start + index < quick.paths.len() {
-                        quick.index = start + index;
-                        self.command_center_accept();
-                    }
-                }
-            }
-            CommandCenterMode::Commands => {
-                if let Some(palette) = self.command_palette.as_mut() {
-                    let count = palette
-                        .items
-                        .iter()
-                        .filter(|item| command_palette::matches(item, &palette.query))
-                        .count();
-                    let start = palette
-                        .selected
-                        .saturating_sub(7)
-                        .min(count.saturating_sub(8));
-                    if start + index < count {
-                        palette.selected = start + index;
-                        self.command_center_accept();
-                    }
-                }
-            }
-            CommandCenterMode::WorkspaceSymbols | CommandCenterMode::EditorSymbols => {
-                if let Some(picker) = self.go_picker.as_mut() {
-                    picker.selected = index;
-                    self.command_center_accept();
-                }
-            }
-            CommandCenterMode::LineColumn => {}
-        }
-    }
-
-    pub(crate) fn command_center_popup_contains(&self, x: f32, y: f32) -> bool {
-        let Some(gpu) = &self.gpu else {
-            return false;
-        };
-        let (width, _) = gpu.renderer.size();
-        let (px, py, popup_width, popup_height) = self.command_center_popup_bounds(
-            width,
-            gpu.renderer.char_width(),
-            gpu.renderer.line_height(),
-            self.command_center_rows().len(),
-        );
-        x >= px && x < px + popup_width && y >= py && y < py + popup_height
-    }
-
-    pub(crate) fn command_center_click(&mut self, _x: f32, y: f32) {
-        let Some(gpu) = &self.gpu else {
-            return;
-        };
-        let (width, _) = gpu.renderer.size();
-        let line_height = gpu.renderer.line_height();
-        let char_width = gpu.renderer.char_width();
-        let (_, top, _, _) = self.command_center_popup_bounds(
-            width,
-            char_width,
-            line_height,
-            self.command_center_rows().len(),
-        );
-        let row_index = ((y - top - line_height * 1.0) / line_height).floor() as isize;
-        if row_index < 0 {
-            return;
-        }
-        let row_index = row_index as usize;
-        let Some(mode) = self.command_center.as_ref().map(|center| center.mode) else {
-            return;
-        };
-        match mode {
-            CommandCenterMode::Files => {
-                if let Some(quick) = self.quick_open.as_mut() {
-                    let start = quick
-                        .index
-                        .saturating_sub(7)
-                        .min(quick.paths.len().saturating_sub(8));
-                    let selected = start + row_index;
-                    if selected < quick.paths.len() {
-                        quick.index = selected;
-                        self.command_center_accept();
-                    }
-                }
-            }
-            CommandCenterMode::Commands => {
-                if let Some(palette) = self.command_palette.as_mut() {
-                    let count = palette
-                        .items
-                        .iter()
-                        .filter(|item| command_palette::matches(item, &palette.query))
-                        .count();
-                    let start = palette
-                        .selected
-                        .saturating_sub(7)
-                        .min(count.saturating_sub(8));
-                    let selected = start + row_index;
-                    if selected < count {
-                        palette.selected = selected;
-                        self.command_center_accept();
-                    }
-                }
-            }
-            CommandCenterMode::WorkspaceSymbols | CommandCenterMode::EditorSymbols => {
-                let count = self.go_picker_rows().len();
-                if let Some(picker) = self.go_picker.as_mut() {
-                    if row_index < count {
-                        picker.selected = row_index;
-                        self.command_center_accept();
-                    }
-                }
-            }
-            CommandCenterMode::LineColumn => {}
+        if self.command_center.is_some() {
+            self.quick_input_accept_row(index);
         }
     }
 }

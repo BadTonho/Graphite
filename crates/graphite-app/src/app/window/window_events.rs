@@ -220,6 +220,12 @@ impl ApplicationHandler<UserEvent> for App {
                 let previous_x = self.mouse.x as f32;
                 let previous_y = self.mouse.y as f32;
                 self.mouse = position;
+                if self.quick_input_open() {
+                    // The hovered row is highlighted, so the box repaints as the pointer moves.
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                }
                 if let Some(window_width) = self.gpu.as_ref().map(|gpu| gpu.renderer.size().0) {
                     self.workbench_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.activity_bar_menu_pointer_moved(
@@ -482,6 +488,19 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => -y * 3.0,
                     MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / 20.0,
                 };
+                if let Some((width, lh)) = self
+                    .gpu
+                    .as_ref()
+                    .map(|gpu| (gpu.renderer.size().0, gpu.renderer.line_height()))
+                {
+                    let pointer = (self.mouse.x as f32, self.mouse.y as f32);
+                    if self.quick_input_scroll(lines, pointer, width, lh) {
+                        if let Some(gpu) = &self.gpu {
+                            gpu.window.request_redraw();
+                        }
+                        return;
+                    }
+                }
                 if self.settings_editor_scroll(lines) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();

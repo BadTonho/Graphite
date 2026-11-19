@@ -32,12 +32,10 @@ impl App {
             return;
         }
 
-        if self.command_center.is_some() {
-            if self.command_center_popup_contains(mx, my) {
-                self.command_center_click(mx, my);
-                return;
-            }
-            self.close_command_center();
+        if (self.command_center.is_some() || self.quick_input_open())
+            && self.quick_input_click(mx, my, window_width, lh)
+        {
+            return;
         }
 
         if self.profile_menu.is_some() {

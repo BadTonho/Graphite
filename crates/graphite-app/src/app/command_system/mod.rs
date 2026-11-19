@@ -12,3 +12,4 @@ pub(crate) mod command_registry;
 #[cfg(test)]
 pub(crate) mod command_tests;
 pub(crate) mod commands;
+pub(crate) mod quick_input;
