@@ -1,5 +1,6 @@
 //! OpenSSH host configuration parser and transport over the system `ssh` CLI.
 
+use crate::process_util::HideConsole;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -178,6 +179,7 @@ impl SshTransport for OpenSshTransport {
         let mut args = Self::base_args(target)?;
         args.push(remote_cmd.to_owned());
         let output = Command::new(self.program())
+            .hide_console()
             .args(&args)
             .output()
             .map_err(|e| format!("Failed to invoke ssh: {e}"))?;

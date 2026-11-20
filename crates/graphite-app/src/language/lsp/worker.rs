@@ -1,3 +1,4 @@
+use crate::process_util::HideConsole;
 use super::requests::PendingClientRequests;
 pub(super) use super::requests::ServerRequests;
 use super::*;
@@ -14,6 +15,7 @@ pub(super) fn run_server(
         extension: config.extension.clone(),
     };
     let mut child = match Command::new(&config.command)
+        .hide_console()
         .args(&config.args)
         .current_dir(&root)
         .stdin(Stdio::piped())

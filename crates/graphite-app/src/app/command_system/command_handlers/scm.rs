@@ -1,3 +1,4 @@
+use crate::process_util::HideConsole;
 use super::*;
 
 pub(super) fn graphite_scm_stage(
@@ -280,6 +281,7 @@ pub(super) fn register_git_commands(registry: &mut CommandRegistry) {
 fn git_view_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     let root = app.scm_workspace_root();
     let output = std::process::Command::new("git")
+        .hide_console()
         .args(["log", "--oneline", "--graph", "--decorate", "-n", "100"])
         .current_dir(&root)
         .output()

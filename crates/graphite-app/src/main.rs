@@ -1,6 +1,12 @@
 //! Graphite desktop application (v0.1): window, file tree and text editor.
 
+// A release build on Windows is a GUI program: without this, Windows opens a console window next
+// to the editor. Debug builds keep the console so `cargo run` shows the logs. Command line use
+// goes through the `code` launcher, which is a console program.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
+mod process_util;
 use app::accessibility::*;
 use app::command_center::CommandCenter;
 use app::drawing_helpers::*;
@@ -1020,6 +1026,7 @@ fn same_file_path(a: &Path, b: &Path) -> bool {
 }
 
 fn main() {
+    process_util::attach_parent_console();
     app::error_log::init(config::app_config_dir().join("logs").join("errors"));
     let cwd = std::env::current_dir().expect("no current directory");
     if let Ok(exe) = std::env::current_exe() {

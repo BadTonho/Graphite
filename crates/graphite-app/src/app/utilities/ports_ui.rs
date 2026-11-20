@@ -1,3 +1,4 @@
+use crate::process_util::HideConsole;
 use super::*;
 use std::process::Command;
 
@@ -5,6 +6,7 @@ impl App {
     pub(crate) fn refresh_local_ports(&mut self) -> Result<(), String> {
         #[cfg(windows)]
         let output = Command::new("netstat.exe")
+            .hide_console()
             .args(["-ano", "-p", "tcp"])
             .output();
         #[cfg(not(windows))]
@@ -27,6 +29,7 @@ impl App {
         }
         #[cfg(windows)]
         let status = Command::new("taskkill.exe")
+            .hide_console()
             .args(["/PID", &process_id.to_string(), "/T", "/F"])
             .status();
         #[cfg(not(windows))]

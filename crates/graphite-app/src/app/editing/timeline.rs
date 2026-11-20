@@ -1,6 +1,7 @@
 //! The timeline of the active file: its saved local history versions together with the Git
 //! commits that touched it, newest first. Picking an entry opens a diff with the current file.
 
+use crate::process_util::HideConsole;
 use super::go_menu::{GoPicker, GoPickerKind, GoSymbolItem};
 use super::local_history::format_utc;
 use super::*;
@@ -56,6 +57,7 @@ fn relative_to(file: &Path, root: &Path) -> Option<String> {
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     let output = Command::new("git")
+        .hide_console()
         .current_dir(root)
         .env("LC_ALL", "C")
         .args(args)

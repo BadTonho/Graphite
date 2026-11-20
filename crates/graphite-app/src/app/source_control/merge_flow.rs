@@ -1,5 +1,6 @@
 //! Opening, closing and driving the merge editor.
 
+use crate::process_util::HideConsole;
 use super::merge_editor::{BasePlacement, MergeEditor, MergeFormat, MergeLayout};
 use super::*;
 
@@ -216,6 +217,7 @@ impl App {
 fn git_stage1_base(path: &Path) -> Option<String> {
     let parent = path.parent()?;
     let top = std::process::Command::new("git")
+        .hide_console()
         .arg("-C")
         .arg(parent)
         .args(["rev-parse", "--show-toplevel"])
@@ -233,6 +235,7 @@ fn git_stage1_base(path: &Path) -> Option<String> {
         .to_string_lossy()
         .replace('\\', "/");
     let show = std::process::Command::new("git")
+        .hide_console()
         .arg("-C")
         .arg(&root)
         .arg("show")

@@ -1,6 +1,7 @@
 //! Native Git operations used by the SCM view. All callers run this module on
 //! a worker thread so a large repository cannot stall the window event loop.
 
+use crate::process_util::HideConsole;
 use gix::{bstr::ByteSlice, status::Item as StatusItem};
 use graphite_i18n::Translator;
 use similar::TextDiff;
@@ -354,6 +355,7 @@ pub(crate) fn checkout_branch(
         &["switch", "--track", "--", branch]
     };
     let output = std::process::Command::new("git")
+        .hide_console()
         .current_dir(root)
         .args(arguments)
         .output()

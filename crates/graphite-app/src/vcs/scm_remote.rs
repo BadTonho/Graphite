@@ -1,6 +1,7 @@
 //! Remote and history operations of the SCM view. They run the `git` command, so they use the
 //! same credentials and remotes as the terminal. Callers run them on a worker thread.
 
+use crate::process_util::HideConsole;
 use std::path::Path;
 use std::process::Command;
 
@@ -8,6 +9,7 @@ use std::process::Command;
 pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
     // Git messages are matched in English below, so keep them out of the user's locale.
     let output = Command::new("git")
+        .hide_console()
         .current_dir(root)
         .env("LC_ALL", "C")
         .env("LANGUAGE", "C")

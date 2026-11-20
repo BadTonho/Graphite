@@ -1,3 +1,4 @@
+use crate::process_util::HideConsole;
 use super::*;
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
@@ -26,6 +27,7 @@ impl EmmetRuntime {
         std::fs::write(&bundle, EMMET_BUNDLE).map_err(|e| e.to_string())?;
         std::fs::write(&worker, EMMET_WORKER).map_err(|e| e.to_string())?;
         let mut child = Command::new(node)
+            .hide_console()
             .arg(worker)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

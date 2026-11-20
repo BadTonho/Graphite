@@ -4,6 +4,7 @@
 //! thread: adapter output is framed on a reader thread and delivered through a
 //! bounded channel.
 
+use crate::process_util::HideConsole;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -1308,6 +1309,7 @@ impl DapSession {
             .as_ref()
             .ok_or_else(|| DebugError::MissingAdapter(config.adapter_type.clone()))?;
         let mut child = Command::new(&adapter.command);
+        child.hide_console();
         child.args(&adapter.args).envs(&adapter.env);
         let mut child = child
             .current_dir(adapter.cwd.as_deref().unwrap_or(cwd))

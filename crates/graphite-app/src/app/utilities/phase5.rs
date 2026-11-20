@@ -1,4 +1,5 @@
 //! Security and task configuration primitives for v0.5.
+use crate::process_util::HideConsole;
 use crate::{app::theme::Theme, config, App, DARK_THEME};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -508,6 +509,7 @@ impl TaskFile {
             command.args(&task.args);
             command
         };
+        command.hide_console();
         let mut child = command
             .current_dir(cwd)
             .stdout(Stdio::piped())

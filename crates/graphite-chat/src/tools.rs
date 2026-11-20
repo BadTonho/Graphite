@@ -108,10 +108,15 @@ pub struct SystemCommandRunner;
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, cwd: &Path, command: &str) -> Result<String, String> {
         let output = if cfg!(windows) {
-            std::process::Command::new("cmd")
-                .args(["/C", command])
-                .current_dir(cwd)
-                .output()
+            let mut shell = std::process::Command::new("cmd");
+            shell.args(["/C", command]).current_dir(cwd);
+            #[cfg(windows)]
+            {
+                // No console window of its own: the output is read through the pipes.
+                use std::os::windows::process::CommandExt;
+                shell.creation_flags(0x0800_0000);
+            }
+            shell.output()
         } else {
             std::process::Command::new("sh")
                 .args(["-c", command])

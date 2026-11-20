@@ -3,6 +3,7 @@
 //! `git` command like [`crate::scm_remote`], so hooks, identity and configuration match the
 //! terminal. Callers run them on a worker thread.
 
+use crate::process_util::HideConsole;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -23,6 +24,7 @@ struct Output {
 
 fn git(root: &Path, args: &[&str], editor_free: bool) -> Result<Output, String> {
     let mut command = Command::new("git");
+    command.hide_console();
     command
         .current_dir(root)
         .env("LC_ALL", "C")
@@ -395,6 +397,7 @@ pub(crate) fn rebase_interactive(root: &Path, onto: &str, todo: &str) -> Result<
     // Git runs this through `sh`, which understands forward slashes on every platform.
     let editor = format!("cp \"{}\"", plan.display().to_string().replace('\\', "/"));
     let mut command = Command::new("git");
+    command.hide_console();
     command
         .current_dir(root)
         .env("LC_ALL", "C")

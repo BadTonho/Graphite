@@ -1,5 +1,6 @@
 //! Git commit graph loading and topological lane assignment for the Source Control Graph view.
 
+use crate::process_util::HideConsole;
 use std::path::Path;
 
 use super::scm_remote::run_git;
@@ -243,6 +244,7 @@ pub(crate) fn load_commit_file_comparison(
     let clean = rel_path.trim().replace('\\', "/");
     let show_raw = |spec: &str| -> String {
         std::process::Command::new("git")
+            .hide_console()
             .arg("-C")
             .arg(root)
             .args(["show", spec])
