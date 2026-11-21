@@ -171,6 +171,9 @@ impl App {
         if self.graphite_detail_click(mx, my) {
             return;
         }
+        if self.installed_detail_click(mx, my) {
+            return;
+        }
 
         if self.secondary_sidebar_click(mx, my, window_width, window_height, lh, cw) {
             return;
@@ -507,7 +510,9 @@ impl App {
                     x += width;
                 }
                 self.focus_editor_group(rect.id);
-                self.graphite_detail_tab_click(rect.id, mx);
+                if !self.graphite_detail_tab_click(rect.id, mx) {
+                    self.installed_detail_tab_click(rect.id, mx);
+                }
                 return;
             }
             if self.active_notebook().is_some() {

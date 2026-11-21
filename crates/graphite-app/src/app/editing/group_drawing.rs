@@ -111,12 +111,22 @@ impl App {
             );
             let mut x = rect.x;
             if self.view_preferences.tabs_visible && !self.zen_mode {
+                let detail_active_here = self
+                    .plugins
+                    .active_graphite_detail
+                    .as_ref()
+                    .is_some_and(|(group, _)| *group == rect.id)
+                    || self
+                        .plugins
+                        .active_installed_detail
+                        .as_ref()
+                        .is_some_and(|(group, _)| *group == rect.id);
                 for (index, view) in views.iter().enumerate() {
                     let tab = &self.documents[self
                         .resolve_document(view.document)
                         .expect("view document exists")];
                     let width = tab_width(tab, cw, &self.translator);
-                    let color = if index == active {
+                    let color = if index == active && !detail_active_here {
                         Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)
                     } else {
                         Theme::color(Theme::SIDEBAR, 0xf3f3f3)
@@ -173,6 +183,7 @@ impl App {
                     x += width;
                 }
                 self.draw_graphite_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
+                self.draw_installed_detail_tabs(r, rect.id, &mut x, rect.y, lh, cw);
             }
             if self
                 .plugins
@@ -181,6 +192,16 @@ impl App {
                 .is_some_and(|(group, _)| *group == rect.id)
             {
                 self.draw_graphite_detail_page(r, *rect, lh, cw);
+                r.set_clip(None);
+                continue;
+            }
+            if self
+                .plugins
+                .active_installed_detail
+                .as_ref()
+                .is_some_and(|(group, _)| *group == rect.id)
+            {
+                self.draw_installed_detail_page(r, *rect, lh, cw);
                 r.set_clip(None);
                 continue;
             }

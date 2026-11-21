@@ -46,7 +46,6 @@ impl App {
     pub(super) fn plugin_details_open(&self) -> bool {
         self.plugins.preview.is_some()
             || self.plugins.trust.is_some()
-            || self.plugins.inspecting.is_some()
             || self.plugins.running_scroll.is_some()
             || self.plugins.bisect.is_some()
     }
@@ -106,7 +105,6 @@ impl App {
         if !self.plugins.visible
             || self.plugins.bisect.is_some()
             || self.plugins.preview.is_some()
-            || self.plugins.inspecting.is_some()
             || self.plugins.trust.is_some()
         {
             return;
@@ -135,9 +133,7 @@ impl App {
                 self.cleanup_plugin_download();
                 self.plugins.index = 0;
                 self.plugins.scroll = 0;
-            } else if self.plugins.trust.take().is_some()
-                || self.plugins.inspecting.take().is_some()
-            {
+            } else if self.plugins.trust.take().is_some() {
             } else if self.plugins.editing {
                 self.plugins.editing = false;
             } else {
@@ -166,9 +162,6 @@ impl App {
             return false;
         }
         if self.plugins.worker.is_some() {
-            return true;
-        }
-        if self.plugins.inspecting.is_some() {
             return true;
         }
         if self.plugins.trust.is_some() {
@@ -251,7 +244,6 @@ impl App {
             self.cancel_plugin_install();
         }
         self.plugins.trust = None;
-        self.plugins.inspecting = None;
         self.plugins.editing = false;
         if self.plugins.graphite_assets.take().is_some() {
             self.cleanup_plugin_download();
@@ -302,10 +294,7 @@ impl App {
             }
             return;
         }
-        if self.plugins.preview.is_some()
-            || self.plugins.trust.is_some()
-            || self.plugins.inspecting.is_some()
-        {
+        if self.plugins.preview.is_some() || self.plugins.trust.is_some() {
             return;
         }
         if self.plugins.path_input {

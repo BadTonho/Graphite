@@ -307,7 +307,13 @@ fn panel_details_and_ime_input_leave_background_document_untouched() {
         dev_path: None,
     });
     app.plugin_action('\n');
-    assert!(matches!(app.plugins.inspecting, Some(Metadata::Vsix(_))));
+    assert_eq!(app.plugins.installed_details.len(), 1);
+    assert_eq!(
+        app.plugins.active_installed_detail.as_ref().unwrap().1,
+        "sample.vsix"
+    );
+    assert!(!app.plugin_details_open());
+    assert!(!app.plugins.focused);
     app.scroll_plugins(100);
     assert_eq!(app.plugins.index, 0);
     assert_eq!(app.plugins.scroll, 0);
@@ -319,23 +325,9 @@ fn tab_switches_leave_details_and_clear_path_input() {
     let mut app = App::new_with_options(temp.path().into(), None, true);
     app.plugins.visible = true;
     app.plugins.focused = true;
-    let metadata = Metadata::Vsix(graphite_plugins::manifest::Vsix {
-        id: "sample.vsix".into(),
-        version: "1.0.0".into(),
-        description: String::new(),
-        engines: Value::Null,
-        main: None,
-        contributions: vec![],
-        commands: vec![],
-        activity_bar: vec![],
-        language_comments: vec![],
-        snippets: vec![],
-        debuggers: vec![],
-        ..Default::default()
-    });
-    app.plugins.inspecting = Some(metadata.clone());
+    app.plugins.trust = Some("sample.vsix".into());
     app.plugin_action('i');
-    assert!(app.plugins.inspecting.is_none());
+    assert!(app.plugins.trust.is_none());
     app.plugins.path_input = true;
     app.plugins.query = "plugin.vsix".into();
     app.plugins.editing = true;
@@ -343,12 +335,104 @@ fn tab_switches_leave_details_and_clear_path_input() {
     assert!(!app.plugins.path_input);
     assert!(app.plugins.query.is_empty());
     assert!(!app.plugins.editing);
-    app.plugins.inspecting = Some(metadata);
+    app.plugins.trust = Some("sample.vsix".into());
     app.plugin_action('l');
-    assert!(app.plugins.inspecting.is_none());
+    assert!(app.plugins.trust.is_none());
     assert!(app.plugins.path_input);
     assert!(app.plugins.editing);
     assert!(app.plugins.query.is_empty());
+}
+
+#[test]
+fn installed_plugin_opens_detail_tab_in_editor_group_with_readme_and_scroll() {
+    let temp = crate::test_support::TempDir::new();
+    let store_root = temp.path().join("plugins");
+    let first_ext_dir = store_root.join("author.first@1.0.0").join("extension");
+    std::fs::create_dir_all(&first_ext_dir).unwrap();
+    std::fs::write(first_ext_dir.join("README.md"), "# First Plugin\n\nDetails here.\n").unwrap();
+
+    let mut app = App::new_with_options(temp.path().into(), None, true);
+    app.use_plugin_store(store_root);
+    app.plugins.visible = true;
+    app.plugins.focused = true;
+    app.plugins.tab = PluginsTab::Installed;
+
+    let make_installed = |id: &str, dir: &str| Installed {
+        metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+            id: id.into(),
+            version: "1.0.0".into(),
+            description: format!("Description for {id}"),
+            engines: serde_json::json!({"vscode": "^1.94.0"}),
+            main: Some("./extension.js".into()),
+            contributions: vec!["commands".into()],
+            ..Default::default()
+        }),
+        enabled: true,
+        trusted_version: Some("1.0.0".into()),
+        directory: dir.into(),
+        dev_path: None,
+    };
+    app.plugins.installed = vec![
+        make_installed("author.first", "author.first@1.0.0"),
+        make_installed("author.second", "author.second@1.0.0"),
+    ];
+
+    // Opening first installed plugin opens a tab in the editor group and keeps sidebar list visible.
+    app.plugins.index = 0;
+    app.plugin_action('\n');
+    assert!(!app.plugin_details_open());
+    assert!(!app.plugins.focused);
+    assert_eq!(app.plugins.installed_details.len(), 1);
+    assert_eq!(
+        app.plugins.active_installed_detail.as_ref().unwrap().1,
+        "author.first"
+    );
+    assert!(app.plugins.installed_details[0]
+        .readme
+        .as_deref()
+        .is_some_and(|r| r.contains("# First Plugin")));
+
+    // Opening second installed plugin opens a second tab.
+    app.plugins.index = 1;
+    app.plugin_action('\n');
+    assert_eq!(app.plugins.installed_details.len(), 2);
+    assert_eq!(
+        app.plugins.active_installed_detail.as_ref().unwrap().1,
+        "author.second"
+    );
+    assert!(app.plugins.installed_details[1].readme.is_none());
+
+    // Re-opening first focuses it without duplicating.
+    app.plugins.index = 0;
+    app.plugin_action('\n');
+    assert_eq!(app.plugins.installed_details.len(), 2);
+    assert_eq!(
+        app.plugins.active_installed_detail.as_ref().unwrap().1,
+        "author.first"
+    );
+
+    // Scrolling updates the active detail tab's scroll_line.
+    assert!(app.scroll_installed_detail(5));
+    assert_eq!(app.plugins.installed_details[0].scroll_line, 5);
+    assert!(app.scroll_installed_detail(-10));
+    assert_eq!(app.plugins.installed_details[0].scroll_line, 0);
+
+    // Activating a regular document deactivates the detail tab without closing it.
+    let doc = app.active_document();
+    app.activate_editor_document(doc);
+    assert!(app.plugins.active_installed_detail.is_none());
+    assert_eq!(app.plugins.installed_details.len(), 2);
+
+    // Re-focusing and closing via close_active_tab removes only that detail tab.
+    app.plugins.index = 1;
+    app.plugin_action('\n');
+    assert_eq!(
+        app.plugins.active_installed_detail.as_ref().unwrap().1,
+        "author.second"
+    );
+    app.close_active_tab();
+    assert_eq!(app.plugins.installed_details.len(), 1);
+    assert!(app.plugins.active_installed_detail.is_none());
 }
 
 #[test]

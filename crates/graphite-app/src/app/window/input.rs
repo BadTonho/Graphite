@@ -91,6 +91,9 @@ impl App {
         if self.graphite_detail_key(event) {
             return;
         }
+        if self.installed_detail_key(event) {
+            return;
+        }
         if self.plugin_key(event) {
             return;
         }

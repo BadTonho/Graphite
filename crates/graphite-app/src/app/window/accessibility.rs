@@ -1485,6 +1485,17 @@ impl App {
                         .iter()
                         .find(|tab| tab.group == rect.id && &tab.repository == repository)
                 });
+            let installed_detail = self
+                .plugins
+                .active_installed_detail
+                .as_ref()
+                .filter(|(group, _)| *group == rect.id)
+                .and_then(|(_, id)| {
+                    self.plugins
+                        .installed_details
+                        .iter()
+                        .find(|tab| tab.group == rect.id && &tab.id == id)
+                });
             let mut editor = Node::new(Role::TextInput);
             if let Some(detail) = graphite_detail {
                 editor.set_label(format!("{} — README", detail.repository));
@@ -1506,6 +1517,22 @@ impl App {
                 } else {
                     readme.to_owned()
                 });
+                editor.set_read_only();
+                editor.add_action(Action::Focus);
+                nodes.push((editor_id, editor));
+            } else if let Some(detail) = installed_detail {
+                editor.set_label(self.tf(
+                    "plugins.sidebar.details_title",
+                    &[
+                        ("id", &detail.metadata.id()),
+                        ("version", &detail.metadata.version()),
+                    ],
+                ));
+                let body = detail.readme.as_deref().unwrap_or_else(|| match &detail.metadata {
+                    graphite_plugins::manifest::Metadata::Native(m) => m.description.as_str(),
+                    graphite_plugins::manifest::Metadata::Vsix(v) => v.description.as_str(),
+                });
+                editor.set_value(body);
                 editor.set_read_only();
                 editor.add_action(Action::Focus);
                 nodes.push((editor_id, editor));

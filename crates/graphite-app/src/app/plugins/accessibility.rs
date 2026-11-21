@@ -72,11 +72,6 @@ impl App {
                 "plugins.accessibility.install_prompt",
                 &[("id", &m.id()), ("version", &m.version())],
             )
-        } else if let Some(m) = &self.plugins.inspecting {
-            self.tf(
-                "plugins.accessibility.details",
-                &[("details", &serde_json::to_string(m).unwrap_or_default())],
-            )
         } else if let Some(id) = &self.plugins.trust {
             self.tf("plugins.accessibility.trust", &[("id", id)])
         } else if self.plugins.editing {

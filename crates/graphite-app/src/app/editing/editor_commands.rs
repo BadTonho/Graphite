@@ -419,6 +419,10 @@ impl App {
             self.close_graphite_detail(group, &repository);
             return;
         }
+        if let Some((group, id)) = self.plugins.active_installed_detail.clone() {
+            self.close_installed_plugin_detail(group, &id);
+            return;
+        }
         let view = self.command_view_ref().clone();
         let document = view.document;
         let last_view = self.editor_groups.view_count(document) == 1;

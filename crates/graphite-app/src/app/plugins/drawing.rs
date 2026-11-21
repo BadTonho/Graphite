@@ -13,11 +13,11 @@ struct PluginCard {
     avatar_color: u32,
 }
 
-fn plugin_name(id: &str) -> &str {
+pub(super) fn plugin_name(id: &str) -> &str {
     id.split('.').nth(1).unwrap_or(id)
 }
 
-fn plugin_publisher(id: &str) -> &str {
+pub(super) fn plugin_publisher(id: &str) -> &str {
     id.split('.').next().unwrap_or("")
 }
 
@@ -65,7 +65,7 @@ fn graphite_resource_label(label: &str, max: usize) -> String {
     fit(&format!("↗ {label}"), max)
 }
 
-fn wrap_text(text: &str, max: usize) -> Vec<String> {
+pub(super) fn wrap_text(text: &str, max: usize) -> Vec<String> {
     let max = max.max(1);
     let mut lines = Vec::new();
     for raw in text.lines() {
@@ -114,13 +114,31 @@ fn wrap_text(text: &str, max: usize) -> Vec<String> {
     lines
 }
 
-fn push_lines(lines: &mut Vec<(String, u32)>, text: &str, max: usize, color: u32) {
+pub(super) fn push_lines(lines: &mut Vec<(String, u32)>, text: &str, max: usize, color: u32) {
     for line in wrap_text(text, max) {
         lines.push((line, color));
     }
 }
 
 impl App {
+    pub(super) fn graphite_detail_tabs_width(
+        &self,
+        group: u64,
+        line_height: f32,
+        cell_width: f32,
+    ) -> f32 {
+        self.plugins
+            .graphite_details
+            .iter()
+            .filter(|tab| tab.group == group)
+            .map(|tab| {
+                let name = tab.repository.rsplit('/').next().unwrap_or(&tab.repository);
+                let label = format!(" {name} ");
+                (label.chars().count() as f32 * cell_width * 1.15 + cell_width * 4.2)
+                    .max(line_height * 4.5)
+            })
+            .sum()
+    }
     pub(crate) fn draw_graphite_detail_tabs(
         &self,
         renderer: &mut Renderer,
@@ -138,8 +156,8 @@ impl App {
             .filter(|tab| tab.group == group)
         {
             let name = tab.repository.rsplit('/').next().unwrap_or(&tab.repository);
-            let label = format!(" {name}  × ");
-            let width = (label.chars().count() as f32 * cell_width * 1.4 + cell_width * 2.4)
+            let label = format!(" {name} ");
+            let width = (label.chars().count() as f32 * cell_width * 1.15 + cell_width * 4.2)
                 .max(line_height * 4.5);
             let selected = active.is_some_and(|(active_group, repository)| {
                 *active_group == group && repository == &tab.repository
@@ -155,9 +173,31 @@ impl App {
                     Theme::color(Theme::SIDEBAR, 0xf3f3f3)
                 }),
             );
+            let (close_left, close_right) =
+                crate::app::group_drawing::tab_close_area(*x, width, cell_width);
+            let label_max = (((close_left - (*x + PAD)).max(cell_width)) / cell_width) as usize;
             renderer.draw_text(
-                &fit(&label, (width / cell_width) as usize),
+                &fit(&label, label_max),
                 *x + PAD,
+                y + line_height * 0.25,
+                rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
+            );
+            let hovered = self.mouse.x as f32 >= close_left
+                && (self.mouse.x as f32) < close_right
+                && self.mouse.y as f32 >= y
+                && (self.mouse.y as f32) < y + line_height * 1.5;
+            if hovered {
+                renderer.draw_rect(
+                    close_left + cell_width * 0.2,
+                    y + line_height * 0.2,
+                    (close_right - close_left - cell_width * 0.4).max(cell_width),
+                    line_height * 1.1,
+                    rgb(Theme::color(Theme::DIM, 0x5a5a5a)),
+                );
+            }
+            renderer.draw_text(
+                "×",
+                close_left + cell_width * 0.6,
                 y + line_height * 0.25,
                 rgb(Theme::color(Theme::TEXT, 0x1e1e1e)),
             );
@@ -661,19 +701,22 @@ impl App {
             .filter(|tab| tab.group == group)
             .map(|tab| {
                 let label = format!(
-                    " {}  × ",
+                    " {} ",
                     tab.repository.rsplit('/').next().unwrap_or(&tab.repository)
                 );
-                let width = (label.chars().count() as f32 * cell_width * 1.4 + cell_width * 2.4)
+                let width = (label.chars().count() as f32 * cell_width * 1.15 + cell_width * 4.2)
                     .max(line_height * 4.5);
                 (tab.repository.clone(), width)
             })
             .collect::<Vec<_>>();
         for (repository, width) in tabs {
             if x >= tab_x && x < tab_x + width {
-                if x >= tab_x + width - cell_width * 2.0 {
+                let (close_left, close_right) =
+                    crate::app::group_drawing::tab_close_area(tab_x, width, cell_width);
+                if x >= close_left && x < close_right {
                     self.close_graphite_detail(group, &repository);
                 } else {
+                    self.plugins.active_installed_detail = None;
                     self.plugins.active_graphite_detail = Some((group, repository));
                 }
                 return true;
@@ -1464,7 +1507,6 @@ impl App {
         let max = ((layout.width - PAD * 2.0) / cell_width).max(1.0) as usize;
         let text = Theme::color(Theme::TEXT, 0x1e1e1e);
         let dim = Theme::color(Theme::DIM, 0x616161);
-        let error = 0x9b2226;
         let mut lines: Vec<(String, u32)> = Vec::new();
         if let Some((_, metadata)) = &self.plugins.preview {
             if self.plugins.downloaded_update.is_some() {
@@ -1503,20 +1545,6 @@ impl App {
                 text,
             );
             push_lines(&mut lines, self.t("plugins.trust_warning"), max, dim);
-        } else if let Some(metadata) = &self.plugins.inspecting {
-            push_lines(
-                &mut lines,
-                &self.tf(
-                    "plugins.sidebar.details_title",
-                    &[("id", &metadata.id()), ("version", &metadata.version())],
-                ),
-                max,
-                text,
-            );
-            self.plugin_metadata_lines(metadata, max, &mut lines);
-            if let Some(message) = self.plugins.errors.get(metadata.id()) {
-                push_lines(&mut lines, message, max, error);
-            }
         }
         for (index, (line, color)) in lines.iter().enumerate() {
             let y = layout.list_y + index as f32 * line_height;
@@ -1527,7 +1555,7 @@ impl App {
         }
     }
 
-    fn plugin_metadata_lines(
+    pub(super) fn plugin_metadata_lines(
         &self,
         metadata: &Metadata,
         max: usize,
@@ -1621,8 +1649,6 @@ impl App {
             "plugins.sidebar.hints_unfocused"
         } else if self.plugins.preview.is_some() || self.plugins.trust.is_some() {
             "plugins.sidebar.hints_confirm"
-        } else if self.plugins.inspecting.is_some() {
-            "plugins.sidebar.hints_details"
         } else if self.plugins.editing {
             "plugins.sidebar.hints_editing"
         } else {
@@ -1657,7 +1683,7 @@ impl App {
     }
 }
 
-fn markdown_display_rows(markdown: &str, width: usize) -> Vec<(String, u32, usize)> {
+pub(super) fn markdown_display_rows(markdown: &str, width: usize) -> Vec<(String, u32, usize)> {
     let mut rows = Vec::new();
     let mut in_code = false;
     for (source_line, raw) in markdown.lines().enumerate() {

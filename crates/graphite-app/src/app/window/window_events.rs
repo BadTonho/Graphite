@@ -668,6 +668,8 @@ impl ApplicationHandler<UserEvent> for App {
                     self.scroll_plugins(lines as i32);
                 } else if self.plugins.active_graphite_detail.is_some() {
                     self.scroll_graphite_detail(lines as i32);
+                } else if self.plugins.active_installed_detail.is_some() {
+                    self.scroll_installed_detail(lines as i32);
                 } else if let Some(geometry) = debug_geometry {
                     self.debug_panel_scroll(&geometry, self.mouse.x as f32, lines);
                 } else if over_process_panel {

@@ -921,6 +921,7 @@ impl App {
         self.editor_groups
             .activate_document(document, Default::default(), 0);
         self.plugins.active_graphite_detail = None;
+        self.plugins.active_installed_detail = None;
         if self.command_runtime.current.is_some() {
             self.command_runtime.view = Some(self.editor_groups.active_view().id);
         }
@@ -954,6 +955,14 @@ impl App {
             .is_some_and(|(group, _)| *group != id)
         {
             self.plugins.active_graphite_detail = None;
+        }
+        if self
+            .plugins
+            .active_installed_detail
+            .as_ref()
+            .is_some_and(|(group, _)| *group != id)
+        {
+            self.plugins.active_installed_detail = None;
         }
         if self.command_runtime.current.is_some() {
             self.command_runtime.view = Some(self.editor_groups.active_view().id);

@@ -51,7 +51,7 @@ impl App {
         };
         let id = record.metadata.id().to_owned();
         match action {
-            '\n' => self.plugins.inspecting = Some(record.metadata.clone()),
+            '\n' => self.open_installed_plugin_details(&record),
             'u' if matches!(record.metadata, Metadata::Vsix(_)) => {
                 let Some((namespace, name)) = id.split_once('.') else {
                     self.plugins.message = "Invalid VSIX identity".into();
@@ -375,6 +375,7 @@ impl App {
             });
         }
         self.focus_editor_group(group);
+        self.plugins.active_installed_detail = None;
         self.plugins.active_graphite_detail = Some((group, repository.full_name));
         self.plugins.focused = false;
     }

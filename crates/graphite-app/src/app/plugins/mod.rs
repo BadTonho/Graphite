@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, sync::mpsc, time::Instant};
 mod accessibility;
 mod actions;
 mod bisect;
+mod detail_tab;
 pub(crate) mod drawing;
 mod layout;
 mod panel;
@@ -21,6 +22,7 @@ mod tests;
 mod toolbar;
 mod updates;
 pub(crate) mod vsix;
+pub(crate) use detail_tab::InstalledPluginDetailTab;
 use layout::PluginsTab;
 pub(crate) use vsix::eligible as vsix_extension_runnable;
 pub(crate) use vsix::HierarchyKind as VsixHierarchyKind;
@@ -59,9 +61,10 @@ pub(crate) struct Plugins {
     pub(super) graphite_details: Vec<GraphiteDetailTab>,
     pub(super) active_graphite_detail: Option<(u64, String)>,
     graphite_details_loading: Option<String>,
+    pub(super) installed_details: Vec<InstalledPluginDetailTab>,
+    pub(super) active_installed_detail: Option<(u64, String)>,
     preview: Option<(PathBuf, Metadata)>,
     vsix_picker_directory: Option<PathBuf>,
-    inspecting: Option<Metadata>,
     trust: Option<String>,
     tab: PluginsTab,
     /// Whether the list of each tab is folded under its header bar.
@@ -148,6 +151,8 @@ impl App {
         self.plugins.worker = None;
         self.plugins.store = None;
         self.plugins.installed.clear();
+        self.plugins.installed_details.clear();
+        self.plugins.active_installed_detail = None;
         self.plugins.vsix_picker_directory = None;
         self.leave_plugin_details();
         self.plugins.update_state = Default::default();
