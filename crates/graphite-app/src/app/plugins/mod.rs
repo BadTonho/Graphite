@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, sync::mpsc, time::Instant};
 mod accessibility;
 mod actions;
 mod bisect;
+mod context_menu;
 mod detail_tab;
 pub(crate) mod drawing;
 mod layout;
@@ -87,6 +88,7 @@ pub(crate) struct Plugins {
     update_state: updates::UpdateState,
     toolbar_menu: Option<toolbar::Menu>,
     toolbar_focus: Option<usize>,
+    pub(crate) context_menu: Option<context_menu::PluginContextMenu>,
     bisect: Option<bisect::Bisect>,
     running_scroll: Option<usize>,
     trust_queue: std::collections::VecDeque<String>,

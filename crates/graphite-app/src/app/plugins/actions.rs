@@ -50,6 +50,31 @@ impl App {
             return;
         };
         let id = record.metadata.id().to_owned();
+        self.installed_plugin_action(&id, action);
+    }
+
+    pub(super) fn installed_plugin_action(&mut self, id: &str, action: char) {
+        self.installed_plugin_action_with_trust(id, action, false);
+    }
+
+    pub(super) fn installed_plugin_action_confirmed(&mut self, id: &str, action: char) {
+        self.installed_plugin_action_with_trust(id, action, true);
+    }
+
+    fn installed_plugin_action_with_trust(&mut self, id: &str, action: char, trust_confirmed: bool) {
+        if self.plugins.worker.is_some() || self.plugins.bisect.is_some() {
+            return;
+        }
+        let Some(record) = self
+            .plugins
+            .installed
+            .iter()
+            .find(|record| record.metadata.id() == id)
+            .cloned()
+        else {
+            return;
+        };
+        let id = record.metadata.id().to_owned();
         match action {
             '\n' => self.open_installed_plugin_details(&record),
             'u' if matches!(record.metadata, Metadata::Vsix(_)) => {
@@ -62,9 +87,18 @@ impl App {
                 self.update_one_plugin(namespace, name, installed_version, record.directory);
             }
             'e' if !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none()) => {
-                if record.trusted_version.as_deref() != Some(record.metadata.version()) {
+                if !trust_confirmed
+                    && record.trusted_version.as_deref() != Some(record.metadata.version())
+                {
+                    self.open_plugins();
+                    self.plugins.tab = PluginsTab::Installed;
+                    self.plugins.section_collapsed[PluginsTab::Installed.index()] = false;
                     self.plugins.trust = Some(id);
+                    self.focus_plugins();
                 } else {
+                    if self.plugins.trust.as_deref() == Some(id.as_str()) {
+                        self.plugins.trust = None;
+                    }
                     self.enable_plugin(id);
                 }
             }
@@ -78,6 +112,7 @@ impl App {
             'r' => self.start_plugin(id),
             'x' => {
                 self.stop_plugin(&id);
+                self.close_installed_plugin_details_by_id(&id);
                 self.plugin_job(move |s| {
                     s.remove(&id)?;
                     Ok(Outcome::Refreshed(s.list()?))

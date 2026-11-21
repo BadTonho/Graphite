@@ -136,5 +136,14 @@
   "plugins.toolbar.update_ready": "Extension update ready for review",
   "plugins.toolbar.update_settings_failed": "Could not save automatic update preference",
   "plugins.toolbar.bulk_failed": "{count} extensions could not be changed",
-  "plugins.toolbar.busy": "The Plugins panel is busy"
+  "plugins.toolbar.busy": "The Plugins panel is busy",
+  "plugins.action.enable": "Enable",
+  "plugins.action.trust_and_enable": "Trust and enable",
+  "plugins.action.disable": "Disable",
+  "plugins.action.restart": "Restart",
+  "plugins.action.update": "Update VSIX",
+  "plugins.action.uninstall": "Uninstall",
+  "plugins.action.run_command": "Run command",
+  "plugins.action.details": "Show details",
+  "plugins.action.inspect": "Download and inspect"
 }

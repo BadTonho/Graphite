@@ -101,6 +101,13 @@ impl App {
             }
             self.explorer_context_menu = None;
         }
+        if self.plugins.context_menu.is_some() {
+            if self.plugin_context_menu_contains(mx, my) {
+                self.plugin_context_menu_click(mx, my);
+                return;
+            }
+            self.plugins.context_menu = None;
+        }
 
         if self.activity_bar_menu.is_some() {
             self.handle_activity_bar_menu_click(mx, my, window_width);

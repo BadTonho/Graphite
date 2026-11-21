@@ -136,5 +136,14 @@
   "plugins.toolbar.update_ready": "Atualização pronta para revisão",
   "plugins.toolbar.update_settings_failed": "Não foi possível salvar a preferência de atualização automática",
   "plugins.toolbar.bulk_failed": "Não foi possível alterar {count} extensões",
-  "plugins.toolbar.busy": "O painel de Plugins está ocupado"
+  "plugins.toolbar.busy": "O painel de Plugins está ocupado",
+  "plugins.action.enable": "Ativar",
+  "plugins.action.trust_and_enable": "Confiar e ativar",
+  "plugins.action.disable": "Desativar",
+  "plugins.action.restart": "Reiniciar",
+  "plugins.action.update": "Atualizar VSIX",
+  "plugins.action.uninstall": "Remover",
+  "plugins.action.run_command": "Executar comando",
+  "plugins.action.details": "Mostrar detalhes",
+  "plugins.action.inspect": "Baixar e inspecionar"
 }

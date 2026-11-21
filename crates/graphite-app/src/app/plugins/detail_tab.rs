@@ -105,6 +105,18 @@ impl App {
         }
     }
 
+    pub(crate) fn close_installed_plugin_details_by_id(&mut self, id: &str) {
+        self.plugins.installed_details.retain(|tab| tab.id != id);
+        if self
+            .plugins
+            .active_installed_detail
+            .as_ref()
+            .is_some_and(|(_, active_id)| active_id == id)
+        {
+            self.plugins.active_installed_detail = None;
+        }
+    }
+
     pub(crate) fn draw_installed_detail_tabs(
         &self,
         renderer: &mut Renderer,
@@ -298,13 +310,31 @@ impl App {
 
         // Right metadata sidebar
         let pad = PAD * 1.5;
+        let busy = self.plugins.worker.is_some() || self.plugins.bisect.is_some();
+        let (buttons, mut side_y) =
+            installed_detail_buttons(sidebar_x, body_y, sidebar_width, line_height, record, busy);
         let max_side = ((sidebar_width - pad * 2.0) / cell_width).max(1.0) as usize;
+        let max_btn_text = ((sidebar_width - pad * 4.0) / cell_width).max(1.0) as usize;
+        for button in buttons {
+            renderer.draw_rect(
+                button.x,
+                button.y,
+                button.w,
+                button.h,
+                rgb(button.bg),
+            );
+            renderer.draw_text(
+                &fit(self.t(button.label_key), max_btn_text),
+                button.x + pad,
+                button.y + (button.h - line_height) * 0.5,
+                rgb(0xffffff),
+            );
+        }
         let mut side_lines: Vec<(String, u32)> = Vec::new();
         self.plugin_metadata_lines(metadata, max_side, &mut side_lines);
         if let Some(message) = self.plugins.errors.get(metadata.id()) {
             push_lines(&mut side_lines, message, max_side, error_color);
         }
-        let mut side_y = body_y + PAD;
         for (line, color) in side_lines {
             if side_y + line_height > body_y + body_height {
                 break;
@@ -320,18 +350,42 @@ impl App {
         };
         let line_height = gpu.renderer.line_height();
         let (window_width, window_height) = gpu.renderer.size();
-        let Some((group, _)) = self.plugins.active_installed_detail.as_ref() else {
+        let Some((group, id)) = self.plugins.active_installed_detail.clone() else {
             return false;
         };
         let Some(rect) = self
             .group_rectangles(window_width, window_height, line_height)
             .into_iter()
-            .find(|rect| rect.id == *group)
+            .find(|rect| rect.id == group)
         else {
             return false;
         };
         let body_y = rect.y + line_height * 1.5;
-        x >= rect.x && x < rect.x + rect.width && y >= body_y && y < rect.y + rect.height
+        if x < rect.x || x >= rect.x + rect.width || y < body_y || y >= rect.y + rect.height {
+            return false;
+        }
+        let sidebar_width = (rect.width * 0.28)
+            .clamp(220.0, 340.0)
+            .min(rect.width * 0.45);
+        let sidebar_x = rect.x + rect.width - sidebar_width;
+        let record = self
+            .plugins
+            .installed
+            .iter()
+            .find(|record| record.metadata.id() == id);
+        let busy = self.plugins.worker.is_some() || self.plugins.bisect.is_some();
+        let (buttons, _) =
+            installed_detail_buttons(sidebar_x, body_y, sidebar_width, line_height, record, busy);
+        if let Some(button) = buttons.into_iter().find(|btn| {
+            btn.enabled
+                && x >= btn.x
+                && x < btn.x + btn.w
+                && y >= btn.y
+                && y < btn.y + btn.h
+        }) {
+            self.installed_plugin_action_confirmed(&id, button.action);
+        }
+        true
     }
 
     pub(crate) fn installed_detail_tab_click(&mut self, group: u64, x: f32) -> bool {
@@ -448,6 +502,74 @@ impl App {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DetailActionButton {
+    action: char,
+    label_key: &'static str,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    bg: u32,
+    enabled: bool,
+}
+
+fn installed_detail_buttons(
+    sidebar_x: f32,
+    body_y: f32,
+    sidebar_width: f32,
+    line_height: f32,
+    record: Option<&Installed>,
+    busy: bool,
+) -> (Vec<DetailActionButton>, f32) {
+    let pad = PAD * 1.5;
+    let w = (sidebar_width - pad * 2.0).max(0.0);
+    let x = sidebar_x + pad;
+    let mut y = body_y + PAD;
+    let Some(record) = record else {
+        return (Vec::new(), y);
+    };
+    let runnable = !matches!(&record.metadata, Metadata::Vsix(vsix) if vsix.main.is_none());
+    let is_vsix = matches!(record.metadata, Metadata::Vsix(_));
+    let mut specs: Vec<(char, &'static str, u32, f32)> = Vec::new();
+    if record.enabled {
+        specs.push(('d', "plugins.action.disable", 0x4b5563, line_height * 1.7));
+        if runnable {
+            specs.push(('r', "plugins.action.restart", 0x3b4252, line_height * 1.5));
+        }
+    } else if runnable {
+        let label_key = if record.trusted_version.as_deref() != Some(record.metadata.version()) {
+            "plugins.action.trust_and_enable"
+        } else {
+            "plugins.action.enable"
+        };
+        specs.push(('e', label_key, 0x0e639c, line_height * 1.7));
+    }
+    if is_vsix {
+        specs.push(('u', "plugins.action.update", 0x3b4252, line_height * 1.5));
+    }
+    specs.push(('x', "plugins.action.uninstall", 0x7f1d1d, line_height * 1.5));
+
+    let mut buttons = Vec::with_capacity(specs.len());
+    for (action, label_key, color, h) in specs {
+        buttons.push(DetailActionButton {
+            action,
+            label_key,
+            x,
+            y,
+            w,
+            h,
+            bg: if busy { 0x6e7681 } else { color },
+            enabled: !busy,
+        });
+        y += h + line_height * 0.35;
+    }
+    if !buttons.is_empty() {
+        y += line_height * 0.35;
+    }
+    (buttons, y)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,5 +595,48 @@ mod tests {
         // Clicking outside the tab returns None.
         assert_eq!(hit_test_detail_tab(tab_x, width, tab_x - 1.0, 9.0), None);
         assert_eq!(hit_test_detail_tab(tab_x, width, tab_x + width, 9.0), None);
+    }
+
+    #[test]
+    fn detail_buttons_match_installed_plugin_state() {
+        let disabled = Installed {
+            directory: "google.google-antigravity".into(),
+            enabled: false,
+            trusted_version: None,
+            dev_path: None,
+            metadata: Metadata::Vsix(graphite_plugins::manifest::Vsix {
+                id: "google.google-antigravity".into(),
+                version: "1.13.0".into(),
+                main: Some("./extension.js".into()),
+                ..Default::default()
+            }),
+        };
+        let (btns, next_y) =
+            installed_detail_buttons(500.0, 40.0, 260.0, 20.0, Some(&disabled), false);
+        assert_eq!(
+            btns.iter().map(|b| (b.action, b.label_key)).collect::<Vec<_>>(),
+            vec![
+                ('e', "plugins.action.trust_and_enable"),
+                ('u', "plugins.action.update"),
+                ('x', "plugins.action.uninstall"),
+            ]
+        );
+        assert!(next_y > btns.last().unwrap().y + btns.last().unwrap().h);
+
+        let enabled = Installed {
+            enabled: true,
+            trusted_version: Some("1.13.0".into()),
+            ..disabled
+        };
+        let (btns, _) = installed_detail_buttons(500.0, 40.0, 260.0, 20.0, Some(&enabled), false);
+        assert_eq!(
+            btns.iter().map(|b| (b.action, b.label_key)).collect::<Vec<_>>(),
+            vec![
+                ('d', "plugins.action.disable"),
+                ('r', "plugins.action.restart"),
+                ('u', "plugins.action.update"),
+                ('x', "plugins.action.uninstall"),
+            ]
+        );
     }
 }
