@@ -158,6 +158,10 @@ impl App {
             return;
         }
 
+        if self.bar_drag_mouse_down(mx, my) {
+            return;
+        }
+
         if !self.zen_mode && self.activity_bar_contains(mx, my) {
             self.activity_bar_click_at(mx, my);
             return;

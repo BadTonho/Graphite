@@ -18,6 +18,34 @@ pub(crate) enum ActivityBarSize {
     Compact,
 }
 
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SecondaryTabStyle {
+    #[default]
+    Text,
+    Icons,
+    IconsAndText,
+}
+
+impl SecondaryTabStyle {
+    pub(crate) fn from_setting_str(value: &str) -> Option<Self> {
+        match value {
+            "text" => Some(Self::Text),
+            "icons" => Some(Self::Icons),
+            "iconsAndText" | "icons_and_text" => Some(Self::IconsAndText),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_setting_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Icons => "icons",
+            Self::IconsAndText => "iconsAndText",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub(crate) struct ActivityBarPreferences {
@@ -25,6 +53,11 @@ pub(crate) struct ActivityBarPreferences {
     pub size: ActivityBarSize,
     pub primary_sidebar_right: bool,
     pub hidden_items: std::collections::HashSet<String>,
+    pub item_order: Vec<String>,
+    pub secondary_order: Vec<String>,
+    pub secondary_tab_style: SecondaryTabStyle,
+    pub moved_to_primary: Vec<String>,
+    pub moved_to_secondary: Vec<String>,
 }
 
 pub(crate) fn load_activity_bar_preferences(profile_root: &Path) -> ActivityBarPreferences {

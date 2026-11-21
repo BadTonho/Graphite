@@ -465,6 +465,15 @@ const SETTINGS: &[SettingDef] = &[
         commonly_used: false,
     },
     SettingDef {
+        key: "workbench.secondarySidebar.tabStyle",
+        category: "workbench.appearance",
+        title: "Workbench > Secondary Side Bar: Tab Style",
+        description: "Controls whether Secondary Side Bar header tabs display text, icons, or both.",
+        kind: SettingKind::Enum(&["text", "icons", "iconsAndText"]),
+        default_value: "text",
+        commonly_used: false,
+    },
+    SettingDef {
         key: "update.channel",
         category: "application.update",
         title: "Update: Channel",
@@ -652,6 +661,14 @@ impl App {
                 if let Some(s) = value.as_str() {
                     if let Some(ch) = crate::app::updates::state::UpdateChannel::from_str_lossy(s) {
                         self.set_update_channel(ch);
+                    }
+                }
+            }
+            "workbench.secondarySidebar.tabStyle" => {
+                if let Some(s) = value.as_str() {
+                    if let Some(style) = crate::config::SecondaryTabStyle::from_setting_str(s) {
+                        self.activity_bar_preferences.secondary_tab_style = style;
+                        self.save_activity_bar_preferences();
                     }
                 }
             }

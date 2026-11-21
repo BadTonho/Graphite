@@ -6,6 +6,7 @@ use super::*;
 pub(crate) mod accessibility;
 pub(crate) mod accessibility_actions;
 pub(crate) mod activity_bar;
+pub(crate) mod bar_drag;
 pub(crate) mod clipboard;
 pub(crate) mod context_keys;
 pub(crate) mod focus_regions;

@@ -50,12 +50,63 @@ pub(super) fn layout_tabs(
     slots
 }
 
+/// Lays out fixed-width icon tabs left to right inside `available` pixels.
+pub(super) fn layout_icon_tabs(
+    count: usize,
+    tab_width: f32,
+    active: Option<usize>,
+    available: f32,
+) -> Vec<TabSlot> {
+    if count == 0 || tab_width <= 0.0 || available <= 0.0 {
+        return Vec::new();
+    }
+    let mut first = 0;
+    if let Some(active) = active.filter(|&active| active < count) {
+        while first < active && (active - first + 1) as f32 * tab_width > available {
+            first += 1;
+        }
+    }
+    let mut slots = Vec::new();
+    let mut x = 0.0;
+    for index in first..count {
+        if x + tab_width > available {
+            if slots.is_empty() {
+                slots.push(TabSlot {
+                    index,
+                    x,
+                    width: (available - x).max(0.0),
+                });
+            }
+            break;
+        }
+        slots.push(TabSlot {
+            index,
+            x,
+            width: tab_width,
+        });
+        x += tab_width;
+    }
+    slots
+}
+
 /// The tab under `x` (relative to the strip), if any.
 pub(super) fn tab_at(slots: &[TabSlot], x: f32) -> Option<usize> {
     slots
         .iter()
         .find(|slot| x >= slot.x && x < slot.x + slot.width)
         .map(|slot| slot.index)
+}
+
+/// The insertion index (`0..=total_count`) for a pointer at `x` (relative to the strip).
+pub(super) fn insertion_index_at(slots: &[TabSlot], x: f32, total_count: usize) -> usize {
+    for slot in slots {
+        if x < slot.x + slot.width * 0.5 {
+            return slot.index;
+        }
+    }
+    slots
+        .last()
+        .map_or(0, |slot| (slot.index + 1).min(total_count))
 }
 
 #[cfg(test)]
@@ -119,5 +170,17 @@ mod tests {
         assert_eq!(tab_at(&slots, 56.0), Some(1));
         assert_eq!(tab_at(&slots, 122.0), None);
         assert_eq!(tab_at(&slots, -1.0), None);
+    }
+
+    #[test]
+    fn icon_tabs_and_insertion_index_work() {
+        let slots = layout_icon_tabs(4, 30.0, Some(3), 95.0);
+        assert_eq!(
+            slots.iter().map(|s| s.index).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(insertion_index_at(&slots, 5.0, 4), 1);
+        assert_eq!(insertion_index_at(&slots, 25.0, 4), 2);
+        assert_eq!(insertion_index_at(&slots, 85.0, 4), 4);
     }
 }

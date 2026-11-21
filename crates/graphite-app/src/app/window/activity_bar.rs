@@ -55,6 +55,15 @@ enum VisibleActivityItem {
     Plugin(PluginActivityEntry),
 }
 
+impl VisibleActivityItem {
+    fn key(&self) -> &str {
+        match self {
+            Self::Builtin(activity) => activity.preference_id(),
+            Self::Plugin(entry) => &entry.key,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct MenuRect {
     x: f32,
@@ -257,7 +266,7 @@ pub(crate) fn activity_at(y: f32) -> Option<Activity> {
 }
 
 impl App {
-    pub(crate) fn plugin_activity_entries(&self) -> Vec<PluginActivityEntry> {
+    pub(crate) fn raw_primary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
         self.plugins
             .installed_plugins()
             .iter()
@@ -287,6 +296,32 @@ impl App {
             .collect()
     }
 
+    pub(crate) fn plugin_activity_entries(&self) -> Vec<PluginActivityEntry> {
+        let mut entries: Vec<PluginActivityEntry> = self
+            .raw_primary_plugin_entries()
+            .into_iter()
+            .filter(|entry| {
+                !self
+                    .activity_bar_preferences
+                    .moved_to_secondary
+                    .iter()
+                    .any(|k| k == &entry.key)
+            })
+            .collect();
+        for entry in self.raw_secondary_plugin_entries() {
+            if self
+                .activity_bar_preferences
+                .moved_to_primary
+                .iter()
+                .any(|k| k == &entry.key)
+                && !entries.iter().any(|existing| existing.key == entry.key)
+            {
+                entries.push(entry);
+            }
+        }
+        entries
+    }
+
     fn visible_activity_items(&self) -> Vec<VisibleActivityItem> {
         let mut items = Activity::ALL
             .into_iter()
@@ -309,7 +344,18 @@ impl App {
                 })
                 .map(VisibleActivityItem::Plugin),
         );
-        items
+        crate::app::bar_drag::sort_by_order(
+            items,
+            &self.activity_bar_preferences.item_order,
+            VisibleActivityItem::key,
+        )
+    }
+
+    pub(crate) fn primary_activity_keys(&self) -> Vec<String> {
+        self.visible_activity_items()
+            .into_iter()
+            .map(|item| item.key().to_owned())
+            .collect()
     }
 
     pub(crate) fn open_activity_bar_menu(
@@ -1069,6 +1115,110 @@ impl App {
         true
     }
 
+    pub(crate) fn activity_bar_press_target(
+        &self,
+        x: f32,
+        y: f32,
+    ) -> Option<(String, bool, String, Option<char>)> {
+        let (width, height) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| (gpu.renderer.size().0, gpu.renderer.size().1))?;
+        let layout = ActivityBarLayout::new(
+            &self.activity_bar_preferences,
+            width,
+            height,
+            self.top_menu_height(),
+        )?;
+        if !layout.contains(x, y) {
+            return None;
+        }
+        let gear = settings_gear_rect(
+            layout,
+            width,
+            height,
+            self.gpu
+                .as_ref()
+                .map_or(20.0, |gpu| gpu.renderer.line_height()),
+        );
+        let profile = profile_button_rect(layout, gear);
+        if gear.contains(x, y) || profile.contains(x, y) {
+            return None;
+        }
+        let entries = self.visible_activity_items();
+        entries.iter().enumerate().find_map(|(index, item)| {
+            let rect = layout.item_rect(index);
+            (rect.contains(x, y)
+                && !gear.contains(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5))
+            .then(|| match item {
+                VisibleActivityItem::Builtin(activity) => (
+                    activity.preference_id().to_owned(),
+                    false,
+                    self.t(activity.label_key()).to_owned(),
+                    Some(activity.glyph()),
+                ),
+                VisibleActivityItem::Plugin(entry) => (
+                    entry.key.clone(),
+                    true,
+                    entry.title.clone(),
+                    None,
+                ),
+            })
+        })
+    }
+
+    fn previewed_activity_items(&self) -> Vec<VisibleActivityItem> {
+        crate::app::bar_drag::apply_bar_preview(
+            self.visible_activity_items(),
+            crate::app::bar_drag::BarKind::Primary,
+            self.bar_drag.as_ref(),
+            VisibleActivityItem::key,
+            |key| {
+                self.raw_secondary_plugin_entries()
+                    .into_iter()
+                    .chain(self.raw_primary_plugin_entries())
+                    .find(|entry| entry.key == key)
+                    .map(VisibleActivityItem::Plugin)
+            },
+        )
+    }
+
+    pub(crate) fn activity_bar_drop_index(&self, x: f32, y: f32) -> Option<usize> {
+        let (width, height) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| (gpu.renderer.size().0, gpu.renderer.size().1))?;
+        let layout = ActivityBarLayout::new(
+            &self.activity_bar_preferences,
+            width,
+            height,
+            self.top_menu_height(),
+        )?;
+        if !layout.contains(x, y) {
+            return None;
+        }
+        let count = self.visible_activity_items().len();
+        if count == 0 {
+            return Some(0);
+        }
+        let horizontal = matches!(
+            layout.position,
+            ActivityBarPosition::Top | ActivityBarPosition::Bottom
+        );
+        for index in 0..count {
+            let rect = layout.item_rect(index);
+            let before_midpoint = if horizontal {
+                x < rect.x + rect.width * 0.5
+            } else {
+                y < rect.y + rect.height * 0.5
+            };
+            if before_midpoint {
+                return Some(index);
+            }
+        }
+        Some(count)
+    }
+
     pub(crate) fn activity_bar_contains(&self, x: f32, y: f32) -> bool {
         self.gpu.as_ref().is_some_and(|gpu| {
             ActivityBarLayout::new(
@@ -1125,7 +1275,12 @@ impl App {
             rgb(Theme::color(Theme::ACTIVITY_BAR, 0xe8e8e8)),
         );
         let active = self.active_activity();
-        let entries = self.visible_activity_items();
+        let entries = self.previewed_activity_items();
+        let dragged_key = self
+            .bar_drag
+            .as_ref()
+            .filter(|d| d.active && d.target.is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Primary))
+            .map(|d| d.source_key.as_str());
         let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
         let profile = profile_button_rect(layout, gear);
         for (index, entry) in entries.iter().enumerate() {
@@ -1136,6 +1291,7 @@ impl App {
             {
                 break;
             }
+            let is_preview_target = dragged_key == Some(entry.key());
             let is_active = match entry {
                 VisibleActivityItem::Builtin(activity) => {
                     *activity == active && self.active_plugin_activity.is_none()
@@ -1145,7 +1301,15 @@ impl App {
                 }
             };
             let hovered = item.contains(self.mouse.x as f32, self.mouse.y as f32);
-            if hovered && !is_active {
+            if is_preview_target {
+                renderer.draw_rect(
+                    item.x + 2.0,
+                    item.y + 2.0,
+                    item.width - 4.0,
+                    item.height - 4.0,
+                    rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
+                );
+            } else if hovered && !is_active {
                 renderer.draw_rect(
                     item.x,
                     item.y,
@@ -1215,6 +1379,50 @@ impl App {
             }
             if matches!(entry, VisibleActivityItem::Builtin(Activity::SourceControl)) {
                 self.draw_scm_activity_badge(renderer, (item.x, item.y, item.width, item.height));
+            }
+        }
+        if let Some(drag) = &self.bar_drag {
+            if drag.active {
+                if let Some(target) = drag.target {
+                    if target.bar == crate::app::bar_drag::BarKind::Primary {
+                        let horizontal = matches!(
+                            layout.position,
+                            ActivityBarPosition::Top | ActivityBarPosition::Bottom
+                        );
+                        let indicator_pos = if target.index < entries.len() {
+                            let rect = layout.item_rect(target.index);
+                            if horizontal { rect.x } else { rect.y }
+                        } else if let Some(last) = entries.len().checked_sub(1) {
+                            let rect = layout.item_rect(last);
+                            if horizontal {
+                                rect.x + rect.width
+                            } else {
+                                rect.y + rect.height
+                            }
+                        } else {
+                            let rect = layout.item_rect(0);
+                            if horizontal { rect.x } else { rect.y }
+                        };
+                        let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
+                        if horizontal {
+                            renderer.draw_rect(
+                                (indicator_pos - 1.0).max(layout.x),
+                                layout.y + 4.0,
+                                2.0,
+                                layout.item_size - 8.0,
+                                accent,
+                            );
+                        } else {
+                            renderer.draw_rect(
+                                layout.x + 6.0,
+                                (indicator_pos - 1.0).max(layout.y),
+                                layout.width - 12.0,
+                                2.0,
+                                accent,
+                            );
+                        }
+                    }
+                }
             }
         }
         let gear_hovered = gear.contains(self.mouse.x as f32, self.mouse.y as f32);

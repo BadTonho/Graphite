@@ -246,6 +246,11 @@ impl ApplicationHandler<UserEvent> for App {
                     self.plugin_context_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.scm_graph_menu_pointer_moved(position.x as f32, position.y as f32);
                     self.scm_more_menu_pointer_moved(position.x as f32, position.y as f32);
+                    if self.bar_drag_pointer_moved(position.x as f32, position.y as f32) {
+                        if let Some(gpu) = &self.gpu {
+                            gpu.window.request_redraw();
+                        }
+                    }
                 }
                 if self.titlebar_pointer_moved(position.x as f32, position.y as f32) {
                     if let Some(gpu) = &self.gpu {
@@ -479,6 +484,11 @@ impl ApplicationHandler<UserEvent> for App {
                 button: MouseButton::Left,
                 ..
             } => {
+                if self.bar_drag_mouse_up(self.mouse.x as f32, self.mouse.y as f32) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                }
                 if self.explorer_drag.is_some() {
                     let row = self.explorer_row_at_mouse();
                     self.finish_explorer_drag(row);

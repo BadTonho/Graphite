@@ -3,8 +3,8 @@ use super::*;
 // Feature areas. Each group re-exports the modules other code reaches via `app::<name>`.
 mod window;
 pub(crate) use window::{
-    accessibility, activity_bar, clipboard, context_keys, focus_regions, layout, sashes, theme,
-    titlebar_layout_controls,
+    accessibility, activity_bar, bar_drag, clipboard, context_keys, focus_regions, layout, sashes,
+    theme, titlebar_layout_controls,
 };
 mod menus;
 pub(crate) use menus::{

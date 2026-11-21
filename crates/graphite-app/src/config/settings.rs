@@ -20,6 +20,7 @@ pub fn project_settings(value: &Value, translator: &Translator) -> (Value, Vec<S
         "editor.wordWrap",
         "editor.wrappingIndent",
         "workbench.language",
+        "workbench.secondarySidebar.tabStyle",
     ];
     let mut supported = Map::new();
     let mut warnings = Vec::new();

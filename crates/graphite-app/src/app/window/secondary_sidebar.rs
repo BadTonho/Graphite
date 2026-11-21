@@ -1,8 +1,9 @@
 use super::activity_bar::PluginActivityEntry;
-use super::secondary_tabs::{layout_tabs, tab_at, TabSlot};
+use super::secondary_tabs::{insertion_index_at, layout_icon_tabs, layout_tabs, tab_at, TabSlot};
 use super::*;
 use crate::app::chat::ChatSurface;
 use crate::app::error_log::{self, ErrorSeverity};
+use crate::config::SecondaryTabStyle;
 use graphite_extension_host::code_oss::Session;
 use graphite_plugins::manifest::Metadata;
 
@@ -13,8 +14,26 @@ enum View {
     Extension(String),
 }
 
+impl View {
+    fn preference_key(&self) -> &str {
+        match self {
+            Self::Chat => "chat",
+            Self::Outline => "outline",
+            Self::Extension(key) => key.as_str(),
+        }
+    }
+
+    fn icon_glyph(&self) -> Option<char> {
+        match self {
+            Self::Chat => Some('\u{ea6b}'),    // cod-comment
+            Self::Outline => Some('\u{ea84}'), // cod-list-tree
+            Self::Extension(_) => None,
+        }
+    }
+}
+
 impl App {
-    pub(crate) fn secondary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
+    pub(crate) fn raw_secondary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
         let mut context = self.context_keys.resolve(None);
         context.extend(self.vsix_context.clone());
         let matches = |when: Option<&str>| {
@@ -54,6 +73,32 @@ impl App {
                     .collect()
             })
             .collect()
+    }
+
+    pub(crate) fn secondary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
+        let mut entries: Vec<PluginActivityEntry> = self
+            .raw_secondary_plugin_entries()
+            .into_iter()
+            .filter(|entry| {
+                !self
+                    .activity_bar_preferences
+                    .moved_to_primary
+                    .iter()
+                    .any(|k| k == &entry.key)
+            })
+            .collect();
+        for entry in self.raw_primary_plugin_entries() {
+            if self
+                .activity_bar_preferences
+                .moved_to_secondary
+                .iter()
+                .any(|k| k == &entry.key)
+                && !entries.iter().any(|existing| existing.key == entry.key)
+            {
+                entries.push(entry);
+            }
+        }
+        entries
     }
 
     pub(crate) fn selected_secondary_plugin(&self) -> Option<PluginActivityEntry> {
@@ -156,25 +201,129 @@ impl App {
                 .into_iter()
                 .map(|entry| (View::Extension(entry.key), entry.title)),
         );
-        views
+        crate::app::bar_drag::sort_by_order(
+            views,
+            &self.activity_bar_preferences.secondary_order,
+            |(view, _)| view.preference_key(),
+        )
+    }
+
+    pub(crate) fn secondary_view_keys(&self) -> Vec<String> {
+        self.secondary_views()
+            .into_iter()
+            .map(|(view, _)| view.preference_key().to_owned())
+            .collect()
     }
 
     /// The tabs of the header strip that fit in the secondary side bar.
-    fn secondary_tab_slots(&self, cw: f32) -> Vec<TabSlot> {
+    fn secondary_tab_slots(&self, cw: f32, lh: f32) -> Vec<TabSlot> {
         let views = self.secondary_views();
-        let active = self.selected_secondary_view();
-        let labels: Vec<usize> = views
-            .iter()
-            .map(|(_, label)| label.chars().count())
-            .collect();
-        let active = active.and_then(|active| views.iter().position(|(view, _)| *view == active));
-        layout_tabs(
-            &labels,
-            active,
-            self.secondary_sidebar_width(),
-            cw.max(1.0),
-            PAD,
+        self.layout_secondary_views(&views, cw, lh)
+    }
+
+    fn previewed_secondary_views(&self) -> Vec<(View, String)> {
+        crate::app::bar_drag::apply_bar_preview(
+            self.secondary_views(),
+            crate::app::bar_drag::BarKind::Secondary,
+            self.bar_drag.as_ref(),
+            |(view, _)| view.preference_key(),
+            |key| {
+                self.raw_primary_plugin_entries()
+                    .into_iter()
+                    .chain(self.raw_secondary_plugin_entries())
+                    .find(|entry| entry.key == key)
+                    .map(|entry| (View::Extension(entry.key), entry.title))
+            },
         )
+    }
+
+    fn layout_secondary_views(&self, views: &[(View, String)], cw: f32, lh: f32) -> Vec<TabSlot> {
+        let active = self.selected_secondary_view();
+        let active = active.and_then(|active| views.iter().position(|(view, _)| *view == active));
+        match self.secondary_tab_style() {
+            SecondaryTabStyle::Text => {
+                let labels: Vec<usize> = views
+                    .iter()
+                    .map(|(_, label)| label.chars().count())
+                    .collect();
+                layout_tabs(
+                    &labels,
+                    active,
+                    self.secondary_sidebar_width(),
+                    cw.max(1.0),
+                    PAD,
+                )
+            }
+            SecondaryTabStyle::Icons => {
+                let tab_width = (lh * 1.7).max(26.0);
+                layout_icon_tabs(views.len(), tab_width, active, self.secondary_sidebar_width())
+            }
+            SecondaryTabStyle::IconsAndText => {
+                let icon_chars = ((lh * 1.1) / cw.max(1.0)).ceil() as usize + 1;
+                let labels: Vec<usize> = views
+                    .iter()
+                    .map(|(_, label)| label.chars().count() + icon_chars)
+                    .collect();
+                layout_tabs(
+                    &labels,
+                    active,
+                    self.secondary_sidebar_width(),
+                    cw.max(1.0),
+                    PAD,
+                )
+            }
+        }
+    }
+
+    pub(crate) fn secondary_tab_press_target(
+        &self,
+        mx: f32,
+        my: f32,
+    ) -> Option<(String, bool, String, Option<char>)> {
+        let gpu = self.gpu.as_ref()?;
+        let (w, _h) = gpu.renderer.size();
+        let lh = gpu.renderer.line_height();
+        let cw = gpu.renderer.char_width();
+        let left = self.secondary_sidebar_x(w);
+        let width = self.secondary_sidebar_width();
+        let top = self.activity_bar_vertical_offset();
+        let body = self.secondary_sidebar_top(lh);
+        if width <= 0.0 || mx < left || mx >= left + width || my < top || my >= body {
+            return None;
+        }
+        let slots = self.secondary_tab_slots(cw, lh);
+        let index = tab_at(&slots, mx - left)?;
+        let (view, label) = self.secondary_views().into_iter().nth(index)?;
+        let movable = matches!(view, View::Extension(_));
+        let icon = view.icon_glyph();
+        Some((view.preference_key().to_owned(), movable, label, icon))
+    }
+
+    pub(crate) fn secondary_tab_drop_index(&self, mx: f32, my: f32) -> Option<usize> {
+        let gpu = self.gpu.as_ref()?;
+        let (w, _h) = gpu.renderer.size();
+        let lh = gpu.renderer.line_height();
+        let cw = gpu.renderer.char_width();
+        let left = self.secondary_sidebar_x(w);
+        let width = self.secondary_sidebar_width();
+        let top = self.activity_bar_vertical_offset();
+        let body = self.secondary_sidebar_top(lh);
+        if width <= 0.0 || mx < left || mx >= left + width || my < top || my >= body {
+            return None;
+        }
+        let views = self.secondary_views();
+        let slots = self.secondary_tab_slots(cw, lh);
+        Some(insertion_index_at(&slots, mx - left, views.len()))
+    }
+
+    pub(crate) fn activate_secondary_view_by_key(&mut self, key: &str) {
+        if let Some((view, _)) = self
+            .secondary_views()
+            .into_iter()
+            .find(|(view, _)| view.preference_key() == key)
+        {
+            self.select_secondary_view(view);
+        }
     }
 
     fn select_secondary_view(&mut self, view: View) {
@@ -248,7 +397,12 @@ impl App {
             );
         };
         let selected = self.selected_secondary_view();
-        let views = self.secondary_views();
+        let views = self.previewed_secondary_views();
+        let dragged_key = self
+            .bar_drag
+            .as_ref()
+            .filter(|d| d.active && d.target.is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Secondary))
+            .map(|d| d.source_key.as_str());
 
         r.draw_rect(x, top, width, (h - lh - top).max(0.0), bg);
         // A thin border on the edge that faces the editor, like the other blocks have.
@@ -271,26 +425,121 @@ impl App {
             body - top,
             rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
         );
-        for slot in self.secondary_tab_slots(cw) {
+        let tab_style = self.secondary_tab_style();
+        let slots = self.layout_secondary_views(&views, cw, lh);
+        let mut hovered_tooltip: Option<(f32, String)> = None;
+        for slot in &slots {
             let Some((view, label)) = views.get(slot.index) else {
                 continue;
             };
             let active = Some(view) == selected.as_ref();
-            let chars = ((slot.width - PAD * 2.0) / cw.max(1.0)).max(0.0) as usize;
-            r.draw_text(
-                &label.chars().take(chars).collect::<String>(),
-                x + slot.x + PAD,
-                top + lh * 0.25,
-                if active { fg } else { dim },
-            );
+            let tab_x = x + slot.x;
+            let is_preview_target = dragged_key == Some(view.preference_key());
+            if is_preview_target {
+                r.draw_rect(
+                    tab_x + 1.0,
+                    top + 2.0,
+                    (slot.width - 2.0).max(0.0),
+                    (body - top - 4.0).max(0.0),
+                    rgb(Theme::color(Theme::BG, 0xffffff)),
+                );
+            }
+            let tab_hovered = self.mouse.x as f32 >= tab_x
+                && (self.mouse.x as f32) < tab_x + slot.width
+                && self.mouse.y as f32 >= top
+                && (self.mouse.y as f32) < body;
+            let color = if active { fg } else { dim };
+            let icon_size = (lh * 0.85).clamp(14.0, 18.0);
+            match tab_style {
+                SecondaryTabStyle::Text => {
+                    let chars = ((slot.width - PAD * 2.0) / cw.max(1.0)).max(0.0) as usize;
+                    r.draw_text(
+                        &label.chars().take(chars).collect::<String>(),
+                        tab_x + PAD,
+                        top + lh * 0.25,
+                        color,
+                    );
+                }
+                SecondaryTabStyle::Icons => {
+                    if tab_hovered {
+                        hovered_tooltip = Some((tab_x, label.clone()));
+                    }
+                    if let Some(glyph) = view.icon_glyph() {
+                        r.draw_icon(
+                            glyph,
+                            tab_x + (slot.width - icon_size) * 0.5,
+                            top + (body - top - icon_size) * 0.5,
+                            icon_size,
+                            color,
+                        );
+                    } else {
+                        let initial = label.chars().next().unwrap_or('?').to_string();
+                        let tw = initial.chars().count() as f32 * cw;
+                        r.draw_text(
+                            &initial,
+                            tab_x + (slot.width - tw) * 0.5,
+                            top + lh * 0.25,
+                            color,
+                        );
+                    }
+                }
+                SecondaryTabStyle::IconsAndText => {
+                    let icon_x = tab_x + PAD;
+                    let icon_y = top + (body - top - icon_size) * 0.5;
+                    if let Some(glyph) = view.icon_glyph() {
+                        r.draw_icon(glyph, icon_x, icon_y, icon_size, color);
+                    } else {
+                        let initial = label.chars().next().unwrap_or('?').to_string();
+                        r.draw_text(&initial, icon_x, top + lh * 0.25, color);
+                    }
+                    let text_x = icon_x + icon_size + cw * 0.6;
+                    let chars = ((tab_x + slot.width - PAD - text_x) / cw.max(1.0)).max(0.0) as usize;
+                    r.draw_text(
+                        &label.chars().take(chars).collect::<String>(),
+                        text_x,
+                        top + lh * 0.25,
+                        color,
+                    );
+                }
+            }
             if active {
                 r.draw_rect(
-                    x + slot.x,
+                    tab_x,
                     body - 2.0,
                     slot.width,
                     2.0,
                     rgb(Theme::color(Theme::STATUS, 0x005fb8)),
                 );
+            }
+        }
+        if let Some(drag) = &self.bar_drag {
+            if drag.active {
+                if let Some(target) = drag.target {
+                    if target.bar == crate::app::bar_drag::BarKind::Secondary {
+                        let indicator_x = slots
+                            .iter()
+                            .find(|slot| slot.index == target.index)
+                            .map(|slot| x + slot.x)
+                            .or_else(|| slots.last().map(|slot| x + slot.x + slot.width))
+                            .unwrap_or(x);
+                        r.draw_rect(
+                            (indicator_x - 1.0).max(x),
+                            top + 3.0,
+                            2.0,
+                            (body - top - 6.0).max(4.0),
+                            rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some((tip_x, tip_text)) = hovered_tooltip {
+            if self.bar_drag.as_ref().is_none_or(|drag| !drag.active) {
+                let tip_w = (tip_text.chars().count() as f32 * cw + PAD * 2.0).min(width);
+                let tip_x = tip_x.clamp(x, (x + width - tip_w).max(x));
+                let tip_y = body + 2.0;
+                r.draw_rect(tip_x, tip_y, tip_w, lh * 1.2, rgb(Theme::color(Theme::SIDEBAR, 0x252526)));
+                r.draw_text(&tip_text, tip_x + PAD, tip_y + lh * 0.1, fg);
             }
         }
         if let Some(entry) = self.selected_secondary_plugin() {
@@ -348,7 +597,7 @@ impl App {
             return false;
         }
         if y < body {
-            let slots = self.secondary_tab_slots(cw);
+            let slots = self.secondary_tab_slots(cw, lh);
             if let Some((view, _)) = tab_at(&slots, x - left)
                 .and_then(|index| self.secondary_views().into_iter().nth(index))
             {
@@ -408,7 +657,7 @@ mod tests {
 
         let cw = 10.0;
         let y = app.activity_bar_vertical_offset() + 2.0;
-        let slots = app.secondary_tab_slots(cw);
+        let slots = app.secondary_tab_slots(cw, lh);
         assert!(slots.len() >= 2, "Chat and Outline are always present");
         let outline = slots[1];
         let x = app.secondary_sidebar_x(w) + outline.x + 2.0;
