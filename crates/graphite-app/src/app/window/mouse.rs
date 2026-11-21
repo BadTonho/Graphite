@@ -85,6 +85,9 @@ impl App {
         if self.click_explorer_delete_confirm(mx, my, window_width, window_height) {
             return;
         }
+        if self.click_workspace_trust_banner(mx, my) {
+            return;
+        }
         if self.scm_more_menu.is_some() {
             self.scm_more_menu_click(mx, my);
             return;

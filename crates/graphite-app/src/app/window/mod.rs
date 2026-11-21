@@ -20,3 +20,4 @@ mod secondary_tabs;
 pub(crate) mod theme;
 pub(crate) mod titlebar_layout_controls;
 pub(crate) mod window_events;
+pub(crate) mod workspace_trust_banner;

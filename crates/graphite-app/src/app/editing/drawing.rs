@@ -637,6 +637,7 @@ impl App {
         self.draw_unsaved_modal(r);
         self.draw_sash_highlight(r, w, h, lh);
         self.draw_error_notification(r);
+        self.draw_workspace_trust_banner(r);
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();

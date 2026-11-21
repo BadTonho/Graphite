@@ -112,6 +112,7 @@ struct App {
     plugins: app::plugins::Plugins,
     emmet_runtime: Option<app::emmet::EmmetRuntime>,
     workspace_trust: Option<app::phase5::WorkspaceTrust>,
+    workspace_trust_dismissed_root: Option<PathBuf>,
     profiles: Option<app::phase5::Profiles>,
     profile_root: PathBuf,
     /// Preferred shared sidebar width in logical pixels.
@@ -798,6 +799,7 @@ impl App {
                     }),
                 )
             },
+            workspace_trust_dismissed_root: None,
             service_configuration_override: isolated.then(|| serde_json::json!({})),
             translator,
             saving: Default::default(),
