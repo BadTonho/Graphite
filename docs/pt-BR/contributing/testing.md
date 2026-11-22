@@ -28,6 +28,17 @@ Filtros úteis para o último comando são `document_view_tests`, `accessibility
 
 O binário da fixture pertence à infraestrutura de testes da aplicação e nunca é iniciado pela configuração padrão do editor. Implementa apenas comandos de teste programados e o enquadramento LSP padrão. Não é um servidor de linguagem para usuários finais.
 
+## Verificações de estabilidade no Windows
+
+- `cargo test -p graphite-app --bin graphite interrupted_save_preserves_last_complete_version_on_reopen` encerra um processo do editor sem interface depois que o salvamento sincroniza o arquivo temporário e antes de substituir o documento. Uma nova instância abre o último salvamento concluído, confere o texto e as quebras de linha e salva outra alteração. A recuperação automática de buffers não salvos após um encerramento inesperado do processo segue pendente.
+- `cargo test -p graphite-app --bin graphite window_close_buttons_save_discard_or_keep_edits` exercita o tratamento de cliques do próprio diálogo e verifica o arquivo no disco e se a janela seria fechada para cada opção. Use o [roteiro manual](manual-verification.md) para verificar entrada física, renderização e o aplicativo instalado.
+- `cargo test -p graphite-app --test startup_update` inicia três vezes uma cópia descartável do executável, rejeita uma atualização preparada cujo checksum não confere e verifica que o executável original pode continuar em uso. Defina `GRAPHITE_TEST_PACKAGED_EXE` com o caminho absoluto do `graphite.exe` extraído do pacote de lançamento ou instalado pelo assistente para aplicar a mesma verificação a esse executável.
+- Em uma conta descartável do Windows, defina `GRAPHITE_TEST_WINDOWS_INSTALLER` com o caminho do instalador real e execute `python -m unittest discover -s packaging/release/tests -p test_windows_install.py -v`. O teste instala em uma pasta temporária, verifica o runtime incluído, o atalho, o registro de desinstalação e a primeira execução pela CLI, e então executa o desinstalador e verifica a remoção. O instalador real escreve no menu Iniciar e no registro dessa conta.
+
+## Medindo a cobertura de código
+
+Com `cargo-llvm-cov` e o componente `llvm-tools-preview` da toolchain Rust disponíveis, execute `cargo llvm-cov --workspace --locked --html --output-dir target/graphite-coverage`. Abra `target/graphite-coverage/html/index.html` para ver as linhas executadas e investigar lacunas por arquivo. A cobertura depende do sistema operacional e dos cenários executados, incluindo quais testes opcionais rodaram.
+
 ## Matriz de cobertura
 
 Os nomes abaixo identificam módulos de testes nativos ou testes individuais de regressão; a cobertura existente é reutilizada em vez de duplicada.

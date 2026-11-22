@@ -1111,7 +1111,6 @@ fn main() {
             Ok(message) => println!("{message}"),
             Err(error) => {
                 app::error_log::record(app::error_log::ErrorSeverity::High, "cli.plugin", &error);
-                app::error_log::record(app::error_log::ErrorSeverity::High, "cli.plugin", &error);
                 eprintln!("{error}");
                 std::process::exit(2);
             }

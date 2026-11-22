@@ -6,6 +6,7 @@ Run `cargo run -p graphite-xtask -- verify` first and record any failures. Use a
 
 - [ ] Start the application, open a temporary folder, resize the window and use keyboard and mouse. Confirm no rendering corruption or startup errors.
 - [ ] Create a file containing accents, emoji and multiple lines; edit, undo/redo, save, close and reopen. Confirm exact saved contents.
+- [ ] In the disposable workspace, save a change, edit the file again and forcibly stop that Graphite process before saving the second edit. Reopen the file and verify that the last saved version is intact. Record whether the later edit is recoverable.
 - [ ] Find and replace text, including a regex and a no-match search; confirm the changes and undo result.
 - [ ] Open split views, type with an IME, scroll independently, and copy/paste through the OS clipboard. Confirm the other view stays consistent.
 - [ ] Close a dirty document using Save, Discard and Cancel in separate trials. Confirm saved contents, preserved edits on Cancel and a responsive window.
@@ -28,6 +29,7 @@ Run `cargo run -p graphite-xtask -- verify` first and record any failures. Use a
 
 - [ ] Run the existing manual CI for Windows and Linux at the release revision; record its results.
 - [ ] Build and launch the actual distributable on each OS following [building](building.md), then repeat essential smoke checks.
+- [ ] On Windows, run the setup program in a disposable account, launch Graphite from its Start menu shortcut, and run the [startup update test](testing.md#stability-checks-on-windows) against the installed executable. Uninstall and confirm the shortcut and application files are removed.
 - [ ] With disposable installations and controlled update artifacts, verify update, restart, version, rollback and refusal of an invalid package. Do not use the developer's running executable as a test target.
 - [ ] On Linux, explicitly check X11/Wayland and GTK/WebKit lifecycle; on Windows, WebView2 and shell integration. Automated headless tests do not validate these.
 

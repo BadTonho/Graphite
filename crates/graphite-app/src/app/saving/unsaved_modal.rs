@@ -325,6 +325,41 @@ mod tests {
     }
 
     #[test]
+    fn window_close_buttons_save_discard_or_keep_edits() {
+        use super::super::tests::fixture;
+
+        let (width, height) = (1200.0, 800.0);
+        for (button, exits, saved) in [
+            ("save", true, "edited\n"),
+            ("discard", true, "before\n"),
+            ("cancel", false, "before\n"),
+        ] {
+            let (_dir, mut app, path) = fixture();
+            app.set_save_test_text("edited\n");
+            app.run_ui_command("workbench.action.quit");
+            assert!(app.unsaved_modal_visible(), "{button}");
+            assert_eq!(app.unsaved_document_names(), ["save.txt"]);
+
+            let layout = App::unsaved_modal_layout(width, height, 1);
+            let (x, y, w, h) = match button {
+                "save" => layout.save,
+                "discard" => layout.discard,
+                _ => layout.cancel,
+            };
+            assert!(app.click_unsaved_modal(x + w / 2.0, y + h / 2.0, width, height));
+            app.wait_for_saves();
+
+            assert!(!app.unsaved_modal_visible(), "{button}");
+            assert_eq!(app.exit_requested, exits, "{button}");
+            assert_eq!(std::fs::read_to_string(path).unwrap(), saved, "{button}");
+            if !exits {
+                assert!(app.editor().is_dirty());
+                assert_eq!(app.editor().text(), "edited\n");
+            }
+        }
+    }
+
+    #[test]
     fn layout_buttons_stay_inside_the_panel_and_do_not_overlap() {
         for listed in [1, 3, 20] {
             let l = App::unsaved_modal_layout(1000.0, 700.0, listed);

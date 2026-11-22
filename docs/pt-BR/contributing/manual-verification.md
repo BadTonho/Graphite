@@ -6,6 +6,7 @@ Execute primeiro `cargo run -p graphite-xtask -- verify` e registre as falhas. U
 
 - [ ] Inicie o aplicativo, abra uma pasta temporária, redimensione a janela e use teclado e mouse. Confirme ausência de corrupção visual ou erros de inicialização.
 - [ ] Crie um arquivo com acentos, emoji e várias linhas; edite, desfaça/refaça, salve, feche e reabra. Confirme o conteúdo exato salvo.
+- [ ] No workspace descartável, salve uma alteração, edite o arquivo novamente e encerre à força aquele processo do Graphite antes do segundo salvamento. Reabra o arquivo e confirme a integridade da última versão salva. Registre se a edição posterior pode ser recuperada.
 - [ ] Busque e substitua texto, incluindo regex e busca sem resultados; confirme as alterações e o resultado de desfazer.
 - [ ] Abra views divididas, digite com IME, role independentemente e copie/cole pela área de transferência do sistema. Confirme consistência da outra view.
 - [ ] Feche um documento alterado usando Salvar, Descartar e Cancelar em tentativas separadas. Confirme conteúdo salvo, preservação ao cancelar e janela responsiva.
@@ -28,6 +29,7 @@ Execute primeiro `cargo run -p graphite-xtask -- verify` e registre as falhas. U
 
 - [ ] Execute a CI manual existente em Windows e Linux na revisão de lançamento; registre os resultados.
 - [ ] Compile e abra o distribuível real em cada sistema conforme [compilação](building.md) e repita as verificações essenciais.
+- [ ] No Windows, execute o instalador em uma conta descartável, abra o Graphite pelo atalho do menu Iniciar e rode o [teste de atualização na inicialização](testing.md#verificações-de-estabilidade-no-windows) com o executável instalado. Desinstale e confira se o atalho e os arquivos do aplicativo foram removidos.
 - [ ] Com instalações descartáveis e artefatos de atualização controlados, verifique atualização, reinício, versão, rollback e rejeição de pacote inválido. Não use o executável de desenvolvimento em execução como alvo.
 - [ ] No Linux, confira explicitamente X11/Wayland e ciclo de vida GTK/WebKit; no Windows, WebView2 e integração com shell. Testes headless não validam esses pontos.
 

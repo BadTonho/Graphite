@@ -28,6 +28,17 @@ Useful filters for the last command are `document_view_tests`, `accessibility_ac
 
 The fixture binary lives under application test infrastructure and is never started by the editor's default configuration. It implements only scripted test commands and standard LSP framing. It is not a language server for end users.
 
+## Stability checks on Windows
+
+- `cargo test -p graphite-app --bin graphite interrupted_save_preserves_last_complete_version_on_reopen` terminates a headless editor process after the save worker syncs its temporary file and before it replaces the document. A new editor instance opens the last completed save, verifies the text and line endings, and saves another edit. Automatic recovery of unsaved buffers after an unexpected process exit remains pending.
+- `cargo test -p graphite-app --bin graphite window_close_buttons_save_discard_or_keep_edits` exercises the real dialog's click handler and checks the file on disk and whether the window would close for each choice. Run the [manual checklist](manual-verification.md) for physical input, rendering, and the installed application.
+- `cargo test -p graphite-app --test startup_update` starts a disposable copy of the executable three times, rejects a staged update whose checksum does not match, and verifies that the original executable is still usable. Set `GRAPHITE_TEST_PACKAGED_EXE` to the absolute path of the `graphite.exe` extracted from the release archive or installed by the setup program to run the same check against that executable.
+- In a disposable Windows account, set `GRAPHITE_TEST_WINDOWS_INSTALLER` to the real setup executable and run `python -m unittest discover -s packaging/release/tests -p test_windows_install.py -v`. The test installs into a temporary directory, checks the bundled runtime, shortcut, uninstall registration and first CLI launch, then runs the uninstaller and verifies removal. The real installer writes to that account's Start menu and registry.
+
+## Measuring code coverage
+
+With `cargo-llvm-cov` and the matching Rust `llvm-tools-preview` component available, run `cargo llvm-cov --workspace --locked --html --output-dir target/graphite-coverage`. Open `target/graphite-coverage/html/index.html` to see which lines ran and inspect gaps per file. Coverage depends on the operating system and the scenarios executed, including which optional tests ran.
+
 ## Coverage matrix
 
 Names below identify native test modules or individual regression tests; existing coverage is reused rather than duplicated.

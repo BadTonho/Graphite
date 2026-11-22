@@ -10,6 +10,8 @@ mod unsaved_modal;
 mod writer;
 pub(super) use lifecycle::DiscardAction;
 #[cfg(test)]
+mod interruption_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod tests;
