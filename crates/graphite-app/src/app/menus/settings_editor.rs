@@ -366,6 +366,15 @@ const SETTINGS: &[SettingDef] = &[
         commonly_used: true,
     },
     SettingDef {
+        key: crate::app::draft_recovery::SETTING,
+        category: "text_editor.files",
+        title: "Files: Draft Recovery",
+        description: "Keep local copies of unsaved text for recovery after an unexpected exit.",
+        kind: SettingKind::Bool,
+        default_value: "true",
+        commonly_used: true,
+    },
+    SettingDef {
         key: "files.autoSaveDelay",
         category: "text_editor.files",
         title: "Files: Auto Save Delay",
@@ -619,6 +628,9 @@ impl App {
     }
 
     fn write_scope_setting(&mut self, scope: SettingsScope, key: &str, value: Value) {
+        if scope == SettingsScope::Workspace && key == crate::app::draft_recovery::SETTING {
+            return;
+        }
         let path = self.settings_file_path(scope);
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -642,6 +654,11 @@ impl App {
 
     fn apply_live_setting(&mut self, key: &str, value: &Value) {
         match key {
+            crate::app::draft_recovery::SETTING => {
+                if let Some(enabled) = value.as_bool() {
+                    self.drafts.set_enabled(&self.profile_root, enabled);
+                }
+            }
             "editor.fontSize" => {
                 if let Some(n) = value.as_f64() {
                     self.font_size = (n as f32).clamp(8.0, 48.0);
@@ -901,7 +918,13 @@ impl App {
             let items = filtered_settings(
                 editor_snapshot.selected_category,
                 &editor_snapshot.search_query,
-            );
+            )
+            .into_iter()
+            .filter(|def| {
+                editor_snapshot.scope == SettingsScope::User
+                    || def.key != crate::app::draft_recovery::SETTING
+            })
+            .collect::<Vec<_>>();
             let card_h = (lh * 3.4).max(74.0);
             let idx = ((y - list_y) / card_h).floor() as usize + editor_snapshot.content_scroll;
             if let Some(def) = items.get(idx) {
@@ -1105,13 +1128,25 @@ impl App {
             .max(1.0) as usize;
         for (i, def) in filtered_settings(editor.selected_category, &editor.search_query)
             .into_iter()
+            .filter(|def| {
+                editor.scope == SettingsScope::User
+                    || def.key != crate::app::draft_recovery::SETTING
+            })
             .skip(editor.content_scroll)
             .take(max_cards)
             .enumerate()
         {
             let cy = list_y + i as f32 * card_h;
-            renderer.draw_text(def.title, content_x, cy, fg);
-            renderer.draw_text(def.description, content_x, cy + lh, dim);
+            let (title, description) = if def.key == crate::app::draft_recovery::SETTING {
+                (
+                    self.t("drafts.setting_title"),
+                    self.t("drafts.setting_description"),
+                )
+            } else {
+                (def.title, def.description)
+            };
+            renderer.draw_text(title, content_x, cy, fg);
+            renderer.draw_text(description, content_x, cy + lh, dim);
 
             let val = if let Some((k, buf)) = editor.editing_key.as_ref() {
                 if *k == def.key {

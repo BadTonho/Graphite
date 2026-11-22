@@ -1,4 +1,5 @@
 {
+  "command.graphite.files.reviewDrafts": "Review Drafts",
   "command.actions.find": "Find",
   "command.category.developer": "Developer",
   "command.category.explorer": "Explorer",

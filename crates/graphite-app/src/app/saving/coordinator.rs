@@ -24,8 +24,10 @@ impl App {
                 continue;
             };
             let document = written.document;
+            let fingerprint = written.result.as_ref().ok().copied();
             let result = written
                 .result
+                .map(|_| ())
                 .map_err(|error| format!("{}: {error}", active.snapshot.path.display()));
             if result.is_ok() {
                 self.upload_virtual_document(&active.snapshot.path);
@@ -91,6 +93,11 @@ impl App {
                 let doc = &mut self.documents[document];
                 doc.buffer.mark_saved_snapshot(&snapshot.text);
                 doc.saved_format = (snapshot.encoding, snapshot.ending);
+                doc.saved_fingerprint = fingerprint;
+                doc.recovery_pending_save = false;
+                if crate::same_file_path(&snapshot.path, &self.profile_root.join("settings.json")) {
+                    self.drafts.reload_settings(&self.profile_root);
+                }
                 self.sync_lsp_document(document);
                 self.lsp_manager.save(&snapshot.path, snapshot.text.clone());
                 self.stage_saved_conflict(&snapshot.path);

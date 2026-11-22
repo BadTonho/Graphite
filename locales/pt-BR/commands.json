@@ -1,4 +1,5 @@
 {
+  "command.graphite.files.reviewDrafts": "Revisar rascunhos",
   "command.actions.find": "Localizar",
   "command.category.explorer": "Explorador",
   "command.graphite.scm.pull": "Git: Pull",

@@ -7,6 +7,11 @@ pub(crate) fn tab_label(tab: &Document, translator: &graphite_i18n::Translator) 
         .path()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
+        .or_else(|| {
+            tab.recovery_label.as_ref().map(|label| {
+                translator.format("drafts.recovered_tab", &[("name", &label.as_str())])
+            })
+        })
         .unwrap_or_else(|| {
             let key = match tab
                 .notebook

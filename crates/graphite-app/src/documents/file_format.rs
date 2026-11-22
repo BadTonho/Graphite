@@ -54,6 +54,7 @@ impl LineEnding {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DecodedFile {
     pub text: String,
+    pub fingerprint: Option<[u8; 32]>,
     pub encoding: Encoding,
     pub line_ending: LineEnding,
 }
@@ -105,9 +106,16 @@ pub(crate) fn decode(bytes: &[u8], translator: &Translator) -> Result<DecodedFil
     text = text.replace("\r\n", "\n").replace('\r', "\n");
     Ok(DecodedFile {
         text,
+        fingerprint: Some(fingerprint(bytes)),
         encoding,
         line_ending,
     })
+}
+
+pub(crate) fn fingerprint(bytes: &[u8]) -> [u8; 32] {
+    let mut fingerprint = [0; 32];
+    fingerprint.copy_from_slice(ring::digest::digest(&ring::digest::SHA256, bytes).as_ref());
+    fingerprint
 }
 
 pub(crate) fn encode(text: &str, encoding: Encoding, line_ending: LineEnding) -> Vec<u8> {

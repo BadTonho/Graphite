@@ -304,6 +304,7 @@ fn save_metadata_controls_dirty_and_reload_preserves_monotonic_version() {
     app.reload_after_branch_checkout(vec![(
         path,
         Ok(file_format::DecodedFile {
+            fingerprint: None,
             text: "xyz".into(),
             encoding: file_format::Encoding::Utf8Bom,
             line_ending: file_format::LineEnding::Lf,
@@ -349,6 +350,9 @@ fn document_store_identity_survives_data_replacement_and_retention_release() {
         notebook: None,
         custom_dirty: false,
         saved_format: (file_format::Encoding::Utf8, file_format::LineEnding::Lf),
+        saved_fingerprint: None,
+        recovery_label: None,
+        recovery_pending_save: false,
     });
     let replacement = app.documents.remove(other).document;
     *app.documents.get_mut(id).unwrap() = replacement;

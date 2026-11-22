@@ -6,7 +6,7 @@ Run `cargo run -p graphite-xtask -- verify` first and record any failures. Use a
 
 - [ ] Start the application, open a temporary folder, resize the window and use keyboard and mouse. Confirm no rendering corruption or startup errors.
 - [ ] Create a file containing accents, emoji and multiple lines; edit, undo/redo, save, close and reopen. Confirm exact saved contents.
-- [ ] In the disposable workspace, save a change, edit the file again and forcibly stop that Graphite process before saving the second edit. Reopen the file and verify that the last saved version is intact. Record whether the later edit is recoverable.
+- [ ] In the disposable workspace, save a change, edit again, wait for the draft and forcibly stop that Graphite process. Reopen Graphite, select **Review Drafts** with the keyboard and restore the later edit. Confirm the file on disk still contains the last explicit save. Repeat with an external change and check that the recovered text opens in a separate tab.
 - [ ] Find and replace text, including a regex and a no-match search; confirm the changes and undo result.
 - [ ] Open split views, type with an IME, scroll independently, and copy/paste through the OS clipboard. Confirm the other view stays consistent.
 - [ ] Close a dirty document using Save, Discard and Cancel in separate trials. Confirm saved contents, preserved edits on Cancel and a responsive window.

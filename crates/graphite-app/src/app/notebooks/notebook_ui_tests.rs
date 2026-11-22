@@ -175,6 +175,7 @@ fn a_reload_from_disk_replaces_the_cells() {
     app.run_ui_command("notebook.focusNextEditor");
     let other = SAMPLE.replace("x = 1", "z = 3");
     let decoded = crate::file_format::DecodedFile {
+        fingerprint: None,
         text: other,
         encoding: crate::file_format::Encoding::Utf8,
         line_ending: crate::file_format::LineEnding::Lf,

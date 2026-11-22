@@ -21,7 +21,7 @@ impl CommitGate {
 }
 pub(super) struct Written {
     pub document: DocumentId,
-    pub result: Result<(), String>,
+    pub result: Result<[u8; 32], String>,
 }
 #[cfg(test)]
 pub(super) struct WriteControl {
@@ -70,6 +70,7 @@ pub(super) fn write(
             }
             claimed
         })
+        .map(|()| crate::file_format::fingerprint(&bytes))
         .map_err(|e| e.to_string());
         let _ = sender.send(Written { document, result });
     });

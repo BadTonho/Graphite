@@ -3,6 +3,13 @@ use super::*;
 pub(super) fn register(registry: &mut CommandRegistry) {
     for (id, title, widget, enablement, handler) in [
         (
+            "graphite.files.reviewDrafts",
+            "Review Drafts",
+            None,
+            "true",
+            review_drafts as Handler,
+        ),
+        (
             "graphite.close.save",
             "Save and close",
             Some(WidgetKind::Close),
@@ -324,6 +331,11 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         None,
         focus_view,
     );
+}
+
+fn review_drafts(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.review_drafts();
+    Ok(())
 }
 
 fn resolve_close(app: &mut App, save: bool, cancel: bool) -> Result<(), CommandError> {

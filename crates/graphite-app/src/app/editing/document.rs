@@ -132,6 +132,9 @@ impl App {
                     lsp_revision: None,
                     indentation,
                     saved_format: (decoded.encoding, decoded.line_ending),
+                    saved_fingerprint: decoded.fingerprint,
+                    recovery_label: None,
+                    recovery_pending_save: false,
                     encoding: decoded.encoding,
                     line_ending: decoded.line_ending,
                     notebook: None,
@@ -219,6 +222,8 @@ impl App {
             let outcome = tab.buffer.reload_text(&decoded.text);
             let line_count = tab.buffer.len_lines();
             tab.saved_format = (decoded.encoding, decoded.line_ending);
+            tab.saved_fingerprint = decoded.fingerprint;
+            tab.recovery_pending_save = false;
             tab.encoding = decoded.encoding;
             tab.line_ending = decoded.line_ending;
             tab.indentation = if self.detect_indentation {

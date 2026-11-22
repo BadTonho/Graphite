@@ -158,6 +158,9 @@ impl App {
     }
 
     pub(crate) fn answer_extension_prompt(&mut self, value: Option<(String, Option<String>)>) {
+        if self.answer_draft_review(value.as_ref().and_then(|(_, id)| id.as_deref())) {
+            return;
+        }
         if let Some(target) = self.take_native_prompt_owner() {
             self.finish_native_prompt(target, value);
             return;

@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 **/*.rs.bk
 .graphite-*.tmp
+draft-recovery/
 .env
 .env.*
 *.pem

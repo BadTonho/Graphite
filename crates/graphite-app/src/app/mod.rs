@@ -53,4 +53,5 @@ pub(crate) mod user_data_sync;
 pub(crate) mod extension_host;
 pub(crate) mod services;
 
+pub(crate) mod draft_recovery;
 pub(crate) mod saving;

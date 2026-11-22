@@ -11,6 +11,8 @@ impl ApplicationHandler<UserEvent> for App {
             }
         }
         self.collect_closed_documents();
+        let draft_deadline = self.draft_tick(std::time::Instant::now());
+        self.offer_draft_review();
         self.poll_extension_host(std::time::Instant::now());
         self.poll_plugins();
         self.sync_graphite_detail_webview();
@@ -78,6 +80,7 @@ impl ApplicationHandler<UserEvent> for App {
             .values()
             .map(|(_, deadline)| *deadline)
             .chain(self.plugin_auto_update_deadline())
+            .chain(draft_deadline)
             .min();
         event_loop.set_control_flow(
             if self.saving.pending()
@@ -104,7 +107,7 @@ impl ApplicationHandler<UserEvent> for App {
                 ControlFlow::Wait
             },
         );
-        if self.exit_requested {
+        if self.exit_requested && !self.drafts_busy() {
             event_loop.exit();
         }
         self.refresh_command_context();

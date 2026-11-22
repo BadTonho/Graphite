@@ -93,6 +93,9 @@ impl App {
                 insert_spaces: self.insert_spaces,
                 tab_size: self.tab_size,
             },
+            saved_fingerprint: None,
+            recovery_label: None,
+            recovery_pending_save: false,
             saved_format: (
                 crate::file_format::Encoding::Utf8,
                 crate::file_format::LineEnding::Lf,
@@ -920,19 +923,66 @@ impl App {
             .and_then(Path::parent)
             .unwrap_or(self.tree.root());
         if let Some(path) = dialog.set_directory(directory).save_file() {
-            let document = self.active_document();
-            match self.documents[document].buffer.save_as(&path) {
-                Ok(()) => {
-                    self.documents[document].language = Language::from_path(&path);
-                    self.documents[document].highlights = None;
-                    self.register_lsp_active();
-                    self.status = path.display().to_string();
-                }
-                Err(error) => {
-                    self.status = self.tf("save.failed", &[("error", &error.to_string())])
-                }
+            if let Err(error) = self.save_active_document_as(&path) {
+                self.status = self.tf("save.failed", &[("error", &error.to_string())]);
             }
         }
+    }
+
+    pub(crate) fn save_active_document_as(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), graphite_text::BufferError> {
+        let document = self.active_document();
+        if self.saving.document_pending(document) {
+            crate::app::error_log::record(
+                crate::app::error_log::ErrorSeverity::High,
+                "document.save_as",
+                "A save for this document is already in progress",
+            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                self.t("drafts.save_pending").to_owned(),
+            )
+            .into());
+        }
+        let tab = &mut self.documents[document];
+        if tab.buffer.is_read_only() {
+            crate::app::error_log::record(
+                crate::app::error_log::ErrorSeverity::High,
+                "document.save_as",
+                "The source document is read-only",
+            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "document is read-only",
+            )
+            .into());
+        }
+        let text = tab.buffer.text();
+        let bytes = crate::file_format::encode(&text, tab.encoding, tab.line_ending);
+        if let Err(error) = Buffer::write_bytes_to_path(path, &bytes) {
+            crate::app::error_log::record(
+                crate::app::error_log::ErrorSeverity::High,
+                "document.save_as",
+                "Could not save the requested copy",
+            );
+            return Err(error);
+        }
+        tab.buffer.set_path(path);
+        tab.buffer.mark_saved_snapshot(&text);
+        tab.saved_format = (tab.encoding, tab.line_ending);
+        tab.saved_fingerprint = Some(crate::file_format::fingerprint(&bytes));
+        tab.recovery_label = None;
+        tab.recovery_pending_save = false;
+        tab.language = Language::from_path(path);
+        tab.highlights = None;
+        if crate::same_file_path(path, &self.profile_root.join("settings.json")) {
+            self.drafts.reload_settings(&self.profile_root);
+        }
+        self.register_lsp_active();
+        self.status = path.display().to_string();
+        Ok(())
     }
 
     fn save_workspace_dialog(&mut self, duplicate: bool) {

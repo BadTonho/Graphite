@@ -445,6 +445,9 @@ impl App {
                     insert_spaces: self.insert_spaces,
                     tab_size: self.tab_size,
                 },
+                saved_fingerprint: None,
+                recovery_label: None,
+                recovery_pending_save: false,
                 saved_format: (
                     crate::file_format::Encoding::Utf8,
                     crate::file_format::LineEnding::Lf,

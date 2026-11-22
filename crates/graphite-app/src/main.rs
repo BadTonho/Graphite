@@ -115,6 +115,7 @@ struct App {
     workspace_trust_dismissed_root: Option<PathBuf>,
     profiles: Option<app::phase5::Profiles>,
     profile_root: PathBuf,
+    drafts: app::draft_recovery::Recovery,
     /// Preferred shared sidebar width in logical pixels.
     sidebar_width: f32,
     sidebar_scale_factor: f32,
@@ -693,6 +694,9 @@ impl App {
                         tab_size: prefs.tab_size,
                     },
                     saved_format: (file_format::Encoding::Utf8, file_format::LineEnding::Lf),
+                    saved_fingerprint: None,
+                    recovery_label: None,
+                    recovery_pending_save: false,
                     encoding: file_format::Encoding::Utf8,
                     line_ending: file_format::LineEnding::Lf,
                     notebook: None,
@@ -709,6 +713,7 @@ impl App {
             plugins: Default::default(),
             emmet_runtime: None,
             profiles,
+            drafts: app::draft_recovery::Recovery::for_profile(&profile_root),
             profile_root,
             sidebar_width,
             sidebar_scale_factor: 1.0,
@@ -1761,6 +1766,7 @@ mod tests {
         app.open_file(file.clone());
         app.test_editor_mut(0).set_cursor_line_col(1, 2);
         let decoded = file_format::DecodedFile {
+            fingerprint: None,
             text: "new\n".into(),
             encoding: file_format::Encoding::Utf16Be,
             line_ending: file_format::LineEnding::Crlf,

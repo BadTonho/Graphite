@@ -223,6 +223,7 @@ impl App {
     }
 
     pub(crate) fn switch_user_profile(&mut self, name: &str) -> Result<(), String> {
+        self.draft_tick(std::time::Instant::now());
         let Some(profiles) = self.profiles.as_mut() else {
             return Err("Profiles are unavailable".into());
         };
@@ -233,7 +234,11 @@ impl App {
         let profile_root = profiles.path(name)?;
         let translator = self.translator;
         let workspace = self.tree.root().to_path_buf();
+        if self.answer_draft_review(None) {
+            self.command_palette = None;
+        }
         self.profile_root = profile_root;
+        self.drafts.reload_settings(&self.profile_root);
         self.github_session = graphite_auth::load_session(&self.profile_root);
         self.auto_save = fs::read(self.profile_root.join("files.json"))
             .ok()

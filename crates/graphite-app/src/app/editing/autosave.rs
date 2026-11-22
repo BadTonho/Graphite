@@ -33,6 +33,7 @@ impl App {
         let mut due = Vec::new();
         for document in self.documents.iter() {
             if !document.is_dirty()
+                || document.recovery_pending_save
                 || document.buffer.path().is_none()
                 || document.buffer.is_read_only()
             {
@@ -72,6 +73,7 @@ impl App {
             return;
         };
         if tab.is_dirty()
+            && !tab.recovery_pending_save
             && tab.buffer.path().is_some()
             && !tab.buffer.is_read_only()
             && !self.saving.document_pending(document)

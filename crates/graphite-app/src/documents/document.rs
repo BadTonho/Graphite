@@ -17,6 +17,9 @@ pub(crate) struct Document {
     pub(crate) lsp_revision: Option<u64>,
     pub(crate) indentation: graphite_text::Indentation,
     pub(crate) saved_format: (file_format::Encoding, file_format::LineEnding),
+    pub(crate) saved_fingerprint: Option<[u8; 32]>,
+    pub(crate) recovery_label: Option<String>,
+    pub(crate) recovery_pending_save: bool,
     pub(crate) encoding: file_format::Encoding,
     pub(crate) line_ending: file_format::LineEnding,
     /// The notebook this document is the file of; its buffer holds the file text.
