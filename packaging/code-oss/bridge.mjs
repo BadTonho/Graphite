@@ -72,8 +72,12 @@ function revive(value) {
     return value;
 }
 
+const MAX_PENDING_REQUESTS = 2048;
+
 function request(actor, method, args) {
-    if (pending.size >= 128) throw new Error('Too many pending Graphite requests');
+    if (pending.size >= MAX_PENDING_REQUESTS) {
+        throw new Error(`Too many pending Graphite requests (${actor}.${method})`);
+    }
     const id = ++nextId;
     return new Promise((resolve, reject) => {
         const token = args.at(-1);
@@ -234,6 +238,7 @@ async function start({ packages, root, rootUri, storage, locale, configuration }
     await Promise.all([
         rpc.getProxy(ExtHostContext.ExtHostWorkspace).$initializeWorkspace(workspace, true),
         rpc.getProxy(ExtHostContext.ExtHostConfiguration).$initializeConfiguration(configurationData(configuration)),
+        rpc.getProxy(ExtHostContext.ExtHostEditorTabs).$acceptEditorTabModel(editorTabGroups([], null)),
     ]);
     send({ type: 'ready' });
 }
@@ -262,6 +267,31 @@ function configurationData(configuration) {
         userRemote: empty, workspace: configurationModel(configuration?.workspace),
         folders: [], configurationScopes: [],
     };
+}
+
+const TAB_INPUT_TEXT = 1;
+
+function tabLabel(uri) {
+    const base = URI.parse(uri).path.split('/').filter(Boolean).at(-1);
+    return base || uri;
+}
+
+function editorTabGroups(snapshots, activeUri) {
+    return [{
+        groupId: 1,
+        isActive: true,
+        viewColumn: 0,
+        tabs: snapshots.map(document => ({
+            id: document.uri,
+            label: tabLabel(document.uri),
+            input: { kind: TAB_INPUT_TEXT, uri: URI.parse(document.uri) },
+            isActive: document.uri === activeUri,
+            isPinned: false,
+            isPreview: false,
+            isDirty: Boolean(document.dirty),
+            editorId: 'default',
+        })),
+    }];
 }
 
 async function sync({ documents: snapshots, active, tabSize, insertSpaces }) {
@@ -310,6 +340,7 @@ async function sync({ documents: snapshots, active, tabSize, insertSpaces }) {
         }
     }
     await rpc.getProxy(ExtHostContext.ExtHostDocumentsAndEditors).$acceptDocumentsAndEditorsDelta(delta);
+    await rpc.getProxy(ExtHostContext.ExtHostEditorTabs).$acceptEditorTabModel(editorTabGroups(snapshots, activeUri));
     if (activeUri && activeEditor === activeUri) {
         await rpc.getProxy(ExtHostContext.ExtHostEditors).$acceptEditorPropertiesChanged(activeUri, {
             options, selections: { selections: active.selections }, visibleRanges: null,

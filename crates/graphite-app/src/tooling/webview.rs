@@ -18,6 +18,7 @@ use wry::{http::Request, WebView, WebViewBuilder};
 pub(crate) struct WebviewHost {
     view: WebView,
     messages: Arc<Mutex<Vec<String>>>,
+    _origin: Option<webview_assets::LoopbackOrigin>,
 }
 
 #[cfg(target_os = "linux")]
@@ -25,19 +26,21 @@ pub(crate) struct WebviewHost {
     view: WebView,
     window: gtk::Window,
     messages: Arc<Mutex<Vec<String>>>,
+    _origin: Option<webview_assets::LoopbackOrigin>,
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
 pub(crate) struct WebviewHost {
     view: WebView,
     messages: Arc<Mutex<Vec<String>>>,
+    _origin: Option<webview_assets::LoopbackOrigin>,
 }
 
 /// What an extension view page sends once its document has loaded and its scripts have run.
 pub(crate) const PAGE_LOADED: &str = "__graphite_loaded";
 /// Appended to [`PAGE_SCRIPT`] for extension overlays so the host knows when to deliver messages.
 const LOADED_SIGNAL: &str = concat!(
-    "(()=>{const l=()=>window.ipc.postMessage('",
+    "(()=>{if(window!==window.top)return;const l=()=>(window.__graphiteSend||(m=>window.ipc.postMessage(m)))('",
     "__graphite_loaded",
     "');document.readyState==='loading'?document.addEventListener('DOMContentLoaded',l):l();})();"
 );
@@ -46,8 +49,8 @@ const LOADED_SIGNAL: &str = concat!(
 /// extension and whether its document rendered. Only message `type` names are sent, never their
 /// content. Runs in extension overlays only.
 const TRAFFIC_PROBE: &str = concat!(
-    "(()=>{const out=[],inn=[];",
-    "const d=m=>window.ipc.postMessage('__graphite_diag:'+String(m).slice(0,300));",
+    "(()=>{if(window!==window.top)return;const out=[],inn=[];",
+    "const d=m=>(window.__graphiteSend||(x=>window.ipc.postMessage(x)))('__graphite_diag:'+String(m).slice(0,300));",
     "const ty=m=>{try{const v=typeof m==='string'?JSON.parse(m):m;",
     "const i=v&&(v.message||v.request);",
     "return String((v&&v.type)||typeof v).slice(0,24)+(i&&i.type?'/'+String(i.type).slice(0,32):'')+(i&&i.error!==undefined?'!':'')}",
@@ -159,7 +162,11 @@ impl WebviewHost {
         #[cfg(windows)]
         {
             let _ = parent;
-            Ok(Self { view, messages })
+            Ok(Self {
+                view,
+                messages,
+                _origin: None,
+            })
         }
         #[cfg(target_os = "linux")]
         {
@@ -167,12 +174,17 @@ impl WebviewHost {
                 view,
                 window,
                 messages,
+                _origin: None,
             })
         }
         #[cfg(not(any(windows, target_os = "linux")))]
         {
             let _ = parent;
-            Ok(Self { view, messages })
+            Ok(Self {
+                view,
+                messages,
+                _origin: None,
+            })
         }
     }
 
@@ -208,11 +220,6 @@ impl WebviewHost {
         enable_scripts: bool,
         roots: Vec<PathBuf>,
     ) -> Result<Self, String> {
-        static NEXT_ORIGIN: AtomicUsize = AtomicUsize::new(0);
-        let scheme = format!(
-            "graphite-view-{}",
-            NEXT_ORIGIN.fetch_add(1, Ordering::Relaxed)
-        );
         let page = enforce_view_csp(
             &webview_assets::rewrite_resource_urls(html),
             enable_scripts,
@@ -220,28 +227,31 @@ impl WebviewHost {
         );
         let messages = Arc::new(Mutex::new(Vec::new()));
         let sink = messages.clone();
-        let builder = WebViewBuilder::new()
-            .with_custom_protocol(scheme.clone(), move |_, request| {
-                webview_assets::serve(&page, &roots, &request)
-            })
-            .with_url(webview_assets::page_url(&scheme))
-            // Injected by the engine, so the page's own script policy (nonces) cannot block it.
-            .with_initialization_script(format!("{PAGE_SCRIPT}{LOADED_SIGNAL}{TRAFFIC_PROBE}"))
-            .with_ipc_handler(move |request: Request<String>| {
-                if record_page_diagnostic(request.body()) {
+        let origin = webview_assets::LoopbackOrigin::start(
+            page,
+            roots,
+            Arc::new(move |body| {
+                if record_page_diagnostic(&body) {
                     return;
                 }
-                queue_page_message(&sink, request.body());
-            });
-        Self::build_overlay(
+                queue_page_message(&sink, &body);
+            }),
+        )?;
+        let builder = WebViewBuilder::new()
+            .with_url(origin.page_url())
+            // Injected by the engine, so the page's own script policy (nonces) cannot block it.
+            .with_initialization_script(format!("{PAGE_SCRIPT}{LOADED_SIGNAL}{TRAFFIC_PROBE}"));
+        let mut host = Self::build_overlay(
             parent,
             builder,
             messages,
             bounds,
             "Graphite View",
-            Some(scheme),
+            Some(String::new()),
             webview_theme::background(),
-        )
+        )?;
+        host._origin = Some(origin);
+        Ok(host)
     }
 
     fn build_overlay(
@@ -254,12 +264,13 @@ impl WebviewHost {
         background: (u8, u8, u8, u8),
     ) -> Result<Self, String> {
         let builder = builder
+            .with_devtools(cfg!(debug_assertions))
             .with_background_color(background)
             .with_navigation_handler(move |url| {
                 if url == "about:blank"
-                    || internal_scheme
-                        .as_deref()
-                        .is_some_and(|scheme| webview_assets::is_internal_url(scheme, &url))
+                    || internal_scheme.as_deref().is_some_and(|scheme| {
+                        webview_assets::is_internal_url(scheme, &url) || is_loopback_http(&url)
+                    })
                 {
                     return true;
                 }
@@ -298,15 +309,24 @@ impl WebviewHost {
         let _ = title;
 
         #[cfg(windows)]
-        let host = Self { view, messages };
+        let host = Self {
+            view,
+            messages,
+            _origin: None,
+        };
         #[cfg(target_os = "linux")]
         let host = Self {
             view,
             window,
             messages,
+            _origin: None,
         };
         #[cfg(not(any(windows, target_os = "linux")))]
-        let host = Self { view, messages };
+        let host = Self {
+            view,
+            messages,
+            _origin: None,
+        };
         host.set_overlay_bounds(parent, bounds)?;
         #[cfg(target_os = "linux")]
         if let Some(window) = host.overlay_window() {
@@ -432,6 +452,15 @@ impl WebviewHost {
     }
 }
 
+fn is_loopback_http(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = host_port.split(':').next().unwrap_or("");
+    host.eq_ignore_ascii_case("127.0.0.1") || host.eq_ignore_ascii_case("localhost")
+}
+
 pub(crate) fn open_external_https(target: &str) {
     let Some(target) = external_https_url(target) else {
         return;
@@ -462,9 +491,22 @@ fn external_https_url(target: &str) -> Option<String> {
     (url.scheme() == "https" && url.host_str().is_some()).then(|| url.to_string())
 }
 
-/// Runs in every page: the `acquireVsCodeApi` shim and reports of the page's own failures.
+/// Runs in every frame for error diagnostics, and in the top-level page for the `acquireVsCodeApi` shim.
 const PAGE_SCRIPT: &str = concat!(
-        "(()=>{let state;",
+        "(()=>{",
+        "let q=Promise.resolve();const send=m=>{if(window.ipc)return window.ipc.postMessage(m);q=q.then(()=>fetch('/__graphite_ipc',{method:'POST',body:String(m),keepalive:true}).catch(()=>{}))};",
+        "if(window!==window.top)return;",
+        "window.__graphiteSend=send;",
+        // Failures of the page itself, reported to the error log: script errors, rejected
+        // promises, blocked resources and policy violations.
+        "const d=m=>send('__graphite_diag:'+String(m).slice(0,300));",
+        "addEventListener('error',e=>{const t=e.target;",
+        "d(t&&t!==window&&(t.src||t.href)?'could not load '+(t.src||t.href):",
+        "'script error: '+e.message+' ('+e.lineno+':'+e.colno+')')},true);",
+        "addEventListener('unhandledrejection',e=>d('unhandled rejection: '+(e.reason&&e.reason.message||e.reason)));",
+        "document.addEventListener('securitypolicyviolation',e=>d('policy blocked '+e.violatedDirective+': '+e.blockedURI));",
+        "addEventListener('message',e=>{if(e.data&&typeof e.data==='object'&&typeof e.data.__graphite_diag==='string')d(e.data.__graphite_diag)});",
+        "let state;",
         // Binary data in messages, in both directions, travels as the extension host expects:
         // the JSON text holds references into a list of buffers, sent as base64.
         "const K=[null,Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,",
@@ -487,16 +529,8 @@ const PAGE_SCRIPT: &str = concat!(
         "if(!v.view)return a;const C=K[v.view.type];",
         "return new C(a,v.view.byteOffset,v.view.byteLength/C.BYTES_PER_ELEMENT)}return v});",
         "window.postMessage(msg,'*')};",
-        "window.acquireVsCodeApi=()=>({postMessage:m=>window.ipc.postMessage(pack(m)),",
+        "window.acquireVsCodeApi=()=>({postMessage:m=>send(pack(m)),",
         "getState:()=>state,setState:s=>(state=s)});",
-        // Failures of the page itself, reported to the error log: script errors, rejected
-        // promises, blocked resources and policy violations.
-        "const d=m=>window.ipc.postMessage('__graphite_diag:'+String(m).slice(0,300));",
-        "addEventListener('error',e=>{const t=e.target;",
-        "d(t&&t!==window&&(t.src||t.href)?'could not load '+(t.src||t.href):",
-        "'script error: '+e.message+' ('+e.lineno+':'+e.colno+')')},true);",
-        "addEventListener('unhandledrejection',e=>d('unhandled rejection: '+(e.reason&&e.reason.message||e.reason)));",
-        "document.addEventListener('securitypolicyviolation',e=>d('policy blocked '+e.violatedDirective+': '+e.blockedURI));",
         "})();"
     );
 
@@ -531,8 +565,13 @@ fn enforce_view_csp(html: &str, enable_scripts: bool, kind: webview_theme::Kind)
     } else {
         "'none'"
     };
+    let frames = if enable_scripts {
+        "http://127.0.0.1:* http://localhost:*"
+    } else {
+        "'none'"
+    };
     let csp = format!(
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; media-src data: 'self'; style-src 'unsafe-inline' 'self'; script-src {scripts}; font-src data: 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'\">"
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; media-src data: 'self'; style-src 'unsafe-inline' 'self'; script-src {scripts}; font-src data: 'self'; connect-src 'self'; object-src 'none'; frame-src {frames}; base-uri 'self'\">"
     );
     inject_head(
         &webview_theme::themed_body(html, kind),
@@ -629,5 +668,30 @@ mod tests {
         );
         assert!(external_https_url("http://github.com/owner/repo").is_none());
         assert!(external_https_url("javascript:alert(1)").is_none());
+    }
+
+    #[test]
+    fn view_csp_allows_loopback_frames_only_when_scripts_are_enabled() {
+        let with_scripts = enforce_view_csp("<p>x</p>", true, webview_theme::Kind::Dark);
+        assert!(with_scripts.contains("frame-src http://127.0.0.1:* http://localhost:*"));
+
+        let without_scripts = enforce_view_csp("<p>x</p>", false, webview_theme::Kind::Dark);
+        assert!(without_scripts.contains("frame-src 'none'"));
+    }
+
+    #[test]
+    fn loopback_http_navigation_matches_only_local_http_hosts() {
+        assert!(is_loopback_http("http://127.0.0.1:56435/index.html?x=1"));
+        assert!(is_loopback_http("http://localhost:3000/"));
+        assert!(!is_loopback_http("http://127.0.0.1.evil.com/"));
+        assert!(!is_loopback_http("https://127.0.0.1:56435/"));
+        assert!(!is_loopback_http("http://example.com/"));
+    }
+
+    #[test]
+    fn initialization_scripts_skip_nested_iframes() {
+        assert!(PAGE_SCRIPT.contains("window!==window.top"));
+        assert!(LOADED_SIGNAL.contains("window!==window.top"));
+        assert!(TRAFFIC_PROBE.contains("window!==window.top"));
     }
 }

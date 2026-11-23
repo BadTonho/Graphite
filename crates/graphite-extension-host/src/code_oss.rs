@@ -16,7 +16,7 @@ use std::{
 const COMMIT: &str = "c4453f8ea430795f941c1b2ff6c9321135a74a02";
 const NODE_VERSION: &[u8] = b"v24.22.1";
 const MAX_MESSAGE: usize = 32 * 1024 * 1024;
-const QUEUE: usize = 128;
+const QUEUE: usize = 4096;
 
 pub struct Session {
     outgoing: SyncSender<Value>,

@@ -8,7 +8,14 @@
 
 use std::{
     borrow::Cow,
+    io::{BufRead, BufReader, Read, Write},
+    net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::{self, JoinHandle},
 };
 use wry::http::{header, Request, Response, StatusCode};
 
@@ -26,6 +33,7 @@ pub(crate) fn rewrite_resource_urls(html: &str) -> String {
 }
 
 /// The URL the page is loaded from for a protocol named `scheme`.
+#[cfg(test)]
 pub(crate) fn page_url(scheme: &str) -> String {
     format!("{scheme}://localhost{PAGE_PATH}")
 }
@@ -106,6 +114,7 @@ fn content_type(path: &Path) -> &'static str {
     }
 }
 
+#[cfg(test)]
 fn respond(status: StatusCode, content_type: &str, body: Vec<u8>) -> Response<Cow<'static, [u8]>> {
     Response::builder()
         .status(status)
@@ -116,27 +125,153 @@ fn respond(status: StatusCode, content_type: &str, body: Vec<u8>) -> Response<Co
 }
 
 /// Answers one protocol request: the page, an allowed local file, or an error.
+#[cfg(test)]
 pub(crate) fn serve(
     page: &str,
     roots: &[PathBuf],
     request: &Request<Vec<u8>>,
 ) -> Response<Cow<'static, [u8]>> {
-    let path = request.uri().path();
+    let (status, mime, body) = serve_path(page, roots, request.uri().path());
+    respond(status, mime, body)
+}
+
+pub(crate) fn serve_path(
+    page: &str,
+    roots: &[PathBuf],
+    path: &str,
+) -> (StatusCode, &'static str, Vec<u8>) {
     if path == PAGE_PATH {
-        return respond(
+        return (
             StatusCode::OK,
             "text/html; charset=utf-8",
             page.as_bytes().to_vec(),
         );
     }
     let Some(file) = resolve_resource(path, roots) else {
-        return respond(StatusCode::FORBIDDEN, "text/plain", b"Forbidden".to_vec());
+        return (StatusCode::FORBIDDEN, "text/plain", b"Forbidden".to_vec());
     };
     let readable = std::fs::metadata(&file)
         .is_ok_and(|metadata| metadata.is_file() && metadata.len() <= MAX_RESOURCE);
     match readable.then(|| std::fs::read(&file).ok()).flatten() {
-        Some(bytes) => respond(StatusCode::OK, content_type(&file), bytes),
-        None => respond(StatusCode::NOT_FOUND, "text/plain", b"Not found".to_vec()),
+        Some(bytes) => (StatusCode::OK, content_type(&file), bytes),
+        None => (StatusCode::NOT_FOUND, "text/plain", b"Not found".to_vec()),
+    }
+}
+
+/// Serves an extension view's page and allowed local files on `http://127.0.0.1:<port>` so
+/// nested iframes whose `frame-ancestors` allow `http://127.0.0.1:*` can be embedded.
+pub(crate) struct LoopbackOrigin {
+    port: u16,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl LoopbackOrigin {
+    pub(crate) fn start(
+        page: String,
+        roots: Vec<PathBuf>,
+        on_ipc: Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Result<Self, String> {
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = stop.clone();
+        let thread = thread::spawn(move || {
+            for stream in listener.incoming() {
+                if stopped.load(Ordering::Acquire) {
+                    break;
+                }
+                let Ok(stream) = stream else { break };
+                let page = page.clone();
+                let roots = roots.clone();
+                let on_ipc = on_ipc.clone();
+                thread::spawn(move || handle_http(stream, &page, &roots, on_ipc.as_ref()));
+            }
+        });
+        Ok(Self {
+            port,
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    pub(crate) fn page_url(&self) -> String {
+        format!("http://127.0.0.1:{}{PAGE_PATH}", self.port)
+    }
+}
+
+impl Drop for LoopbackOrigin {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn handle_http(
+    mut stream: TcpStream,
+    page: &str,
+    roots: &[PathBuf],
+    on_ipc: &(dyn Fn(String) + Send + Sync),
+) {
+    let mut reader = BufReader::new(match stream.try_clone() {
+        Ok(cloned) => cloned,
+        Err(_) => return,
+    });
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line).is_err() {
+        return;
+    }
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("");
+    let target = parts.next().unwrap_or("/");
+    let path = target.split(['?', '#']).next().unwrap_or("/");
+    let mut content_length = 0usize;
+    loop {
+        let mut header_line = String::new();
+        if reader.read_line(&mut header_line).is_err() || header_line == "\r\n" || header_line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = header_line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    if method == "POST" && path == "/__graphite_ipc" {
+        if content_length > 48 * 1024 * 1024 {
+            let _ = stream.write_all(b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            return;
+        }
+        let mut body = vec![0u8; content_length];
+        if reader.read_exact(&mut body).is_err() {
+            return;
+        }
+        if let Ok(text) = String::from_utf8(body) {
+            on_ipc(text);
+        }
+        let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+        return;
+    }
+    let (status, mime, body) = match method {
+        "GET" | "HEAD" => serve_path(page, roots, path),
+        _ => (
+            StatusCode::METHOD_NOT_ALLOWED,
+            "text/plain",
+            b"Method not allowed".to_vec(),
+        ),
+    };
+    let reason = status.canonical_reason().unwrap_or("OK");
+    let header = format!(
+        "HTTP/1.1 {} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        status.as_u16(),
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    if method != "HEAD" {
+        let _ = stream.write_all(&body);
     }
 }
 
@@ -272,5 +407,38 @@ mod tests {
             "http://graphite-view-12.localhost/"
         ));
         assert!(!is_internal_url("graphite-view-1", "about:blank"));
+    }
+
+    #[test]
+    fn loopback_origin_serves_page_and_receives_ipc_posts() {
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = received.clone();
+        let origin = LoopbackOrigin::start(
+            "<h1>ok</h1>".into(),
+            Vec::new(),
+            Arc::new(move |body| sink.lock().unwrap().push(body)),
+        )
+        .unwrap();
+
+        let mut get_stream = TcpStream::connect(("127.0.0.1", origin.port)).unwrap();
+        get_stream
+            .write_all(b"GET /index.html HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .unwrap();
+        let mut get_response = String::new();
+        get_stream.read_to_string(&mut get_response).unwrap();
+        assert!(get_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(get_response.ends_with("<h1>ok</h1>"));
+
+        let payload = "{\"type\":\"ready\"}";
+        let mut post_stream = TcpStream::connect(("127.0.0.1", origin.port)).unwrap();
+        let req = format!(
+            "POST /__graphite_ipc HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{payload}",
+            payload.len()
+        );
+        post_stream.write_all(req.as_bytes()).unwrap();
+        let mut post_response = String::new();
+        post_stream.read_to_string(&mut post_response).unwrap();
+        assert!(post_response.starts_with("HTTP/1.1 204 No Content\r\n"));
+        assert_eq!(received.lock().unwrap().as_slice(), [payload]);
     }
 }

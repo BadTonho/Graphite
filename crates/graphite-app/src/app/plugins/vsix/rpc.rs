@@ -278,6 +278,11 @@ impl App {
             | ("MainThreadErrors", "$onUnexpectedError") => {
                 let error = args.iter().find_map(|value| value["message"].as_str());
                 if let Some(error) = error {
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Medium,
+                        "vsix.extension_host",
+                        error,
+                    );
                     self.status = error.to_owned();
                 }
                 Ok(Value::Null)
@@ -297,6 +302,13 @@ impl App {
             | ("MainThreadLogger", "$registerLogger" | "$deregisterLogger")
             | ("MainThreadProgress", "$progressEnd")
             | ("MainThreadTelemetry", "$publicLog" | "$publicLog2") => Ok(Value::Null),
+            (
+                "MainThreadComments",
+                "$updateCommentControllerFeatures" | "$updateCommentingRanges",
+            ) => {
+                self.record_unsupported_vsix_call(runtime, actor, method);
+                Ok(Value::Null)
+            }
             _ => {
                 self.record_unsupported_vsix_call(runtime, actor, method);
                 if is_silent_registration(method) {

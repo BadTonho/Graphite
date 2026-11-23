@@ -3231,3 +3231,50 @@ fn a_base_href_keeps_its_trailing_slash_so_relative_assets_stay_inside_the_folde
     let html = webviews::sanitize_webview_html(&without, &roots);
     assert!(html.ends_with("/webview\">"), "{html}");
 }
+
+#[test]
+fn extension_activation_errors_update_status_without_failing_rpc() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 9,
+            "actor": "MainThreadExtensionService",
+            "method": "$onExtensionActivationError",
+            "args": [{"value": "google.google-antigravity"}, {"message": "Activating extension failed"}]
+        }),
+    )
+    .unwrap();
+    let reply = host.next_sent().unwrap();
+    assert_eq!(reply["id"], 9);
+    assert!(reply.get("error").is_none(), "{reply}");
+    assert_eq!(app.status, "Activating extension failed");
+    assert!(runtime.unsupported.is_empty());
+}
+
+#[test]
+fn comment_controller_updates_are_accepted_without_failing_rpc() {
+    let dir = TempDir::new();
+    let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+    let (session, host) = Session::loopback();
+    let mut runtime = Runtime::for_test(session);
+    app.handle_vsix_request(
+        &mut runtime,
+        &json!({
+            "id": 10,
+            "actor": "MainThreadComments",
+            "method": "$updateCommentingRanges",
+            "args": [0, []]
+        }),
+    )
+    .unwrap();
+    let reply = host.next_sent().unwrap();
+    assert_eq!(reply["id"], 10);
+    assert!(reply.get("error").is_none(), "{reply}");
+    assert!(runtime
+        .unsupported
+        .contains("MainThreadComments.$updateCommentingRanges"));
+}
