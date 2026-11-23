@@ -1793,7 +1793,7 @@ mod tests {
         app.toggle_outline();
         let rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
         assert!(rect.x > 300.0);
-        assert!(rect.width <= 680.0);
+        assert!(rect.width <= 8.0 * 80.0 + app.gutter_width(8.0));
         app.zen_mode = true;
         let zen_rect = app.group_rectangles(1400.0, 900.0, 20.0)[0];
         assert!(zen_rect.x > 300.0);

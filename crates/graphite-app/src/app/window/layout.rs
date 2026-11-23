@@ -439,14 +439,17 @@ impl App {
         self.reveal_cursor_column(rect, cw);
     }
 
+    /// Total horizontal offset from `rect.x` to column 0 of the editor text (line-number gutter + gap).
+    pub(crate) fn gutter_width_for_lines(lines: usize, char_w: f32) -> f32 {
+        let digits = lines.to_string().len().max(3);
+        digits as f32 * char_w + PAD * 3.0
+    }
+
     pub(crate) fn gutter_width(&self, char_w: f32) -> f32 {
-        let digits = self.documents[self.active_document()]
-            .buffer
-            .len_lines()
-            .to_string()
-            .len()
-            .max(3);
-        digits as f32 * char_w + PAD * 2.0
+        Self::gutter_width_for_lines(
+            self.documents[self.active_document()].buffer.len_lines(),
+            char_w,
+        )
     }
 }
 

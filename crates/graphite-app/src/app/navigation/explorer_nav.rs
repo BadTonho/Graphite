@@ -398,4 +398,21 @@ mod tests {
         app.explorer_type_find("file_15");
         assert_eq!(selected_name(&app), "file_15.txt");
     }
+
+    #[test]
+    fn explorer_scroll_by_clamps_to_valid_row_bounds() {
+        let (mut app, _dir) = app();
+        let total = app.explorer_row_count();
+        assert!(total > 10);
+        assert_eq!(app.explorer_scroll, 0);
+
+        app.explorer_scroll_by(5);
+        assert_eq!(app.explorer_scroll, 5);
+
+        app.explorer_scroll_by(-10);
+        assert_eq!(app.explorer_scroll, 0);
+
+        app.explorer_scroll_by((total + 20) as isize);
+        assert_eq!(app.explorer_scroll, total - 1);
+    }
 }

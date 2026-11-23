@@ -109,7 +109,7 @@ impl App {
             } else {
                 0.0
             };
-            let gutter = tab.buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
+            let gutter = App::gutter_width_for_lines(tab.buffer.len_lines(), cw);
             let columns = (((rect.width - gutter - minimap_width).max(cw)) / cw) as usize;
             let tab_size = tab.indentation.tab_size;
             let buffer = &tab.buffer;
@@ -232,5 +232,12 @@ mod tests {
         app.scroll_columns_by(30);
         assert_eq!(app.editor_groups.active_view().scroll_col, 0);
         assert_eq!(app.text_origin_x(rect, cw), rect.x + app.gutter_width(cw));
+    }
+
+    #[test]
+    fn gutter_width_includes_gap_between_line_numbers_and_text() {
+        let cw = 10.0;
+        assert_eq!(App::gutter_width_for_lines(10, cw), 3.0 * cw + PAD * 3.0);
+        assert_eq!(App::gutter_width_for_lines(1000, cw), 4.0 * cw + PAD * 3.0);
     }
 }

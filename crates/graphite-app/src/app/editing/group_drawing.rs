@@ -74,7 +74,7 @@ impl App {
             let tab = &self.documents[document];
             let buffer = &tab.buffer;
             let gutter = buffer.len_lines().to_string().len().max(3) as f32 * cw + PAD * 2.0;
-            let text_left = rect.x + gutter;
+            let text_left = rect.x + gutter + PAD;
             let minimap_width = if self.view_preferences.minimap_visible {
                 72.0_f32.min(rect.width * 0.22)
             } else {

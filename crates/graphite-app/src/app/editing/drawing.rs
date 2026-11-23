@@ -181,6 +181,27 @@ impl App {
                 }
             }
             self.draw_virtual_explorer_rows(r, sidebar_lh, cw, h);
+            if !self.scm_visible {
+                let total = self.explorer_row_count();
+                let list_top = sidebar_lh * 1.5;
+                let list_height = (h - lh - list_top).max(0.0);
+                let visible = ((list_height / sidebar_lh).floor() as usize).max(1);
+                if total > visible && list_height > 0.0 {
+                    let thumb_h = ((visible as f32 / total as f32) * list_height)
+                        .max(18.0)
+                        .min(list_height);
+                    let max_scroll = total.saturating_sub(1).max(1) as f32;
+                    let ratio = (self.explorer_scroll as f32 / max_scroll).clamp(0.0, 1.0);
+                    let thumb_y = list_top + ratio * (list_height - thumb_h);
+                    r.draw_rect(
+                        sidebar_width - 5.0,
+                        thumb_y,
+                        3.0,
+                        thumb_h,
+                        rgb(Theme::color(Theme::DIM, 0x616161)),
+                    );
+                }
+            }
         }
         if self.zen_mode {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));

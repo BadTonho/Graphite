@@ -684,6 +684,16 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 } else if over_plugins {
                     self.scroll_plugins(lines as i32);
+                } else if over_sidebar && !self.scm_visible && !self.plugins.visible {
+                    let delta_rows = if lines.round() == 0.0 && lines != 0.0 {
+                        lines.signum() as isize
+                    } else {
+                        lines.round() as isize
+                    };
+                    self.explorer_scroll_by(delta_rows);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
                 } else if self.plugins.active_graphite_detail.is_some() {
                     self.scroll_graphite_detail(lines as i32);
                 } else if self.plugins.active_installed_detail.is_some() {

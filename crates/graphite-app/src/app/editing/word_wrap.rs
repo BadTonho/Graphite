@@ -113,8 +113,7 @@ impl App {
                 rects.iter().find(|rect| rect.id == group),
                 tabs.get(view.document),
             ) {
-                let gutter =
-                    tab.buffer.len_lines().to_string().len().max(3) as f32 * char_width + PAD * 2.0;
+                let gutter = App::gutter_width_for_lines(tab.buffer.len_lines(), char_width);
                 let columns = (((rect.width - gutter).max(char_width)) / char_width) as usize;
                 super::visual_lines::rescroll(
                     view,
