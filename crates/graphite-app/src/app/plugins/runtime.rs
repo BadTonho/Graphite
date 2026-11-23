@@ -57,6 +57,7 @@ impl App {
         if let Some(store) = self.plugins.store.as_ref() {
             if let Ok(records) = store.list() {
                 self.plugins.installed = records;
+                self.plugins.activity_bar_icons.clear();
                 self.reload_extension_snippets();
                 self.sync_extension_themes();
                 self.sync_plugin_keybindings();
@@ -489,6 +490,7 @@ impl App {
     }
 
     pub(super) fn sync_plugin_contributions(&mut self) {
+        self.plugins.activity_bar_icons.clear();
         self.reload_extension_snippets();
         self.sync_extension_themes();
         self.sync_plugin_keybindings();

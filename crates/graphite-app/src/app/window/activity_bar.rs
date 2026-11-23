@@ -38,6 +38,8 @@ pub(crate) struct PluginActivityEntry {
     pub plugin_id: String,
     pub container_id: String,
     pub title: String,
+    pub icon: Option<String>,
+    pub plugin_root: Option<PathBuf>,
     pub views: Vec<graphite_plugins::manifest::ActivityBarView>,
 }
 
@@ -267,6 +269,7 @@ pub(crate) fn activity_at(y: f32) -> Option<Activity> {
 
 impl App {
     pub(crate) fn raw_primary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
+        let store_root = self.plugins.store.as_ref().map(|store| store.root.as_path());
         self.plugins
             .installed_plugins()
             .iter()
@@ -276,11 +279,15 @@ impl App {
             })
             .flat_map(|record| {
                 let plugin_id = record.metadata.id().to_owned();
-                let containers = match &record.metadata {
-                    graphite_plugins::manifest::Metadata::Native(manifest) => {
-                        &manifest.activity_bar
-                    }
-                    graphite_plugins::manifest::Metadata::Vsix(vsix) => &vsix.activity_bar,
+                let (containers, plugin_root) = match &record.metadata {
+                    graphite_plugins::manifest::Metadata::Native(manifest) => (
+                        &manifest.activity_bar,
+                        store_root.map(|root| root.join(&record.directory)),
+                    ),
+                    graphite_plugins::manifest::Metadata::Vsix(vsix) => (
+                        &vsix.activity_bar,
+                        store_root.map(|root| root.join(&record.directory).join("extension")),
+                    ),
                 };
                 containers
                     .iter()
@@ -289,6 +296,8 @@ impl App {
                         plugin_id: plugin_id.clone(),
                         container_id: container.id.clone(),
                         title: container.title.clone(),
+                        icon: container.icon.clone(),
+                        plugin_root: plugin_root.clone(),
                         views: container.views.clone(),
                     })
                     .collect::<Vec<_>>()
@@ -1367,12 +1376,25 @@ impl App {
                     rgb(color),
                 ),
                 VisibleActivityItem::Plugin(plugin) => {
-                    let initial = plugin.title.chars().next().unwrap_or('?').to_string();
-                    let tw = initial.chars().count() as f32 * renderer.char_width();
-                    renderer.draw_text(
-                        &initial,
-                        item.x + (item.width - tw) * 0.5,
-                        item.y + (item.height - renderer.line_height()) * 0.5,
+                    let icon_size = if layout.compact {
+                        20.0
+                    } else {
+                        ACTIVITY_BAR_ICON_SIZE
+                    };
+                    let icon = self.plugins.activity_bar_icons.get_or_load(
+                        &plugin.plugin_id,
+                        plugin.plugin_root.as_deref(),
+                        plugin.icon.as_deref(),
+                    );
+                    super::activity_bar_icons::draw_plugin_activity_icon(
+                        renderer,
+                        icon.as_ref(),
+                        &plugin.title,
+                        item.x,
+                        item.y,
+                        item.width,
+                        item.height,
+                        icon_size,
                         rgb(color),
                     );
                 }
@@ -2168,5 +2190,65 @@ mod tests {
         assert!(app.plugin_activity_entries().is_empty());
         app.plugins.installed_plugins_mut().clear();
         assert!(app.plugin_activity_entries().is_empty());
+    }
+
+    #[test]
+    fn plugin_activity_entries_propagate_icon_and_load_from_extension_root() {
+        let temp = crate::test_support::TempDir::new();
+        let store_root = temp.path().join("plugins");
+        let ext_root = store_root.join("sample.ext@1.0.0").join("extension");
+        std::fs::create_dir_all(ext_root.join("media")).unwrap();
+        std::fs::write(
+            ext_root.join("media/sidebar.svg"),
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M2 2h20v20H2z"/></svg>"##,
+        )
+        .unwrap();
+
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        app.use_plugin_store(store_root);
+        app.plugins
+            .installed_plugins_mut()
+            .push(graphite_plugins::store::Installed {
+                metadata: graphite_plugins::manifest::Metadata::Vsix(
+                    graphite_plugins::manifest::Vsix {
+                        id: "sample.ext".into(),
+                        version: "1.0.0".into(),
+                        description: "Icon test".into(),
+                        engines: serde_json::json!({"vscode": "*"}),
+                        activity_bar: vec![graphite_plugins::manifest::ActivityBarContainer {
+                            when: None,
+                            id: "sample.panel".into(),
+                            title: "Custom Panel".into(),
+                            icon: Some("media/sidebar.svg".into()),
+                            views: vec![graphite_plugins::manifest::ActivityBarView {
+                                when: None,
+                                id: "sample.panel.view".into(),
+                                title: "View".into(),
+                                kind: "tree".into(),
+                            }],
+                        }],
+                        ..Default::default()
+                    },
+                ),
+                enabled: true,
+                trusted_version: Some("1.0.0".into()),
+                directory: "sample.ext@1.0.0".into(),
+                dev_path: None,
+            });
+
+        let entries = app.plugin_activity_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].icon.as_deref(), Some("media/sidebar.svg"));
+        assert_eq!(entries[0].plugin_root.as_deref(), Some(ext_root.as_path()));
+
+        let loaded = app.plugins.activity_bar_icons.get_or_load(
+            &entries[0].plugin_id,
+            entries[0].plugin_root.as_deref(),
+            entries[0].icon.as_deref(),
+        );
+        assert!(matches!(
+            loaded,
+            Some(super::activity_bar_icons::ActivityBarIcon::Image { tinted: true, .. })
+        ));
     }
 }

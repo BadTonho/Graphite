@@ -42,6 +42,7 @@ impl App {
                     .is_ok_and(|condition| condition.evaluate(&context))
             })
         };
+        let store_root = self.plugins.store.as_ref().map(|store| store.root.as_path());
         self.plugins
             .installed_plugins()
             .iter()
@@ -50,6 +51,8 @@ impl App {
                 let Metadata::Vsix(vsix) = &record.metadata else {
                     return Vec::new();
                 };
+                let plugin_root =
+                    store_root.map(|root| root.join(&record.directory).join("extension"));
                 vsix.secondary_sidebar
                     .as_deref()
                     .unwrap_or_default()
@@ -67,6 +70,8 @@ impl App {
                             plugin_id: vsix.id.clone(),
                             container_id: container.id.clone(),
                             title: container.title.clone(),
+                            icon: container.icon.clone(),
+                            plugin_root: plugin_root.clone(),
                             views,
                         })
                     })
@@ -427,6 +432,7 @@ impl App {
         );
         let tab_style = self.secondary_tab_style();
         let slots = self.layout_secondary_views(&views, cw, lh);
+        let plugin_entries = self.secondary_plugin_entries();
         let mut hovered_tooltip: Option<(f32, String)> = None;
         for slot in &slots {
             let Some((view, label)) = views.get(slot.index) else {
@@ -450,6 +456,19 @@ impl App {
                 && (self.mouse.y as f32) < body;
             let color = if active { fg } else { dim };
             let icon_size = (lh * 0.85).clamp(14.0, 18.0);
+            let resolved_plugin_icon = match view {
+                View::Extension(key) => plugin_entries
+                    .iter()
+                    .find(|entry| &entry.key == key)
+                    .and_then(|entry| {
+                        self.plugins.activity_bar_icons.get_or_load(
+                            &entry.plugin_id,
+                            entry.plugin_root.as_deref(),
+                            entry.icon.as_deref(),
+                        )
+                    }),
+                View::Chat | View::Outline => None,
+            };
             match tab_style {
                 SecondaryTabStyle::Text => {
                     let chars = ((slot.width - PAD * 2.0) / cw.max(1.0)).max(0.0) as usize;
@@ -473,12 +492,15 @@ impl App {
                             color,
                         );
                     } else {
-                        let initial = label.chars().next().unwrap_or('?').to_string();
-                        let tw = initial.chars().count() as f32 * cw;
-                        r.draw_text(
-                            &initial,
-                            tab_x + (slot.width - tw) * 0.5,
-                            top + lh * 0.25,
+                        super::activity_bar_icons::draw_plugin_activity_icon(
+                            r,
+                            resolved_plugin_icon.as_ref(),
+                            label,
+                            tab_x,
+                            top,
+                            slot.width,
+                            body - top,
+                            icon_size,
                             color,
                         );
                     }
@@ -489,8 +511,17 @@ impl App {
                     if let Some(glyph) = view.icon_glyph() {
                         r.draw_icon(glyph, icon_x, icon_y, icon_size, color);
                     } else {
-                        let initial = label.chars().next().unwrap_or('?').to_string();
-                        r.draw_text(&initial, icon_x, top + lh * 0.25, color);
+                        super::activity_bar_icons::draw_plugin_activity_icon(
+                            r,
+                            resolved_plugin_icon.as_ref(),
+                            label,
+                            icon_x,
+                            top,
+                            icon_size,
+                            body - top,
+                            icon_size,
+                            color,
+                        );
                     }
                     let text_x = icon_x + icon_size + cw * 0.6;
                     let chars = ((tab_x + slot.width - PAD - text_x) / cw.max(1.0)).max(0.0) as usize;

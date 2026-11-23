@@ -42,6 +42,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Sampling needs uniform control flow, so both textures are read before choosing.
     let coverage = textureSample(atlas, atlas_sampler, in.uv).r;
     let texel = textureSample(images, image_sampler, in.uv);
+    if (in.mode > 1.5) {
+        // A tinted image mask: vertex color supplies RGB, texel alpha supplies coverage.
+        return vec4<f32>(in.color.rgb, texel.a * in.color.a);
+    }
     if (in.mode > 0.5) {
         // An image: the atlas holds its color; the vertex color only carries opacity.
         return vec4<f32>(texel.rgb, texel.a * in.color.a);

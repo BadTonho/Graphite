@@ -69,6 +69,33 @@ impl Renderer {
     /// does not fit the atlas is skipped; one that arrives when the atlas is full is skipped for
     /// this frame and the atlas is emptied for the next.
     pub fn draw_image(&mut self, image: &Image, x: f32, y: f32, w: f32, h: f32) {
+        self.draw_image_mode(image, x, y, w, h, [1.0; 4], 1.0);
+    }
+
+    /// Draws `image` as an alpha mask tinted with `color` (useful for monochrome SVG icons that
+    /// adapt to active/inactive and dark/light theme colors).
+    pub fn draw_image_tinted(
+        &mut self,
+        image: &Image,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: [f32; 4],
+    ) {
+        self.draw_image_mode(image, x, y, w, h, color, 2.0);
+    }
+
+    fn draw_image_mode(
+        &mut self,
+        image: &Image,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: [f32; 4],
+        mode: f32,
+    ) {
         let slot = match self.images.slots.get(&image.id).copied() {
             Some(slot) => slot,
             None => {
@@ -114,8 +141,8 @@ impl Renderer {
             y + h + ty,
             uv0,
             uv1,
-            [1.0; 4],
-            1.0,
+            color,
+            mode,
         );
     }
 }

@@ -99,6 +99,7 @@ pub(crate) struct Plugins {
     pub(crate) native_tree_views: BTreeMap<String, super::extension_host::NativeTreeView>,
     pub(crate) native_webview: Option<super::extension_host::NativeWebviewPanel>,
     pub(crate) pending_commands: Vec<super::extension_host::PendingActivationCommand>,
+    pub(crate) activity_bar_icons: crate::app::window::activity_bar_icons::PluginIconCache,
 }
 
 #[derive(Clone)]
@@ -153,6 +154,7 @@ impl App {
         self.plugins.worker = None;
         self.plugins.store = None;
         self.plugins.installed.clear();
+        self.plugins.activity_bar_icons.clear();
         self.plugins.installed_details.clear();
         self.plugins.active_installed_detail = None;
         self.plugins.vsix_picker_directory = None;
