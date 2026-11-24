@@ -201,13 +201,38 @@ def check_path_lengths(bundle, limit=WINDOWS_PATH_LIMIT):
 
 def windows_installer(bundle, output, version, work):
     check_path_lengths(bundle)
+    components = split_windows_components(bundle, work / "components")
+    check_path_lengths(components)
     compiler = shutil.which("makensis") or str(Path(r"C:\Program Files (x86)\NSIS\makensis.exe"))
     source = (ROOT / "packaging/release/windows.nsi").read_text(encoding="utf-8")
-    for key, value in {"@BUNDLE@": str(bundle), "@OUTPUT@": str(output), "@VERSION@": version}.items():
-        source = source.replace(key, value)
+    for key, value in {"@BUNDLE@": bundle, "@COMPONENTS@": components,
+                       "@OUTPUT@": output, "@VERSION@": version}.items():
+        source = source.replace(key, str(value))
     script = work / "installer.nsi"
-    script.write_text(source, encoding="utf-8")
+    script.write_text(source, encoding="utf-8-sig")
     run([compiler, str(script)])
+
+
+def split_windows_components(bundle, components):
+    """Partition the disposable extraction tree, keeping the published ZIP intact."""
+    runtime = bundle / "code-oss"
+    modules_path = Path("code/node_modules")
+    optional_packages = {
+        "copilot": ("@github/copilot-sdk", "@github/copilot-sdk-win32-x64"),
+        "foundry": ("foundry-local-sdk",),
+    }
+    for packages in optional_packages.values():
+        for package in packages:
+            if not (runtime / modules_path / package / "package.json").is_file():
+                raise ValueError(f"Windows portable archive is missing the installer component package {package}")
+    for component, packages in optional_packages.items():
+        for package in packages:
+            relative = modules_path / package
+            destination = components / component / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            (runtime / relative).rename(destination)
+    runtime.rename(components / "vsix")
+    return components
 
 
 def main():

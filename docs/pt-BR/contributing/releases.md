@@ -16,6 +16,8 @@ Todos os alvos são **x86-64**, conforme os downloads verificados de Node/Code O
 
 O instalador Windows usa `%LOCALAPPDATA%/Programs/Graphite`, cria atalho no Menu Iniciar e desinstalador por usuário e mantém PATH. Windows precisa de drivers gráficos compatíveis e WebView2 para webviews. O workflow não aplica assinatura Authenticode ao instalador.
 
+O instalador do Windows oferece três componentes independentes, todos marcados por padrão: **Plugins VSIX**, **Copilot SDK** e **Foundry Local SDK**. Plugins VSIX instala o Node.js e o host Code OSS para extensões com código executável. Os plugins próprios do Graphite continuam disponíveis sem o host VSIX. Plugins JavaScript e TypeScript usam o Node.js configurado ou o do sistema. Copilot e Foundry são módulos do runtime Code OSS. Execute o instalador novamente no mesmo diretório para aplicar outra seleção. O instalador preserva configurações, perfis e extensões instaladas pelo usuário. No modo silencioso (`/S`), adicione `/NO-VSIX`, `/NO-COPILOT` ou `/NO-FOUNDRY` para omitir o componente correspondente. Cada opção economiza espaço em disco após a instalação. O instalador offline, o ZIP portátil e os pacotes Linux incluem todos os componentes.
+
 O AppImage é gerado em Ubuntu 22.04, seguindo a [orientação de piso AppImage](https://docs.appimage.org/reference/best-practices.html). Inclui dependências vinculadas, recursos GTK e subprocessos WebKit. O linuxdeploy está fixado em `1-alpha-20251107-1` com verificação SHA-256. O empacotamento verifica extração e arquivos obrigatórios sem FUSE/display. Não se garante glibc anterior ou toda GPU/distribuição; interface/WebKit/X11/Wayland continuam exigindo verificação manual.
 
 ## Acionar uma release

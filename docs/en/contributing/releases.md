@@ -16,6 +16,8 @@ All targets are **x86-64**, matching the verified Node/Code OSS inputs. ARM and 
 
 The Windows installer uses `%LOCALAPPDATA%/Programs/Graphite`, creates a Start Menu shortcut and per-user uninstaller, and leaves PATH unchanged. Windows needs compatible graphics drivers and WebView2 for webviews. This workflow does not Authenticode-sign the installer.
 
+The Windows installer offers three independent components, all selected by default: **VSIX Plugins**, **Copilot SDK** and **Foundry Local SDK**. VSIX Plugins installs Node.js and the Code OSS host for extensions with executable code. Graphite's own plugins remain available without the VSIX host, with JavaScript and TypeScript plugins using their configured or system Node.js. Copilot and Foundry are SDK modules for the Code OSS runtime. Re-run setup in the same directory to apply a different selection. Setup preserves user settings, profiles and installed extensions. In silent mode (`/S`), append `/NO-VSIX`, `/NO-COPILOT` or `/NO-FOUNDRY` to omit the corresponding component. Each option saves disk space after installation. The offline setup download, portable ZIP and Linux packages include all components.
+
 AppImage is built on Ubuntu 22.04, following [AppImage baseline guidance](https://docs.appimage.org/reference/best-practices.html). It bundles linked dependencies, GTK resources and WebKit subprocesses. linuxdeploy is pinned to `1-alpha-20251107-1` with SHA-256 verification. Packaging checks extraction and required files without FUSE/display. Older glibc and every GPU/distribution are not guaranteed; UI/WebKit/X11/Wayland checks remain manual.
 
 ## Triggering a release

@@ -1,6 +1,7 @@
 ## Novas funcionalidades
 
 - Revise e recupere rascunhos locais de arquivos de texto não salvos e abas sem título após um encerramento inesperado.
+- Escolha quais componentes instalar no Windows. Plugins VSIX, Copilot SDK e Foundry Local SDK podem ser selecionados separadamente e vêm marcados por padrão.
 
 ## Correções
 

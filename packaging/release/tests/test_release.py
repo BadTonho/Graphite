@@ -526,6 +526,49 @@ class PackageTests(unittest.TestCase):
             packages.check_path_lengths(bundle, limit=len(str(deep / "ok.txt")) - 1)
         self.assertIn("ok.txt", str(caught.exception))
 
+    def test_windows_components_partition_the_runtime_without_duplicating_packages(self):
+        bundle = self.root / "bundle"
+        runtime = bundle / "code-oss"
+        optional = {
+            "copilot": ("@github/copilot-sdk", "@github/copilot-sdk-win32-x64"),
+            "foundry": ("foundry-local-sdk",),
+        }
+        bundle.mkdir()
+        (bundle / "graphite.exe").touch()
+        for names in optional.values():
+            for name in names:
+                module = runtime / "code/node_modules" / name
+                module.mkdir(parents=True)
+                (module / "package.json").write_text(name)
+        (runtime / "commit").touch()
+        (runtime / "code/node_modules/shared.js").touch()
+
+        components = packages.split_windows_components(bundle, self.root / "components")
+
+        self.assertEqual(list(bundle.iterdir()), [bundle / "graphite.exe"])
+        self.assertEqual(
+            {path.relative_to(components / "vsix").as_posix()
+             for path in (components / "vsix").rglob("*") if path.is_file()},
+            {"commit", "code/node_modules/shared.js"},
+        )
+        for name, modules in optional.items():
+            self.assertEqual(
+                {path.relative_to(components / name).as_posix(): path.read_text()
+                 for path in (components / name).rglob("package.json")},
+                {f"code/node_modules/{module}/package.json": module for module in modules},
+            )
+
+    def test_windows_components_report_missing_packages_before_moving_the_runtime(self):
+        bundle = self.root / "bundle"
+        module = bundle / "code-oss/code/node_modules/@github/copilot-sdk"
+        module.mkdir(parents=True)
+        (module / "package.json").touch()
+        components = self.root / "components"
+        with self.assertRaisesRegex(ValueError, "@github/copilot-sdk-win32-x64"):
+            packages.split_windows_components(bundle, components)
+        self.assertTrue((module / "package.json").is_file())
+        self.assertFalse(components.exists())
+
     def test_the_appimage_tool_only_analyzes_libraries_that_can_load_and_resolve(self):
         def elf(relative, machine=0x3E):
             path = self.root / relative

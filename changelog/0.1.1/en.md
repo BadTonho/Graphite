@@ -1,6 +1,7 @@
 ## New features
 
 - Review and recover local drafts for unsaved text files and untitled tabs after an unexpected exit.
+- Choose which components to install on Windows. VSIX Plugins, Copilot SDK and Foundry Local SDK can be selected independently and are all enabled by default.
 
 ## Fixes
 
