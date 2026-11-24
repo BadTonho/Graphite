@@ -189,6 +189,12 @@ pub struct AgentLogEntry {
 pub struct ChatSession {
     pub id: String,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode_session: Option<String>,
     #[serde(default)]
     pub mode: AgentMode,
     #[serde(default)]
@@ -236,6 +242,9 @@ impl ChatSession {
         Self {
             id: id.into(),
             title: title.into(),
+            connection_id: None,
+            connection_destination: None,
+            opencode_session: None,
             mode,
             pinned: false,
             archived: false,

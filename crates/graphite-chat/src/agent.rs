@@ -63,12 +63,6 @@ pub fn build_system_prompt(mode: AgentMode, ctx: &ChatContext) -> String {
             );
         }
     }
-    if !ctx.workspace_root.as_os_str().is_empty() {
-        prompt.push_str(&format!(
-            "Workspace root: {}\n",
-            ctx.workspace_root.display()
-        ));
-    }
     if let Some(active) = &ctx.active_file {
         prompt.push_str(&format!(
             "\nActive file: {} ({}, cursor line {}, col {})\n",
@@ -288,7 +282,9 @@ pub fn run_turn_with_tools(
                 emit(AgentTurnEvent::Cancelled);
                 return;
             }
-            let approved = if policy.requires_approval(&name) {
+            let require_read_approval =
+                mode == AgentMode::Ask && ToolApprovalPolicy::is_read_only(&name);
+            let approved = if require_read_approval || policy.requires_approval(&name) {
                 let pending = PendingToolApproval {
                     id: id.clone(),
                     name: name.clone(),
@@ -299,7 +295,9 @@ pub fn run_turn_with_tools(
                 match request_approval(&pending) {
                     ApprovalDecision::AllowOnce => true,
                     ApprovalDecision::AllowAlways => {
-                        policy.trust_tool(&name);
+                        if !require_read_approval {
+                            policy.trust_tool(&name);
+                        }
                         true
                     }
                     ApprovalDecision::Deny => false,
@@ -308,6 +306,10 @@ pub fn run_turn_with_tools(
                 true
             };
 
+            if cancel.load(Ordering::Relaxed) {
+                emit(AgentTurnEvent::Cancelled);
+                return;
+            }
             let outcome = if approved {
                 if let Some(custom_result) = run_extra_tool(&name, &input) {
                     match custom_result {

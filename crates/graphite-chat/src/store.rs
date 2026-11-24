@@ -1,40 +1,13 @@
 //! The saved model service settings, sessions, and tool approvals of a profile.
 
-use crate::provider::ProviderConfig;
 use crate::session::ChatSession;
 use crate::tools::ToolApprovalPolicy;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// File name of the saved settings, inside the profile folder.
-pub const SETTINGS_FILE: &str = "chat-provider.json";
 pub const APPROVAL_POLICY_FILE: &str = "chat-tool-approvals.json";
 pub const SESSIONS_DIR: &str = "chat-sessions";
-
-/// Writes the settings into `dir`. The file holds the API key, so on Unix it is readable only
-/// by its owner.
-pub fn save_provider(dir: &Path, config: &ProviderConfig) -> Result<(), String> {
-    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    let path = dir.join(SETTINGS_FILE);
-    let bytes = serde_json::to_vec_pretty(config).map_err(|error| error.to_string())?;
-    fs::write(&path, bytes).map_err(|error| error.to_string())?;
-    restrict_to_owner(&path)
-}
-
-/// The saved settings in `dir`, if there is a readable file.
-pub fn load_provider(dir: &Path) -> Option<ProviderConfig> {
-    let bytes = fs::read(dir.join(SETTINGS_FILE)).ok()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
-/// Forgets the saved settings, key included. A missing file is not an error.
-pub fn delete_provider(dir: &Path) -> Result<(), String> {
-    match fs::remove_file(dir.join(SETTINGS_FILE)) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
-}
 
 pub fn save_approval_policy(dir: &Path, policy: &ToolApprovalPolicy) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|error| error.to_string())?;
@@ -71,8 +44,18 @@ pub fn save_session(dir: &Path, session: &ChatSession) -> Result<(), String> {
     fs::create_dir_all(&sessions_dir).map_err(|error| error.to_string())?;
     let path = session_file_path(dir, &session.id);
     let bytes = serde_json::to_vec_pretty(session).map_err(|error| error.to_string())?;
-    fs::write(&path, bytes).map_err(|error| error.to_string())?;
-    restrict_to_owner(&path)
+    let mut pending =
+        tempfile::NamedTempFile::new_in(sessions_dir).map_err(|error| error.to_string())?;
+    restrict_to_owner(pending.path())?;
+    pending
+        .write_all(&bytes)
+        .map_err(|error| error.to_string())?;
+    pending
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    pending.persist(path).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 pub fn load_sessions(dir: &Path) -> Vec<ChatSession> {
@@ -120,60 +103,4 @@ fn restrict_to_owner(path: &Path) -> Result<(), String> {
 fn restrict_to_owner(_path: &Path) -> Result<(), String> {
     // Windows files inherit the ACL of the user's profile folder, which only that user can read.
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::provider::ProviderKind;
-
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("graphite-chat-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        dir
-    }
-
-    fn config() -> ProviderConfig {
-        ProviderConfig {
-            kind: ProviderKind::Anthropic,
-            base_url: String::new(),
-            model: "m".into(),
-            api_key: Some("sk-secret".into()),
-        }
-    }
-
-    #[test]
-    fn settings_round_trip_and_delete_is_idempotent() {
-        let dir = temp_dir("roundtrip");
-        assert_eq!(load_provider(&dir), None);
-        save_provider(&dir, &config()).unwrap();
-        assert_eq!(load_provider(&dir), Some(config()));
-        delete_provider(&dir).unwrap();
-        assert_eq!(load_provider(&dir), None);
-        delete_provider(&dir).unwrap();
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn a_corrupt_file_reads_as_no_settings() {
-        let dir = temp_dir("corrupt");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join(SETTINGS_FILE), "{not json").unwrap();
-        assert_eq!(load_provider(&dir), None);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn the_saved_file_is_readable_only_by_its_owner() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = temp_dir("mode");
-        save_provider(&dir, &config()).unwrap();
-        let mode = fs::metadata(dir.join(SETTINGS_FILE))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o600);
-        let _ = fs::remove_dir_all(&dir);
-    }
 }

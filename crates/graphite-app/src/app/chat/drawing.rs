@@ -1,6 +1,6 @@
 //! GPU rendering for the Chat panel, Quick Chat, Inline Chat, and Provider Setup dialog.
 
-use super::ui::{chat_session_badge, mask_api_key, provider_kind_label};
+use super::ui::{chat_session_badge, mask_api_key};
 use super::*;
 use graphite_chat::{EditReviewStatus, TurnStatus};
 
@@ -32,17 +32,45 @@ impl App {
         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
         let max_chars = ((bw - PAD * 2.0) / cw.max(1.0)).max(12.0) as usize;
 
-        // Header toolbar
-        r.draw_rect(bx, by, bw, lh * 1.4, rgb(Theme::color(0x252526, 0xe8e8e8)));
-        let header = format!("[{}] [+New] [Sessions] [Key] [X]", session.mode.label());
-        r.draw_text(
-            &truncate_chars(&header, max_chars),
-            bx + PAD,
-            by + PAD * 0.4,
+        r.draw_rect(bx, by, bw, lh * 2.0, rgb(Theme::color(0x252526, 0xe8e8e8)));
+        let mode = self.t(match session.mode {
+            graphite_chat::AgentMode::Ask => "chat.ask",
+            graphite_chat::AgentMode::Edit => "chat.edit",
+            graphite_chat::AgentMode::Agent => "chat.agent",
+        });
+        draw_chat_buttons(
+            r,
+            bx,
+            by,
+            bw,
+            cw,
+            [mode, self.t("chat.new"), self.t("chat.history")],
             text_color,
         );
-
-        let mut cursor_y = by + lh * 1.6;
+        let connection = self.chat.active_connection();
+        let label = if let Some(connection) = connection {
+            format!("{} \u{00b7} {}", connection.name, connection.model)
+        } else if session.turns.is_empty() {
+            self.t("chat.configure").into()
+        } else {
+            self.t("chat.read_only").into()
+        };
+        let running = self.chat.running_turn.is_some();
+        let label_width = if running {
+            max_chars * 3 / 4
+        } else {
+            max_chars
+        };
+        r.draw_text(
+            &truncate_chars(&label, label_width),
+            bx + PAD,
+            by + lh,
+            accent,
+        );
+        if running {
+            r.draw_text(self.t("chat.stop"), bx + bw * 0.75, by + lh, accent);
+        }
+        let mut cursor_y = by + lh * 2.25;
 
         // Optional agent sessions list
         if self.chat.show_agent_sessions {
@@ -99,26 +127,23 @@ impl App {
 
         // Conversation lines
         let bottom_reserve = if self.chat.pending_approval.is_some() {
-            lh * 4.4
+            lh * 5.5
         } else {
-            lh * 2.4
+            lh * 3.5
         };
         let body_bottom = by + bh - bottom_reserve;
         let mut lines: Vec<(String, Color)> = Vec::new();
         if session.turns.is_empty() {
-            let model_info = self
-                .chat
-                .provider
-                .as_ref()
-                .map(|p| format!("{} ({})", provider_kind_label(p.kind), p.model))
-                .unwrap_or_else(|| "No model configured — click [Key]".into());
-            lines.push((format!("Chat ready: {model_info}"), dim_color));
-            if self.chat.show_context_usage {
-                lines.push((
-                    "Context: active file, selection & diagnostics attached".into(),
-                    dim_color,
-                ));
-            }
+            let hint = if connection.is_some() {
+                "chat.compose_hint"
+            } else {
+                "chat.no_connection"
+            };
+            lines.extend(
+                wrap_text(self.t(hint), max_chars)
+                    .into_iter()
+                    .map(|line| (line, dim_color)),
+            );
         } else {
             for turn in &session.turns {
                 for wrapped in wrap_text(&format!("You: {}", turn.prompt), max_chars) {
@@ -172,7 +197,7 @@ impl App {
 
         // Pending tool approval bar
         if let Some((pending, _)) = &self.chat.pending_approval {
-            let ay = by + bh - lh * 4.2;
+            let ay = by + bh - lh * 5.3;
             r.draw_rect(
                 bx + 2.0,
                 ay,
@@ -186,9 +211,52 @@ impl App {
                 ay + 2.0,
                 text_color,
             );
-            r.draw_text("[Allow Once]  [Always]  [Deny]", bx + PAD, ay + lh, accent);
+            let ask_read = session.mode == graphite_chat::AgentMode::Ask
+                && graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name);
+            draw_chat_buttons(
+                r,
+                bx,
+                ay + lh,
+                bw,
+                cw,
+                [
+                    self.t("chat.allow_once"),
+                    if ask_read {
+                        ""
+                    } else {
+                        self.t("chat.allow_always")
+                    },
+                    self.t("chat.deny"),
+                ],
+                accent,
+            );
         }
 
+        let attachments = &self.chat.attachments;
+        let attach_y = by + bh - lh * 3.3;
+        let selected = [
+            attachments.active_file.is_some(),
+            attachments.selection.is_some(),
+            !attachments.diagnostics.is_empty(),
+        ];
+        let labels = [
+            self.t("chat.attach_file"),
+            self.t("chat.attach_selection"),
+            self.t("chat.attach_diagnostics"),
+        ];
+        let col = bw / 3.0;
+        for (index, label) in labels.iter().enumerate() {
+            let x = bx + col * index as f32;
+            let toggle = if selected[index] { "\u{2713}" } else { "+" };
+            let width = ((col - PAD) / cw.max(1.0)).max(1.0) as usize;
+            let label = truncate_chars(&format!("{toggle} {label}"), width);
+            r.draw_text(
+                &label,
+                x + PAD * 0.5,
+                attach_y,
+                if selected[index] { accent } else { dim_color },
+            );
+        }
         // Input box
         let iy = by + bh - lh * 2.1;
         r.draw_rect(
@@ -273,13 +341,11 @@ impl App {
         cw: f32,
         dialog: &super::state::ProviderDialogState,
     ) {
-        let box_w = (w * 0.56).clamp(340.0, 560.0);
-        let box_h = lh * 9.0;
-        let bx = (w - box_w) * 0.5;
-        let by = (h - box_h) * 0.28;
-        let max_chars = ((box_w - PAD * 2.0) / cw.max(1.0)).max(20.0) as usize;
+        let (bx, by, box_w, box_h) = super::state::ProviderDialogState::bounds(w, h, lh);
+        let max_chars = ((box_w - PAD * 2.0) / cw.max(1.0)).max(1.0) as usize;
         let text_color = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
-
+        let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
+        let draft = &dialog.draft;
         r.draw_rect(
             bx,
             by,
@@ -287,57 +353,122 @@ impl App {
             box_h,
             rgb(Theme::color(Theme::SIDEBAR, 0xf3f3f3)),
         );
-        r.draw_rect(
-            bx,
-            by,
-            box_w,
-            2.0,
-            rgb(Theme::color(Theme::STATUS, 0x007acc)),
-        );
-        r.draw_text(
-            "Chat Model Provider Settings",
-            bx + PAD,
-            by + PAD * 0.4,
-            text_color,
-        );
-
+        r.draw_rect(bx, by, box_w, 2.0, accent);
+        r.draw_text(self.t("chat.configure"), bx + PAD, by, text_color);
+        let saved = self.chat.session_keys.contains_key(&draft.id) || draft.credential.is_some();
+        let key = if !dialog.api_key.is_empty() {
+            mask_api_key(&dialog.api_key)
+        } else if saved {
+            self.t("chat.key_saved").to_owned()
+        } else {
+            String::new()
+        };
+        let selected_name = self
+            .chat
+            .connections
+            .get(&draft.id)
+            .map(|item| item.name.as_str())
+            .unwrap_or_else(|| self.t("chat.new_connection"));
         let fields = [
-            format!("Provider (Space): {}", provider_kind_label(dialog.kind)),
+            format!("<  {selected_name}  >"),
+            format!("{}  {}", self.t("chat.name"), draft.name),
             format!(
-                "Base URL: {}",
-                if dialog.base_url.is_empty() {
-                    "<default>"
+                "{}  < {} >",
+                self.t("chat.provider"),
+                if draft.provider == super::connections::Provider::Compatible {
+                    self.t("chat.compatible_provider")
                 } else {
-                    &dialog.base_url
+                    draft.provider.label()
                 }
             ),
-            format!("Model: {}", dialog.model),
-            format!("API Key: {}", mask_api_key(&dialog.api_key)),
+            format!(
+                "{}  {}",
+                self.t("chat.base_url"),
+                if draft.provider.has_fixed_endpoint() {
+                    draft.provider.kind().default_base_url()
+                } else if draft.provider != super::connections::Provider::Compatible
+                    && draft.base_url.is_empty()
+                {
+                    self.t("chat.official_endpoint")
+                } else {
+                    &draft.base_url
+                }
+            ),
+            format!("{}  {}", self.t("chat.model"), draft.model),
+            format!("{}  {key}", self.t("chat.api_key")),
         ];
         for (idx, label) in fields.iter().enumerate() {
-            let fy = by + lh * (1.4 + idx as f32 * 1.3);
+            let y = by + lh * (idx + 1) as f32;
             if idx == dialog.focus_field {
                 r.draw_rect(
                     bx + 4.0,
-                    fy,
+                    y,
                     box_w - 8.0,
-                    lh * 1.1,
+                    lh,
                     rgb(Theme::color(Theme::ACTIVE_ROW, 0xd6ebff)),
                 );
             }
-            r.draw_text(
-                &truncate_chars(label, max_chars),
-                bx + PAD,
-                fy + 2.0,
-                text_color,
-            );
+            r.draw_text(&truncate_chars(label, max_chars), bx + PAD, y, text_color);
         }
+        draw_chat_buttons(
+            r,
+            bx,
+            by + lh * 8.0,
+            box_w,
+            cw,
+            [
+                self.t("chat.add"),
+                self.t("chat.use"),
+                self.t("chat.remove"),
+            ],
+            accent,
+        );
+        draw_chat_buttons(
+            r,
+            bx,
+            by + lh * 9.0,
+            box_w,
+            cw,
+            [
+                self.t("chat.save"),
+                if dialog.offer_session_key {
+                    self.t("chat.use_for_session")
+                } else {
+                    ""
+                },
+                self.t("chat.cancel"),
+            ],
+            accent,
+        );
+        if let Some(message) = &dialog.message {
+            for (idx, line) in wrap_text(message, max_chars)
+                .into_iter()
+                .take(2)
+                .enumerate()
+            {
+                r.draw_text(&line, bx + PAD, by + lh * (10 + idx) as f32, text_color);
+            }
+        }
+    }
+}
 
-        r.draw_text(
-            "[Save (Enter)]          [Cancel (Esc)]",
-            bx + PAD,
-            by + box_h - lh * 1.4,
-            rgb(Theme::color(Theme::STATUS, 0x007acc)),
+fn draw_chat_buttons(
+    renderer: &mut Renderer,
+    x: f32,
+    y: f32,
+    width: f32,
+    cw: f32,
+    labels: [&str; 3],
+    color: Color,
+) {
+    let cell = width / 3.0;
+    let chars = ((cell - PAD) / cw.max(1.0)).max(1.0) as usize;
+    for (index, label) in labels.into_iter().enumerate() {
+        renderer.draw_text(
+            &truncate_chars(label, chars),
+            x + cell * index as f32 + PAD,
+            y,
+            color,
         );
     }
 }

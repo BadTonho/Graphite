@@ -1,7 +1,12 @@
 ## New features
 
+- Connect Graphite Chat to OpenAI, Claude, OpenCode Console, OpenCode Go, Gemini, OpenRouter, or an OpenAI-compatible service. Chats keep their original provider and model, API keys use the system credential store, and editor context can be attached to individual messages.
 - Review and recover local drafts for unsaved text files and untitled tabs after an unexpected exit.
 - Choose which components to install on Windows. VSIX Plugins, Copilot SDK and Foundry Local SDK can be selected independently and are all enabled by default.
+
+## Improvements
+
+- Simplify the secondary sidebar by moving access to Outline to the command palette.
 
 ## Fixes
 

@@ -1,12 +1,13 @@
 //! Chat, inline chat, agent session, and provider dialog state for `App`.
 
+use super::connections::{Connection, Connections, SystemVault, Vault};
+use super::context::ChatAttachments;
 use graphite_chat::{
-    load_approval_policy, load_provider, load_sessions, save_approval_policy, save_provider,
-    save_session, AgentMode, ApprovalDecision, ChatSession, PendingToolApproval, ProviderConfig,
-    ProviderKind, ToolApprovalPolicy,
+    load_approval_policy, load_sessions, save_approval_policy, save_session, AgentMode,
+    ApprovalDecision, ChatSession, PendingToolApproval, ProviderConfig, ToolApprovalPolicy,
 };
-use std::path::Path;
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
+use std::{collections::HashMap, path::Path};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum SessionsFilter {
@@ -17,53 +18,38 @@ pub(crate) enum SessionsFilter {
     Scheduled,
 }
 
-/// Interactive provider configuration modal state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Draft connection settings. Existing API keys never populate the text field.
+#[derive(Default)]
 pub(crate) struct ProviderDialogState {
-    pub kind: ProviderKind,
-    pub base_url: String,
-    pub model: String,
-    pub api_key: String,
-    /// Focused field: 0 = kind, 1 = base_url, 2 = model, 3 = api_key.
-    pub focus_field: usize,
+    pub(super) draft: Connection,
+    pub(super) api_key: String,
+    pub(super) focus_field: usize,
+    pub(super) offer_session_key: bool,
+    pub(super) message: Option<String>,
 }
 
 impl ProviderDialogState {
-    pub fn from_config(config: Option<&ProviderConfig>) -> Self {
-        match config {
-            Some(cfg) => Self {
-                kind: cfg.kind,
-                base_url: cfg.base_url.clone(),
-                model: cfg.model.clone(),
-                api_key: cfg.api_key.clone().unwrap_or_default(),
-                focus_field: 3,
-            },
-            None => {
-                let def = ProviderConfig::default_for(ProviderKind::Anthropic);
-                Self {
-                    kind: def.kind,
-                    base_url: def.base_url,
-                    model: def.model,
-                    api_key: String::new(),
-                    focus_field: 3,
-                }
-            }
+    pub(super) const ROWS: usize = 6;
+
+    pub(super) fn from_connection(connection: Option<&Connection>) -> Self {
+        Self {
+            draft: connection.cloned().unwrap_or_default(),
+            ..Self::default()
         }
     }
 
-    pub fn to_config(&self) -> ProviderConfig {
-        ProviderConfig {
-            kind: self.kind,
-            base_url: self.base_url.trim().to_owned(),
-            model: self.model.trim().to_owned(),
-            api_key: (!self.api_key.trim().is_empty()).then(|| self.api_key.trim().to_owned()),
-        }
+    pub(super) fn bounds(width: f32, height: f32, lh: f32) -> (f32, f32, f32, f32) {
+        let w = (width - 16.0).clamp(1.0, 600.0);
+        let h = lh * 12.0;
+        ((width - w) * 0.5, ((height - h) * 0.28).max(0.0), w, h)
     }
 }
 
 /// Inline chat state anchored to the active editor view.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InlineChatState {
+    pub(crate) connection: Option<(String, String)>,
+    pub(crate) opencode_session: Option<String>,
     pub document: graphite_core_api::DocumentId,
     pub anchor_line: usize,
     pub original_selection: Option<(usize, usize)>,
@@ -72,6 +58,22 @@ pub(crate) struct InlineChatState {
     pub proposed_replacement: Option<String>,
     pub running: bool,
     pub error: Option<String>,
+}
+
+impl InlineChatState {
+    pub(super) fn opencode_session_for(
+        &mut self,
+        binding: &(String, String),
+    ) -> Result<String, &'static str> {
+        if self.connection.as_ref() == Some(binding) {
+            if let Some(id) = &self.opencode_session {
+                return Ok(id.clone());
+            }
+        }
+        let id = super::connections::new_opencode_session()?;
+        self.opencode_session = Some(id.clone());
+        Ok(id)
+    }
 }
 
 /// Which surface displays the chat conversation.
@@ -99,7 +101,9 @@ pub(crate) struct ChatState {
     pub tip_index: usize,
     pub sessions: Vec<ChatSession>,
     pub active_session_id: String,
-    pub provider: Option<ProviderConfig>,
+    pub(super) connections: Connections,
+    pub(super) session_keys: HashMap<String, String>,
+    pub(super) attachments: ChatAttachments,
     pub provider_dialog: Option<ProviderDialogState>,
     pub policy: ToolApprovalPolicy,
     pub input: String,
@@ -110,7 +114,6 @@ pub(crate) struct ChatState {
     pub running_turn: Option<(String, u64, Arc<AtomicBool>)>,
     pub inline_chat: Option<InlineChatState>,
     pub inline_cancel: Option<Arc<AtomicBool>>,
-    pub last_prompt: Option<String>,
     pub last_copied_text: Option<String>,
     pub default_visible: bool,
     pub next_session_seq: u64,
@@ -118,7 +121,7 @@ pub(crate) struct ChatState {
 
 impl Default for ChatState {
     fn default() -> Self {
-        let initial = ChatSession::new("session-1", "New Chat", AgentMode::Agent);
+        let initial = ChatSession::new("session-1", "New Chat", AgentMode::Ask);
         Self {
             visible: false,
             focused: false,
@@ -134,7 +137,9 @@ impl Default for ChatState {
             tip_index: 0,
             sessions: vec![initial],
             active_session_id: "session-1".into(),
-            provider: None,
+            connections: Connections::default(),
+            session_keys: HashMap::new(),
+            attachments: ChatAttachments::default(),
             provider_dialog: None,
             policy: ToolApprovalPolicy::default(),
             input: String::new(),
@@ -145,7 +150,6 @@ impl Default for ChatState {
             running_turn: None,
             inline_chat: None,
             inline_cancel: None,
-            last_prompt: None,
             last_copied_text: None,
             default_visible: false,
             next_session_seq: 2,
@@ -154,16 +158,63 @@ impl Default for ChatState {
 }
 
 impl ChatState {
+    pub(super) fn opencode_session(
+        &mut self,
+        connection: &Connection,
+        profile: &Path,
+        isolated: bool,
+    ) -> Result<String, &'static str> {
+        let active = self.active_session();
+        let destination = connection.destination();
+        if active.connection_id.as_deref() == Some(connection.id.as_str())
+            && active.connection_destination.as_deref() == Some(destination.as_str())
+        {
+            if let Some(id) = &active.opencode_session {
+                return Ok(id.clone());
+            }
+        }
+        let id = super::connections::new_opencode_session()?;
+        let mut pending = active.clone();
+        pending.connection_id = Some(connection.id.clone());
+        pending.connection_destination = Some(destination);
+        pending.opencode_session = Some(id.clone());
+        if !isolated {
+            save_session(profile, &pending)
+                .map_err(|_| "Could not save the OpenCode conversation identifier")?;
+        }
+        *self.active_session_mut() = pending;
+        Ok(id)
+    }
+
+    pub fn clear_outgoing_draft(&mut self) {
+        self.attachments = ChatAttachments::default();
+        self.input.clear();
+        self.input_history_cursor = None;
+    }
+
     pub fn load_from_profile(profile_root: &Path) -> Self {
         let mut state = Self {
-            provider: load_provider(profile_root),
             policy: load_approval_policy(profile_root),
             ..Self::default()
         };
+        match Connections::load(profile_root) {
+            Ok(mut connections) => {
+                if let Err(error) = connections.migrate(profile_root, &SystemVault) {
+                    super::connection_ui::record_connection_error(error);
+                }
+                state.connections = connections;
+            }
+            Err(error) => super::connection_ui::record_connection_error(error),
+        }
         let loaded = load_sessions(profile_root);
         if !loaded.is_empty() {
             state.active_session_id = loaded[0].id.clone();
-            state.next_session_seq = loaded.len() as u64 + 1;
+            state.next_session_seq = loaded
+                .iter()
+                .filter_map(|session| session.id.strip_prefix("session-")?.parse::<u64>().ok())
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
             state.sessions = loaded;
         }
         state
@@ -192,7 +243,16 @@ impl ChatState {
     pub fn new_session(&mut self, mode: AgentMode) -> &ChatSession {
         let id = format!("session-{}", self.next_session_seq);
         self.next_session_seq += 1;
-        let session = ChatSession::new(id.clone(), "New Chat", mode);
+        let mut session = ChatSession::new(id.clone(), "New Chat", mode);
+        if let Some(connection) = self
+            .connections
+            .preferred
+            .as_deref()
+            .and_then(|id| self.connections.get(id))
+        {
+            session.connection_id = Some(connection.id.clone());
+            session.connection_destination = Some(connection.destination());
+        }
         self.sessions.insert(0, session);
         self.active_session_id = id;
         self.scroll = 0;
@@ -204,18 +264,49 @@ impl ChatState {
         if isolated {
             return;
         }
-        let _ = save_session(profile_root, self.active_session());
+        if save_session(profile_root, self.active_session()).is_err() {
+            super::connection_ui::record_connection_error("Could not save the chat conversation");
+        }
     }
 
-    pub fn persist_provider(&self, profile_root: &Path, isolated: bool) -> Result<(), String> {
-        if isolated {
-            return Ok(());
-        }
-        if let Some(cfg) = &self.provider {
-            save_provider(profile_root, cfg)
+    pub(super) fn active_connection(&self) -> Option<&Connection> {
+        let session = self.active_session();
+        let id = session.connection_id.as_ref().or_else(|| {
+            if session.turns.is_empty() {
+                self.connections.preferred.as_ref()
+            } else {
+                None
+            }
+        })?;
+        let connection = self.connections.get(id)?;
+        if session.turns.is_empty()
+            || session.connection_destination.as_deref() == Some(connection.destination().as_str())
+        {
+            Some(connection)
         } else {
-            Ok(())
+            None
         }
+    }
+
+    pub(super) fn configured_provider(
+        &self,
+        profile: &Path,
+        connection: &Connection,
+    ) -> Result<ProviderConfig, String> {
+        let key = match (
+            self.session_keys.get(&connection.id),
+            connection.credential.as_deref(),
+        ) {
+            (Some(key), _) => Some(key.clone()),
+            (None, Some(id)) => SystemVault.get(profile, id).map_err(str::to_owned)?,
+            (None, None) => None,
+        };
+        if connection.provider.requires_key() && key.is_none() {
+            return Err("An API key is required for this connection".into());
+        }
+        let config = connection.config(key);
+        config.check().map_err(|error| error.to_string())?;
+        Ok(config)
     }
 
     pub fn persist_policy(&self, profile_root: &Path, isolated: bool) -> Result<(), String> {

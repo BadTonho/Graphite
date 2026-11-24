@@ -1,9 +1,64 @@
 //! Builds workspace and active-editor context for chat and inline-chat prompts.
 
 use super::*;
-use graphite_chat::{ActiveFileContext, ChatContext};
+use graphite_chat::{ActiveFileContext, ChatContext, FileAttachment};
+
+#[derive(Default)]
+pub(super) struct ChatAttachments {
+    pub active_file: Option<ActiveFileContext>,
+    pub selection: Option<FileAttachment>,
+    pub diagnostics: Vec<String>,
+}
 
 impl App {
+    pub(super) fn chat_context_for_turn(&self) -> ChatContext {
+        let attached = &self.chat.attachments;
+        ChatContext {
+            workspace_root: self.tree.root().to_path_buf(),
+            active_file: attached.active_file.clone(),
+            diagnostics: attached.diagnostics.clone(),
+            referenced_files: attached.selection.iter().cloned().collect(),
+        }
+    }
+
+    pub(super) fn toggle_chat_attachment(&mut self, attachment: usize) {
+        let current = self.gather_chat_context();
+        let attached = &mut self.chat.attachments;
+        match attachment {
+            0 => {
+                attached.active_file = if attached.active_file.is_none() {
+                    current.active_file.map(|mut file| {
+                        file.selection = None;
+                        file
+                    })
+                } else {
+                    None
+                };
+            }
+            1 => {
+                attached.selection = if attached.selection.is_none() {
+                    current.active_file.and_then(|file| {
+                        file.selection
+                            .filter(|text| !text.is_empty())
+                            .map(|content| FileAttachment {
+                                path: file.path,
+                                content: content.chars().take(8_000).collect(),
+                            })
+                    })
+                } else {
+                    None
+                };
+            }
+            _ => {
+                if attached.diagnostics.is_empty() {
+                    attached.diagnostics = current.diagnostics;
+                } else {
+                    attached.diagnostics.clear();
+                }
+            }
+        }
+    }
+
     pub(crate) fn gather_chat_context(&self) -> ChatContext {
         let doc_id = self.active_document();
         let tab = &self.documents[doc_id];

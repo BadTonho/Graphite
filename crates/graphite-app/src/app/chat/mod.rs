@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod connection_ui;
+mod connections;
 pub(crate) mod context;
 pub(crate) mod drawing;
 pub(crate) mod state;
@@ -19,7 +21,7 @@ mod tests {
         TurnStatus, Usage,
     };
     use serde_json::json;
-    use std::sync::mpsc;
+    use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
     #[test]
     fn chat_turn_events_stage_accept_discard_and_undo_edits_in_open_buffers() {
@@ -31,9 +33,12 @@ mod tests {
         app.open_file(file.clone());
         let turn_id = app.chat.active_session_mut().start_turn("Change 1 to 2");
         let session_id = app.chat.active_session_id.clone();
+        let run = Arc::new(AtomicBool::new(false));
+        app.chat.running_turn = Some((session_id.clone(), turn_id, run.clone()));
 
         let (tx, rx) = mpsc::channel();
         app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run: run.clone(),
             session_id: session_id.clone(),
             turn_id,
             event: AgentTurnEvent::ApprovalRequested(PendingToolApproval {
@@ -55,6 +60,7 @@ mod tests {
         assert!(app.chat.policy.trusted_tools.contains("propose_edit"));
 
         app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run: run.clone(),
             session_id: session_id.clone(),
             turn_id,
             event: AgentTurnEvent::ToolResult {
@@ -71,6 +77,7 @@ mod tests {
             approval_reply: None,
         });
         app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run: run.clone(),
             session_id,
             turn_id,
             event: AgentTurnEvent::Finished {
@@ -112,8 +119,11 @@ mod tests {
         app.open_file(file.clone());
         let turn_id = app.chat.active_session_mut().start_turn("Rewrite");
         let session_id = app.chat.active_session_id.clone();
+        let run = Arc::new(AtomicBool::new(false));
+        app.chat.running_turn = Some((session_id.clone(), turn_id, run.clone()));
 
         app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run: run.clone(),
             session_id,
             turn_id,
             event: AgentTurnEvent::ToolResult {
@@ -148,6 +158,8 @@ mod tests {
         let doc = app.active_document();
 
         app.chat.inline_chat = Some(InlineChatState {
+            connection: None,
+            opencode_session: None,
             document: doc,
             anchor_line: 0,
             original_selection: Some((0, 10)),
@@ -163,6 +175,8 @@ mod tests {
         assert!(app.chat.inline_chat.is_none());
 
         app.chat.inline_chat = Some(InlineChatState {
+            connection: None,
+            opencode_session: None,
             document: doc,
             anchor_line: 0,
             original_selection: None,
@@ -209,18 +223,29 @@ mod tests {
         assert_ne!(app.chat.active_session().mode, initial_mode);
 
         // Provider setup dialog editing & saving
-        app.open_chat_provider_dialog();
+        assert!(app.handle_chat_key(&Key::Named(NamedKey::F4), None, false, false));
         assert!(app.chat.provider_dialog.is_some());
-        assert!(app.handle_chat_key(&Key::Character("s".into()), Some("s"), false, false));
-        assert!(app.handle_chat_key(&Key::Character("k".into()), Some("k"), false, false));
+        assert!(app.handle_chat_key(&Key::Named(NamedKey::F2), None, false, false));
+        assert!(app.handle_chat_key(&Key::Character("test".into()), Some("test"), false, false));
+        let dialog = app.chat.provider_dialog.as_mut().unwrap();
+        dialog.draft.model = "demo-model".into();
+        dialog.focus_field = 5;
+        assert!(app.handle_chat_key(
+            &Key::Character("fixture".into()),
+            Some("fixture"),
+            false,
+            false
+        ));
         assert!(app.handle_chat_key(&Key::Named(NamedKey::Enter), None, false, false));
         assert!(app.chat.provider_dialog.is_none());
+        let connection = app.chat.active_connection().unwrap();
+        assert_eq!(connection.name, "test");
         assert_eq!(
             app.chat
-                .provider
-                .as_ref()
-                .and_then(|p| p.api_key.as_deref()),
-            Some("sk")
+                .session_keys
+                .get(&connection.id)
+                .map(String::as_str),
+            Some("fixture")
         );
 
         // Code block navigation and insertion
@@ -233,5 +258,233 @@ mod tests {
         assert_eq!(app.active_chat_code_block().unwrap().code, "let b = 2;");
         assert!(app.insert_active_code_block(false));
         assert_eq!(app.editor().text(), "let b = 2;");
+    }
+
+    #[test]
+    fn changing_connections_starts_a_clean_conversation_and_preserves_the_previous_one() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        for name in ["local A", "local B"] {
+            app.add_chat_connection();
+            let draft = &mut app.chat.provider_dialog.as_mut().unwrap().draft;
+            draft.name = name.into();
+            draft.provider = connections::Provider::Compatible;
+            draft.model = "fixture-model".into();
+            draft.base_url = "http://127.0.0.1:4321/v1".into();
+            app.save_chat_provider_from_dialog(false);
+            if name == "local A" {
+                app.chat
+                    .active_session_mut()
+                    .start_turn("Only A receives this");
+            }
+        }
+        assert_eq!(app.chat.active_connection().unwrap().name, "local B");
+        assert!(app.chat.active_session().turns.is_empty());
+        assert_eq!(
+            app.chat.active_session().mode,
+            graphite_chat::AgentMode::Ask
+        );
+        let previous = &app.chat.sessions[1];
+        assert_eq!(previous.turns[0].prompt, "Only A receives this");
+        assert_eq!(
+            app.chat
+                .connections
+                .get(previous.connection_id.as_deref().unwrap())
+                .unwrap()
+                .name,
+            "local A"
+        );
+
+        app.open_chat_provider_dialog();
+        app.remove_chat_connection();
+        assert!(app.chat.active_connection().is_none());
+        assert_eq!(app.chat.connections.items.len(), 1);
+    }
+
+    #[test]
+    fn standalone_chat_context_includes_only_explicit_attachments() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("attachment_demo.txt");
+        std::fs::write(&file, "editor-only fixture").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(file);
+        let prompt = |app: &App| {
+            graphite_chat::build_system_prompt(
+                graphite_chat::AgentMode::Ask,
+                &app.chat_context_for_turn(),
+            )
+        };
+        assert!(!prompt(&app).contains("editor-only fixture"));
+        assert!(!prompt(&app).contains(&dir.path().display().to_string()));
+        app.toggle_chat_attachment(0);
+        assert!(prompt(&app).contains("editor-only fixture"));
+        app.chat.clear_outgoing_draft();
+        assert!(!prompt(&app).contains("editor-only fixture"));
+    }
+
+    #[test]
+    fn stopping_a_chat_releases_connection_selection_and_ignores_late_events() {
+        use std::sync::atomic::Ordering;
+
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let session_id = app.chat.active_session_id.clone();
+        let turn_id = app.chat.active_session_mut().start_turn("fixture prompt");
+        let cancel = Arc::new(AtomicBool::new(false));
+        app.chat.running_turn = Some((session_id.clone(), turn_id, cancel.clone()));
+        app.cancel_chat_turn();
+        assert!(cancel.load(Ordering::Relaxed));
+        assert!(app.chat.running_turn.is_none());
+        app.open_chat_provider_dialog();
+        assert!(app.chat.provider_dialog.is_some());
+        app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run: cancel,
+            session_id,
+            turn_id,
+            event: AgentTurnEvent::DeltaText("late text".into()),
+            approval_reply: None,
+        });
+        let turn = app.chat.active_session().turns.last().unwrap();
+        assert_eq!(turn.status, TurnStatus::Cancelled);
+        assert!(turn.assistant_text().is_empty());
+    }
+
+    #[test]
+    fn switching_user_profiles_reloads_chat_and_rejects_the_previous_turn() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        let profiles = crate::app::phase5::Profiles::open(&dir.path().join("config")).unwrap();
+        profiles.create("Other").unwrap();
+        app.profile_root = profiles.path("Default").unwrap();
+        app.profiles = Some(profiles);
+        app.add_chat_connection();
+        let draft = &mut app.chat.provider_dialog.as_mut().unwrap().draft;
+        draft.name = "Default connection".into();
+        draft.provider = connections::Provider::Compatible;
+        draft.model = "fixture-model".into();
+        draft.base_url = "http://localhost:4321/v1".into();
+        app.save_chat_provider_from_dialog(false);
+        let session_id = app.chat.active_session_id.clone();
+        let turn_id = app
+            .chat
+            .active_session_mut()
+            .start_turn("Default profile only");
+        let run = Arc::new(AtomicBool::new(false));
+        app.chat.running_turn = Some((session_id.clone(), turn_id, run.clone()));
+
+        app.switch_user_profile("Other").unwrap();
+        assert!(app.chat.connections.items.is_empty());
+        assert!(app.chat.active_session().turns.is_empty());
+        assert!(run.load(std::sync::atomic::Ordering::Relaxed));
+        app.switch_user_profile("Default").unwrap();
+        assert_eq!(
+            app.chat.active_connection().unwrap().name,
+            "Default connection"
+        );
+        app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
+            run,
+            session_id,
+            turn_id,
+            event: AgentTurnEvent::DeltaText("late reply".into()),
+            approval_reply: None,
+        });
+        let turn = &app.chat.active_session().turns[0];
+        assert_eq!(turn.status, TurnStatus::Cancelled);
+        assert!(turn.assistant_text().is_empty());
+    }
+
+    #[test]
+    fn opencode_conversation_identifiers_survive_reload_and_are_distinct_for_new_chats() {
+        let profile = tempfile::tempdir().unwrap();
+        let connection = connections::Connection {
+            id: "test-connection".into(),
+            name: "OpenCode Go".into(),
+            model: "fixture-model".into(),
+            provider: connections::Provider::OpenCodeGo,
+            ..Default::default()
+        };
+        let mut chat = ChatState::default();
+        chat.connections.items.push(connection.clone());
+        chat.connections.preferred = Some(connection.id.clone());
+        chat.connections.save(profile.path()).unwrap();
+        let original = chat
+            .opencode_session(&connection, profile.path(), false)
+            .unwrap();
+        assert!(original.starts_with("ses_"));
+        assert_eq!(
+            chat.opencode_session(&connection, profile.path(), false)
+                .unwrap(),
+            original
+        );
+
+        let mut reloaded = ChatState::load_from_profile(profile.path());
+        assert_eq!(
+            reloaded
+                .opencode_session(&connection, profile.path(), false)
+                .unwrap(),
+            original
+        );
+        reloaded.new_session(graphite_chat::AgentMode::Ask);
+        assert_ne!(
+            reloaded
+                .opencode_session(&connection, profile.path(), false)
+                .unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn opencode_inline_reuses_its_identifier_only_for_the_same_connection() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().into(), None, true);
+        app.open_inline_chat();
+        let inline = app.chat.inline_chat.as_mut().unwrap();
+        let console = ("console".into(), "model-a".into());
+        let go = ("go".into(), "model-a".into());
+        let id = inline.opencode_session_for(&console).unwrap();
+        inline.connection = Some(console.clone());
+        assert_eq!(inline.opencode_session_for(&console).unwrap(), id);
+        assert_ne!(inline.opencode_session_for(&go).unwrap(), id);
+    }
+
+    #[test]
+    fn configuration_selector_reaches_the_new_providers_and_can_cycle_backwards() {
+        use connections::Provider;
+        use winit::keyboard::{Key, NamedKey};
+
+        let dir = crate::test_support::TempDir::new();
+        for (language, compatible) in [
+            ("en", "OpenAI compatible"),
+            ("pt-BR", "Compatível com OpenAI"),
+        ] {
+            let mut app = App::new_with_options(dir.path().into(), None, true);
+            app.translator =
+                graphite_i18n::Translator::new(graphite_i18n::Language::parse(language).unwrap());
+            app.open_chat_sidebar();
+            for key in [NamedKey::F4, NamedKey::ArrowDown, NamedKey::ArrowDown] {
+                assert!(app.handle_chat_key(&Key::Named(key), None, false, false));
+            }
+            for expected in [
+                Provider::Claude,
+                Provider::OpenCodeConsole,
+                Provider::OpenCodeGo,
+                Provider::Gemini,
+                Provider::OpenRouter,
+                Provider::Compatible,
+                Provider::OpenAi,
+            ] {
+                assert!(app.handle_chat_key(&Key::Named(NamedKey::ArrowRight), None, false, false));
+                assert_eq!(
+                    app.chat.provider_dialog.as_ref().unwrap().draft.provider,
+                    expected
+                );
+            }
+            assert!(app.handle_chat_key(&Key::Named(NamedKey::ArrowLeft), None, false, false));
+            assert_eq!(
+                app.chat.provider_dialog.as_ref().unwrap().draft.provider,
+                Provider::Compatible
+            );
+            assert_eq!(app.t("chat.compatible_provider"), compatible);
+        }
     }
 }

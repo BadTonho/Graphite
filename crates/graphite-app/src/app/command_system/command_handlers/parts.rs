@@ -417,6 +417,9 @@ mod tests {
         assert!(app.chat.visible);
 
         app.run_ui_command("workbench.action.previousAuxiliaryBarView");
+        assert!(app.chat.visible);
+        assert!(!app.outline_visible);
+        app.run_ui_command("workbench.action.toggleOutline");
         assert!(app.outline_visible);
 
         app.run_ui_command("workbench.action.setNotificationsPosition.bottomLeft");

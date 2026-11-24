@@ -197,10 +197,7 @@ impl App {
     }
 
     fn secondary_views(&self) -> Vec<(View, String)> {
-        let mut views = vec![
-            (View::Chat, self.t("secondary_sidebar.chat").into()),
-            (View::Outline, self.t("scm.outline.title").into()),
-        ];
+        let mut views = vec![(View::Chat, self.t("secondary_sidebar.chat").into())];
         views.extend(
             self.secondary_plugin_entries()
                 .into_iter()
@@ -686,13 +683,8 @@ mod tests {
             app.secondary_sidebar_x(w) + app.secondary_sidebar_width()
         );
 
-        let cw = 10.0;
-        let y = app.activity_bar_vertical_offset() + 2.0;
-        let slots = app.secondary_tab_slots(cw, lh);
-        assert!(slots.len() >= 2, "Chat and Outline are always present");
-        let outline = slots[1];
-        let x = app.secondary_sidebar_x(w) + outline.x + 2.0;
-        assert!(app.secondary_sidebar_click(x, y, w, h, lh, cw));
+        assert_eq!(app.secondary_tab_slots(10.0, lh).len(), 1);
+        app.run_ui_command("workbench.action.toggleOutline");
         assert!(app.selected_secondary_view() == Some(View::Outline));
         app.run_ui_command("graphite.layout.toggleSecondarySidebar");
         assert_eq!(app.secondary_sidebar_width(), 0.0);

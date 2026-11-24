@@ -12,16 +12,19 @@ use std::sync::{atomic::AtomicBool, mpsc, Arc};
 #[derive(Debug)]
 pub(crate) enum ChatUiEvent {
     TurnEvent {
+        run: Arc<AtomicBool>,
         session_id: String,
         turn_id: u64,
         event: AgentTurnEvent,
         approval_reply: Option<mpsc::Sender<ApprovalDecision>>,
     },
     InlineEvent {
+        run: Arc<AtomicBool>,
         document: DocumentId,
         event: AgentTurnEvent,
     },
     PluginToolCall {
+        run: Arc<AtomicBool>,
         name: String,
         input: serde_json::Value,
         reply: mpsc::Sender<Result<String, String>>,
@@ -39,26 +42,34 @@ impl App {
             self.status = "A chat response is already running".into();
             return;
         }
-        let Some(config) = self.chat.provider.clone() else {
-            self.open_chat_provider_dialog();
-            self.status = "Configure a model provider before sending a message".into();
+        let Some((connection, mut config)) = self.provider_for_chat(false) else {
             return;
         };
-        if let Err(err) = config.check() {
-            self.open_chat_provider_dialog();
-            self.status = err.to_string();
-            return;
-        }
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = "Event loop unavailable for background chat".into();
             return;
         };
+        if config.kind.uses_opencode_session() {
+            match self.chat.opencode_session(
+                &connection,
+                &self.profile_root,
+                self.profiles.is_none(),
+            ) {
+                Ok(id) => config.opencode_session = Some(id),
+                Err(error) => {
+                    super::connection_ui::record_connection_error(error);
+                    self.status = error.into();
+                    return;
+                }
+            }
+        }
 
         let prompt = trimmed.to_owned();
-        self.chat.last_prompt = Some(prompt.clone());
-        let ctx = self.gather_chat_context();
+        let ctx = self.chat_context_for_turn();
         let mode = self.chat.active_session().mode;
         let session_id = self.chat.active_session_id.clone();
+        self.chat.active_session_mut().connection_destination = Some(connection.destination());
+        self.chat.active_session_mut().connection_id = Some(connection.id);
         let turn_id = self.chat.active_session_mut().start_turn(prompt);
         self.chat.active_session_mut().log(
             "turn.start",
@@ -71,10 +82,8 @@ impl App {
         let policy = self.chat.policy.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         self.chat.running_turn = Some((session_id.clone(), turn_id, cancel.clone()));
-        self.chat.input.clear();
-        self.chat.input_history_cursor = None;
-
-        std::thread::Builder::new()
+        let event_session_id = session_id.clone();
+        let started = std::thread::Builder::new()
             .name("graphite-chat-turn".into())
             .spawn(move || {
                 let mut policy = policy;
@@ -97,6 +106,7 @@ impl App {
                         let (tx, rx) = mpsc::channel();
                         if proxy
                             .send_event(UserEvent::Chat(ChatUiEvent::PluginToolCall {
+                                run: cancel.clone(),
                                 name: name.to_owned(),
                                 input: input.clone(),
                                 reply: tx,
@@ -113,6 +123,7 @@ impl App {
                     |pending: &PendingToolApproval| {
                         let (tx, rx) = mpsc::channel();
                         let _ = proxy.send_event(UserEvent::Chat(ChatUiEvent::TurnEvent {
+                            run: cancel.clone(),
                             session_id: session_id.clone(),
                             turn_id,
                             event: AgentTurnEvent::ApprovalRequested(pending.clone()),
@@ -125,6 +136,7 @@ impl App {
                             return;
                         }
                         let _ = proxy.send_event(UserEvent::Chat(ChatUiEvent::TurnEvent {
+                            run: cancel.clone(),
                             session_id: session_id.clone(),
                             turn_id,
                             event,
@@ -132,22 +144,43 @@ impl App {
                         }));
                     },
                 );
-            })
-            .ok();
+            });
+        if started.is_ok() {
+            self.chat.clear_outgoing_draft();
+        } else {
+            self.apply_chat_turn_event(
+                &event_session_id,
+                turn_id,
+                AgentTurnEvent::Error("Could not start the chat worker".into()),
+                None,
+            );
+        }
     }
 
     pub(crate) fn cancel_chat_turn(&mut self) {
-        if let Some((_, _, cancel)) = &self.chat.running_turn {
+        let cancelled = self.chat.running_turn.take().map(|(id, turn, cancel)| {
             cancel.store(true, Ordering::Relaxed);
-        }
+            (id, turn)
+        });
         if let Some((_, reply)) = self.chat.pending_approval.take() {
             let _ = reply.send(ApprovalDecision::Deny);
+        }
+        if let Some((session_id, turn_id)) = cancelled {
+            self.apply_chat_turn_event(&session_id, turn_id, AgentTurnEvent::Cancelled, None);
         }
     }
 
     pub(crate) fn respond_chat_approval(&mut self, decision: ApprovalDecision) {
         let Some((pending, reply)) = self.chat.pending_approval.take() else {
             return;
+        };
+        let decision = if self.chat.active_session().mode == AgentMode::Ask
+            && graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
+            && decision == ApprovalDecision::AllowAlways
+        {
+            ApprovalDecision::AllowOnce
+        } else {
+            decision
         };
         if decision == ApprovalDecision::AllowAlways {
             self.chat.policy.trust_tool(&pending.name);
@@ -163,9 +196,7 @@ impl App {
     }
 
     pub(crate) fn retry_last_chat_turn(&mut self) {
-        if let Some(prompt) = self.chat.last_prompt.clone() {
-            self.submit_chat_prompt(prompt);
-        } else if let Some(last) = self
+        if let Some(last) = self
             .chat
             .active_session()
             .turns
@@ -179,18 +210,51 @@ impl App {
     pub(crate) fn handle_chat_ui_event(&mut self, event: ChatUiEvent) {
         match event {
             ChatUiEvent::TurnEvent {
+                run,
                 session_id,
                 turn_id,
                 event,
                 approval_reply,
             } => {
-                self.apply_chat_turn_event(&session_id, turn_id, event, approval_reply);
+                if self
+                    .chat
+                    .running_turn
+                    .as_ref()
+                    .is_some_and(|(_, _, active)| Arc::ptr_eq(active, &run))
+                {
+                    self.apply_chat_turn_event(&session_id, turn_id, event, approval_reply);
+                }
             }
-            ChatUiEvent::InlineEvent { document, event } => {
-                self.apply_inline_chat_event(document, event);
+            ChatUiEvent::InlineEvent {
+                run,
+                document,
+                event,
+            } => {
+                if self
+                    .chat
+                    .inline_cancel
+                    .as_ref()
+                    .is_some_and(|active| Arc::ptr_eq(active, &run))
+                {
+                    self.apply_inline_chat_event(document, event);
+                }
             }
-            ChatUiEvent::PluginToolCall { name, input, reply } => {
-                if let Err(err) = self.invoke_plugin_chat_tool(&name, input, Some(reply.clone())) {
+            ChatUiEvent::PluginToolCall {
+                run,
+                name,
+                input,
+                reply,
+            } => {
+                if !self
+                    .chat
+                    .running_turn
+                    .as_ref()
+                    .is_some_and(|(_, _, active)| Arc::ptr_eq(active, &run))
+                {
+                    let _ = reply.send(Err("Chat turn has ended".into()));
+                } else if let Err(err) =
+                    self.invoke_plugin_chat_tool(&name, input, Some(reply.clone()))
+                {
                     let _ = reply.send(Err(err));
                 }
             }
@@ -207,6 +271,14 @@ impl App {
         event: AgentTurnEvent,
         approval_reply: Option<mpsc::Sender<ApprovalDecision>>,
     ) {
+        let is_cancelled = self
+            .chat
+            .session_by_id_mut(session_id)
+            .and_then(|session| session.turn_mut(turn_id))
+            .is_some_and(|turn| turn.status == TurnStatus::Cancelled);
+        if is_cancelled {
+            return;
+        }
         match event {
             AgentTurnEvent::DeltaText(delta) => {
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
@@ -274,6 +346,7 @@ impl App {
                 self.refresh_scm_async();
             }
             AgentTurnEvent::Error(message) => {
+                super::connection_ui::record_connection_error("The chat turn could not complete");
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
                     if let Some(turn) = session.turn_mut(turn_id) {
                         turn.status = TurnStatus::Error {
@@ -294,6 +367,8 @@ impl App {
                 }
                 self.chat.running_turn = None;
                 self.status = "Chat cancelled".into();
+                self.chat
+                    .persist_active_session(&self.profile_root, self.profiles.is_none());
             }
         }
     }
@@ -415,49 +490,23 @@ impl App {
         }
     }
 
-    pub(crate) fn open_chat_provider_dialog(&mut self) {
-        self.chat.provider_dialog = Some(super::state::ProviderDialogState::from_config(
-            self.chat.provider.as_ref(),
-        ));
-    }
-
-    pub(crate) fn save_chat_provider_from_dialog(&mut self) {
-        let Some(dialog) = self.chat.provider_dialog.take() else {
-            return;
-        };
-        let cfg = dialog.to_config();
-        if let Err(err) = cfg.check() {
-            self.chat.provider_dialog = Some(dialog);
-            self.status = err.to_string();
-            return;
-        }
-        self.chat.provider = Some(cfg);
-        if let Err(err) = self
-            .chat
-            .persist_provider(&self.profile_root, self.profiles.is_none())
-        {
-            self.status = format!("Failed to save chat provider: {err}");
-        } else {
-            self.status = "Saved chat provider settings".into();
-        }
-    }
-
     /// Starts an inline chat request on the active editor selection or line.
     pub(crate) fn submit_inline_chat(&mut self, prompt: String) {
         let trimmed = prompt.trim();
         if trimmed.is_empty() {
             return;
         }
-        let Some(config) = self.chat.provider.clone() else {
-            self.open_chat_provider_dialog();
-            self.status = "Configure a model provider first".into();
-            return;
-        };
-        if let Err(err) = config.check() {
-            self.open_chat_provider_dialog();
-            self.status = err.to_string();
+        if self
+            .chat
+            .inline_chat
+            .as_ref()
+            .is_some_and(|inline| inline.running)
+        {
             return;
         }
+        let Some((connection, mut config)) = self.provider_for_chat(true) else {
+            return;
+        };
         let Some(proxy) = self.event_proxy.clone() else {
             self.status = "Event loop unavailable".into();
             return;
@@ -472,6 +521,8 @@ impl App {
             .chat
             .inline_chat
             .get_or_insert_with(|| super::state::InlineChatState {
+                connection: None,
+                opencode_session: None,
                 document: doc_id,
                 anchor_line: cursor_line,
                 original_selection: selection,
@@ -481,20 +532,52 @@ impl App {
                 running: false,
                 error: None,
             });
+        let destination = connection.destination();
+        let binding = (connection.id, destination);
+        if config.kind.uses_opencode_session() {
+            match state.opencode_session_for(&binding) {
+                Ok(id) => config.opencode_session = Some(id),
+                Err(error) => {
+                    super::connection_ui::record_connection_error(error);
+                    self.status = error.into();
+                    return;
+                }
+            }
+        } else {
+            state.opencode_session = None;
+        }
+        state.connection = Some(binding);
         state.prompt = trimmed.to_owned();
         state.response.clear();
         state.proposed_replacement = None;
         state.running = true;
         state.error = None;
 
-        let ctx = self.gather_chat_context();
+        // Inline Chat explicitly targets the selected text or cursor line.
+        let mut ctx = self.gather_chat_context();
+        ctx.diagnostics.clear();
+        if let Some(file) = &mut ctx.active_file {
+            file.content_excerpt = if file.selection.is_some() {
+                String::new()
+            } else {
+                self.documents[doc_id]
+                    .buffer
+                    .line(cursor_line)
+                    .chars()
+                    .take(8_000)
+                    .collect()
+            };
+            if let Some(selection) = &mut file.selection {
+                *selection = selection.chars().take(8_000).collect();
+            }
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.chat.inline_cancel = Some(cancel.clone());
         let user_prompt = format!(
             "Inline editor request (reply with only the replacement code block or concise answer):\n{trimmed}"
         );
 
-        std::thread::Builder::new()
+        let started = std::thread::Builder::new()
             .name("graphite-inline-chat".into())
             .spawn(move || {
                 let mut policy = graphite_chat::ToolApprovalPolicy::default();
@@ -517,13 +600,19 @@ impl App {
                     |_| ApprovalDecision::Deny,
                     |event| {
                         let _ = proxy.send_event(UserEvent::Chat(ChatUiEvent::InlineEvent {
+                            run: cancel.clone(),
                             document: doc_id,
                             event,
                         }));
                     },
                 );
-            })
-            .ok();
+            });
+        if started.is_err() {
+            self.apply_inline_chat_event(
+                doc_id,
+                AgentTurnEvent::Error("Could not start the inline chat worker".into()),
+            );
+        }
     }
 
     fn apply_inline_chat_event(&mut self, document: DocumentId, event: AgentTurnEvent) {
@@ -546,6 +635,9 @@ impl App {
                 self.chat.inline_cancel = None;
             }
             AgentTurnEvent::Error(err) => {
+                super::connection_ui::record_connection_error(
+                    "The inline chat turn could not complete",
+                );
                 inline.running = false;
                 inline.error = Some(err);
                 self.chat.inline_cancel = None;
@@ -588,12 +680,29 @@ impl App {
     }
 
     pub(crate) fn continue_inline_in_chat(&mut self) {
+        if self.chat_connection_busy() {
+            return;
+        }
         let Some(inline) = self.chat.inline_chat.take() else {
             return;
         };
         self.open_chat_sidebar();
-        let session = self.chat.active_session_mut();
         if !inline.prompt.is_empty() {
+            let current = self.chat.active_session();
+            if !inline.connection.as_ref().is_some_and(|(id, destination)| {
+                current.connection_id.as_ref() == Some(id)
+                    && current.connection_destination.as_ref() == Some(destination)
+            }) {
+                self.new_chat_session();
+                let session = self.chat.active_session_mut();
+                let (id, destination) = inline.connection.unzip();
+                session.connection_id = id;
+                session.connection_destination = destination;
+            }
+            let session = self.chat.active_session_mut();
+            if session.opencode_session.is_none() {
+                session.opencode_session = inline.opencode_session;
+            }
             let turn_id = session.start_turn(inline.prompt);
             if !inline.response.is_empty() {
                 session.append_text(turn_id, &inline.response);
@@ -601,6 +710,8 @@ impl App {
             if let Some(turn) = session.turn_mut(turn_id) {
                 turn.status = TurnStatus::Done;
             }
+            self.chat
+                .persist_active_session(&self.profile_root, self.profiles.is_none());
         }
     }
 

@@ -440,6 +440,9 @@ fn export_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
 }
 
 fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    if app.chat_connection_busy() {
+        return Ok(());
+    }
     let is_chat_json = app
         .documents
         .get(app.active_document())
@@ -455,6 +458,9 @@ fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
     };
     let mut imported =
         ChatSession::import_json(&raw).map_err(|e| CommandError::Failed(e.to_string()))?;
+    imported.connection_id = None;
+    imported.connection_destination = None;
+    imported.opencode_session = None;
     let id = imported.id.clone();
     if let Some(existing) = app.chat.sessions.iter_mut().find(|s| s.id == id) {
         *existing = imported;
@@ -464,6 +470,7 @@ fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
         }
         app.chat.sessions.insert(0, imported);
     }
+    app.chat.clear_outgoing_draft();
     app.chat.active_session_id = id.clone();
     let _ = save_session(&app.profile_root, app.chat.active_session());
     app.open_chat_sidebar();
@@ -560,8 +567,8 @@ fn tip_action(app: &mut App, kind: u8) {
     }
 }
 
-fn open_language_models_json(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.open_preference_file("chat-provider.json");
+fn open_chat_connections(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.open_chat_provider_dialog();
     Ok(())
 }
 
@@ -1225,10 +1232,10 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
         (
             "workbench.action.openLanguageModelsJson",
-            "Open Chat Provider Configuration (JSON)",
+            "Configure Chat Connections",
             "Chat",
             EDITOR_OR_CHAT,
-            open_language_models_json,
+            open_chat_connections,
         ),
         (
             "workbench.action.chat.manageSettings",
@@ -1560,6 +1567,8 @@ mod tests {
 
         let doc_id = app.active_document();
         app.chat.inline_chat = Some(InlineChatState {
+            connection: None,
+            opencode_session: None,
             document: doc_id,
             anchor_line: 0,
             original_selection: None,

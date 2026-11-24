@@ -237,6 +237,7 @@ impl App {
         if self.answer_draft_review(None) {
             self.command_palette = None;
         }
+        self.reload_chat_profile(&profile_root);
         self.profile_root = profile_root;
         self.drafts.reload_settings(&self.profile_root);
         self.github_session = graphite_auth::load_session(&self.profile_root);

@@ -28,9 +28,8 @@ pub use session::{
 };
 pub use sse::{SseEvent, SseParser};
 pub use store::{
-    delete_provider, delete_session, load_approval_policy, load_provider, load_sessions,
-    save_approval_policy, save_provider, save_session, APPROVAL_POLICY_FILE, SESSIONS_DIR,
-    SETTINGS_FILE,
+    delete_session, load_approval_policy, load_sessions, save_approval_policy, save_session,
+    APPROVAL_POLICY_FILE, SESSIONS_DIR,
 };
 pub use tools::{
     execute_tool, resolve_workspace_path, summarize_tool_call, tool_specs_for_mode,

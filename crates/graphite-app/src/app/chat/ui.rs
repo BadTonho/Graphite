@@ -2,7 +2,7 @@
 
 use super::state::{ChatSurface, ProviderDialogState};
 use super::*;
-use graphite_chat::{AgentMode, ApprovalDecision, ChatSession, ProviderKind};
+use graphite_chat::{AgentMode, ApprovalDecision, ChatSession};
 use winit::keyboard::{Key, NamedKey};
 
 impl App {
@@ -95,6 +95,8 @@ impl App {
             .map(|s| (s.anchor.min(s.head), s.anchor.max(s.head)));
         let anchor_line = self.editor().cursor_line_col().0;
         self.chat.inline_chat = Some(super::state::InlineChatState {
+            connection: None,
+            opencode_session: None,
             document: doc,
             anchor_line,
             original_selection: selection,
@@ -108,16 +110,20 @@ impl App {
     }
 
     pub(crate) fn new_chat_session(&mut self) {
-        let mode = self.chat.active_session().mode;
-        self.chat.new_session(mode);
-        self.chat.input.clear();
-        self.chat.input_history_cursor = None;
+        if self.chat_connection_busy() {
+            return;
+        }
+        self.chat.new_session(AgentMode::Ask);
+        self.chat.clear_outgoing_draft();
         self.chat
             .persist_active_session(&self.profile_root, self.profiles.is_none());
         self.status = "Started new chat session".into();
     }
 
     pub(crate) fn cycle_chat_mode(&mut self) {
+        if self.chat_connection_busy() {
+            return;
+        }
         let next = self.chat.active_session().mode.next();
         self.chat.active_session_mut().mode = next;
         self.chat
@@ -284,6 +290,10 @@ impl App {
             return false;
         }
         match key {
+            Key::Named(NamedKey::F4) => {
+                self.open_chat_provider_dialog();
+                true
+            }
             Key::Named(NamedKey::Escape) => {
                 if self.chat.running_turn.is_some() {
                     self.cancel_chat_turn();
@@ -353,78 +363,73 @@ impl App {
         let Some(dialog) = self.chat.provider_dialog.as_mut() else {
             return false;
         };
+        let field = dialog.focus_field;
         match key {
-            Key::Named(NamedKey::Escape) => {
-                self.chat.provider_dialog = None;
-                true
-            }
-            Key::Named(NamedKey::Tab) => {
-                dialog.focus_field = (dialog.focus_field + 1) % 4;
-                true
+            Key::Named(NamedKey::Escape) => self.chat.provider_dialog = None,
+            Key::Named(NamedKey::Tab | NamedKey::ArrowDown) => {
+                dialog.focus_field = (field + 1) % ProviderDialogState::ROWS;
             }
             Key::Named(NamedKey::ArrowUp) => {
-                dialog.focus_field = (dialog.focus_field + 3) % 4;
-                true
+                dialog.focus_field =
+                    (field + ProviderDialogState::ROWS - 1) % ProviderDialogState::ROWS;
             }
-            Key::Named(NamedKey::ArrowDown) => {
-                dialog.focus_field = (dialog.focus_field + 1) % 4;
-                true
+            Key::Named(NamedKey::Space | NamedKey::ArrowRight) if field == 0 => {
+                self.cycle_chat_connection(false)
             }
-            Key::Named(NamedKey::Space) if dialog.focus_field == 0 => {
-                dialog.kind = match dialog.kind {
-                    ProviderKind::Anthropic => ProviderKind::OpenAiCompatible,
-                    ProviderKind::OpenAiCompatible => ProviderKind::Anthropic,
-                };
-                if dialog.model.is_empty()
-                    || dialog.model == "claude-sonnet-5-5"
-                    || dialog.model == "gpt-4o"
-                {
-                    dialog.model = graphite_chat::ProviderConfig::default_for(dialog.kind).model;
-                }
-                true
+            Key::Named(NamedKey::ArrowLeft) if field == 0 => self.cycle_chat_connection(true),
+            Key::Named(NamedKey::Space | NamedKey::ArrowRight | NamedKey::ArrowLeft)
+                if field == 2 =>
+            {
+                dialog.draft.provider = dialog
+                    .draft
+                    .provider
+                    .cycle(matches!(key, Key::Named(NamedKey::ArrowLeft)));
             }
-            Key::Named(NamedKey::Enter) => {
-                self.save_chat_provider_from_dialog();
-                true
+            Key::Named(NamedKey::F2) => self.add_chat_connection(),
+            Key::Named(NamedKey::F3) => self.use_chat_connection(),
+            Key::Named(NamedKey::Delete) if field == 0 => self.remove_chat_connection(),
+            Key::Named(NamedKey::Enter) if ctrl && dialog.offer_session_key => {
+                self.save_chat_provider_from_dialog(true)
             }
-            Key::Named(NamedKey::Backspace) => {
-                match dialog.focus_field {
-                    1 => {
-                        dialog.base_url.pop();
-                    }
-                    2 => {
-                        dialog.model.pop();
-                    }
-                    3 => {
-                        dialog.api_key.pop();
-                    }
-                    _ => {}
-                }
-                true
-            }
+            Key::Named(NamedKey::Enter) if !ctrl => self.save_chat_provider_from_dialog(false),
             _ => {
-                if !ctrl {
-                    if let Some(ch) =
-                        text.filter(|s| !s.is_empty() && !s.chars().all(char::is_control))
-                    {
-                        match dialog.focus_field {
-                            1 => dialog.base_url.push_str(ch),
-                            2 => dialog.model.push_str(ch),
-                            3 => dialog.api_key.push_str(ch),
-                            0 => {
-                                dialog.kind = match dialog.kind {
-                                    ProviderKind::Anthropic => ProviderKind::OpenAiCompatible,
-                                    ProviderKind::OpenAiCompatible => ProviderKind::Anthropic,
-                                };
-                            }
-                            _ => {}
-                        }
-                        return true;
+                let input = match field {
+                    1 => &mut dialog.draft.name,
+                    3 if dialog.draft.provider == super::connections::Provider::Compatible => {
+                        &mut dialog.draft.base_url
+                    }
+                    4 => &mut dialog.draft.model,
+                    5 => &mut dialog.api_key,
+                    _ => return true,
+                };
+                if matches!(key, Key::Named(NamedKey::Backspace)) {
+                    input.pop();
+                } else if ctrl && matches!(key, Key::Character(ch) if ch.eq_ignore_ascii_case("v"))
+                {
+                    match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text()) {
+                        Ok(value) => input.extend(
+                            value
+                                .chars()
+                                .filter(|ch| !ch.is_control())
+                                .take(4_096usize.saturating_sub(input.len())),
+                        ),
+                        Err(_) => super::connection_ui::record_connection_error(
+                            "Could not paste into the chat connection form",
+                        ),
+                    }
+                } else if !ctrl {
+                    if let Some(value) = text {
+                        input.extend(
+                            value
+                                .chars()
+                                .filter(|ch| !ch.is_control())
+                                .take(4_096usize.saturating_sub(input.len())),
+                        );
                     }
                 }
-                true
             }
         }
+        true
     }
 
     fn handle_inline_chat_key(
@@ -479,29 +484,37 @@ impl App {
         lh: f32,
     ) -> bool {
         if let Some(dialog) = self.chat.provider_dialog.as_mut() {
-            let box_w = (width * 0.56).clamp(340.0, 560.0);
-            let box_h = lh * 9.0;
-            let bx = (width - box_w) * 0.5;
-            let by = (height - box_h) * 0.28;
-            if x >= bx && x < bx + box_w && y >= by && y < by + box_h {
-                let rel_row = ((y - by - lh * 1.4) / (lh * 1.3)).floor() as isize;
-                if (0..=3).contains(&rel_row) {
-                    dialog.focus_field = rel_row as usize;
-                    if rel_row == 0 {
-                        dialog.kind = match dialog.kind {
-                            ProviderKind::Anthropic => ProviderKind::OpenAiCompatible,
-                            ProviderKind::OpenAiCompatible => ProviderKind::Anthropic,
-                        };
+            let (bx, by, bw, bh) = ProviderDialogState::bounds(width, height, lh);
+            if x >= bx && x < bx + bw && y >= by && y < by + bh {
+                let row = ((y - by) / lh).floor() as usize;
+                let col = (((x - bx) / bw) * 3.0) as usize;
+                match row {
+                    1..=6 => {
+                        dialog.focus_field = row - 1;
+                        match row {
+                            1 => self.cycle_chat_connection(x < bx + bw * 0.5),
+                            3 => {
+                                dialog.draft.provider =
+                                    dialog.draft.provider.cycle(x < bx + bw * 0.5)
+                            }
+                            _ => {}
+                        }
                     }
-                } else if y >= by + box_h - lh * 1.8 {
-                    if x < bx + box_w * 0.5 {
-                        self.save_chat_provider_from_dialog();
-                    } else {
-                        self.chat.provider_dialog = None;
-                    }
+                    8 => match col {
+                        0 => self.add_chat_connection(),
+                        1 => self.use_chat_connection(),
+                        _ => self.remove_chat_connection(),
+                    },
+                    9 => match col {
+                        0 => self.save_chat_provider_from_dialog(false),
+                        1 if dialog.offer_session_key => self.save_chat_provider_from_dialog(true),
+                        2 => self.chat.provider_dialog = None,
+                        _ => {}
+                    },
+                    _ => {}
                 }
-                return true;
             }
+            return true;
         }
 
         if let Some(inline) = &self.chat.inline_chat {
@@ -541,32 +554,45 @@ impl App {
         self.explorer_focused = false;
         self.terminal_focused = false;
 
-        // Header toolbar row
-        if y < by + lh * 1.5 {
-            let rel_x = (x - bx) / bw.max(1.0);
-            if rel_x < 0.25 {
-                self.cycle_chat_mode();
-            } else if rel_x < 0.48 {
-                self.new_chat_session();
-            } else if rel_x < 0.70 {
-                self.chat.show_agent_sessions = !self.chat.show_agent_sessions;
-            } else if rel_x < 0.86 {
-                self.open_chat_provider_dialog();
-            } else {
-                self.chat.visible = false;
-                self.chat.focused = false;
+        if y < by + lh {
+            match (((x - bx) / bw) * 3.0) as usize {
+                0 => self.cycle_chat_mode(),
+                1 => self.new_chat_session(),
+                _ => self.chat.show_agent_sessions = !self.chat.show_agent_sessions,
             }
+            return true;
+        }
+        if y < by + lh * 2.0 {
+            if self.chat.running_turn.is_some() && x >= bx + bw * 0.75 {
+                self.cancel_chat_turn();
+            } else {
+                self.open_chat_provider_dialog();
+            }
+            return true;
+        }
+        if y >= by + bh - lh * 3.3 && y < by + bh - lh * 2.1 {
+            self.toggle_chat_attachment((((x - bx) / bw) * 3.0) as usize);
             return true;
         }
 
         // Pending approval buttons near bottom above input box
-        if self.chat.pending_approval.is_some() && y >= by + bh - lh * 4.2 && y < by + bh - lh * 2.2
+        if self.chat.pending_approval.is_some() && y >= by + bh - lh * 5.3 && y < by + bh - lh * 3.3
         {
             let rel_x = (x - bx) / bw.max(1.0);
             if rel_x < 0.33 {
                 self.respond_chat_approval(ApprovalDecision::AllowOnce);
             } else if rel_x < 0.67 {
-                self.respond_chat_approval(ApprovalDecision::AllowAlways);
+                let ask_read = self.chat.active_session().mode == AgentMode::Ask
+                    && self
+                        .chat
+                        .pending_approval
+                        .as_ref()
+                        .is_some_and(|(pending, _)| {
+                            graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
+                        });
+                if !ask_read {
+                    self.respond_chat_approval(ApprovalDecision::AllowAlways);
+                }
             } else {
                 self.respond_chat_approval(ApprovalDecision::Deny);
             }
@@ -580,7 +606,20 @@ impl App {
             .pending_edits
             .iter()
             .any(|e| e.status == graphite_chat::EditReviewStatus::Pending);
-        if has_pending_edits && y >= by + lh * 1.5 && y < by + lh * 3.0 {
+        let list_rows = if self.chat.show_agent_sessions {
+            self.chat.filtered_sessions().len().min(6)
+        } else {
+            0
+        };
+        let list_y = by + lh * 2.25;
+        let edits_y = list_y
+            + lh * list_rows as f32
+            + if self.chat.show_agent_sessions {
+                4.0
+            } else {
+                0.0
+            };
+        if has_pending_edits && y >= edits_y && y < edits_y + lh * 1.4 {
             if x < bx + bw * 0.5 {
                 self.accept_all_chat_edits();
             } else {
@@ -590,10 +629,11 @@ impl App {
         }
 
         // Sessions list rows
-        if self.chat.show_agent_sessions && y >= by + lh * 1.6 && y < by + lh * 8.0 {
-            let row = ((y - by - lh * 1.6) / lh).floor() as usize;
+        if self.chat.show_agent_sessions && y >= list_y && y < list_y + lh * list_rows as f32 {
+            let row = ((y - list_y) / lh).floor() as usize;
             let target_id = self.chat.filtered_sessions().get(row).map(|s| s.id.clone());
-            if let Some(id) = target_id {
+            if let Some(id) = target_id.filter(|_| !self.chat_connection_busy()) {
+                self.chat.clear_outgoing_draft();
                 self.chat.active_session_id = id.clone();
                 if let Some(s) = self.chat.session_by_id_mut(&id) {
                     s.unread = false;
@@ -623,30 +663,6 @@ pub(crate) fn chat_session_badge(session: &ChatSession) -> &'static str {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn provider_kind_label(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Anthropic => "Anthropic",
-        ProviderKind::OpenAiCompatible => "OpenAI-compatible",
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn mask_api_key(key: &str) -> String {
-    let trimmed = key.trim();
-    if trimmed.is_empty() {
-        return "<unset>".into();
-    }
-    let count = trimmed.chars().count();
-    if count <= 4 {
-        "•".repeat(count)
-    } else {
-        let tail: String = trimmed.chars().skip(count - 4).collect();
-        format!("{}{}", "•".repeat((count - 4).min(12)), tail)
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn default_provider_dialog() -> ProviderDialogState {
-    ProviderDialogState::from_config(None)
+pub(super) fn mask_api_key(key: &str) -> String {
+    "\u{2022}".repeat(key.chars().count().min(12))
 }
