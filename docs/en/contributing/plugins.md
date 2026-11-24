@@ -64,7 +64,7 @@ Export `async activate(context, graphite)` and optionally `deactivate()`. The ge
 - `workspace`: `get()`, `configuration()`, `findFiles(options?)`, `readFile(path)`, `writeFile(path, content)` (all confined to the workspace root, blocking `.git/` and path escapes).
 - `terminal`: `create(options?)` returning `{ id, sendText, show }`.
 - `scm`: `status()` returning current Git branch and changed files.
-- `chat`: `registerTool(definition, handler)` registering tools callable during Graphite Chat turns.
+- `chat`: `registerTool(definition, handler)` registering tools callable during Chat turns.
 
 Track disposables in `context.subscriptions`; disposal and host shutdown release editor-side resources automatically.
 
@@ -96,7 +96,7 @@ Set `"runtime": "native"` and `"main": "bin/my-plugin"` in `graphite-plugin.json
 
 ## Install and manage
 
-Open the secondary sidebar with the title bar button or `Ctrl+Alt+B`. The header includes Graphite Chat and one tab for each secondary view contributed by enabled VSIX extensions, such as Codex and Claude Code. Click a tab to switch. The tab strip scrolls to keep the active tab visible. Drag the edge facing the editor to resize the sidebar. Graphite saves the width per profile and restores the selected view when you reopen the sidebar during the same session. Graphite discovers installed extensions from their local manifests. Executable views require the Code OSS runtime from a portable build and a trusted workspace.
+Open the secondary sidebar with the title bar button or `Ctrl+Alt+B`. The header includes Chat and one tab for each secondary view contributed by enabled VSIX extensions, such as Codex and Claude Code. Click a tab to switch. The tab strip scrolls to keep the active tab visible. Drag the edge facing the editor to resize the sidebar. Graphite saves the width per profile and restores the selected view when you reopen the sidebar during the same session. Graphite discovers installed extensions from their local manifests. Executable views require the Code OSS runtime from a portable build and a trusted workspace.
 
 Use **Install from VSIX…** in the Plugins header or its **More plugin actions** menu to open the system file picker. It starts in the workspace folder, then reopens in the folder of the last VSIX selected in the current session and profile. On Windows, use **All files** in the picker to check the actual filename if a package is missing from the VSIX filter. Graphite accepts files with a `.vsix` extension regardless of capitalization. Review the package and choose **Install** or **Cancel**. **Refresh plugins** reloads the installed list and repeats the current catalog search. Press **Tab** to focus the header actions, then use **Enter** to activate them and the arrow keys to navigate the menu. From a terminal, `graphite plugin install <package>` installs a local package disabled so you can enable it later.
 

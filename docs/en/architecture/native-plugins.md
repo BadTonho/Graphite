@@ -13,7 +13,7 @@ API v1 exposes:
 - **Commands & Documents:** `commands` (`list`, `execute`, `registerCommand`), `documents` (`list`, `open`, `save`, `snapshot`, `applyEdits`, `onDidChange`, `onWillSave`). Document changes retain UTF-16 range validation, read-only checks, atomic edits and undo.
 - **Workbench UI & Storage:** `window` (`showMessage`, `focusView`, `showInputBox`, `showQuickPick`, `createStatusBarItem`, `createOutputChannel`, `registerTreeDataProvider`, `createWebviewPanel` with sandboxed CSP/message passing), plus `storage.global` and `storage.workspace` JSON persistence.
 - **Editor & Languages:** `editor` (`active`, `setSelections`, `createDecorationType`, `setDecorations`), `languages` (`setDiagnostics`, `clearDiagnostics`, `registerCompletionProvider`, `registerHoverProvider`, `registerFormattingProvider`), and declarative `themes`, `snippets` and `languages` (comment tokens/extensions) in the manifest.
-- **System APIs:** `terminal` (`create`, `sendText`, `show`), workspace-confined `workspace` FS (`findFiles`, `readFile`, `writeFile` rejecting `..`, symlinks outside the workspace and `.git/`), `scm.status`, and `chat.registerTool` (surfacing plugin tools to Graphite Chat turns alongside approval checks).
+- **System APIs:** `terminal` (`create`, `sendText`, `show`), workspace-confined `workspace` FS (`findFiles`, `readFile`, `writeFile` rejecting `..`, symlinks outside the workspace and `.git/`), `scm.status`, and `chat.registerTool` (surfacing plugin tools to Chat turns alongside approval checks).
 
 ## Granular permissions & development workflow
 

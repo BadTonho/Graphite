@@ -1,5 +1,6 @@
 //! Keyboard, mouse, session, code-block, and provider-dialog interactions for Chat.
 
+use super::layout::{ComposerMenu, PanelLayout, Rect};
 use super::state::{ChatSurface, ProviderDialogState};
 use super::*;
 use graphite_chat::{AgentMode, ApprovalDecision, ChatSession};
@@ -121,14 +122,17 @@ impl App {
     }
 
     pub(crate) fn cycle_chat_mode(&mut self) {
+        self.set_chat_mode(self.chat.active_session().mode.next());
+    }
+
+    fn set_chat_mode(&mut self, mode: AgentMode) {
         if self.chat_connection_busy() {
             return;
         }
-        let next = self.chat.active_session().mode.next();
-        self.chat.active_session_mut().mode = next;
+        self.chat.active_session_mut().mode = mode;
         self.chat
             .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.status = format!("Chat mode: {}", next.label());
+        self.status = self.t(super::drawing::mode_label(mode)).into();
     }
 
     pub(crate) fn toggle_pin_active_session(&mut self, pinned: Option<bool>) {
@@ -272,6 +276,113 @@ impl App {
         }
     }
 
+    pub(super) fn chat_panel_layout(&self, w: f32, h: f32, lh: f32) -> PanelLayout {
+        let (x, y, w, h) = self.chat_panel_bounds(w, h, lh);
+        let history = if self.chat.show_agent_sessions {
+            self.chat.filtered_sessions().len()
+        } else {
+            0
+        };
+        PanelLayout::new(
+            Rect::new(x, y, w, h),
+            lh,
+            history,
+            self.chat
+                .active_session()
+                .pending_edits
+                .iter()
+                .any(|e| e.status == graphite_chat::EditReviewStatus::Pending),
+            self.chat.pending_approval.is_some(),
+            self.chat.attachments.selected(),
+            self.chat.composer_menu,
+        )
+    }
+
+    pub(super) fn chat_allows_always(&self) -> bool {
+        self.chat.active_session().mode != AgentMode::Ask
+            || !self
+                .chat
+                .pending_approval
+                .as_ref()
+                .is_some_and(|(pending, _)| {
+                    graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
+                })
+    }
+
+    fn toggle_composer_menu(&mut self, menu: ComposerMenu) {
+        if self.chat.active_connection().is_none() || self.chat_connection_busy() {
+            return;
+        }
+        if self.chat.composer_menu == Some(menu) {
+            self.chat.composer_menu = None;
+        } else {
+            self.chat.composer_menu = Some(menu);
+            self.chat.composer_choice = if menu == ComposerMenu::Mode {
+                match self.chat.active_session().mode {
+                    AgentMode::Ask => 0,
+                    AgentMode::Edit => 1,
+                    AgentMode::Agent => 2,
+                }
+            } else {
+                0
+            };
+        }
+    }
+
+    fn choose_composer_option(&mut self, index: usize) {
+        match self.chat.composer_menu.take() {
+            Some(ComposerMenu::Mode) => {
+                self.set_chat_mode([AgentMode::Ask, AgentMode::Edit, AgentMode::Agent][index])
+            }
+            Some(ComposerMenu::Context) => self.toggle_chat_attachment(index),
+            None => {}
+        }
+    }
+
+    fn send_chat_draft(&mut self) {
+        if self.chat.active_connection().is_some() && self.chat.running_turn.is_none() {
+            self.submit_chat_prompt(self.chat.input.clone());
+        }
+    }
+
+    pub(crate) fn handle_chat_wheel(&mut self, x: f32, y: f32, lines: f32) -> bool {
+        if self.chat.provider_dialog.is_some() {
+            return true;
+        }
+        let Some(gpu) = &self.gpu else {
+            return false;
+        };
+        let (w, h) = gpu.renderer.size();
+        let layout = self.chat_panel_layout(w, h, gpu.renderer.line_height());
+        if !self.chat.visible || !layout.bounds.contains(x, y) {
+            return false;
+        }
+        if layout.body.contains(x, y) {
+            self.scroll_chat_transcript(-lines.round() as isize);
+        }
+        true
+    }
+
+    fn scroll_chat_transcript(&mut self, older: isize) {
+        let limit = self.gpu.as_ref().map_or(usize::MAX, |gpu| {
+            let (w, h) = gpu.renderer.size();
+            let lh = gpu.renderer.line_height();
+            let body = self.chat_panel_layout(w, h, lh).body;
+            let capacity = super::drawing::text_capacity(body, gpu.renderer.char_width());
+            let read_only = self.chat.active_connection().is_none()
+                && !self.chat.active_session().turns.is_empty();
+            self.chat_message_lines(capacity, read_only)
+                .len()
+                .saturating_sub((body.h / lh).floor() as usize)
+        });
+        self.chat.transcript_offset = self
+            .chat
+            .transcript_offset
+            .min(limit)
+            .saturating_add_signed(older)
+            .min(limit);
+    }
+
     /// Handles keyboard input for provider dialog, inline chat, or focused chat panel.
     pub(crate) fn handle_chat_key(
         &mut self,
@@ -289,9 +400,30 @@ impl App {
         if !self.chat.visible || !self.chat.focused {
             return false;
         }
+        if self.chat.composer_menu.is_some() {
+            match key {
+                Key::Named(NamedKey::ArrowUp) => {
+                    self.chat.composer_choice = (self.chat.composer_choice + 2) % 3
+                }
+                Key::Named(NamedKey::ArrowDown | NamedKey::Tab) => {
+                    self.chat.composer_choice = (self.chat.composer_choice + 1) % 3
+                }
+                Key::Named(NamedKey::Enter | NamedKey::Space) => {
+                    self.choose_composer_option(self.chat.composer_choice)
+                }
+                Key::Named(NamedKey::Escape) => self.chat.composer_menu = None,
+                Key::Named(NamedKey::F4) => self.open_chat_provider_dialog(),
+                _ => {}
+            }
+            return true;
+        }
         match key {
             Key::Named(NamedKey::F4) => {
                 self.open_chat_provider_dialog();
+                true
+            }
+            Key::Named(NamedKey::F6) if !ctrl && !alt => {
+                self.toggle_composer_menu(ComposerMenu::Context);
                 true
             }
             Key::Named(NamedKey::Escape) => {
@@ -308,8 +440,7 @@ impl App {
                 if self.chat.pending_approval.is_some() {
                     self.respond_chat_approval(ApprovalDecision::AllowOnce);
                 } else {
-                    let prompt = self.chat.input.clone();
-                    self.submit_chat_prompt(prompt);
+                    self.send_chat_draft();
                 }
                 true
             }
@@ -321,7 +452,7 @@ impl App {
                 if self.chat.input.is_empty() || self.chat.input_history_cursor.is_some() {
                     self.navigate_chat_input_history(true);
                 } else {
-                    self.chat.scroll = self.chat.scroll.saturating_sub(1);
+                    self.scroll_chat_transcript(1);
                 }
                 true
             }
@@ -329,16 +460,16 @@ impl App {
                 if self.chat.input_history_cursor.is_some() {
                     self.navigate_chat_input_history(false);
                 } else {
-                    self.chat.scroll = self.chat.scroll.saturating_add(1);
+                    self.scroll_chat_transcript(-1);
                 }
                 true
             }
             Key::Named(NamedKey::PageUp) => {
-                self.chat.scroll = self.chat.scroll.saturating_sub(8);
+                self.scroll_chat_transcript(8);
                 true
             }
             Key::Named(NamedKey::PageDown) => {
-                self.chat.scroll = self.chat.scroll.saturating_add(8);
+                self.scroll_chat_transcript(-8);
                 true
             }
             Key::Named(NamedKey::Tab) if !ctrl && !alt => {
@@ -350,7 +481,11 @@ impl App {
                     if let Some(ch) =
                         text.filter(|s| !s.is_empty() && !s.chars().all(char::is_control))
                     {
-                        self.chat.input.push_str(ch);
+                        if self.chat.active_connection().is_some()
+                            || self.chat.active_session().turns.is_empty()
+                        {
+                            self.chat.input.push_str(ch);
+                        }
                         return true;
                     }
                 }
@@ -363,6 +498,35 @@ impl App {
         let Some(dialog) = self.chat.provider_dialog.as_mut() else {
             return false;
         };
+        if dialog.confirmation.is_some() {
+            match key {
+                Key::Named(NamedKey::Escape) => dialog.confirmation = None,
+                Key::Named(NamedKey::Enter) => self.confirm_chat_connection_change(),
+                _ => {}
+            }
+            return true;
+        }
+        if let Some(picker) = dialog.picker {
+            let count = self.connection_picker_len(picker);
+            let index = picker.index();
+            match key {
+                Key::Named(NamedKey::Escape) => self.close_connection_picker(),
+                Key::Named(NamedKey::F4) => self.open_chat_provider_dialog(),
+                Key::Named(NamedKey::Enter | NamedKey::Space) => {
+                    self.pick_connection_option(picker, index)
+                }
+                Key::Named(NamedKey::ArrowDown | NamedKey::Tab) if count > 0 => {
+                    self.chat.provider_dialog.as_mut().unwrap().picker =
+                        Some(picker.at((index + 1) % count));
+                }
+                Key::Named(NamedKey::ArrowUp) if count > 0 => {
+                    self.chat.provider_dialog.as_mut().unwrap().picker =
+                        Some(picker.at((index + count - 1) % count));
+                }
+                _ => {}
+            }
+            return true;
+        }
         let field = dialog.focus_field;
         match key {
             Key::Named(NamedKey::Escape) => self.chat.provider_dialog = None,
@@ -373,13 +537,12 @@ impl App {
                 dialog.focus_field =
                     (field + ProviderDialogState::ROWS - 1) % ProviderDialogState::ROWS;
             }
-            Key::Named(NamedKey::Space | NamedKey::ArrowRight) if field == 0 => {
-                self.cycle_chat_connection(false)
+            Key::Named(NamedKey::Space) if field == 0 || field == 2 => {
+                self.open_connection_picker(field)
             }
+            Key::Named(NamedKey::ArrowRight) if field == 0 => self.cycle_chat_connection(false),
             Key::Named(NamedKey::ArrowLeft) if field == 0 => self.cycle_chat_connection(true),
-            Key::Named(NamedKey::Space | NamedKey::ArrowRight | NamedKey::ArrowLeft)
-                if field == 2 =>
-            {
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowLeft) if field == 2 => {
                 dialog.draft.provider = dialog
                     .draft
                     .provider
@@ -402,6 +565,12 @@ impl App {
                     5 => &mut dialog.api_key,
                     _ => return true,
                 };
+                if dialog
+                    .field_error
+                    .is_some_and(|(error_field, _)| field == error_field)
+                {
+                    dialog.field_error = None;
+                }
                 if matches!(key, Key::Named(NamedKey::Backspace)) {
                     input.pop();
                 } else if ctrl && matches!(key, Key::Character(ch) if ch.eq_ignore_ascii_case("v"))
@@ -483,37 +652,8 @@ impl App {
         height: f32,
         lh: f32,
     ) -> bool {
-        if let Some(dialog) = self.chat.provider_dialog.as_mut() {
-            let (bx, by, bw, bh) = ProviderDialogState::bounds(width, height, lh);
-            if x >= bx && x < bx + bw && y >= by && y < by + bh {
-                let row = ((y - by) / lh).floor() as usize;
-                let col = (((x - bx) / bw) * 3.0) as usize;
-                match row {
-                    1..=6 => {
-                        dialog.focus_field = row - 1;
-                        match row {
-                            1 => self.cycle_chat_connection(x < bx + bw * 0.5),
-                            3 => {
-                                dialog.draft.provider =
-                                    dialog.draft.provider.cycle(x < bx + bw * 0.5)
-                            }
-                            _ => {}
-                        }
-                    }
-                    8 => match col {
-                        0 => self.add_chat_connection(),
-                        1 => self.use_chat_connection(),
-                        _ => self.remove_chat_connection(),
-                    },
-                    9 => match col {
-                        0 => self.save_chat_provider_from_dialog(false),
-                        1 if dialog.offer_session_key => self.save_chat_provider_from_dialog(true),
-                        2 => self.chat.provider_dialog = None,
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
+        if self.chat.provider_dialog.is_some() {
+            self.click_connection_dialog(x, y, width, height, lh);
             return true;
         }
 
@@ -545,92 +685,72 @@ impl App {
         if !self.chat.visible {
             return false;
         }
-        let (bx, by, bw, bh) = self.chat_panel_bounds(width, height, lh);
-        if x < bx || x >= bx + bw || y < by || y >= by + bh {
+        let layout = self.chat_panel_layout(width, height, lh);
+        if !layout.bounds.contains(x, y) {
             self.chat.focused = false;
+            self.chat.composer_menu = None;
             return false;
         }
         self.chat.focused = true;
         self.explorer_focused = false;
         self.terminal_focused = false;
 
-        if y < by + lh {
-            match (((x - bx) / bw) * 3.0) as usize {
-                0 => self.cycle_chat_mode(),
-                1 => self.new_chat_session(),
-                _ => self.chat.show_agent_sessions = !self.chat.show_agent_sessions,
+        if let Some(menu) = layout.menu {
+            if let Some(index) = menu.iter().position(|rect| rect.contains(x, y)) {
+                self.choose_composer_option(index);
+                return true;
             }
-            return true;
+            if !layout.mode.contains(x, y) && !layout.context.contains(x, y) {
+                self.chat.composer_menu = None;
+            }
         }
-        if y < by + lh * 2.0 {
-            if self.chat.running_turn.is_some() && x >= bx + bw * 0.75 {
+        if layout.toolbar[0].contains(x, y) {
+            self.new_chat_session();
+        } else if layout.toolbar[1].contains(x, y) {
+            self.chat.show_agent_sessions = !self.chat.show_agent_sessions;
+        } else if layout.connection.contains(x, y)
+            || (self.chat.active_connection().is_none()
+                && self.chat.active_session().turns.is_empty()
+                && layout.setup.bottom() <= layout.body.bottom()
+                && layout.setup.contains(x, y))
+        {
+            self.choose_chat_connection();
+        } else if layout.send.contains(x, y) {
+            if self.chat.running_turn.is_some() {
                 self.cancel_chat_turn();
             } else {
-                self.open_chat_provider_dialog();
+                self.send_chat_draft();
             }
-            return true;
-        }
-        if y >= by + bh - lh * 3.3 && y < by + bh - lh * 2.1 {
-            self.toggle_chat_attachment((((x - bx) / bw) * 3.0) as usize);
-            return true;
-        }
-
-        // Pending approval buttons near bottom above input box
-        if self.chat.pending_approval.is_some() && y >= by + bh - lh * 5.3 && y < by + bh - lh * 3.3
+        } else if layout.mode.contains(x, y) {
+            self.toggle_composer_menu(ComposerMenu::Mode);
+        } else if layout.context.contains(x, y) {
+            self.toggle_composer_menu(ComposerMenu::Context);
+        } else if let Some((index, _)) = layout
+            .attachments
+            .iter()
+            .find(|(_, rect)| rect.contains(x, y))
         {
-            let rel_x = (x - bx) / bw.max(1.0);
-            if rel_x < 0.33 {
+            self.toggle_chat_attachment(*index);
+        } else if let Some((_, buttons)) = layout.approval.filter(|(title, buttons)| {
+            title.contains(x, y) || buttons.iter().any(|rect| rect.contains(x, y))
+        }) {
+            if buttons[0].contains(x, y) {
                 self.respond_chat_approval(ApprovalDecision::AllowOnce);
-            } else if rel_x < 0.67 {
-                let ask_read = self.chat.active_session().mode == AgentMode::Ask
-                    && self
-                        .chat
-                        .pending_approval
-                        .as_ref()
-                        .is_some_and(|(pending, _)| {
-                            graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
-                        });
-                if !ask_read {
-                    self.respond_chat_approval(ApprovalDecision::AllowAlways);
-                }
-            } else {
+            } else if buttons[1].contains(x, y) && self.chat_allows_always() {
+                self.respond_chat_approval(ApprovalDecision::AllowAlways);
+            } else if buttons[2].contains(x, y) {
                 self.respond_chat_approval(ApprovalDecision::Deny);
             }
-            return true;
-        }
-
-        // Pending file edits bar
-        let has_pending_edits = self
-            .chat
-            .active_session()
-            .pending_edits
-            .iter()
-            .any(|e| e.status == graphite_chat::EditReviewStatus::Pending);
-        let list_rows = if self.chat.show_agent_sessions {
-            self.chat.filtered_sessions().len().min(6)
-        } else {
-            0
-        };
-        let list_y = by + lh * 2.25;
-        let edits_y = list_y
-            + lh * list_rows as f32
-            + if self.chat.show_agent_sessions {
-                4.0
-            } else {
-                0.0
-            };
-        if has_pending_edits && y >= edits_y && y < edits_y + lh * 1.4 {
-            if x < bx + bw * 0.5 {
+        } else if let Some([_, accept, discard]) = layout
+            .edits
+            .filter(|[_, a, d]| a.contains(x, y) || d.contains(x, y))
+        {
+            if accept.contains(x, y) {
                 self.accept_all_chat_edits();
-            } else {
+            } else if discard.contains(x, y) {
                 self.discard_all_chat_edits();
             }
-            return true;
-        }
-
-        // Sessions list rows
-        if self.chat.show_agent_sessions && y >= list_y && y < list_y + lh * list_rows as f32 {
-            let row = ((y - list_y) / lh).floor() as usize;
+        } else if let Some(row) = layout.history.iter().position(|rect| rect.contains(x, y)) {
             let target_id = self.chat.filtered_sessions().get(row).map(|s| s.id.clone());
             if let Some(id) = target_id.filter(|_| !self.chat_connection_busy()) {
                 self.chat.clear_outgoing_draft();
@@ -640,7 +760,6 @@ impl App {
                 }
                 self.chat.show_agent_sessions = false;
             }
-            return true;
         }
 
         true

@@ -1,7 +1,7 @@
 //! Connection selection and credential management for the built-in chat.
 
 use super::connections::{new_id, Connection, Connections, Provider, SystemVault, Vault};
-use super::state::ProviderDialogState;
+use super::state::{ConnectionAction, ProviderDialogState};
 use super::*;
 use graphite_chat::{AgentMode, ProviderConfig};
 
@@ -28,11 +28,23 @@ impl App {
         if self.chat_connection_busy() {
             return;
         }
+        self.chat.composer_menu = None;
         let existing = self
             .chat
             .active_connection()
             .or_else(|| self.chat.connections.items.first());
         self.chat.provider_dialog = Some(ProviderDialogState::from_connection(existing));
+    }
+
+    pub(super) fn choose_chat_connection(&mut self) {
+        self.open_chat_provider_dialog();
+        if self.chat.connections.items.is_empty() {
+            return;
+        }
+        if let Some(dialog) = &mut self.chat.provider_dialog {
+            dialog.choose_for_chat = true;
+            self.open_connection_picker(0);
+        }
     }
 
     pub(super) fn cycle_chat_connection(&mut self, backwards: bool) {
@@ -58,6 +70,10 @@ impl App {
     }
 
     pub(super) fn use_chat_connection(&mut self) {
+        self.apply_saved_chat_connection(false);
+    }
+
+    fn apply_saved_chat_connection(&mut self, confirmed: bool) {
         if self.chat_connection_busy() {
             return;
         }
@@ -65,7 +81,11 @@ impl App {
             return;
         };
         let id = dialog.draft.id.clone();
-        if self.chat.connections.get(&id).is_none() {
+        let Some(connection) = self.chat.connections.get(&id) else {
+            return;
+        };
+        if !confirmed && self.chat_switch_starts_new_session(connection) {
+            self.chat.provider_dialog.as_mut().unwrap().confirmation = Some(ConnectionAction::Use);
             return;
         }
         let mut next = self.chat.connections.clone();
@@ -78,18 +98,55 @@ impl App {
     }
 
     pub(super) fn save_chat_provider_from_dialog(&mut self, session_only: bool) {
+        self.apply_chat_connection_draft(session_only, false);
+    }
+
+    pub(super) fn confirm_chat_connection_change(&mut self) {
+        let action = self
+            .chat
+            .provider_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.confirmation.take());
+        match action {
+            Some(ConnectionAction::Use) => self.apply_saved_chat_connection(true),
+            Some(ConnectionAction::Save { session_only }) => {
+                self.apply_chat_connection_draft(session_only, true)
+            }
+            None => {}
+        }
+    }
+
+    fn chat_switch_starts_new_session(&self, connection: &Connection) -> bool {
+        let session = self.chat.active_session();
+        !session.turns.is_empty()
+            && (session.connection_id.as_deref() != Some(connection.id.as_str())
+                || session.connection_destination.as_deref()
+                    != Some(connection.destination().as_str()))
+    }
+
+    fn apply_chat_connection_draft(&mut self, session_only: bool, confirmed: bool) {
         if self.chat_connection_busy() {
             return;
         }
         let Some(mut dialog) = self.chat.provider_dialog.take() else {
             return;
         };
-        let result = self.save_chat_connection(&mut dialog, session_only);
+        dialog.field_error = None;
+        dialog.message = None;
+        let result = self.save_chat_connection(&mut dialog, session_only, confirmed);
         match result {
-            Ok(id) => self.bind_chat_connection(&id),
+            Ok(Some(id)) => self.bind_chat_connection(&id),
+            Ok(None) => self.chat.provider_dialog = Some(dialog),
             Err(error) => {
-                self.chat.provider_dialog = Some(dialog);
-                self.connection_dialog_error(error);
+                if let Some((field, key)) = dialog.field_error {
+                    dialog.focus_field = field;
+                    record_connection_error(error);
+                    self.status = self.t(key).into();
+                    self.chat.provider_dialog = Some(dialog);
+                } else {
+                    self.chat.provider_dialog = Some(dialog);
+                    self.connection_dialog_error(error);
+                }
             }
         }
     }
@@ -98,16 +155,23 @@ impl App {
         &mut self,
         dialog: &mut ProviderDialogState,
         session_only: bool,
-    ) -> Result<String, &'static str> {
+        confirmed: bool,
+    ) -> Result<Option<String>, &'static str> {
         let mut connection = dialog.draft.clone();
         let previous = self.chat.connections.get(&connection.id).cloned();
         connection.name = connection.name.trim().to_owned();
         connection.model = connection.model.trim().to_owned();
         connection.base_url = connection.base_url.trim().trim_end_matches('/').to_owned();
-        if connection.name.is_empty() || connection.model.is_empty() {
-            return Err("Enter a connection name and model ID");
+        if connection.name.is_empty() {
+            dialog.field_error = Some((1, "chat.name_required"));
+            return Err("Missing chat connection name");
+        }
+        if connection.model.is_empty() {
+            dialog.field_error = Some((4, "chat.model_required"));
+            return Err("Missing chat model ID");
         }
         if connection.provider == Provider::Compatible && connection.base_url.is_empty() {
+            dialog.field_error = Some((3, "chat.url_required"));
             return Err("Enter the base URL for this connection");
         }
         // Keep the exact endpoint of a migrated connection unless the protocol changes.
@@ -126,12 +190,16 @@ impl App {
         if !same_endpoint {
             connection.credential = None;
         }
-        if !previous
+        let keeps_id = previous
             .as_ref()
-            .is_some_and(|old| old.same_destination(&connection))
-        {
-            connection.id = new_id()?;
-        }
+            .is_some_and(|old| old.same_destination(&connection));
+        let preserves_previous = !keeps_id
+            && previous.as_ref().is_some_and(|old| {
+                self.chat.sessions.iter().any(|session| {
+                    !session.turns.is_empty()
+                        && session.connection_id.as_deref() == Some(old.id.as_str())
+                })
+            });
         let entered = dialog.api_key.trim();
         let memory_key = if same_endpoint {
             previous
@@ -146,13 +214,27 @@ impl App {
             && connection.credential.is_none()
             && memory_key.is_none()
         {
+            dialog.field_error = Some((5, "chat.key_required"));
             return Err("Enter an API key for this connection");
         }
         // The placeholder only validates the URL and model. It never leaves this function.
         connection
             .config(Some("validation".into()))
             .check()
-            .map_err(|_| "Enter a valid HTTPS or local HTTP endpoint")?;
+            .map_err(|_| {
+                dialog.field_error = Some((3, "chat.url_invalid"));
+                "Enter a valid HTTPS or local HTTP endpoint"
+            })?;
+        if !confirmed
+            && !self.chat.active_session().turns.is_empty()
+            && (!keeps_id || self.chat_switch_starts_new_session(&connection))
+        {
+            dialog.confirmation = Some(ConnectionAction::Save { session_only });
+            return Ok(None);
+        }
+        if !keeps_id {
+            connection.id = new_id()?;
+        }
 
         let mut written = None;
         let mut memory = memory_key;
@@ -178,6 +260,7 @@ impl App {
             .items
             .iter()
             .position(|item| item.id == dialog.draft.id)
+            .filter(|_| !preserves_previous)
         {
             next.items[index] = connection;
         } else {
@@ -188,7 +271,7 @@ impl App {
             self.remove_chat_credential(written.as_deref());
             return Err(error);
         }
-        if let Some(old) = previous {
+        if let Some(old) = previous.filter(|_| !preserves_previous) {
             self.chat.session_keys.remove(&old.id);
             if old.credential != credential {
                 self.remove_chat_credential(old.credential.as_deref());
@@ -197,7 +280,7 @@ impl App {
         if let Some(key) = memory {
             self.chat.session_keys.insert(id.clone(), key);
         }
-        Ok(id)
+        Ok(Some(id))
     }
 
     pub(super) fn remove_chat_connection(&mut self) {
@@ -235,6 +318,15 @@ impl App {
 
     fn remove_chat_credential(&self, credential: Option<&str>) {
         if let Some(id) = credential {
+            if self
+                .chat
+                .connections
+                .items
+                .iter()
+                .any(|item| item.credential.as_deref() == Some(id))
+            {
+                return;
+            }
             if let Err(error) = SystemVault.remove(&self.profile_root, id) {
                 record_connection_error(error);
             }
@@ -262,6 +354,7 @@ impl App {
         self.chat
             .persist_active_session(&self.profile_root, self.profiles.is_none());
         self.chat.provider_dialog = None;
+        self.chat.focused = self.chat.visible;
         self.status = self.t("chat.connection_selected").into();
     }
 

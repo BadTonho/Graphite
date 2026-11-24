@@ -29,7 +29,7 @@ pub(super) enum Provider {
 }
 
 impl Provider {
-    const ALL: [Self; 7] = [
+    pub(super) const ALL: [Self; 7] = [
         Self::OpenAi,
         Self::Claude,
         Self::OpenCodeConsole,

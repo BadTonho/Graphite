@@ -1,12 +1,13 @@
-# Chat do Graphite, Chat Inline e Sessões do Agente
+# Chat, Chat Inline e Sessões do Agente
 
 O Graphite inclui um assistente conversacional e agente de workspace integrado com a crate `graphite-chat` e superfícies nativas dentro do `graphite-app`.
 
 ## Provedores e Configuração
 
-- Abra **Configurar conexões** no Chat do Graphite, pressione `F4` no chat ou use o comando de configuração na paleta. Dê um nome à conexão, selecione um provedor e informe o ID do modelo e a chave de API, quando exigida. O Graphite preenche o endereço oficial dos provedores suportados. Para **Compatível com OpenAI**, informe a URL base da API, por exemplo `http://localhost:11434/v1` para o Ollama. Endereços remotos exigem HTTPS.
+- Selecione **Configurar conexão** no primeiro acesso. Depois, abra o seletor de conexão e escolha **Configurar conexões**, pressione `F4` no Chat ou use o comando de configuração na paleta. Escolha um provedor e informe nome, ID do modelo e chave de API, quando exigida. O Graphite preenche o endereço oficial dos provedores suportados. Para **Compatível com OpenAI**, informe a URL base da API, por exemplo `http://localhost:11434/v1` para o Ollama. Endereços remotos exigem HTTPS.
 - As conexões pertencem ao perfil ativo. As chaves de API são guardadas no Gerenciador de Credenciais do Windows ou no Secret Service do Linux. Se o cofre falhar ao guardar a chave, **Usar nesta sessão** a mantém em memória até fechar o aplicativo. O Graphite remove o `chat-provider.json` anterior depois de migrar a configuração e a chave salva com sucesso.
-- Escolha **Usar** para trocar de conexão. Selecionar outra conexão ou modelo inicia uma conversa vazia. Conversas com a conexão original ainda válida podem ser retomadas pelo histórico. Conversas antigas, importadas ou cujo destino original mudou ficam disponíveis para leitura.
+- Selecione uma conexão salva no painel ou escolha **Usar conexão** nas configurações. Confirme **Nova conversa** para trocar de conexão em uma conversa com mensagens. Abra **Histórico** para retomar uma conversa com sua conexão original. Caso a conexão esteja indisponível, a conversa continua legível.
+- Escreva uma mensagem e selecione **Enviar** ou pressione `Enter`. Escolha **Perguntar**, **Editar** ou **Agente** ao lado do campo de mensagem. Use **Anexar contexto** ou `F6` para incluir um arquivo do editor, uma seleção ou diagnósticos. Selecione um anexo para removê-lo antes de enviar.
 - A resposta é recebida em segundo plano. Use **Parar** ou `Esc` para cancelar uma resposta antes de trocar de conversa.
 
 | Provedor | O que informar |
@@ -21,7 +22,7 @@ Os modelos gratuitos de chat restritos ao cliente OpenCode ficam indisponíveis 
 
 ## Superfícies e Navegação
 
-- **Barra Lateral Secundária** (`Ctrl+Alt+I`, `Exibir -> Chat` ou `chat.action.focus`): Exibe o Chat do Graphite ao lado das visualizações de extensões. Abra a **Estrutura** pela paleta de comandos.
+- **Barra Lateral Secundária** (`Ctrl+Alt+I`, `Exibir -> Chat` ou `chat.action.focus`): Exibe o Chat ao lado das visualizações de extensões. Abra a **Estrutura** pela paleta de comandos.
 - **Chat no Editor** (`workbench.action.chat.openInEditor`): Move a conversa ativa para a área principal do editor.
 - **Chat Rápido** (`Ctrl+Shift+Alt+C`, `graphite.chat.openQuickChat`): Abre um painel flutuante que pode ser promovido para a barra lateral (`workbench.action.quickchat.openInChatView`) ou fechado com `Esc`.
 - **Chat Inline** (`Ctrl+I`, `inlineChat.focus` ou `inlineChat.fixDiagnostics`): Abre diretamente sobre a seleção ou diagnósticos do editor ativo para aplicar alterações (`inlineChat2.keep`) ou continuar na barra lateral (`inlineChat2.continueInChat`).

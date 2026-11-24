@@ -64,7 +64,7 @@ Exporte `async activate(context, graphite)` e opcionalmente `deactivate()`. O ar
 - `workspace`: `get()`, `configuration()`, `findFiles(options?)`, `readFile(path)`, `writeFile(path, content)` (todos confinados à raiz do workspace, bloqueando `.git/` e travessias de diretório).
 - `terminal`: `create(options?)` retornando `{ id, sendText, show }`.
 - `scm`: `status()` retornando o branch Git atual e arquivos alterados.
-- `chat`: `registerTool(definition, handler)` registrando ferramentas invocáveis nos turnos do Graphite Chat.
+- `chat`: `registerTool(definition, handler)` registrando ferramentas invocáveis nos turnos do Chat.
 
 Registre recursos em `context.subscriptions`; o descarte e o encerramento do host liberam automaticamente os recursos no editor.
 
@@ -96,7 +96,7 @@ Defina `"runtime": "native"` e `"main": "bin/my-plugin"` em `graphite-plugin.jso
 
 ## Instalar e gerenciar
 
-Abra a barra lateral secundária pelo botão na barra de título ou com `Ctrl+Alt+B`. O cabeçalho inclui o Chat do Graphite e uma aba para cada visualização secundária fornecida por extensões VSIX habilitadas, como Codex e Claude Code. Clique em uma aba para trocar. A faixa rola para manter a aba ativa visível. Arraste a borda voltada para o editor para redimensionar a barra. O Graphite salva a largura por perfil e restaura a visualização selecionada quando você reabre a barra na mesma sessão. O Graphite encontra as extensões instaladas pelos manifests locais. As visualizações executáveis exigem o runtime Code OSS do pacote portátil e um workspace confiável.
+Abra a barra lateral secundária pelo botão na barra de título ou com `Ctrl+Alt+B`. O cabeçalho inclui o Chat e uma aba para cada visualização secundária fornecida por extensões VSIX habilitadas, como Codex e Claude Code. Clique em uma aba para trocar. A faixa rola para manter a aba ativa visível. Arraste a borda voltada para o editor para redimensionar a barra. O Graphite salva a largura por perfil e restaura a visualização selecionada quando você reabre a barra na mesma sessão. O Graphite encontra as extensões instaladas pelos manifests locais. As visualizações executáveis exigem o runtime Code OSS do pacote portátil e um workspace confiável.
 
 Use **Instalar de VSIX…** no cabeçalho de Plugins ou no menu **Mais ações de plugins** para abrir o seletor de arquivos do sistema. Ele começa na pasta do workspace e, nas próximas vezes, reabre na pasta do último VSIX selecionado na sessão e no perfil atuais. No Windows, use **Todos os arquivos** no seletor para conferir o nome real do arquivo se um pacote sumir no filtro de VSIX. O Graphite aceita arquivos com extensão `.vsix` em maiúsculas ou minúsculas. Revise o pacote e escolha **Instalar** ou **Cancelar**. **Recarregar plugins** relê a lista de instalados e repete a pesquisa no catálogo atual. Pressione **Tab** para focar as ações do cabeçalho, use **Enter** para acioná-las e as setas para navegar no menu. No terminal, `graphite plugin install <pacote>` instala um pacote local desativado para que você possa ativá-lo depois.
 

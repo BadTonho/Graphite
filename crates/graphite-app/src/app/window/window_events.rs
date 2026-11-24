@@ -571,6 +571,12 @@ impl ApplicationHandler<UserEvent> for App {
                         return;
                     }
                 }
+                if self.handle_chat_wheel(self.mouse.x as f32, self.mouse.y as f32, lines) {
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.settings_editor_scroll(lines) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();

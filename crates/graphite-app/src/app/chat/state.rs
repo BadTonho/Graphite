@@ -26,6 +26,22 @@ pub(crate) struct ProviderDialogState {
     pub(super) focus_field: usize,
     pub(super) offer_session_key: bool,
     pub(super) message: Option<String>,
+    pub(super) field_error: Option<(usize, &'static str)>,
+    pub(super) picker: Option<ConnectionPicker>,
+    pub(super) choose_for_chat: bool,
+    pub(super) confirmation: Option<ConnectionAction>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ConnectionPicker {
+    Saved(usize),
+    Providers(usize),
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ConnectionAction {
+    Use,
+    Save { session_only: bool },
 }
 
 impl ProviderDialogState {
@@ -34,14 +50,9 @@ impl ProviderDialogState {
     pub(super) fn from_connection(connection: Option<&Connection>) -> Self {
         Self {
             draft: connection.cloned().unwrap_or_default(),
+            focus_field: usize::from(connection.is_none()),
             ..Self::default()
         }
-    }
-
-    pub(super) fn bounds(width: f32, height: f32, lh: f32) -> (f32, f32, f32, f32) {
-        let w = (width - 16.0).clamp(1.0, 600.0);
-        let h = lh * 12.0;
-        ((width - w) * 0.5, ((height - h) * 0.28).max(0.0), w, h)
     }
 }
 
@@ -104,11 +115,14 @@ pub(crate) struct ChatState {
     pub(super) connections: Connections,
     pub(super) session_keys: HashMap<String, String>,
     pub(super) attachments: ChatAttachments,
+    pub(super) composer_menu: Option<super::layout::ComposerMenu>,
+    pub(super) composer_choice: usize,
     pub provider_dialog: Option<ProviderDialogState>,
     pub policy: ToolApprovalPolicy,
     pub input: String,
     pub input_history_cursor: Option<usize>,
     pub scroll: usize,
+    pub(super) transcript_offset: usize,
     pub selected_code_block: usize,
     pub pending_approval: Option<(PendingToolApproval, mpsc::Sender<ApprovalDecision>)>,
     pub running_turn: Option<(String, u64, Arc<AtomicBool>)>,
@@ -140,11 +154,14 @@ impl Default for ChatState {
             connections: Connections::default(),
             session_keys: HashMap::new(),
             attachments: ChatAttachments::default(),
+            composer_menu: None,
+            composer_choice: 0,
             provider_dialog: None,
             policy: ToolApprovalPolicy::default(),
             input: String::new(),
             input_history_cursor: None,
             scroll: 0,
+            transcript_offset: 0,
             selected_code_block: 0,
             pending_approval: None,
             running_turn: None,
@@ -188,8 +205,11 @@ impl ChatState {
 
     pub fn clear_outgoing_draft(&mut self) {
         self.attachments = ChatAttachments::default();
+        self.composer_menu = None;
         self.input.clear();
         self.input_history_cursor = None;
+        self.scroll = 0;
+        self.transcript_offset = 0;
     }
 
     pub fn load_from_profile(profile_root: &Path) -> Self {
@@ -256,6 +276,7 @@ impl ChatState {
         self.sessions.insert(0, session);
         self.active_session_id = id;
         self.scroll = 0;
+        self.transcript_offset = 0;
         self.selected_code_block = 0;
         self.active_session()
     }

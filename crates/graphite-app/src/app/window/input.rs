@@ -12,6 +12,16 @@ impl App {
         if self.handle_github_dialog_key(&event.logical_key) {
             return;
         }
+        if self.chat.provider_dialog.is_some()
+            && self.handle_chat_key(
+                &event.logical_key,
+                event.text.as_deref(),
+                self.modifiers.control_key(),
+                self.modifiers.alt_key(),
+            )
+        {
+            return;
+        }
         if self.handle_scm_confirm_key(&event.logical_key) {
             return;
         }

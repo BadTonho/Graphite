@@ -1,12 +1,13 @@
-# Graphite Chat, Inline Chat, and Agent Sessions
+# Chat, Inline Chat, and Agent Sessions
 
 Graphite includes an integrated conversational assistant and workspace agent built around the `graphite-chat` crate and embedded UI surfaces inside `graphite-app`.
 
 ## Providers and Configuration
 
-- Open **Configure connections** in Graphite Chat, press `F4` in the chat, or use **Configure Chat Connections** in the command palette. Give the connection a name, select a provider, and enter the model ID and any required API key. Graphite fills in the official endpoint for supported providers. For **OpenAI compatible**, enter the API base URL, for example `http://localhost:11434/v1` for Ollama. HTTPS is required for remote endpoints.
+- Select **Set up a connection** on first use. To manage connections later, open the connection selector and choose **Configure connections**, press `F4` in Chat, or use **Configure Chat Connections** in the command palette. Choose a provider and enter a name, model ID, and any required API key. Graphite fills in the official endpoint for supported providers. For **OpenAI compatible**, enter the API base URL, for example `http://localhost:11434/v1` for Ollama. HTTPS is required for remote endpoints.
 - Connection settings are local to the active profile. API keys are stored in Windows Credential Manager or Linux Secret Service. If the system store cannot save a key, **Use for this session** keeps it in memory until the app closes. Graphite removes the previous `chat-provider.json` after successfully migrating its configuration and any saved key.
-- Choose **Use** to switch connections. Selecting a different connection or model starts a fresh conversation. Existing conversations with a valid original connection can be resumed from history. Legacy and imported conversations, and those whose original destination has changed, remain readable.
+- Select a saved connection in the panel or choose **Use connection** from its settings. Confirm **New conversation** to switch from a conversation with messages. Open **History** to resume a conversation with its original connection. If that connection is unavailable, the conversation remains readable.
+- Write a message and select **Send** or press `Enter`. Choose **Ask**, **Edit**, or **Agent** next to the message field. Use **Attach context** or `F6` to add an editor file, selection, or diagnostics, and select an attachment to remove it before sending.
 - The response streams in the background. Use **Stop** or `Esc` to cancel an active reply before switching.
 
 | Provider | What to enter |
@@ -21,7 +22,7 @@ OpenCode free-tier chat models that are restricted to the OpenCode client are un
 
 ## Surfaces and Navigation
 
-- **Secondary Side Bar** (`Ctrl+Alt+I`, `View -> Chat`, or `chat.action.focus`): Shows Graphite Chat alongside extension views. Open **Outline** from the command palette.
+- **Secondary Side Bar** (`Ctrl+Alt+I`, `View -> Chat`, or `chat.action.focus`): Shows Chat alongside extension views. Open **Outline** from the command palette.
 - **Editor Surface** (`workbench.action.chat.openInEditor`): Expands the active chat session into the main editor area.
 - **Quick Chat** (`Ctrl+Shift+Alt+C`, `graphite.chat.openQuickChat`): Opens a floating overlay that can be promoted into the side bar (`workbench.action.quickchat.openInChatView`) or dismissed (`Esc`).
 - **Inline Chat** (`Ctrl+I`, `inlineChat.focus`, or `inlineChat.fixDiagnostics`): Anchors directly to the active document selection or diagnostics so edits can be reviewed and applied (`inlineChat2.keep`) or moved to the side bar (`inlineChat2.continueInChat`).

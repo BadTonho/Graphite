@@ -13,7 +13,7 @@ A API v1 expõe:
 - **Comandos e Documentos:** `commands` (`list`, `execute`, `registerCommand`), `documents` (`list`, `open`, `save`, `snapshot`, `applyEdits`, `onDidChange`, `onWillSave`). Mudanças preservam validação UTF-16, verificação de somente leitura, edições atômicas e undo.
 - **Interface e Armazenamento:** `window` (`showMessage`, `focusView`, `showInputBox`, `showQuickPick`, `createStatusBarItem`, `createOutputChannel`, `registerTreeDataProvider`, `createWebviewPanel` com CSP e troca de mensagens), além de persistência JSON em `storage.global` e `storage.workspace`.
 - **Editor e Linguagens:** `editor` (`active`, `setSelections`, `createDecorationType`, `setDecorations`), `languages` (`setDiagnostics`, `clearDiagnostics`, `registerCompletionProvider`, `registerHoverProvider`, `registerFormattingProvider`), além de contribuições declarativas `themes`, `snippets` e `languages` (comentários e extensões) no manifesto.
-- **APIs de Sistema:** `terminal` (`create`, `sendText`, `show`), `workspace` restrito ao workspace (`findFiles`, `readFile`, `writeFile` bloqueando `..`, symlinks fora da raiz e `.git/`), `scm.status`, e `chat.registerTool` (expondo ferramentas do plugin aos turnos do Graphite Chat com política de aprovação).
+- **APIs de Sistema:** `terminal` (`create`, `sendText`, `show`), `workspace` restrito ao workspace (`findFiles`, `readFile`, `writeFile` bloqueando `..`, symlinks fora da raiz e `.git/`), `scm.status`, e `chat.registerTool` (expondo ferramentas do plugin aos turnos do Chat com política de aprovação).
 
 ## Permissões granulares e fluxo de desenvolvimento
 

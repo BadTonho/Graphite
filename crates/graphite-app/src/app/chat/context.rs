@@ -10,6 +10,16 @@ pub(super) struct ChatAttachments {
     pub diagnostics: Vec<String>,
 }
 
+impl ChatAttachments {
+    pub fn selected(&self) -> [bool; 3] {
+        [
+            self.active_file.is_some(),
+            self.selection.is_some(),
+            !self.diagnostics.is_empty(),
+        ]
+    }
+}
+
 impl App {
     pub(super) fn chat_context_for_turn(&self) -> ChatContext {
         let attached = &self.chat.attachments;
@@ -24,6 +34,7 @@ impl App {
     pub(super) fn toggle_chat_attachment(&mut self, attachment: usize) {
         let current = self.gather_chat_context();
         let attached = &mut self.chat.attachments;
+        let was_selected = attached.selected()[attachment.min(2)];
         match attachment {
             0 => {
                 attached.active_file = if attached.active_file.is_none() {
@@ -56,6 +67,14 @@ impl App {
                     attached.diagnostics.clear();
                 }
             }
+        }
+        if !was_selected && !attached.selected()[attachment.min(2)] {
+            let available = match attachment {
+                0 => self.t("chat.no_file"),
+                1 => self.t("chat.no_selection"),
+                _ => self.t("chat.no_diagnostics"),
+            };
+            self.status = available.into();
         }
     }
 

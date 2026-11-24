@@ -38,6 +38,12 @@ impl App {
             return;
         }
 
+        if self.chat.provider_dialog.is_some()
+            && self.handle_chat_click(mx, my, window_width, window_height, lh)
+        {
+            return;
+        }
+
         if self.profile_menu.is_some() {
             if self.profile_menu_contains(mx, my) {
                 self.profile_menu_click(mx, my);
