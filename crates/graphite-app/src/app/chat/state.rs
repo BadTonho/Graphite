@@ -9,6 +9,14 @@ use graphite_chat::{
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
 use std::{collections::HashMap, path::Path};
 
+fn record_storage_error(what: &str, error: &str) {
+    crate::app::error_log::record(
+        crate::app::error_log::ErrorSeverity::Medium,
+        "chat.storage",
+        format!("{what}: {error}"),
+    );
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum SessionsFilter {
     #[default]
@@ -281,13 +289,35 @@ impl ChatState {
         self.active_session()
     }
 
-    pub fn persist_active_session(&self, profile_root: &Path, isolated: bool) {
+    /// Saves `session` unless the profile is isolated. A failure is recorded in the error log;
+    /// returns whether the session is saved.
+    pub fn persist_session(
+        &self,
+        profile_root: &Path,
+        isolated: bool,
+        session: &ChatSession,
+    ) -> bool {
         if isolated {
-            return;
+            return true;
         }
-        if save_session(profile_root, self.active_session()).is_err() {
-            super::connection_ui::record_connection_error("Could not save the chat conversation");
+        match save_session(profile_root, session) {
+            Ok(()) => true,
+            Err(error) => {
+                record_storage_error("Could not save the chat conversation", &error);
+                false
+            }
         }
+    }
+
+    pub fn persist_active_session(&self, profile_root: &Path, isolated: bool) -> bool {
+        self.persist_session(profile_root, isolated, self.active_session())
+    }
+
+    /// Saves every session; returns whether all of them are saved.
+    pub fn persist_all_sessions(&self, profile_root: &Path, isolated: bool) -> bool {
+        self.sessions.iter().fold(true, |saved, session| {
+            self.persist_session(profile_root, isolated, session) && saved
+        })
     }
 
     pub(super) fn active_connection(&self) -> Option<&Connection> {
@@ -330,11 +360,19 @@ impl ChatState {
         Ok(config)
     }
 
-    pub fn persist_policy(&self, profile_root: &Path, isolated: bool) -> Result<(), String> {
+    /// Saves the tool approvals unless the profile is isolated. A failure is recorded in the
+    /// error log; returns whether the approvals are saved.
+    pub fn persist_policy(&self, profile_root: &Path, isolated: bool) -> bool {
         if isolated {
-            return Ok(());
+            return true;
         }
-        save_approval_policy(profile_root, &self.policy)
+        match save_approval_policy(profile_root, &self.policy) {
+            Ok(()) => true,
+            Err(error) => {
+                record_storage_error("Could not save the chat tool approvals", &error);
+                false
+            }
+        }
     }
 
     pub fn filtered_sessions(&self) -> Vec<&ChatSession> {

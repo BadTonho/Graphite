@@ -237,8 +237,7 @@ impl App {
         if decision == ApprovalDecision::AllowAlways {
             let root = self.tree.root().to_path_buf();
             self.chat.policy.trust(&root, &pending.name, &pending.input);
-            let _ = self
-                .chat
+            self.chat
                 .persist_policy(&self.profile_root, self.profiles.is_none());
         }
         self.chat.active_session_mut().log(

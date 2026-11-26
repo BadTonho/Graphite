@@ -170,6 +170,43 @@ mod tests {
     }
 
     #[test]
+    fn chat_storage_failures_are_reported_instead_of_ignored() {
+        let dir = crate::test_support::TempDir::new();
+        // A file where the profile folder should be: nothing can be saved inside it.
+        let profile = dir.path().join("profile");
+        std::fs::write(&profile, "not a folder").unwrap();
+        let state = ChatState::load_from_profile(&profile);
+
+        assert!(!state.persist_active_session(&profile, false));
+        assert!(!state.persist_all_sessions(&profile, false));
+        assert!(!state.persist_policy(&profile, false));
+        // An isolated profile is never written, so it cannot fail.
+        assert!(state.persist_active_session(&profile, true));
+        assert!(state.persist_policy(&profile, true));
+    }
+
+    #[test]
+    fn chat_commands_do_not_write_an_isolated_profile() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let profile = app.profile_root.clone();
+        let sessions = profile.join(graphite_chat::SESSIONS_DIR);
+        let policy = profile.join(graphite_chat::APPROVAL_POLICY_FILE);
+        assert!(!sessions.exists() && !policy.exists());
+
+        for command in [
+            "workbench.action.chat.clearHistory",
+            "workbench.action.chat.resetTrustedTools",
+            "agentSessionSection.archive",
+        ] {
+            app.run_ui_command(command);
+        }
+
+        assert!(!sessions.exists(), "sessions were written");
+        assert!(!policy.exists(), "tool approvals were written");
+    }
+
+    #[test]
     fn discard_chat_edit_reverts_file_and_open_document() {
         let dir = crate::test_support::TempDir::new();
         let file = dir.path().join("lib.rs");

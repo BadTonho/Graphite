@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- Chat conversations and tool approvals that cannot be saved are now recorded in the medium-severity error log instead of being lost silently, Chat commands no longer write to an isolated profile, and **Chat: Open Chat Edit in Diff** reports when its comparison file cannot be created.
 - Chat now stops a reply with an error when a model service sends a single event larger than 8 MiB, instead of using ever more memory, and no longer slows down on replies whose lines arrive in many small pieces.
 - Chat terminal commands no longer crash the reply when long output ends in the middle of an accented character or emoji, and no longer hang it forever: a command that runs longer than 2 minutes, or is stopped with **Stop**, is ended along with the processes it started. Output is capped while it is read, and quoted arguments now reach `cmd` on Windows exactly as written.
 - **Always allow** in Chat now applies only to the current workspace, and for terminal commands only to the exact command that was approved. Previously one approval let the assistant run any command or edit any file in every workspace. Restricted workspaces never remember approvals, and approvals saved by earlier versions are asked for again.

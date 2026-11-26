@@ -4,7 +4,7 @@ use super::*;
 use crate::app::chat::{ChatSurface, SessionsFilter};
 use crate::app::clipboard::{ClipboardAccess, SystemClipboard};
 use crate::scm_changes::ChangeSet;
-use graphite_chat::{save_approval_policy, save_session, ChatSession, EditReviewStatus};
+use graphite_chat::{ChatSession, EditReviewStatus};
 use std::path::PathBuf;
 
 const CHAT_FOCUS: &str = "chatInputVisible || sideBarVisible || true";
@@ -222,13 +222,22 @@ fn open_pending_file_diff(app: &mut App, _: &CommandInvocation) -> Result<(), Co
     if let Some(edit) = pending {
         let right = PathBuf::from(&edit.path);
         let dir = export_dir(app);
-        let _ = std::fs::create_dir_all(&dir);
         let name = right
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("file.txt");
         let left = dir.join(format!("before-{name}"));
-        let _ = std::fs::write(&left, edit.before.as_deref().unwrap_or(""));
+        std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&left, edit.before.as_deref().unwrap_or("")))
+            .map_err(|error| {
+                let message = format!("Could not prepare the chat edit diff: {error}");
+                crate::app::error_log::record(
+                    crate::app::error_log::ErrorSeverity::Low,
+                    "chat.edits",
+                    &message,
+                );
+                CommandError::Failed(message)
+            })?;
         app.open_diff_paths(left, right);
     } else {
         app.open_multi_diff(ChangeSet::All);
@@ -257,7 +266,8 @@ fn clear_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
     }
     app.chat.scroll = 0;
     app.chat.selected_code_block = 0;
-    let _ = save_session(&app.profile_root, app.chat.active_session());
+    app.chat
+        .persist_active_session(&app.profile_root, app.profiles.is_none());
     app.status = "Cleared chat history".into();
     Ok(())
 }
@@ -265,14 +275,16 @@ fn clear_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
 fn clear_input_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.chat.active_session_mut().input_history.clear();
     app.chat.input_history_cursor = None;
-    let _ = save_session(&app.profile_root, app.chat.active_session());
+    app.chat
+        .persist_active_session(&app.profile_root, app.profiles.is_none());
     app.status = "Cleared chat input history".into();
     Ok(())
 }
 
 fn compact_conversation(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     let removed = app.chat.active_session_mut().compact_conversation(4);
-    let _ = save_session(&app.profile_root, app.chat.active_session());
+    app.chat
+        .persist_active_session(&app.profile_root, app.profiles.is_none());
     app.status = format!("Compacted {removed} older chat turns");
     Ok(())
 }
@@ -472,7 +484,8 @@ fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
     }
     app.chat.clear_outgoing_draft();
     app.chat.active_session_id = id.clone();
-    let _ = save_session(&app.profile_root, app.chat.active_session());
+    app.chat
+        .persist_active_session(&app.profile_root, app.profiles.is_none());
     app.open_chat_sidebar();
     app.status = format!("Imported chat session {id}");
     Ok(())
@@ -507,7 +520,8 @@ fn import_debug_log(app: &mut App, _: &CommandInvocation) -> Result<(), CommandE
 
 fn edit_tool_approval(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.chat.policy.auto_approve_read_only = !app.chat.policy.auto_approve_read_only;
-    let _ = save_approval_policy(&app.profile_root, &app.chat.policy);
+    app.chat
+        .persist_policy(&app.profile_root, app.profiles.is_none());
     app.status = format!(
         "Chat auto-approve read-only tools: {}",
         app.chat.policy.auto_approve_read_only
@@ -518,7 +532,8 @@ fn edit_tool_approval(app: &mut App, _: &CommandInvocation) -> Result<(), Comman
 fn reset_trusted_tools(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.chat.policy.auto_approve_read_only = true;
     app.chat.policy.reset_trusted();
-    let _ = save_approval_policy(&app.profile_root, &app.chat.policy);
+    app.chat
+        .persist_policy(&app.profile_root, app.profiles.is_none());
     app.status = "Reset trusted chat tools".into();
     Ok(())
 }
@@ -613,8 +628,9 @@ fn unarchive_session(app: &mut App, _: &CommandInvocation) -> Result<(), Command
 fn archive_all_sessions(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     for session in &mut app.chat.sessions {
         session.archived = true;
-        let _ = save_session(&app.profile_root, session);
     }
+    app.chat
+        .persist_all_sessions(&app.profile_root, app.profiles.is_none());
     app.status = "Archived all agent sessions".into();
     Ok(())
 }
@@ -622,8 +638,9 @@ fn archive_all_sessions(app: &mut App, _: &CommandInvocation) -> Result<(), Comm
 fn unarchive_all_sessions(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     for session in &mut app.chat.sessions {
         session.archived = false;
-        let _ = save_session(&app.profile_root, session);
     }
+    app.chat
+        .persist_all_sessions(&app.profile_root, app.profiles.is_none());
     app.status = "Unarchived all agent sessions".into();
     Ok(())
 }
@@ -631,8 +648,9 @@ fn unarchive_all_sessions(app: &mut App, _: &CommandInvocation) -> Result<(), Co
 fn mark_all_sessions_read(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     for session in &mut app.chat.sessions {
         session.unread = false;
-        let _ = save_session(&app.profile_root, session);
     }
+    app.chat
+        .persist_all_sessions(&app.profile_root, app.profiles.is_none());
     app.status = "Marked all agent sessions read".into();
     Ok(())
 }
