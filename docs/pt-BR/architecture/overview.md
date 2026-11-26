@@ -35,6 +35,10 @@ graphite-app ──► graphite-render     (wgpu + cosmic-text + Window do winit
 
 `CommandRegistry` centraliza metadados, alvos explícitos, enablement e resultados tipados. Handlers por domínio compartilham a entrada para teclado, widgets e acessibilidade. Contextos globais, de views e de widgets são resolvidos por seus ancestrais. Workers devolvem resultados ao event loop com verificações de cancelamento e versão; edições em views sem foco preservam o foco. Consulte [Comandos e contexto](commands-context.md).
 
+## Loop de eventos
+
+O loop espera por entrada ou por um evento de uma thread em segundo plano; ele não faz polling. Uma thread que deixa resultados numa fila lida pelo loop (gravação de arquivos, mensagens do adaptador de depuração, mensagens de páginas web) chama `app::wake::request`, que envia um único aviso agrupado. Extension hosts, tarefas, servidores de linguagem e kernels de notebook enviam seus próprios eventos. Enquanto há trabalho em segundo plano, o loop também verifica prazos a cada 250 ms; no Linux, ele processa o GTK a cada 16 ms enquanto uma página web está aberta, já que ali o GTK não tem eventos próprios.
+
 ## Plataformas
 
 Windows e Linux; as diferenças de plataforma ficam a cargo de `winit`, `wgpu` e `cosmic-text`.

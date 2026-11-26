@@ -73,5 +73,6 @@ pub(super) fn write(
         .map(|()| crate::file_format::fingerprint(&bytes))
         .map_err(|e| e.to_string());
         let _ = sender.send(Written { document, result });
+        crate::app::wake::request();
     });
 }

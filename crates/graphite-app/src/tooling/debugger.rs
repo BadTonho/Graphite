@@ -1739,20 +1739,17 @@ impl Write for SharedTcp {
 fn read_messages(stdout: impl Read, sender: SyncSender<AdapterEvent>) {
     let mut reader = BufReader::new(stdout);
     loop {
-        match read_message(&mut reader) {
-            Ok(Some(message)) => {
-                if sender.send(AdapterEvent::Message(message)).is_err() {
-                    break;
-                }
-            }
-            Ok(None) => {
-                let _ = sender.send(AdapterEvent::Closed);
-                break;
-            }
-            Err(error) => {
-                let _ = sender.send(AdapterEvent::Failed(error.to_string()));
-                break;
-            }
+        let event = match read_message(&mut reader) {
+            Ok(Some(message)) => AdapterEvent::Message(message),
+            Ok(None) => AdapterEvent::Closed,
+            Err(error) => AdapterEvent::Failed(error.to_string()),
+        };
+        let last = !matches!(event, AdapterEvent::Message(_));
+        let delivered = sender.send(event).is_ok();
+        // The session is read by the event loop, which otherwise waits for input.
+        crate::app::wake::request();
+        if last || !delivered {
+            break;
         }
     }
 }
@@ -1761,6 +1758,7 @@ fn read_stderr(stderr: impl Read, sender: SyncSender<String>) {
     let reader = BufReader::new(stderr);
     for line in reader.lines().map_while(Result::ok) {
         let _ = sender.try_send(line);
+        crate::app::wake::request();
     }
 }
 

@@ -51,6 +51,7 @@ pub(crate) mod redaction;
 pub(crate) mod remote;
 pub(crate) mod updates;
 pub(crate) mod user_data_sync;
+pub(crate) mod wake;
 
 pub(crate) mod extension_host;
 pub(crate) mod services;

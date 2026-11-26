@@ -1,5 +1,28 @@
 use super::*;
 
+/// How often GTK is pumped on Linux while a web page is open.
+const GTK_PUMP_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
+/// How often the loop checks background work for deadlines while it runs.
+const BACKGROUND_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How soon the loop must run again on its own, if at all, for open pages and background work.
+/// Background threads wake the loop when they have something (`app::wake`, extension host and
+/// task events), so the interval only catches deadlines and timeouts. GTK, which shows pages on
+/// Linux, has no events of its own here and is pumped often enough for pages to stay smooth.
+fn background_check_interval(
+    linux: bool,
+    webview_open: bool,
+    background_busy: bool,
+) -> Option<std::time::Duration> {
+    if linux && webview_open {
+        Some(GTK_PUMP_INTERVAL)
+    } else if background_busy || webview_open {
+        Some(BACKGROUND_CHECK_INTERVAL)
+    } else {
+        None
+    }
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let saving = self.saving.pending();
@@ -82,18 +105,17 @@ impl ApplicationHandler<UserEvent> for App {
             .chain(self.plugin_auto_update_deadline())
             .chain(draft_deadline)
             .min();
+        let webview_open = self.webview.is_some() || self.graphite_detail_webview.is_some();
+        let background_busy = self.saving.pending()
+            || debug_pending
+            || host_pending
+            || self.plugins.pending()
+            || self.task_cancel.is_some();
         event_loop.set_control_flow(
-            if self.saving.pending()
-                || debug_pending
-                || host_pending
-                || self.plugins.pending()
-                || self.task_cancel.is_some()
-                || self.webview.is_some()
-                || self.graphite_detail_webview.is_some()
+            if let Some(interval) =
+                background_check_interval(cfg!(target_os = "linux"), webview_open, background_busy)
             {
-                ControlFlow::WaitUntil(
-                    std::time::Instant::now() + std::time::Duration::from_millis(10),
-                )
+                ControlFlow::WaitUntil(std::time::Instant::now() + interval)
             } else if self.scm_busy_state().is_some() {
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
@@ -815,6 +837,8 @@ impl ApplicationHandler<UserEvent> for App {
 impl App {
     pub(crate) fn handle_user_event(&mut self, event: UserEvent) {
         match event {
+            // `about_to_wait`, which follows every event, reads the queues.
+            UserEvent::Wake => crate::app::wake::handled(),
             UserEvent::ExtensionHostWake => self.poll_extension_host(std::time::Instant::now()),
             UserEvent::SettingsImported(settings) => self.apply_imported_settings(*settings),
             UserEvent::SnippetsLoaded { snippets, warnings } => {
@@ -1051,5 +1075,36 @@ impl App {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod wait_tests {
+    use super::*;
+
+    #[test]
+    fn the_loop_sleeps_instead_of_polling_one_hundred_times_a_second() {
+        // Windows: an open page or background work needs only the deadline check.
+        assert_eq!(
+            background_check_interval(false, true, false),
+            Some(BACKGROUND_CHECK_INTERVAL)
+        );
+        assert_eq!(
+            background_check_interval(false, false, true),
+            Some(BACKGROUND_CHECK_INTERVAL)
+        );
+        assert!(BACKGROUND_CHECK_INTERVAL >= std::time::Duration::from_millis(100));
+        // Linux pumps GTK while a page is open.
+        assert_eq!(
+            background_check_interval(true, true, false),
+            Some(GTK_PUMP_INTERVAL)
+        );
+        assert_eq!(
+            background_check_interval(true, false, true),
+            Some(BACKGROUND_CHECK_INTERVAL)
+        );
+        // Nothing open and nothing running: wait for input.
+        assert_eq!(background_check_interval(false, false, false), None);
+        assert_eq!(background_check_interval(true, false, false), None);
     }
 }

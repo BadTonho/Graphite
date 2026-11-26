@@ -92,6 +92,8 @@ fn queue_page_message(sink: &Mutex<Vec<String>>, body: &str) {
     if let Ok(mut queue) = sink.lock() {
         queue.push(body.to_owned());
     }
+    // The event loop takes page messages when it runs; without this it would wait for input.
+    crate::app::wake::request();
 }
 
 /// Records a page diagnostic in the error log. Returns whether `body` was one.

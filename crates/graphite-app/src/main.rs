@@ -1194,6 +1194,7 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
     app::error_log::set_event_proxy(proxy.clone());
+    app::wake::install(proxy.clone());
     let _ = cli::start_ipc_server(proxy.clone());
     let mut app = App::new(root, Some(proxy));
     app.initial_cli_request = Some(request);

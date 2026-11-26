@@ -310,6 +310,8 @@ impl ActivationHandler for AccessibilityActivation {
 }
 #[derive(Debug)]
 pub(crate) enum UserEvent {
+    /// A background thread left work in a queue the loop reads; see `app::wake`.
+    Wake,
     ExtensionHostWake,
     CommandCompleted {
         execution: u64,
