@@ -46,8 +46,8 @@ pub(super) fn graphite_scm_commit_prompt(
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
     {
-        app.scm_commit_prompt = true;
-        app.scm_commit_message.clear();
+        app.scm.commit_prompt = true;
+        app.scm.commit_message.clear();
         app.status = app.t("status.commit_prompt").into();
     };
     Ok(())

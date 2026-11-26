@@ -10,8 +10,9 @@ fn conflicted_repo(text: &str) -> (crate::test_support::TempDir, App, PathBuf) {
     crate::scm::mark_conflicted_for_tests(dir.path(), "merged.txt", "base\n", "ours\n", "theirs\n");
     let mut app = App::new_with_options(dir.path().into(), None, true);
     app.refresh_scm_async();
-    app.scm_selected = app
-        .scm_snapshot
+    app.scm.selected = app
+        .scm
+        .snapshot
         .files
         .iter()
         .position(|file| file.conflicted)

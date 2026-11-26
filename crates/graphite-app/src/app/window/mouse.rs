@@ -94,11 +94,11 @@ impl App {
         if self.click_workspace_trust_banner(mx, my) {
             return;
         }
-        if self.scm_more_menu.is_some() {
+        if self.scm.more_menu.is_some() {
             self.scm_more_menu_click(mx, my);
             return;
         }
-        if self.scm_graph_menu.is_some() {
+        if self.scm.graph_menu.is_some() {
             // A click outside only closes the menu; one inside runs its action.
             self.scm_graph_menu_click(mx, my);
             return;
@@ -249,7 +249,7 @@ impl App {
             }
         }
 
-        self.scm_focused = self.scm_visible
+        self.scm.focused = self.scm.visible
             && self.primary_sidebar_contains(mx, my, window_width, window_height, lh);
         if self.primary_sidebar_contains(mx, my, window_width, window_height, lh) {
             if self.active_plugin_activity.is_some()
@@ -257,7 +257,7 @@ impl App {
             {
                 return;
             }
-            if self.scm_visible {
+            if self.scm.visible {
                 let local_x = self.sidebar_local_x(mx, window_width);
                 let local_y = self.sidebar_local_y(my);
                 let row_h = lh.max(18.0);
@@ -272,7 +272,7 @@ impl App {
                     return;
                 }
                 let layout = self.scm_sidebar_layout_for(window_height, lh, cw);
-                if !self.scm_repositories_collapsed {
+                if !self.scm.repositories_collapsed {
                     if layout.repo_sync.contains(local_x, local_y) {
                         self.run_scm_remote(super::scm_remote_ui::RemoteOp::Sync);
                         return;
@@ -287,12 +287,12 @@ impl App {
                     }
                 }
                 if layout.repository_header.contains(local_x, local_y) {
-                    self.scm_repositories_collapsed = !self.scm_repositories_collapsed;
+                    self.scm.repositories_collapsed = !self.scm.repositories_collapsed;
                     return;
                 }
                 if layout.commit_field.contains(local_x, local_y) {
-                    self.scm_commit_prompt = true;
-                    self.scm_extension_input = None;
+                    self.scm.commit_prompt = true;
+                    self.scm.extension_input = None;
                     return;
                 }
                 if self.scm_primary_action() == ScmPrimaryAction::Commit
@@ -325,14 +325,14 @@ impl App {
                         }
                         ScmPrimaryAction::Commit => {}
                     }
-                    if !self.scm_commit_message.trim().is_empty() {
+                    if !self.scm.commit_message.trim().is_empty() {
                         self.run_ui_command("graphite.scm.commit");
                         return;
                     }
                 }
-                self.scm_commit_prompt = false;
-                self.scm_extension_input = None;
-                if layout.branch_row.contains(local_x, local_y) && !self.scm_repositories_collapsed
+                self.scm.commit_prompt = false;
+                self.scm.extension_input = None;
+                if layout.branch_row.contains(local_x, local_y) && !self.scm.repositories_collapsed
                 {
                     if layout.refresh.contains(local_x, local_y) {
                         self.refresh_scm_async();
@@ -369,9 +369,9 @@ impl App {
                                     ScmAction::StageAll
                                 });
                             } else if staged {
-                                self.scm_staged_collapsed = !self.scm_staged_collapsed;
+                                self.scm.staged_collapsed = !self.scm.staged_collapsed;
                             } else {
-                                self.scm_changes_collapsed = !self.scm_changes_collapsed;
+                                self.scm.changes_collapsed = !self.scm.changes_collapsed;
                             }
                         }
                         ScmListRowKind::Extension(extension) => {
@@ -384,7 +384,7 @@ impl App {
                             depth,
                             ..
                         } => {
-                            if let Some(file) = self.scm_snapshot.files.get(first) {
+                            if let Some(file) = self.scm.snapshot.files.get(first) {
                                 let folder = super::scm_ui::folder_path(&file.path, depth);
                                 if row.action.contains(local_x, local_y) {
                                     self.stage_folder(staged, &folder);
@@ -407,7 +407,7 @@ impl App {
                             } else if refresh.contains(local_x, local_y) {
                                 self.refresh_scm_async();
                             } else {
-                                self.scm_graph_collapsed = !self.scm_graph_collapsed;
+                                self.scm.graph_collapsed = !self.scm.graph_collapsed;
                             }
                         }
                         ScmListRowKind::GraphCommit { index } => {
@@ -420,7 +420,7 @@ impl App {
                             self.open_scm_graph_file_diff(commit_index, file_index);
                         }
                         ScmListRowKind::File { index, staged } => {
-                            self.scm_selected = index;
+                            self.scm.selected = index;
                             if !staged
                                 && super::scm_ui::discard_button(row.action, cw)
                                     .contains(local_x, local_y)
@@ -439,7 +439,7 @@ impl App {
                                     "graphite.scm.select",
                                     serde_json::json!({"index":index}),
                                 );
-                                let file = &self.scm_snapshot.files[index];
+                                let file = &self.scm.snapshot.files[index];
                                 let path = self.tree.root().join(&file.path);
                                 self.open_file(path);
                             }

@@ -2159,7 +2159,7 @@ fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resourc
         kind: ScmListRowKind::Extension(rows[1]),
     };
     app.click_extension_scm_row(&row(250.0), rows[1], 20.0, 5.0);
-    assert_eq!(app.scm_extension_input, Some(1));
+    assert_eq!(app.scm.extension_input, Some(1));
     assert!(app.handle_extension_scm_input_key(
         &Key::Character("h".into()),
         Some("h"),
@@ -2197,7 +2197,7 @@ fn vsix_source_control_lists_resources_forwards_the_commit_box_and_opens_resourc
     app.toggle_vsix_scm_group(1, 10);
     assert_eq!(app.vsix_scm_rows().len(), 3);
     assert!(app.handle_extension_scm_input_key(&Key::Named(NamedKey::Escape), None, false, false));
-    assert_eq!(app.scm_extension_input, None);
+    assert_eq!(app.scm.extension_input, None);
     assert!(!app.handle_extension_scm_input_key(
         &Key::Character("x".into()),
         Some("x"),

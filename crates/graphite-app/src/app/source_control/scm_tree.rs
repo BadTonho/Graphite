@@ -316,7 +316,7 @@ mod tests {
     fn folders_open_and_close_and_stage_what_is_below_them() {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_snapshot = snapshot(&[
+        app.scm.snapshot = snapshot(&[
             ("src/a.rs", false),
             ("src2/b.rs", false),
             ("src/ui/c.rs", false),
@@ -324,14 +324,15 @@ mod tests {
         ]);
         app.toggle_scm_folder(false, "src".into());
         assert!(app
-            .scm_collapsed_folders
+            .scm
+            .collapsed_folders
             .contains(&(false, PathBuf::from("src"))));
         app.toggle_scm_folder(false, "src".into());
-        assert!(app.scm_collapsed_folders.is_empty());
+        assert!(app.scm.collapsed_folders.is_empty());
 
         app.status.clear();
         app.stage_folder(false, Path::new("src"));
-        let mut paths = app.scm_batch_paths.clone();
+        let mut paths = app.scm.batch_paths.clone();
         paths.sort();
         assert_eq!(
             paths,
@@ -342,7 +343,7 @@ mod tests {
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
 
         app.stage_folder(true, Path::new("src"));
-        assert_eq!(app.scm_batch_paths, [PathBuf::from("src/staged.rs")]);
+        assert_eq!(app.scm.batch_paths, [PathBuf::from("src/staged.rs")]);
     }
 
     #[test]

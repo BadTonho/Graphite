@@ -109,7 +109,7 @@ impl App {
     /// deleting offers the local ones except the checked out branch; merging and rebasing offer
     /// those too plus the remote-tracking branches (`origin/main`).
     pub(crate) fn branch_picker_entries(&self) -> Vec<String> {
-        let snapshot = &self.scm_snapshot;
+        let snapshot = &self.scm.snapshot;
         let others = |list: &[String]| -> Vec<String> {
             list.iter()
                 .filter(|name| Some(*name) != snapshot.branch.as_ref())
@@ -384,7 +384,7 @@ impl App {
     /// Amends the last commit. Text in the commit message field becomes the new message;
     /// otherwise the message is kept.
     pub(crate) fn amend_last_commit(&mut self) {
-        let message = self.scm_commit_message.trim().to_owned();
+        let message = self.scm.commit_message.trim().to_owned();
         if !message.is_empty() {
             self.record_scm_commit_history(&message);
         }
@@ -392,7 +392,7 @@ impl App {
         let used_message = message.is_some();
         self.run_scm_remote(RemoteOp::Amend(message));
         if used_message {
-            self.scm_commit_message.clear();
+            self.scm.commit_message.clear();
         }
     }
 
@@ -461,7 +461,7 @@ mod tests {
 
     fn app(dir: &TempDir) -> App {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_snapshot.branches = vec!["main".into(), "topic".into()];
+        app.scm.snapshot.branches = vec!["main".into(), "topic".into()];
         app
     }
 
@@ -547,15 +547,15 @@ mod tests {
     fn amend_uses_and_clears_the_commit_message_only_when_there_is_one() {
         let dir = TempDir::new();
         let mut app = app(&dir);
-        app.scm_commit_message = "  new words ".into();
+        app.scm.commit_message = "  new words ".into();
         app.amend_last_commit();
         assert!(
-            app.scm_commit_message.is_empty(),
+            app.scm.commit_message.is_empty(),
             "the message was consumed"
         );
-        app.scm_commit_message = "   ".into();
+        app.scm.commit_message = "   ".into();
         app.amend_last_commit();
-        assert_eq!(app.scm_commit_message, "   ", "a blank field is left alone");
+        assert_eq!(app.scm.commit_message, "   ", "a blank field is left alone");
     }
 
     #[test]
@@ -653,9 +653,9 @@ mod tests {
 
     fn app_with_remote_branches(dir: &TempDir) -> App {
         let mut app = app(dir);
-        app.scm_snapshot.branch = Some("main".into());
-        app.scm_snapshot.branches = vec!["main".into(), "topic".into()];
-        app.scm_snapshot.remote_branches = vec!["origin/main".into(), "origin/topic".into()];
+        app.scm.snapshot.branch = Some("main".into());
+        app.scm.snapshot.branches = vec!["main".into(), "topic".into()];
+        app.scm.snapshot.remote_branches = vec!["origin/main".into(), "origin/topic".into()];
         app
     }
 

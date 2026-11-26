@@ -204,7 +204,7 @@ impl App {
         {
             return None;
         }
-        if let Some(card) = self.scm_hover_card.borrow().as_ref() {
+        if let Some(card) = self.scm.hover_card.borrow().as_ref() {
             if card.bounds.contains(x, y) {
                 return Some(Tip::Commit(card.commit_index));
             }
@@ -218,7 +218,7 @@ impl App {
             &layout,
             local,
             cw,
-            self.scm_repositories_collapsed,
+            self.scm.repositories_collapsed,
             self.scm_primary_action(),
             |index| self.discard_target_at(index).is_some(),
         )
@@ -226,7 +226,7 @@ impl App {
 
     /// Whether the pointer is hovering an interactive link inside the commit hover card.
     pub(crate) fn commit_hover_link_at(&self, x: f32, y: f32) -> bool {
-        self.scm_hover_card.borrow().as_ref().is_some_and(|card| {
+        self.scm.hover_card.borrow().as_ref().is_some_and(|card| {
             card.copy_sha_rect.contains(x, y)
                 || card
                     .open_github_rect
@@ -236,7 +236,7 @@ impl App {
 
     /// Handles a left click on the active commit hover card's footer actions.
     pub(crate) fn handle_commit_hover_click(&mut self, x: f32, y: f32) -> bool {
-        let Some(card) = self.scm_hover_card.borrow().clone() else {
+        let Some(card) = self.scm.hover_card.borrow().clone() else {
             return false;
         };
         if card.copy_sha_rect.contains(x, y) {
@@ -268,13 +268,13 @@ impl App {
         lh: f32,
         cw: f32,
     ) -> bool {
-        self.scm_visible
+        self.scm.visible
             && (self.scm_tip_at(x, y, window, lh, cw) != self.scm_tip_at(px, py, window, lh, cw)
                 || self.commit_hover_link_at(x, y) != self.commit_hover_link_at(px, py))
     }
 
     fn cached_commit_stats(&self, hash: &str) -> Option<scm_graph::CommitDiffStats> {
-        let mut cache = self.scm_commit_stats.borrow_mut();
+        let mut cache = self.scm.commit_stats.borrow_mut();
         if let Some(entry) = cache.get(hash) {
             return *entry;
         }
@@ -285,7 +285,7 @@ impl App {
     }
 
     fn cached_github_base_url(&self) -> Option<String> {
-        let mut base = self.scm_commit_github_base.borrow_mut();
+        let mut base = self.scm.commit_github_base.borrow_mut();
         if let Some(cached) = base.as_ref() {
             return cached.clone();
         }
@@ -297,13 +297,13 @@ impl App {
 
     /// The hover card under the pointer.
     pub(crate) fn draw_scm_tooltip(&self, renderer: &mut Renderer) {
-        if self.scm_graph_menu.is_some()
-            || self.scm_more_menu.is_some()
-            || self.scm_confirm.is_some()
+        if self.scm.graph_menu.is_some()
+            || self.scm.more_menu.is_some()
+            || self.scm.confirm.is_some()
             || self.explorer_context_menu.is_some()
-            || self.scm_graph_resize_dragging
+            || self.scm.graph_resize_dragging
         {
-            *self.scm_hover_card.borrow_mut() = None;
+            *self.scm.hover_card.borrow_mut() = None;
             return;
         }
         let (width, height) = renderer.size();
@@ -311,7 +311,7 @@ impl App {
         let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
         match self.scm_tip_at(mx, my, (width, height), lh, cw) {
             Some(Tip::Button(key)) => {
-                *self.scm_hover_card.borrow_mut() = None;
+                *self.scm.hover_card.borrow_mut() = None;
                 let line = self.t(key);
                 let box_width =
                     ((line.chars().count() as f32 * cw) + 20.0).min((width - 16.0).max(60.0));
@@ -335,8 +335,8 @@ impl App {
                 renderer.draw_text(&clipped, x + 10.0, y + 6.0, text);
             }
             Some(Tip::Commit(index)) => {
-                let Some(row) = self.scm_graph_rows.get(index) else {
-                    *self.scm_hover_card.borrow_mut() = None;
+                let Some(row) = self.scm.graph_rows.get(index) else {
+                    *self.scm.hover_card.borrow_mut() = None;
                     return;
                 };
                 self.draw_commit_hover_card(
@@ -349,7 +349,7 @@ impl App {
                 );
             }
             None => {
-                *self.scm_hover_card.borrow_mut() = None;
+                *self.scm.hover_card.borrow_mut() = None;
             }
         }
     }
@@ -500,7 +500,8 @@ impl App {
             + lh; // footer
 
         let existing_pos = self
-            .scm_hover_card
+            .scm
+            .hover_card
             .borrow()
             .as_ref()
             .filter(|card| card.commit_index == commit_index && card.bounds.contains(mx, my))
@@ -645,7 +646,7 @@ impl App {
             rect
         });
 
-        *self.scm_hover_card.borrow_mut() = Some(CommitHoverCard {
+        *self.scm.hover_card.borrow_mut() = Some(CommitHoverCard {
             commit_index,
             hash: commit.hash.clone(),
             short_hash: commit.short_hash.clone(),
@@ -900,9 +901,9 @@ mod tests {
 
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_visible = true;
+        app.scm.visible = true;
         app.view_preferences.primary_sidebar_visible = true;
-        *app.scm_hover_card.borrow_mut() = Some(CommitHoverCard {
+        *app.scm.hover_card.borrow_mut() = Some(CommitHoverCard {
             commit_index: 0,
             hash: "cdc385ed072c3ece00fad8ae978e4231a73d4d14".into(),
             short_hash: "cdc385e".into(),

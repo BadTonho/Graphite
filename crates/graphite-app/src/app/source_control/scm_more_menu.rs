@@ -622,7 +622,7 @@ impl App {
             .unwrap_or((1200.0, 760.0, 18.0, 8.0));
         if self.zen_mode
             || !self.view_preferences.primary_sidebar_visible
-            || !self.scm_visible
+            || !self.scm.visible
             || self.active_plugin_activity.is_some()
             || self.shows_scm_welcome_view()
             || !self.primary_sidebar_contains(x, y, window_width, window_height, lh)
@@ -641,14 +641,14 @@ impl App {
         let Some((index, staged)) = hit else {
             return false;
         };
-        self.scm_selected = index;
+        self.scm.selected = index;
         self.workbench_menu = None;
         self.settings_menu = None;
         self.profile_menu = None;
         self.terminal_toolbar_menu = None;
         self.activity_bar_menu = None;
         self.explorer_context_menu = None;
-        self.scm_graph_menu = None;
+        self.scm.graph_menu = None;
         let kind = MoreMenuKind::File { index, staged };
         self.open_more_menu(kind, (x, y), (window_width, window_height), lh, cw);
         true
@@ -667,13 +667,13 @@ impl App {
         } else {
             0.0
         };
-        let tree = menu_tree(kind, self.scm_view_as_tree);
+        let tree = menu_tree(kind, self.scm.view_as_tree);
         let char_width = cw.max(6.0);
         let mut menu = MoreMenu::new(&tree, anchor, window, bottom_inset, |label| {
             self.t(label).chars().count() as f32 * char_width
         });
         menu.kind = kind;
-        self.scm_more_menu = Some(menu);
+        self.scm.more_menu = Some(menu);
     }
 
     /// The arrow of the commit button: opens its menu under the button, `anchor` being the
@@ -725,11 +725,12 @@ impl App {
     /// The tree of the open menu.
     fn open_more_tree(&self) -> Vec<MoreNode> {
         menu_tree(
-            self.scm_more_menu
+            self.scm
+                .more_menu
                 .as_ref()
                 .map(|menu| menu.kind)
                 .unwrap_or_default(),
-            self.scm_view_as_tree,
+            self.scm.view_as_tree,
         )
     }
 
@@ -744,7 +745,7 @@ impl App {
 
     pub(crate) fn scm_more_menu_pointer_moved(&mut self, x: f32, y: f32) {
         let tree = self.open_more_tree();
-        if let Some(menu) = self.scm_more_menu.as_mut() {
+        if let Some(menu) = self.scm.more_menu.as_mut() {
             menu.pointer_moved(&tree, x, y);
         }
     }
@@ -753,27 +754,27 @@ impl App {
     /// click opened a submenu.
     pub(crate) fn scm_more_menu_click(&mut self, x: f32, y: f32) {
         let tree = self.open_more_tree();
-        let Some(menu) = self.scm_more_menu.as_mut() else {
+        let Some(menu) = self.scm.more_menu.as_mut() else {
             return;
         };
         if !menu.contains(&tree, x, y) {
-            self.scm_more_menu = None;
+            self.scm.more_menu = None;
             return;
         }
         let kind = menu.kind;
         if let Some(command) = menu.click(&tree, x, y) {
-            self.scm_more_menu = None;
+            self.scm.more_menu = None;
             self.run_more_command_for(command, kind);
         }
     }
 
     pub(crate) fn scm_more_menu_key(&mut self, key: &Key) -> bool {
         let tree = self.open_more_tree();
-        let Some(menu) = self.scm_more_menu.as_mut() else {
+        let Some(menu) = self.scm.more_menu.as_mut() else {
             return false;
         };
         match key {
-            Key::Named(NamedKey::Escape) => self.scm_more_menu = None,
+            Key::Named(NamedKey::Escape) => self.scm.more_menu = None,
             Key::Named(NamedKey::ArrowDown) => menu.step(&tree, true),
             Key::Named(NamedKey::ArrowUp) => menu.step(&tree, false),
             Key::Named(NamedKey::ArrowRight) => {
@@ -785,7 +786,7 @@ impl App {
             Key::Named(NamedKey::Enter) => {
                 let kind = menu.kind;
                 if let Some(command) = menu.activate(&tree) {
-                    self.scm_more_menu = None;
+                    self.scm.more_menu = None;
                     self.run_more_command_for(command, kind);
                 }
             }
@@ -802,7 +803,7 @@ impl App {
     /// The file a file menu command is about.
     fn menu_file(&self, kind: MoreMenuKind) -> Option<crate::scm::FileStatus> {
         match kind {
-            MoreMenuKind::File { index, .. } => self.scm_snapshot.files.get(index).cloned(),
+            MoreMenuKind::File { index, .. } => self.scm.snapshot.files.get(index).cloned(),
             MoreMenuKind::Actions | MoreMenuKind::CommitOptions => None,
         }
     }
@@ -813,7 +814,7 @@ impl App {
         let (Some(file), MoreMenuKind::File { index, .. }) = (self.menu_file(kind), kind) else {
             return;
         };
-        self.scm_selected = index;
+        self.scm.selected = index;
         match command {
             C::FileOpen => {
                 let path = self.tree.root().join(&file.path);
@@ -882,7 +883,7 @@ impl App {
             C::StageAll => self.perform_scm_action(ScmAction::StageAll),
             C::UnstageAll => self.perform_scm_action(ScmAction::UnstageAll),
             C::DiscardAll => self.confirm_discard(self.discard_all_targets()),
-            C::ViewAsTree(tree) => self.scm_view_as_tree = tree,
+            C::ViewAsTree(tree) => self.scm.view_as_tree = tree,
             C::ShowOutput => self.open_scm_output(),
             C::Clone => self.open_name_prompt(NameTarget::CloneUrl),
             C::Merge => self.open_branch_picker_for(BranchPickerAction::Merge),
@@ -921,7 +922,7 @@ impl App {
     }
 
     pub(crate) fn draw_scm_more_menu(&self, renderer: &mut Renderer) {
-        let Some(menu) = &self.scm_more_menu else {
+        let Some(menu) = &self.scm.more_menu else {
             return;
         };
         let tree = self.open_more_tree();
@@ -1143,12 +1144,12 @@ mod tests {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_scm_more_menu();
-        assert!(app.scm_more_menu.is_some());
+        assert!(app.scm.more_menu.is_some());
         app.scm_more_menu_click(5000.0, 5000.0);
-        assert!(app.scm_more_menu.is_none());
+        assert!(app.scm.more_menu.is_none());
         app.open_scm_more_menu();
         assert!(app.scm_more_menu_key(&Key::Named(NamedKey::Escape)));
-        assert!(app.scm_more_menu.is_none());
+        assert!(app.scm.more_menu.is_none());
         assert!(!app.scm_more_menu_key(&Key::Named(NamedKey::Escape)));
     }
 
@@ -1157,8 +1158,8 @@ mod tests {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         // The pickers need something to list.
-        app.scm_snapshot.branch = Some("main".into());
-        app.scm_snapshot.branches = vec!["main".into(), "topic".into()];
+        app.scm.snapshot.branch = Some("main".into());
+        app.scm.snapshot.branches = vec!["main".into(), "topic".into()];
         app.run_more_command(MoreCommand::Merge);
         assert_eq!(app.branch_picker_action, BranchPickerAction::Merge);
         app.close_branch_picker();
@@ -1224,7 +1225,7 @@ mod tests {
 
     fn app_with_file(dir: &TempDir, staged: bool) -> App {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_snapshot.files = vec![crate::scm::FileStatus {
+        app.scm.snapshot.files = vec![crate::scm::FileStatus {
             path: "src/a.txt".into(),
             staged,
             unstaged: !staged,
@@ -1248,12 +1249,13 @@ mod tests {
             8.0,
         );
         let tree = app.open_more_tree();
-        let menu = app.scm_more_menu.as_ref().unwrap();
+        let menu = app.scm.more_menu.as_ref().unwrap();
         let (x, y) = point(menu, &tree, 0, index_of(&tree, "scm.file.discard"));
         app.scm_more_menu_click(x, y);
-        assert!(app.scm_more_menu.is_none());
+        assert!(app.scm.more_menu.is_none());
         let confirm = app
-            .scm_confirm
+            .scm
+            .confirm
             .as_ref()
             .expect("a confirmation is shown first");
         assert!(confirm.message.contains("a.txt"));
@@ -1280,7 +1282,7 @@ mod tests {
         assert_eq!(app.status, app.t("scm.file.already_ignored"));
         // A command for a file that is no longer listed does nothing.
         let mut app = app_with_file(&dir, false);
-        app.scm_snapshot.files.clear();
+        app.scm.snapshot.files.clear();
         app.status.clear();
         app.run_more_command_for(MoreCommand::FileAddToGitignore, kind);
         assert!(app.status.is_empty());
@@ -1290,7 +1292,7 @@ mod tests {
     fn staging_from_the_file_menu_selects_that_file_and_starts_the_operation() {
         let dir = TempDir::new();
         let mut app = app_with_file(&dir, false);
-        app.scm_selected = 7;
+        app.scm.selected = 7;
         app.status.clear();
         app.run_more_command_for(
             MoreCommand::FileStage,
@@ -1299,7 +1301,7 @@ mod tests {
                 staged: false,
             },
         );
-        assert_eq!(app.scm_selected, 0);
+        assert_eq!(app.scm.selected, 0);
         // Without an event loop the operation stops at this message, which shows it was started.
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
@@ -1374,16 +1376,16 @@ mod tests {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.open_scm_commit_menu((40.0, 40.0));
         assert_eq!(
-            app.scm_more_menu.as_ref().unwrap().kind,
+            app.scm.more_menu.as_ref().unwrap().kind,
             MoreMenuKind::CommitOptions
         );
         let tree = app.open_more_tree();
-        let menu = app.scm_more_menu.as_ref().unwrap();
+        let menu = app.scm.more_menu.as_ref().unwrap();
         let (x, y) = point(menu, &tree, 0, index_of(&tree, "scm.more.commit_push"));
         app.status.clear();
-        app.scm_commit_message.clear();
+        app.scm.commit_message.clear();
         app.scm_more_menu_click(x, y);
-        assert!(app.scm_more_menu.is_none());
+        assert!(app.scm.more_menu.is_none());
         // The choice reached the commit action; without an event loop it stops at this message.
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
     }
@@ -1407,11 +1409,11 @@ mod tests {
         };
         assert_eq!(offered(false), [("scm.more.view_as_tree", true)]);
         assert_eq!(offered(true), [("scm.more.view_as_list", false)]);
-        assert!(!app.scm_view_as_tree);
+        assert!(!app.scm.view_as_tree);
         app.run_more_command(MoreCommand::ViewAsTree(true));
-        assert!(app.scm_view_as_tree);
+        assert!(app.scm.view_as_tree);
         app.run_more_command(MoreCommand::ViewAsTree(false));
-        assert!(!app.scm_view_as_tree);
+        assert!(!app.scm.view_as_tree);
     }
 
     #[test]

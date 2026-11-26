@@ -817,9 +817,9 @@ impl App {
 
     pub(crate) fn refresh_scm_async(&mut self) {
         let root = self.scm_workspace_root();
-        let graph_limit = self.scm_graph_limit;
+        let graph_limit = self.scm.graph_limit;
         if let Some(proxy) = self.event_proxy.clone() {
-            if !self.scm_refresh_gate.try_start() {
+            if !self.scm.refresh_gate.try_start() {
                 return;
             }
             let graph_root = root.clone();
@@ -832,7 +832,7 @@ impl App {
                 })
                 .is_ok()
             {
-                self.scm_refresh_gate.started();
+                self.scm.refresh_gate.started();
             }
             if std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
@@ -842,18 +842,18 @@ impl App {
                 })
                 .is_ok()
             {
-                self.scm_refresh_gate.started();
+                self.scm.refresh_gate.started();
             }
         } else {
-            self.scm_snapshot = crate::scm::snapshot(&root);
-            self.scm_graph_rows =
+            self.scm.snapshot = crate::scm::snapshot(&root);
+            self.scm.graph_rows =
                 crate::vcs::scm_graph::load_graph_commits(&root, graph_limit).unwrap_or_default();
         }
     }
 
     pub(crate) fn refresh_scm_graph_async(&mut self) {
         let root = self.scm_workspace_root();
-        let graph_limit = self.scm_graph_limit;
+        let graph_limit = self.scm.graph_limit;
         if let Some(proxy) = self.event_proxy.clone() {
             std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
@@ -863,41 +863,44 @@ impl App {
                 })
                 .ok();
         } else {
-            self.scm_graph_rows =
+            self.scm.graph_rows =
                 crate::vcs::scm_graph::load_graph_commits(&root, graph_limit).unwrap_or_default();
         }
     }
 
     pub(crate) fn accept_scm_snapshot(&mut self, snapshot: crate::scm::Snapshot) {
-        self.scm_snapshot = snapshot;
-        self.scm_selected = self
-            .scm_selected
-            .min(self.scm_snapshot.files.len().saturating_sub(1));
+        self.scm.snapshot = snapshot;
+        self.scm.selected = self
+            .scm
+            .selected
+            .min(self.scm.snapshot.files.len().saturating_sub(1));
     }
 
     pub(crate) fn toggle_scm(&mut self) {
-        self.scm_visible = !self.scm_visible;
-        self.scm_focused = self.scm_visible;
-        if self.scm_visible {
+        self.scm.visible = !self.scm.visible;
+        self.scm.focused = self.scm.visible;
+        if self.scm.visible {
             self.close_plugins();
             self.refresh_scm_async();
         }
     }
 
     pub(crate) fn scm_selected_path(&self) -> Option<PathBuf> {
-        self.scm_snapshot
+        self.scm
+            .snapshot
             .files
-            .get(self.scm_selected)
+            .get(self.scm.selected)
             .map(|item| self.scm_workspace_root().join(&item.path))
     }
 
     pub(crate) fn open_branch_picker(&mut self) {
         self.branch_picker = true;
         self.branch_selected = self
-            .scm_snapshot
+            .scm
+            .snapshot
             .branches
             .iter()
-            .position(|branch| Some(branch) == self.scm_snapshot.branch.as_ref())
+            .position(|branch| Some(branch) == self.scm.snapshot.branch.as_ref())
             .unwrap_or(0);
         self.status = self.t("scm.branch.select_hint").into();
     }
@@ -978,8 +981,9 @@ impl App {
 
     /// Stages or unstages every file of a list that is at or below `folder`.
     pub(crate) fn stage_folder(&mut self, staged: bool, folder: &Path) {
-        self.scm_batch_paths = self
-            .scm_snapshot
+        self.scm.batch_paths = self
+            .scm
+            .snapshot
             .files
             .iter()
             .filter(|file| {
@@ -1002,14 +1006,14 @@ impl App {
     /// Opens or closes a folder of the tree view.
     pub(crate) fn toggle_scm_folder(&mut self, staged: bool, folder: PathBuf) {
         let key = (staged, folder);
-        if !self.scm_collapsed_folders.remove(&key) {
-            self.scm_collapsed_folders.insert(key);
+        if !self.scm.collapsed_folders.remove(&key) {
+            self.scm.collapsed_folders.insert(key);
         }
     }
 
     /// What the big button under the commit message does right now.
     pub(crate) fn scm_primary_action(&self) -> ScmPrimaryAction {
-        scm_primary_action_for(&self.scm_snapshot)
+        scm_primary_action_for(&self.scm.snapshot)
     }
 
     pub(crate) fn perform_scm_action(&mut self, action: ScmAction) {
@@ -1032,23 +1036,25 @@ impl App {
             ScmAction::StageCursorLine
             | ScmAction::RevertCursorLine
             | ScmAction::RevertFirstHunk => active_path,
-            ScmAction::StageHunk(_) if !self.scm_visible => active_path,
-            _ if self.scm_visible => self.scm_selected_path(),
+            ScmAction::StageHunk(_) if !self.scm.visible => active_path,
+            _ if self.scm.visible => self.scm_selected_path(),
             _ => active_path,
         };
         let batch_paths = match action {
             ScmAction::StageAll => self
-                .scm_snapshot
+                .scm
+                .snapshot
                 .files
                 .iter()
                 .filter(|file| file.unstaged || file.untracked)
                 .map(|file| file.path.clone())
                 .collect::<Vec<_>>(),
             ScmAction::StageFolder | ScmAction::UnstageFolder => {
-                std::mem::take(&mut self.scm_batch_paths)
+                std::mem::take(&mut self.scm.batch_paths)
             }
             ScmAction::UnstageAll => self
-                .scm_snapshot
+                .scm
+                .snapshot
                 .files
                 .iter()
                 .filter(|file| file.staged)
@@ -1059,7 +1065,7 @@ impl App {
         let commit_request = match action {
             ScmAction::Commit(options) => match self.build_commit_request(options) {
                 Ok(request) => {
-                    self.scm_commit_pending = true;
+                    self.scm.commit_pending = true;
                     self.begin_scm_busy(super::scm_progress::ScmBusyKind::Commit);
                     Some(request)
                 }
@@ -1287,7 +1293,8 @@ impl App {
     pub(crate) fn stage_saved_conflict(&mut self, path: &Path) {
         let root = self.scm_workspace_root();
         let is_conflict = self
-            .scm_snapshot
+            .scm
+            .snapshot
             .files
             .iter()
             .any(|item| item.conflicted && crate::same_file_path(&root.join(&item.path), path));
@@ -1318,9 +1325,10 @@ impl App {
 
     pub(crate) fn open_selected_conflict(&mut self) {
         let in_conflict = self
-            .scm_snapshot
+            .scm
+            .snapshot
             .files
-            .get(self.scm_selected)
+            .get(self.scm.selected)
             .is_some_and(|item| item.conflicted);
         if in_conflict {
             if let Some(file) = self.scm_selected_path() {
@@ -1467,7 +1475,7 @@ impl App {
         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
         renderer.draw_text(self.t("scm.sidebar.title"), left, row_h * 0.2, dim);
         let repo_header_y = layout.repository_header.y;
-        let repo_chevron = if self.scm_repositories_collapsed {
+        let repo_chevron = if self.scm.repositories_collapsed {
             crate::file_icons::CHEVRON_RIGHT
         } else {
             crate::file_icons::CHEVRON_DOWN
@@ -1492,7 +1500,7 @@ impl App {
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_else(|| repo_root.to_str().unwrap_or("Workspace"));
-        if !self.scm_repositories_collapsed {
+        if !self.scm.repositories_collapsed {
             let icon_size = layout.repository_icon.width;
             renderer.draw_icon(
                 crate::file_icons::GIT.glyph,
@@ -1511,7 +1519,7 @@ impl App {
                 text,
             );
         }
-        if !self.scm_repositories_collapsed {
+        if !self.scm.repositories_collapsed {
             for (rect, icon) in [
                 (layout.repo_sync, ScmIcon::Sync),
                 (layout.repo_pull_request, ScmIcon::PullRequest),
@@ -1523,11 +1531,12 @@ impl App {
             }
         }
         let branch = self
-            .scm_snapshot
+            .scm
+            .snapshot
             .branch
             .as_deref()
             .unwrap_or_else(|| self.t("scm.sidebar.no_repository"));
-        if !self.scm_repositories_collapsed {
+        if !self.scm.repositories_collapsed {
             let icon_size = layout.branch_icon.width;
             renderer.draw_icon(
                 crate::file_icons::GIT.glyph,
@@ -1568,7 +1577,7 @@ impl App {
         }
         let commit_top = layout.commit_field.y;
         let field_width = right - left;
-        let focused = self.scm_commit_prompt;
+        let focused = self.scm.commit_prompt;
         let field_background = Theme::color(0x1f1f1f, 0xffffff);
         let field_border = if focused {
             Theme::color(Theme::STATUS, 0x007acc)
@@ -1596,30 +1605,30 @@ impl App {
         let visible_chars = ((field_width - field_padding * 2.0) / cell_width)
             .floor()
             .max(0.0) as usize;
-        let placeholder = match &self.scm_snapshot.branch {
+        let placeholder = match &self.scm.snapshot.branch {
             Some(branch) => self.tf(
                 "scm.sidebar.commit_placeholder_branch",
                 &[("branch", branch)],
             ),
             None => self.t("scm.sidebar.commit_placeholder").to_owned(),
         };
-        let field_text = if self.scm_commit_message.is_empty() {
+        let field_text = if self.scm.commit_message.is_empty() {
             scm_fit_label(&placeholder, visible_chars)
         } else {
-            scm_visible_tail(&self.scm_commit_message, visible_chars)
+            scm_visible_tail(&self.scm.commit_message, visible_chars)
         };
         renderer.draw_text(
             &field_text,
             left + field_padding,
             commit_top + (row_h - line_height) * 0.5 + row_h * 0.08,
-            if self.scm_commit_message.is_empty() {
+            if self.scm.commit_message.is_empty() {
                 rgb(Theme::color(0xb0b0b0, 0x666666))
             } else {
                 text
             },
         );
         if focused {
-            let caret_chars = if self.scm_commit_message.is_empty() {
+            let caret_chars = if self.scm.commit_message.is_empty() {
                 0
             } else {
                 field_text.chars().count()
@@ -1636,7 +1645,7 @@ impl App {
         let commit_y = layout.commit_button.y;
         let primary = self.scm_primary_action();
         let commit_enabled =
-            primary != ScmPrimaryAction::Commit || !self.scm_commit_message.trim().is_empty();
+            primary != ScmPrimaryAction::Commit || !self.scm.commit_message.trim().is_empty();
         renderer.draw_rect(
             left,
             commit_y,
@@ -1733,7 +1742,7 @@ impl App {
             commit_color,
         );
         let list_top = layout.list_top;
-        if let Some(error) = &self.scm_snapshot.error {
+        if let Some(error) = &self.scm.snapshot.error {
             renderer.draw_text(
                 error,
                 left,
@@ -1840,7 +1849,8 @@ impl App {
                     collapsed,
                 } => {
                     let name = self
-                        .scm_snapshot
+                        .scm
+                        .snapshot
                         .files
                         .get(first)
                         .map(|file| folder_path(&file.path, depth))
@@ -1888,8 +1898,8 @@ impl App {
                     );
                 }
                 ScmListRowKind::File { index, staged } => {
-                    let item = &self.scm_snapshot.files[index];
-                    if index == self.scm_selected {
+                    let item = &self.scm.snapshot.files[index];
+                    if index == self.scm.selected {
                         renderer.draw_rect(
                             ACTIVITY_BAR_WIDTH,
                             y - row_h * 0.1,
@@ -1901,7 +1911,7 @@ impl App {
                     let icon = crate::icon_theme::for_path(&item.path);
                     let icon_size = (row_h * 0.72).round();
                     // In the tree the folders above a file already say where it is.
-                    let tree_depth = if self.scm_view_as_tree {
+                    let tree_depth = if self.scm.view_as_tree {
                         item.path.components().count().saturating_sub(1)
                     } else {
                         0
@@ -1924,7 +1934,7 @@ impl App {
                     let dir = item
                         .path
                         .parent()
-                        .filter(|p| !p.as_os_str().is_empty() && !self.scm_view_as_tree)
+                        .filter(|p| !p.as_os_str().is_empty() && !self.scm.view_as_tree)
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_default();
                     let kind = item.kind(staged);
@@ -1987,10 +1997,10 @@ impl App {
                 1.0,
                 rgb(Theme::color(0x3c3c3c, 0xd0d0d0)),
             );
-            let hovered = !self.scm_graph_resize_dragging
-                && !self.scm_graph_collapsed
+            let hovered = !self.scm.graph_resize_dragging
+                && !self.scm.graph_collapsed
                 && self.is_over_scm_graph_resize_handle(self.mouse.x as f32, self.mouse.y as f32);
-            if hovered || self.scm_graph_resize_dragging {
+            if hovered || self.scm.graph_resize_dragging {
                 renderer.draw_rect(divider.x, line_y - 1.5, divider.width, 3.0, accent);
             }
         }

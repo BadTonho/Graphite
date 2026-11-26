@@ -52,7 +52,7 @@ impl App {
         &mut self,
         options: crate::scm_commit::CommitOptions,
     ) -> bool {
-        if std::mem::take(&mut self.scm_commit_save_checked) {
+        if std::mem::take(&mut self.scm.commit_save_checked) {
             return false;
         }
         if self.commit_unsaved_documents().is_empty() {
@@ -80,7 +80,7 @@ impl App {
             let documents = self.commit_unsaved_documents();
             self.save_batch(documents, AfterSave::Commit(options));
         } else {
-            self.scm_commit_save_checked = true;
+            self.scm.commit_save_checked = true;
             self.perform_scm_action(crate::app::scm_ui::ScmAction::Commit(options));
         }
     }
@@ -376,7 +376,7 @@ mod tests {
         let file = dir.path().join("teste3.cpp");
         std::fs::write(&file, "").unwrap();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_commit_message = "msg".into();
+        app.scm.commit_message = "msg".into();
         app.open_file(file);
         app.editor_mut().insert("int main() {}");
         app
@@ -413,7 +413,7 @@ mod tests {
         app.run_ui_command("graphite.window.cancelClose");
         assert!(app.pending_commit_save.is_none());
         assert!(!app.unsaved_modal_visible());
-        assert_eq!(app.scm_commit_message, "msg");
+        assert_eq!(app.scm.commit_message, "msg");
         assert!(app.documents.iter().any(|d| d.is_dirty()));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("teste3.cpp")).unwrap(),

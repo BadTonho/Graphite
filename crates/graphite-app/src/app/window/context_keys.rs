@@ -228,7 +228,7 @@ impl super::App {
                 self.terminal_focused,
                 false,
             ),
-            (WidgetKind::Scm, "scmVisible", self.scm_visible, false),
+            (WidgetKind::Scm, "scmVisible", self.scm.visible, false),
             (
                 WidgetKind::Branch,
                 "branchPickerVisible",
@@ -262,7 +262,7 @@ impl super::App {
             (
                 WidgetKind::Commit,
                 "commitPromptVisible",
-                self.scm_commit_prompt,
+                self.scm.commit_prompt,
                 false,
             ),
         ];
@@ -451,7 +451,7 @@ impl super::App {
                 WidgetKind::ProjectSearch => self.search_results.len(),
                 WidgetKind::Snippet => self.snippets.len(),
                 WidgetKind::Terminal => self.terminals.len(),
-                WidgetKind::Scm => self.scm_snapshot.files.len(),
+                WidgetKind::Scm => self.scm.snapshot.files.len(),
                 WidgetKind::Branch => self.branch_picker_entries().len(),
                 _ => 0,
             };

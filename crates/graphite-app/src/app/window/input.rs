@@ -203,7 +203,7 @@ impl App {
                 return;
             }
         }
-        if self.scm_extension_input.is_some()
+        if self.scm.extension_input.is_some()
             && self.handle_extension_scm_input_key(
                 &event.logical_key,
                 event.text.as_deref(),
@@ -213,9 +213,9 @@ impl App {
         {
             return;
         }
-        if self.scm_commit_prompt {
+        if self.scm.commit_prompt {
             if ctrl && matches!(event.logical_key, Key::Named(NamedKey::Enter)) {
-                if !self.scm_commit_message.trim().is_empty() {
+                if !self.scm.commit_message.trim().is_empty() {
                     self.run_ui_command("graphite.scm.commit");
                 }
                 return;
@@ -225,7 +225,7 @@ impl App {
                     self.run_ui_command("graphite.commit.cancel");
                 }
                 Key::Named(NamedKey::Enter) => {
-                    self.scm_commit_prompt = false;
+                    self.scm.commit_prompt = false;
                 }
                 Key::Named(NamedKey::Backspace) => {
                     self.run_ui_command("graphite.commit.deleteLeft");
@@ -242,7 +242,7 @@ impl App {
                         .as_ref()
                         .filter(|text| !text.chars().any(char::is_control))
                     {
-                        self.scm_commit_message.push_str(text);
+                        self.scm.commit_message.push_str(text);
                     }
                 }
                 _ => {}
@@ -530,7 +530,7 @@ impl App {
     /// Plain-key shortcuts of the source control list apply only while that list has the focus,
     /// so typing in the editor with the panel open is never intercepted.
     pub(crate) fn scm_keys_active(&self) -> bool {
-        self.scm_visible && self.scm_focused
+        self.scm.visible && self.scm.focused
     }
 
     pub(crate) fn scm_letter_command(text: &str) -> Option<&'static str> {
@@ -565,12 +565,12 @@ mod scm_focus_tests {
     fn scm_shortcuts_are_inactive_when_the_editor_has_focus() {
         let dir = TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_visible = true;
-        app.scm_focused = false;
+        app.scm.visible = true;
+        app.scm.focused = false;
         assert!(!app.scm_keys_active());
-        app.scm_focused = true;
+        app.scm.focused = true;
         assert!(app.scm_keys_active());
-        app.scm_visible = false;
+        app.scm.visible = false;
         assert!(!app.scm_keys_active());
     }
 
@@ -581,6 +581,6 @@ mod scm_focus_tests {
         app.toggle_scm();
         assert!(app.scm_keys_active());
         app.toggle_scm();
-        assert!(!app.scm_visible && !app.scm_focused);
+        assert!(!app.scm.visible && !app.scm.focused);
     }
 }

@@ -91,7 +91,7 @@ pub(crate) fn scm_welcome_layout(
 
 impl App {
     pub(crate) fn shows_scm_welcome_view(&self) -> bool {
-        self.scm_snapshot.error.is_some() && self.vsix_scm_rows().is_empty()
+        self.scm.snapshot.error.is_some() && self.vsix_scm_rows().is_empty()
     }
 
     pub(crate) fn initialize_scm_repository(&mut self) {
@@ -111,7 +111,7 @@ impl App {
             self.start_github_sign_in_with_scope("repo");
             return;
         }
-        if self.scm_snapshot.error.is_some() {
+        if self.scm.snapshot.error.is_some() {
             self.initialize_scm_repository();
         }
         super::plugins::drawing::open_external_https("https://github.com/new");

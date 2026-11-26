@@ -25,15 +25,16 @@ impl App {
         }
         let repo_name = self.tree.root_name();
         let branch = self
-            .scm_snapshot
+            .scm
+            .snapshot
             .branch
             .clone()
             .unwrap_or_else(|| "main".into());
-        self.scm_publish_modal = Some(ScmPublishModal { repo_name, branch });
+        self.scm.publish_modal = Some(ScmPublishModal { repo_name, branch });
     }
 
     pub(crate) fn start_publish_repo(&mut self, is_private: bool) {
-        let Some(modal) = self.scm_publish_modal.take() else {
+        let Some(modal) = self.scm.publish_modal.take() else {
             return;
         };
         let Some(session) = self.github_session.clone() else {
@@ -74,11 +75,11 @@ impl App {
     }
 
     pub(crate) fn handle_scm_publish_key(&mut self, key: &Key) -> bool {
-        if self.scm_publish_modal.is_none() {
+        if self.scm.publish_modal.is_none() {
             return false;
         }
         if matches!(key, Key::Named(NamedKey::Escape)) {
-            self.scm_publish_modal = None;
+            self.scm.publish_modal = None;
         }
         true
     }
@@ -113,7 +114,7 @@ impl App {
         width: f32,
         height: f32,
     ) -> bool {
-        if self.scm_publish_modal.is_none() {
+        if self.scm.publish_modal.is_none() {
             return false;
         }
         let (panel, public_rect, private_rect, cancel_rect) =
@@ -125,13 +126,13 @@ impl App {
         } else if in_rect(private_rect) {
             self.start_publish_repo(true);
         } else if in_rect(cancel_rect) || !in_rect(panel) {
-            self.scm_publish_modal = None;
+            self.scm.publish_modal = None;
         }
         true
     }
 
     pub(crate) fn draw_scm_publish_modal(&self, renderer: &mut Renderer) {
-        let Some(modal) = &self.scm_publish_modal else {
+        let Some(modal) = &self.scm.publish_modal else {
             return;
         };
         let (width, height) = renderer.size();
@@ -187,13 +188,13 @@ mod tests {
             name: None,
             scope: "repo".into(),
         });
-        app.scm_snapshot.branch = Some("master".into());
+        app.scm.snapshot.branch = Some("master".into());
 
         app.open_publish_repo_modal();
-        let modal = app.scm_publish_modal.as_ref().expect("modal opened");
+        let modal = app.scm.publish_modal.as_ref().expect("modal opened");
         assert_eq!(modal.branch, "master");
 
         assert!(app.handle_scm_publish_key(&Key::Named(NamedKey::Escape)));
-        assert!(app.scm_publish_modal.is_none());
+        assert!(app.scm.publish_modal.is_none());
     }
 }

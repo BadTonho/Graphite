@@ -424,7 +424,7 @@ mod tests {
             activity_button_node(Activity::SourceControl),
             None,
         ));
-        assert!(app.scm_visible);
+        assert!(app.scm.visible);
         assert_eq!(app.active_activity(), Activity::SourceControl);
     }
 

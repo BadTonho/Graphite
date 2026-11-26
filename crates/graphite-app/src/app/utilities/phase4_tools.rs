@@ -38,7 +38,8 @@ impl App {
         vec![
             (
                 StatusSegment::Branch,
-                self.scm_snapshot
+                self.scm
+                    .snapshot
                     .branch
                     .as_deref()
                     .map(str::to_owned)

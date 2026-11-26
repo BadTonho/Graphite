@@ -9,11 +9,11 @@ impl App {
         &self,
         options: CommitOptions,
     ) -> Result<CommitRequest, String> {
-        let message = self.scm_commit_message.trim().to_owned();
+        let message = self.scm.commit_message.trim().to_owned();
         if message.is_empty() && !options.amend {
             return Err(self.t("scm.error.empty_message").into());
         }
-        let files = &self.scm_snapshot.files;
+        let files = &self.scm.snapshot.files;
         let any_staged = files.iter().any(|file| file.staged);
         if !options.amend {
             if options.scope == CommitScope::Staged && !any_staged {
@@ -47,16 +47,16 @@ mod tests {
 
     fn app(dir: &TempDir, staged: bool, unstaged: bool, message: &str) -> App {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_commit_message = message.into();
+        app.scm.commit_message = message.into();
         if staged {
-            app.scm_snapshot.files.push(FileStatus {
+            app.scm.snapshot.files.push(FileStatus {
                 path: "s.txt".into(),
                 staged: true,
                 ..Default::default()
             });
         }
         if unstaged {
-            app.scm_snapshot.files.push(FileStatus {
+            app.scm.snapshot.files.push(FileStatus {
                 path: "u.txt".into(),
                 unstaged: true,
                 ..Default::default()
@@ -143,7 +143,7 @@ mod tests {
         let mut app = app(&dir, false, false, "keep me");
         app.status.clear();
         app.perform_scm_action(super::scm_ui::ScmAction::Commit(CommitOptions::PLAIN));
-        assert_eq!(app.scm_commit_message, "keep me");
+        assert_eq!(app.scm.commit_message, "keep me");
         assert!(!app.status.is_empty());
     }
 }

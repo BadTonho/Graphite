@@ -141,7 +141,7 @@ fn completing_a_conflicted_file_stages_it() {
     crate::scm::mark_conflicted_for_tests(dir.path(), "merged.txt", "base\n", "ours\n", "theirs\n");
     let mut app = App::new_with_options(dir.path().into(), None, true);
     app.refresh_scm_async();
-    assert!(app.scm_snapshot.files.iter().any(|file| file.conflicted));
+    assert!(app.scm.snapshot.files.iter().any(|file| file.conflicted));
     app.open_merge_editor(path.clone()).unwrap();
     app.run_ui_command("merge.acceptAllInput2");
     complete(&mut app).unwrap();
@@ -150,6 +150,6 @@ fn completing_a_conflicted_file_stages_it() {
         std::fs::read_to_string(&path).unwrap(),
         "top\ntheirs1\nmid\ntheirs2\nbottom\n"
     );
-    assert!(!app.scm_snapshot.files.iter().any(|file| file.conflicted));
+    assert!(!app.scm.snapshot.files.iter().any(|file| file.conflicted));
     assert!(crate::scm::merge_conflict(dir.path(), &path, &app.translator).is_err());
 }

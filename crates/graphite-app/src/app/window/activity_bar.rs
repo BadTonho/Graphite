@@ -759,7 +759,7 @@ impl App {
         }
         self.close_plugins();
         self.close_project_search();
-        self.scm_visible = false;
+        self.scm.visible = false;
         self.active_plugin_activity = Some(entry.key.clone());
         let is_native = self.plugins.installed_plugins().iter().any(|record| {
             record.metadata.id() == entry.plugin_id
@@ -1005,7 +1005,7 @@ impl App {
             Activity::Plugins
         } else if self.search_query.is_some() {
             Activity::Search
-        } else if self.scm_visible {
+        } else if self.scm.visible {
             Activity::SourceControl
         } else {
             Activity::Explorer
@@ -1017,7 +1017,7 @@ impl App {
         match activity {
             Activity::Explorer => {
                 self.close_plugins();
-                self.scm_visible = false;
+                self.scm.visible = false;
                 self.close_project_search();
             }
             Activity::Search => {
@@ -1025,18 +1025,18 @@ impl App {
                 if self.search_query.is_some() {
                     self.close_project_search();
                 } else {
-                    self.scm_visible = false;
+                    self.scm.visible = false;
                     self.open_project_search();
                 }
             }
             Activity::SourceControl => {
                 self.close_plugins();
-                if self.scm_visible {
-                    self.scm_visible = false;
+                if self.scm.visible {
+                    self.scm.visible = false;
                 } else {
                     self.close_project_search();
-                    self.scm_visible = true;
-                    self.scm_focused = true;
+                    self.scm.visible = true;
+                    self.scm.focused = true;
                     self.refresh_scm_async();
                 }
             }
@@ -1915,7 +1915,7 @@ mod tests {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
         assert_eq!(app.active_activity(), Activity::Explorer);
-        app.scm_visible = true;
+        app.scm.visible = true;
         assert_eq!(app.active_activity(), Activity::SourceControl);
         app.search_query = Some(String::new());
         assert_eq!(app.active_activity(), Activity::Search);
@@ -1929,17 +1929,17 @@ mod tests {
         let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
 
         assert!(app.activity_bar_click(activity_top(2) + 1.0));
-        assert!(app.scm_visible);
+        assert!(app.scm.visible);
         assert_eq!(app.active_activity(), Activity::SourceControl);
 
         assert!(app.activity_bar_click(activity_top(2) + 1.0));
-        assert!(!app.scm_visible);
+        assert!(!app.scm.visible);
         assert_eq!(app.active_activity(), Activity::Explorer);
         assert!(app.activity_bar_click(activity_top(2) + 1.0));
-        assert!(app.scm_visible);
+        assert!(app.scm.visible);
 
         assert!(app.activity_bar_click(activity_top(1) + 1.0));
-        assert!(!app.scm_visible);
+        assert!(!app.scm.visible);
         assert!(app.search_query.is_some());
         assert_eq!(app.active_activity(), Activity::Search);
 
@@ -1948,9 +1948,9 @@ mod tests {
         assert_eq!(app.active_activity(), Activity::Explorer);
 
         assert!(app.activity_bar_click(activity_top(2) + 1.0));
-        assert!(app.scm_visible);
+        assert!(app.scm.visible);
         assert!(app.activity_bar_click(activity_top(0) + 1.0));
-        assert!(!app.scm_visible);
+        assert!(!app.scm.visible);
         assert!(!app.activity_bar_click(activity_top(4)));
     }
 
@@ -1978,7 +1978,7 @@ mod tests {
         assert!(app.activity_bar_click(activity_top(3) + 1.0));
         assert!(app.activity_bar_click(activity_top(2) + 1.0));
         assert!(!app.plugins.visible);
-        assert!(app.scm_visible);
+        assert!(app.scm.visible);
 
         assert!(app.activity_bar_click(activity_top(3) + 1.0));
         assert!(app.activity_bar_click(activity_top(1) + 1.0));

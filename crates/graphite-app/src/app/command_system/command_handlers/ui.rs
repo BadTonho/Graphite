@@ -495,7 +495,7 @@ fn window_cancel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
     resolve_window(app, false, true)
 }
 fn commit(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_commit_prompt = false;
+    app.scm.commit_prompt = false;
     app.perform_scm_action(crate::app::scm_ui::ScmAction::Commit(
         crate::scm_commit::CommitOptions::PLAIN,
     ));

@@ -320,7 +320,7 @@ impl App {
                 let valid = match request.id.as_str() {
                     "graphite.problems.open" => index < self.diagnostic_entries().len() as u64,
                     "graphite.terminal.select" => index < self.terminals.len() as u64,
-                    "graphite.scm.select" => index < self.scm_snapshot.files.len() as u64,
+                    "graphite.scm.select" => index < self.scm.snapshot.files.len() as u64,
                     "graphite.conflict.resolve" => {
                         index <= 3
                             && self.conflict_view.as_ref().is_some_and(|conflict| {

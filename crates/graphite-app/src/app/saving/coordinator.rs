@@ -291,7 +291,7 @@ impl App {
                 }
                 AfterSave::Commit(options) => match result {
                     Ok(_) => {
-                        self.scm_commit_save_checked = true;
+                        self.scm.commit_save_checked = true;
                         self.perform_scm_action(super::scm_ui::ScmAction::Commit(options));
                     }
                     Err(error) => {

@@ -12,7 +12,7 @@ graphite-app ──► graphite-render     (wgpu + cosmic-text + Window do winit
 ## Responsabilidades dos módulos
 
 - `graphite-core-api` fornece contratos de serviços independentes da interface e dados serializáveis. `graphite-extension-host` fornece um supervisor reutilizável de processos e simulador Rust ativado explicitamente. O LSP usa os mesmos serviços com transporte e ciclo de vida próprios por instância. Consulte [Serviços e host simulado](services-host.md).
-- `graphite-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo.
+- `graphite-app` separa eventos da janela, entrada do editor, operações de documentos, desenho, acessibilidade, tema e integrações com LSP e terminal em `app/`. Os módulos de configuração separam preferências, temas, snippets, caminhos e importação do VS Code; os módulos de LSP separam gerenciador, processo, distribuição de mensagens e conversão do protocolo. O estado da janela é agrupado por área em vez de ficar em campos soltos do `App`: o estado do controle de código-fonte fica em `ScmState` (`app/source_control/state.rs`), acessado como `app.scm`.
 - `graphite-text` separa entrada e saída de arquivos, edições e histórico, e navegação do cursor. `graphite-workspace` separa a busca no projeto da listagem de pastas.
 - `graphite-render` separa a modelagem do texto e rasterização de glifos do pipeline da superfície GPU. `graphite-syntax` mantém os mecanismos de realce incremental e de documento completo em módulos distintos.
 

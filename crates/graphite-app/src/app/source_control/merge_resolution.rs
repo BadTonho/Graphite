@@ -34,7 +34,8 @@ impl App {
     /// Whether Git lists the file as conflicted, so that completing must stage it.
     fn merge_file_is_conflicted(&self, path: &Path) -> bool {
         let root = self.scm_workspace_root();
-        self.scm_snapshot
+        self.scm
+            .snapshot
             .files
             .iter()
             .any(|item| item.conflicted && crate::same_file_path(&root.join(&item.path), path))

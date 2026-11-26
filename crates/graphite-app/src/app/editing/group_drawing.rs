@@ -465,7 +465,8 @@ impl App {
                         .to_string_lossy()
                         .replace('\\', "/");
                     if let Some(change) = self
-                        .scm_snapshot
+                        .scm
+                        .snapshot
                         .line_changes
                         .get(Path::new(&relative))
                         .and_then(|lines| {

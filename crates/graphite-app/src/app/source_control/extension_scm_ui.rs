@@ -54,7 +54,7 @@ impl App {
                 let Some(provider) = scm.provider(handle) else {
                     return;
                 };
-                let focused = self.scm_extension_input == Some(handle);
+                let focused = self.scm.extension_input == Some(handle);
                 let button_width = row.action.width;
                 let field_width = right - left - button_width - cell_width * 0.5;
                 let border = if focused {
@@ -240,7 +240,7 @@ impl App {
                 if row.action.contains(x, y) {
                     self.accept_vsix_scm_input(handle);
                 } else {
-                    self.scm_extension_input = Some(handle);
+                    self.scm.extension_input = Some(handle);
                 }
             }
             ExtensionRow::Group {
@@ -263,11 +263,11 @@ impl App {
         alt: bool,
     ) -> bool {
         use winit::keyboard::{Key, NamedKey};
-        let Some(provider) = self.scm_extension_input else {
+        let Some(provider) = self.scm.extension_input else {
             return false;
         };
         match key {
-            Key::Named(NamedKey::Escape) => self.scm_extension_input = None,
+            Key::Named(NamedKey::Escape) => self.scm.extension_input = None,
             Key::Named(NamedKey::Enter) if ctrl => self.accept_vsix_scm_input(provider),
             Key::Named(NamedKey::Enter) => {}
             Key::Named(NamedKey::Backspace) => {

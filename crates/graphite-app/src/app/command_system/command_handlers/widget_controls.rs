@@ -156,24 +156,24 @@ fn conflict_close(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErr
     Ok(())
 }
 fn commit_cancel(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_commit_prompt = false;
+    app.scm.commit_prompt = false;
     app.status = app.t("status.commit_cancelled").into();
     Ok(())
 }
 fn commit_delete(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_commit_message.pop();
+    app.scm.commit_message.pop();
     Ok(())
 }
 fn commit_prompt(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_commit_prompt = true;
+    app.scm.commit_prompt = true;
     Ok(())
 }
 fn scm_next(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_selected = (app.scm_selected + 1).min(app.scm_snapshot.files.len().saturating_sub(1));
+    app.scm.selected = (app.scm.selected + 1).min(app.scm.snapshot.files.len().saturating_sub(1));
     Ok(())
 }
 fn scm_previous(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_selected = app.scm_selected.saturating_sub(1);
+    app.scm.selected = app.scm.selected.saturating_sub(1);
     Ok(())
 }
 fn scm_open(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
@@ -183,10 +183,10 @@ fn scm_open(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     Ok(())
 }
 fn scm_close(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_visible = false;
+    app.scm.visible = false;
     Ok(())
 }
 fn scm_select(app: &mut App, invocation: &CommandInvocation) -> Result<(), CommandError> {
-    app.scm_selected = invocation.request.arguments["index"].as_u64().unwrap() as usize;
+    app.scm.selected = invocation.request.arguments["index"].as_u64().unwrap() as usize;
     Ok(())
 }

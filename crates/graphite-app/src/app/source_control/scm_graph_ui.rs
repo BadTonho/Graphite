@@ -137,13 +137,13 @@ fn draw_ref_badge(
 
 impl App {
     pub(crate) fn scm_graph_visible_entries(&self) -> Vec<super::scm_ui::ScmListRowKind> {
-        let mut entries = Vec::with_capacity(self.scm_graph_rows.len());
-        for (commit_index, row) in self.scm_graph_rows.iter().enumerate() {
+        let mut entries = Vec::with_capacity(self.scm.graph_rows.len());
+        for (commit_index, row) in self.scm.graph_rows.iter().enumerate() {
             entries.push(super::scm_ui::ScmListRowKind::GraphCommit {
                 index: commit_index,
             });
-            if self.scm_graph_expanded.contains(&row.commit.hash) {
-                if let Some(files) = self.scm_graph_commit_files.get(&row.commit.hash) {
+            if self.scm.graph_expanded.contains(&row.commit.hash) {
+                if let Some(files) = self.scm.graph_commit_files.get(&row.commit.hash) {
                     for file_index in 0..files.len() {
                         entries.push(super::scm_ui::ScmListRowKind::GraphCommitFile {
                             commit_index,
@@ -168,31 +168,31 @@ impl App {
             (window_height - self.activity_bar_vertical_offset() - line_height).max(0.0);
         let graph_entries = self.scm_graph_visible_entries();
         super::scm_ui::scm_panel_layout_with_graph_entries(
-            &self.scm_snapshot,
+            &self.scm.snapshot,
             sidebar_width,
             visible_height,
             row_h,
             cell_width,
-            self.scm_scroll,
-            self.scm_repositories_collapsed,
-            self.scm_staged_collapsed,
-            self.scm_changes_collapsed,
+            self.scm.scroll,
+            self.scm.repositories_collapsed,
+            self.scm.staged_collapsed,
+            self.scm.changes_collapsed,
             &self.vsix_scm_rows(),
             true,
-            self.scm_graph_collapsed,
-            self.scm_graph_rows.len(),
-            self.scm_graph_scroll,
-            self.scm_graph_height,
+            self.scm.graph_collapsed,
+            self.scm.graph_rows.len(),
+            self.scm.graph_scroll,
+            self.scm.graph_height,
             &super::scm_ui::ScmListView {
-                tree: self.scm_view_as_tree,
-                collapsed_folders: Some(&self.scm_collapsed_folders),
+                tree: self.scm.view_as_tree,
+                collapsed_folders: Some(&self.scm.collapsed_folders),
             },
             Some(&graph_entries),
         )
     }
 
     pub(crate) fn scm_graph_layout(&self) -> Option<super::scm_ui::ScmPanelLayout> {
-        if self.zen_mode || !self.scm_visible {
+        if self.zen_mode || !self.scm.visible {
             return None;
         }
         let gpu = self.gpu.as_ref()?;
@@ -205,7 +205,7 @@ impl App {
     }
 
     pub(crate) fn is_over_scm_graph_resize_handle(&self, mx: f32, my: f32) -> bool {
-        if self.scm_graph_collapsed {
+        if self.scm.graph_collapsed {
             return false;
         }
         let Some(gpu) = &self.gpu else {
@@ -229,7 +229,7 @@ impl App {
         let visible_height = (height - self.activity_bar_vertical_offset() - lh).max(0.0);
         let list_end_y = visible_height - row_h * 0.25;
         let local_y = self.sidebar_local_y(pointer_y);
-        self.scm_graph_height = Some((list_end_y - local_y).max(row_h * 2.0));
+        self.scm.graph_height = Some((list_end_y - local_y).max(row_h * 2.0));
     }
 
     /// The Graph commit under a window point, when the Source Control view shows the Graph.
@@ -246,7 +246,7 @@ impl App {
             || !self.view_preferences.primary_sidebar_visible
             || self.active_activity() != Activity::SourceControl
             || self.active_plugin_activity.is_some()
-            || self.scm_graph_collapsed
+            || self.scm.graph_collapsed
             || self.shows_scm_welcome_view()
             || !self.primary_sidebar_contains(x, y, window.0, window.1, lh)
         {
@@ -268,14 +268,14 @@ impl App {
     pub(crate) fn scroll_scm_graph(&mut self, lines: i32) {
         let total = self.scm_graph_visible_entries().len();
         let max_scroll = total.saturating_sub(2);
-        self.scm_graph_scroll =
-            (self.scm_graph_scroll as i32 + lines).clamp(0, max_scroll as i32) as usize;
+        self.scm.graph_scroll =
+            (self.scm.graph_scroll as i32 + lines).clamp(0, max_scroll as i32) as usize;
         if graph_needs_more(
-            self.scm_graph_rows.len(),
-            self.scm_graph_limit,
-            self.scm_graph_scroll,
+            self.scm.graph_rows.len(),
+            self.scm.graph_limit,
+            self.scm.graph_scroll,
         ) {
-            self.scm_graph_limit += GRAPH_PAGE;
+            self.scm.graph_limit += GRAPH_PAGE;
             self.refresh_scm_graph_async();
         }
     }
@@ -283,21 +283,22 @@ impl App {
     /// Expands or collapses the changed-file list under a commit in the Graph.
     pub(crate) fn toggle_scm_graph_commit(&mut self, index: usize) {
         let Some(hash) = self
-            .scm_graph_rows
+            .scm
+            .graph_rows
             .get(index)
             .map(|row| row.commit.hash.clone())
         else {
             return;
         };
-        self.scm_graph_selected_hash = Some(hash.clone());
-        if self.scm_graph_expanded.remove(&hash) {
+        self.scm.graph_selected_hash = Some(hash.clone());
+        if self.scm.graph_expanded.remove(&hash) {
             return;
         }
-        if !self.scm_graph_commit_files.contains_key(&hash) {
+        if !self.scm.graph_commit_files.contains_key(&hash) {
             let root = self.scm_workspace_root();
             match scm_graph::load_commit_files(&root, &hash) {
                 Ok(files) => {
-                    self.scm_graph_commit_files.insert(hash.clone(), files);
+                    self.scm.graph_commit_files.insert(hash.clone(), files);
                 }
                 Err(error) => {
                     self.status = error;
@@ -305,28 +306,30 @@ impl App {
                 }
             }
         }
-        self.scm_graph_expanded.insert(hash);
+        self.scm.graph_expanded.insert(hash);
     }
 
     /// Opens a side-by-side DiffView comparing a commit's changed file against its parent.
     pub(crate) fn open_scm_graph_file_diff(&mut self, commit_index: usize, file_index: usize) {
         let Some(commit) = self
-            .scm_graph_rows
+            .scm
+            .graph_rows
             .get(commit_index)
             .map(|r| r.commit.clone())
         else {
             return;
         };
         let Some(file) = self
-            .scm_graph_commit_files
+            .scm
+            .graph_commit_files
             .get(&commit.hash)
             .and_then(|files| files.get(file_index))
             .cloned()
         else {
             return;
         };
-        self.scm_graph_selected_hash = Some(commit.hash.clone());
-        self.scm_graph_selected_file = Some((commit.hash.clone(), file.path.clone()));
+        self.scm.graph_selected_hash = Some(commit.hash.clone());
+        self.scm.graph_selected_file = Some((commit.hash.clone(), file.path.clone()));
 
         let root = self.scm_workspace_root();
         let file_name = std::path::Path::new(&file.path)
@@ -455,7 +458,7 @@ impl App {
         text: Color,
         dim: Color,
     ) {
-        let Some(graph_row) = self.scm_graph_rows.get(index) else {
+        let Some(graph_row) = self.scm.graph_rows.get(index) else {
             return;
         };
         let y = row.bounds.y;
@@ -463,7 +466,8 @@ impl App {
         let row_bottom = row_top + row_h;
         let cy = row_top + row_h * 0.5;
         let selected = self
-            .scm_graph_selected_hash
+            .scm
+            .graph_selected_hash
             .as_deref()
             .is_some_and(|h| h == graph_row.commit.hash);
         if selected {
@@ -574,11 +578,12 @@ impl App {
         text: Color,
         dim: Color,
     ) {
-        let Some(graph_row) = self.scm_graph_rows.get(commit_index) else {
+        let Some(graph_row) = self.scm.graph_rows.get(commit_index) else {
             return;
         };
         let Some(file) = self
-            .scm_graph_commit_files
+            .scm
+            .graph_commit_files
             .get(&graph_row.commit.hash)
             .and_then(|files| files.get(file_index))
         else {
@@ -588,7 +593,8 @@ impl App {
         let row_top = y - row_h * 0.1;
         let row_bottom = row_top + row_h;
         let selected = self
-            .scm_graph_selected_file
+            .scm
+            .graph_selected_file
             .as_ref()
             .is_some_and(|(h, p)| *h == graph_row.commit.hash && *p == file.path);
         if selected {
@@ -689,7 +695,7 @@ mod tests {
             app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0),
             None
         );
-        app.scm_graph_collapsed = true;
+        app.scm.graph_collapsed = true;
         assert_eq!(
             app.scm_graph_commit_at(60.0, 400.0, (1200.0, 760.0), 18.0, 8.0),
             None
@@ -810,7 +816,7 @@ mod tests {
         git(&["commit", "-am", "second"]);
 
         let mut app = App::new_with_options(root.to_path_buf(), None, true);
-        app.scm_graph_rows = scm_graph::load_graph_commits(root, 10).unwrap();
+        app.scm.graph_rows = scm_graph::load_graph_commits(root, 10).unwrap();
         assert_eq!(app.scm_graph_visible_entries().len(), 2);
 
         app.toggle_scm_graph_commit(0);

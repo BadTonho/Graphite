@@ -9,7 +9,7 @@ impl App {
         self.plugins.visible
             && self.plugins.focused
             && !self.zen_mode
-            && !self.scm_visible
+            && !self.scm.visible
             && !self.terminal_focused
             && self.quick_open.is_none()
             && self.local_search.is_none()
@@ -17,7 +17,7 @@ impl App {
             && self.snippet_query.is_none()
             && self.completion_items.is_empty()
             && !self.quick_fix_visible
-            && !self.scm_commit_prompt
+            && !self.scm.commit_prompt
             && !self.branch_picker
             && self.diff_view.is_none()
             && self.conflict_view.is_none()

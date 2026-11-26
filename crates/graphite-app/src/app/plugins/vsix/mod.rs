@@ -382,7 +382,7 @@ impl App {
             self.completion_items.clear();
             self.clear_vsix_tree_views();
             self.stop_sidebar_webviews();
-            self.scm_extension_input = None;
+            self.scm.extension_input = None;
         }
     }
 

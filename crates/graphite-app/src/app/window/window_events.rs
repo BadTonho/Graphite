@@ -308,7 +308,7 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
                     }
-                } else if self.scm_graph_resize_dragging {
+                } else if self.scm.graph_resize_dragging {
                     self.resize_scm_graph_from_pointer(pointer_y);
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
@@ -362,8 +362,8 @@ impl ApplicationHandler<UserEvent> for App {
                             || self.activity_bar_menu.is_some()
                             || self.explorer_context_menu.is_some()
                             || self.plugins.context_menu.is_some()
-                            || self.scm_graph_menu.is_some()
-                            || self.scm_more_menu.is_some()
+                            || self.scm.graph_menu.is_some()
+                            || self.scm.more_menu.is_some()
                             || graph_hover_changed
                         {
                             gpu.window.request_redraw();
@@ -431,7 +431,7 @@ impl ApplicationHandler<UserEvent> for App {
                     return;
                 }
                 if self.is_over_scm_graph_resize_handle(self.mouse.x as f32, self.mouse.y as f32) {
-                    self.scm_graph_resize_dragging = true;
+                    self.scm.graph_resize_dragging = true;
                     self.selecting = false;
                     return;
                 }
@@ -487,8 +487,8 @@ impl ApplicationHandler<UserEvent> for App {
                 self.dismiss_workbench_menu();
                 let mx = self.mouse.x as f32;
                 let my = self.mouse.y as f32;
-                self.scm_graph_menu = None;
-                self.scm_more_menu = None;
+                self.scm.graph_menu = None;
+                self.scm.more_menu = None;
                 self.plugins.context_menu = None;
                 let opened = self.activity_bar_right_click(mx, my)
                     || self.explorer_right_click(mx, my)
@@ -531,8 +531,8 @@ impl ApplicationHandler<UserEvent> for App {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
                         gpu.window.request_redraw();
                     }
-                } else if self.scm_graph_resize_dragging {
-                    self.scm_graph_resize_dragging = false;
+                } else if self.scm.graph_resize_dragging {
+                    self.scm.graph_resize_dragging = false;
                     if let Some(gpu) = &self.gpu {
                         gpu.window.set_cursor(winit::window::CursorIcon::Default);
                         gpu.window.request_redraw();
@@ -671,16 +671,18 @@ impl ApplicationHandler<UserEvent> for App {
                     })
                     .flatten();
                 let over_plugins = self.plugins.visible && over_sidebar;
-                let over_scm = self.scm_visible && over_sidebar;
+                let over_scm = self.scm.visible && over_sidebar;
                 if over_scm {
                     let staged = self
-                        .scm_snapshot
+                        .scm
+                        .snapshot
                         .files
                         .iter()
                         .filter(|file| file.staged)
                         .count();
                     let changed = self
-                        .scm_snapshot
+                        .scm
+                        .snapshot
                         .files
                         .iter()
                         .filter(|file| file.unstaged || file.untracked || file.conflicted)
@@ -688,7 +690,7 @@ impl ApplicationHandler<UserEvent> for App {
                     let total_rows = changed + usize::from(staged > 0) + staged + 1;
                     let visible_rows = self.gpu.as_ref().map_or(1, |gpu| {
                         let line = gpu.renderer.line_height().max(18.0);
-                        let repo_rows = if self.scm_repositories_collapsed {
+                        let repo_rows = if self.scm.repositories_collapsed {
                             2.0
                         } else {
                             4.0
@@ -698,7 +700,7 @@ impl ApplicationHandler<UserEvent> for App {
                         visible.max(1.0) as usize
                     });
                     let max = total_rows.saturating_sub(visible_rows);
-                    let over_graph = !self.scm_graph_collapsed
+                    let over_graph = !self.scm.graph_collapsed
                         && self
                             .scm_graph_layout()
                             .and_then(|layout| layout.graph_divider)
@@ -708,12 +710,12 @@ impl ApplicationHandler<UserEvent> for App {
                     if over_graph {
                         self.scroll_scm_graph(lines as i32);
                     } else {
-                        self.scm_scroll =
-                            (self.scm_scroll as i32 + lines as i32).clamp(0, max as i32) as usize;
+                        self.scm.scroll =
+                            (self.scm.scroll as i32 + lines as i32).clamp(0, max as i32) as usize;
                     }
                 } else if over_plugins {
                     self.scroll_plugins(lines as i32);
-                } else if over_sidebar && !self.scm_visible && !self.plugins.visible {
+                } else if over_sidebar && !self.scm.visible && !self.plugins.visible {
                     let delta_rows = if lines.round() == 0.0 && lines != 0.0 {
                         lines.signum() as isize
                     } else {
@@ -952,7 +954,7 @@ impl App {
                 if root == self.scm_workspace_root() {
                     self.accept_scm_snapshot(snapshot);
                 }
-                if self.scm_refresh_gate.finished() {
+                if self.scm.refresh_gate.finished() {
                     self.refresh_scm_async();
                 }
                 if let Some(gpu) = &self.gpu {
@@ -960,15 +962,15 @@ impl App {
                 }
             }
             UserEvent::ScmGraph(root, result) => {
-                if self.scm_refresh_gate.finished() {
+                if self.scm.refresh_gate.finished() {
                     self.refresh_scm_async();
                 }
                 if root != self.scm_workspace_root() {
                     // Stale: it was loaded for the folder that was open before.
                 } else if let Ok(rows) = result {
-                    self.scm_graph_rows = rows;
+                    self.scm.graph_rows = rows;
                 } else {
-                    self.scm_graph_rows.clear();
+                    self.scm.graph_rows.clear();
                 }
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
@@ -977,13 +979,13 @@ impl App {
             UserEvent::ScmOperationCompleted { message, snapshot } => {
                 self.end_scm_busy();
                 self.status = message;
-                if self.scm_commit_pending {
-                    self.scm_commit_pending = false;
+                if self.scm.commit_pending {
+                    self.scm.commit_pending = false;
                     if snapshot
                         .as_ref()
                         .is_some_and(|s| s.has_commits && !s.files.iter().any(|f| f.staged))
                     {
-                        self.scm_commit_message.clear();
+                        self.scm.commit_message.clear();
                     }
                 }
                 if let Some(snapshot) = snapshot {

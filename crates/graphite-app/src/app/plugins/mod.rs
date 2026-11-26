@@ -228,7 +228,7 @@ impl App {
         self.snippet_query = None;
     }
     pub(crate) fn open_plugins(&mut self) {
-        self.scm_visible = false;
+        self.scm.visible = false;
         self.close_project_search();
         self.plugins.visible = true;
         self.focus_plugins();

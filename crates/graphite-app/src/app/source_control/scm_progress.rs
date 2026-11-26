@@ -81,16 +81,17 @@ pub(crate) fn draw_spinner(
 
 impl App {
     pub(crate) fn begin_scm_busy(&mut self, kind: ScmBusyKind) {
-        self.scm_busy = Some((kind, Instant::now()));
+        self.scm.busy = Some((kind, Instant::now()));
     }
 
     pub(crate) fn end_scm_busy(&mut self) {
-        self.scm_busy = None;
+        self.scm.busy = None;
     }
 
     /// The running operation, if one is in progress.
     pub(crate) fn scm_busy_state(&self) -> Option<(ScmBusyKind, Duration)> {
-        self.scm_busy
+        self.scm
+            .busy
             .map(|(kind, since)| (kind, since.elapsed()))
             .filter(|(_, elapsed)| *elapsed < BUSY_LIMIT)
     }
@@ -101,10 +102,10 @@ impl App {
 
     /// Number shown on the Source Control icon: files with pending changes.
     pub(crate) fn scm_badge_count(&self) -> usize {
-        if self.scm_snapshot.error.is_some() {
+        if self.scm.snapshot.error.is_some() {
             0
         } else {
-            self.scm_snapshot.files.len()
+            self.scm.snapshot.files.len()
         }
     }
 
@@ -166,14 +167,14 @@ mod tests {
         let (_dir, mut app) = app();
         assert_eq!(app.scm_badge_count(), 0);
         for name in ["a.txt", "b.txt"] {
-            app.scm_snapshot.files.push(FileStatus {
+            app.scm.snapshot.files.push(FileStatus {
                 path: name.into(),
                 unstaged: true,
                 ..Default::default()
             });
         }
         assert_eq!(app.scm_badge_count(), 2);
-        app.scm_snapshot.error = Some("boom".into());
+        app.scm.snapshot.error = Some("boom".into());
         assert_eq!(app.scm_badge_count(), 0);
     }
 
@@ -207,7 +208,7 @@ mod tests {
     #[test]
     fn a_stale_busy_mark_expires() {
         let (_dir, mut app) = app();
-        app.scm_busy = Some((
+        app.scm.busy = Some((
             ScmBusyKind::Other,
             Instant::now() - BUSY_LIMIT - Duration::from_secs(1),
         ));

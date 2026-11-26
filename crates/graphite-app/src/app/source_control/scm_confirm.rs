@@ -70,7 +70,7 @@ impl App {
                 &[("count", &many.len().to_string())],
             ),
         };
-        self.scm_confirm = Some(ScmConfirm {
+        self.scm.confirm = Some(ScmConfirm {
             message,
             action: ScmConfirmAction::Discard(targets),
             title_key: "scm.confirm.title",
@@ -80,7 +80,7 @@ impl App {
 
     /// Asks before removing every stash entry.
     pub(crate) fn confirm_drop_all_stashes(&mut self) {
-        self.scm_confirm = Some(ScmConfirm {
+        self.scm.confirm = Some(ScmConfirm {
             message: self.t("scm.confirm.drop_stashes").into(),
             action: ScmConfirmAction::DropAllStashes,
             title_key: "scm.confirm.drop_stashes_title",
@@ -90,7 +90,8 @@ impl App {
 
     /// The files of the Changes list as discard targets (conflicted files are left out).
     pub(crate) fn discard_all_targets(&self) -> Vec<DiscardTarget> {
-        self.scm_snapshot
+        self.scm
+            .snapshot
             .files
             .iter()
             .filter(|file| file.unstaged && !file.conflicted)
@@ -103,7 +104,8 @@ impl App {
 
     /// The Changes list entry at `index` as a discard target, if it can be discarded.
     pub(crate) fn discard_target_at(&self, index: usize) -> Option<DiscardTarget> {
-        self.scm_snapshot
+        self.scm
+            .snapshot
             .files
             .get(index)
             .filter(|file| file.unstaged && !file.conflicted)
@@ -114,7 +116,7 @@ impl App {
     }
 
     pub(crate) fn accept_scm_confirm(&mut self) {
-        let Some(confirm) = self.scm_confirm.take() else {
+        let Some(confirm) = self.scm.confirm.take() else {
             return;
         };
         match confirm.action {
@@ -124,12 +126,12 @@ impl App {
     }
 
     pub(crate) fn handle_scm_confirm_key(&mut self, key: &Key) -> bool {
-        if self.scm_confirm.is_none() {
+        if self.scm.confirm.is_none() {
             return false;
         }
         match key {
             Key::Named(NamedKey::Enter) => self.accept_scm_confirm(),
-            Key::Named(NamedKey::Escape) => self.scm_confirm = None,
+            Key::Named(NamedKey::Escape) => self.scm.confirm = None,
             _ => {}
         }
         true
@@ -137,20 +139,20 @@ impl App {
 
     /// A click while the dialog is open. Always swallowed; clicking outside cancels.
     pub(crate) fn click_scm_confirm(&mut self, x: f32, y: f32, width: f32, height: f32) -> bool {
-        if self.scm_confirm.is_none() {
+        if self.scm.confirm.is_none() {
             return false;
         }
         let (panel, confirm, cancel) = modal_rects(width, height);
         if inside(confirm, x, y) {
             self.accept_scm_confirm();
         } else if inside(cancel, x, y) || !inside(panel, x, y) {
-            self.scm_confirm = None;
+            self.scm.confirm = None;
         }
         true
     }
 
     pub(crate) fn draw_scm_confirm(&self, renderer: &mut Renderer) {
-        let Some(confirm) = &self.scm_confirm else {
+        let Some(confirm) = &self.scm.confirm else {
             return;
         };
         let (width, height) = renderer.size();
@@ -202,7 +204,7 @@ mod tests {
 
     fn app(dir: &TempDir) -> App {
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
-        app.scm_snapshot.files = vec![
+        app.scm.snapshot.files = vec![
             FileStatus {
                 path: "a.txt".into(),
                 unstaged: true,
@@ -253,14 +255,14 @@ mod tests {
         let dir = TempDir::new();
         let mut app = app(&dir);
         app.confirm_discard(vec![app.discard_target_at(0).unwrap()]);
-        let tracked = app.scm_confirm.clone().unwrap().message;
+        let tracked = app.scm.confirm.clone().unwrap().message;
         assert!(tracked.contains("a.txt"));
         app.confirm_discard(vec![app.discard_target_at(1).unwrap()]);
-        let untracked = app.scm_confirm.clone().unwrap().message;
+        let untracked = app.scm.confirm.clone().unwrap().message;
         assert!(untracked.contains("new.txt"));
         assert_ne!(tracked, untracked);
         app.confirm_discard(app.discard_all_targets());
-        assert!(app.scm_confirm.clone().unwrap().message.contains('2'));
+        assert!(app.scm.confirm.clone().unwrap().message.contains('2'));
     }
 
     #[test]
@@ -268,7 +270,7 @@ mod tests {
         let dir = TempDir::new();
         let mut app = app(&dir);
         app.confirm_drop_all_stashes();
-        let confirm = app.scm_confirm.clone().unwrap();
+        let confirm = app.scm.confirm.clone().unwrap();
         assert_eq!(confirm.action, ScmConfirmAction::DropAllStashes);
         assert_ne!(confirm.title_key, "scm.confirm.title");
         assert_eq!(confirm.message, app.t("scm.confirm.drop_stashes"));
@@ -282,7 +284,7 @@ mod tests {
         let dir = TempDir::new();
         let mut app = app(&dir);
         app.confirm_discard(Vec::new());
-        assert!(app.scm_confirm.is_none());
+        assert!(app.scm.confirm.is_none());
         assert_eq!(app.status, app.t("scm.error.nothing_to_discard"));
     }
 
@@ -295,17 +297,17 @@ mod tests {
 
         app.confirm_discard(app.discard_all_targets());
         assert!(app.handle_scm_confirm_key(&Key::Named(NamedKey::Escape)));
-        assert!(app.scm_confirm.is_none());
+        assert!(app.scm.confirm.is_none());
 
         app.confirm_discard(app.discard_all_targets());
         assert!(app.click_scm_confirm(1.0, 1.0, 1200.0, 760.0), "swallowed");
-        assert!(app.scm_confirm.is_none(), "an outside click cancels");
+        assert!(app.scm.confirm.is_none(), "an outside click cancels");
 
         app.confirm_discard(app.discard_all_targets());
         let (_, (x, y, w, h), _) = modal_rects(1200.0, 760.0);
         app.status.clear();
         assert!(app.click_scm_confirm(x + w * 0.5, y + h * 0.5, 1200.0, 760.0));
-        assert!(app.scm_confirm.is_none());
+        assert!(app.scm.confirm.is_none());
         // Without an event loop the operation stops at this message, which shows it was started.
         assert_eq!(app.status, app.t("scm.error.actions_need_loop"));
 

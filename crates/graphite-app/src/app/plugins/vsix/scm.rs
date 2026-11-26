@@ -349,8 +349,8 @@ impl App {
                 Ok(Value::Null)
             }
             "$unregisterSourceControl" => {
-                if scm.unregister(handle) && self.scm_extension_input == Some(handle) {
-                    self.scm_extension_input = None;
+                if scm.unregister(handle) && self.scm.extension_input == Some(handle) {
+                    self.scm.extension_input = None;
                 }
                 Ok(Value::Null)
             }

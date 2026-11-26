@@ -181,7 +181,7 @@ impl App {
                 }
             }
             self.draw_virtual_explorer_rows(r, sidebar_lh, cw, h);
-            if !self.scm_visible {
+            if !self.scm.visible {
                 let total = self.explorer_row_count();
                 let list_top = sidebar_lh * 1.5;
                 let list_height = (h - lh - list_top).max(0.0);
@@ -207,7 +207,7 @@ impl App {
             r.draw_rect(0.0, 0.0, w, h, rgb(Theme::color(Theme::BG, 0xffffff)));
         } else {
             self.draw_plugins_sidebar(r, h, sidebar_lh, cw);
-            if self.scm_visible {
+            if self.scm.visible {
                 self.draw_scm_sidebar(r, h, sidebar_lh, cw);
             }
             self.draw_plugin_activity_sidebar(r, h, sidebar_lh, cw);

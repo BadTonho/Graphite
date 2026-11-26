@@ -145,9 +145,9 @@ impl App {
             .unwrap_or((1200.0, 760.0, 18.0, 8.0));
         let Some(commit) = self
             .scm_graph_commit_at(x, y, (window_width, window_height), lh, cw)
-            .and_then(|index| self.scm_graph_rows.get(index))
+            .and_then(|index| self.scm.graph_rows.get(index))
         else {
-            self.scm_graph_menu = None;
+            self.scm.graph_menu = None;
             return false;
         };
         let (hash, subject, is_head) = (
@@ -155,7 +155,7 @@ impl App {
             commit.commit.subject.clone(),
             commit.commit.is_head,
         );
-        self.scm_graph_selected_hash = Some(hash.clone());
+        self.scm.graph_selected_hash = Some(hash.clone());
         self.workbench_menu = None;
         self.settings_menu = None;
         self.profile_menu = None;
@@ -205,7 +205,7 @@ impl App {
         let height = PADDING * 2.0 + rows.iter().map(|row| row.height()).sum::<f32>();
         let (x, y) = place_context_menu(anchor, (width, height), window, bottom_inset);
         let selected = rows.iter().position(|row| row.is_selectable()).unwrap_or(0);
-        self.scm_graph_menu = Some(GraphContextMenu {
+        self.scm.graph_menu = Some(GraphContextMenu {
             hash,
             subject,
             x,
@@ -217,7 +217,7 @@ impl App {
     }
 
     pub(crate) fn scm_graph_menu_pointer_moved(&mut self, x: f32, y: f32) {
-        if let Some(menu) = self.scm_graph_menu.as_mut() {
+        if let Some(menu) = self.scm.graph_menu.as_mut() {
             if let Some((index, _)) = menu.action_at(x, y) {
                 menu.selected = index;
             }
@@ -227,7 +227,7 @@ impl App {
     /// A left click while the menu is open: runs the action under it, and always closes the menu.
     /// Returns whether the click landed inside the menu.
     pub(crate) fn scm_graph_menu_click(&mut self, x: f32, y: f32) -> bool {
-        let Some(menu) = self.scm_graph_menu.take() else {
+        let Some(menu) = self.scm.graph_menu.take() else {
             return false;
         };
         let inside = menu.contains(x, y);
@@ -238,11 +238,11 @@ impl App {
     }
 
     pub(crate) fn scm_graph_menu_key(&mut self, key: &Key) -> bool {
-        let Some(menu) = self.scm_graph_menu.as_mut() else {
+        let Some(menu) = self.scm.graph_menu.as_mut() else {
             return false;
         };
         match key {
-            Key::Named(NamedKey::Escape) => self.scm_graph_menu = None,
+            Key::Named(NamedKey::Escape) => self.scm.graph_menu = None,
             Key::Named(NamedKey::ArrowDown) => menu.step(true),
             Key::Named(NamedKey::ArrowUp) => menu.step(false),
             Key::Named(NamedKey::Enter) => {
@@ -254,7 +254,7 @@ impl App {
                     _ => None,
                 };
                 let (hash, subject) = (menu.hash.clone(), menu.subject.clone());
-                self.scm_graph_menu = None;
+                self.scm.graph_menu = None;
                 if let Some(action) = chosen {
                     self.run_scm_graph_action(&hash, &subject, action);
                 }
@@ -292,7 +292,7 @@ impl App {
     }
 
     pub(crate) fn draw_scm_graph_menu(&self, renderer: &mut Renderer) {
-        let Some(menu) = &self.scm_graph_menu else {
+        let Some(menu) = &self.scm.graph_menu else {
             return;
         };
         let (x, y, width, height) = (menu.x, menu.y, menu.width, menu.height());
@@ -348,7 +348,7 @@ mod tests {
 
     /// The centre of the row showing `action`.
     fn row_point(app: &App, action: GraphMenuAction) -> (f32, f32) {
-        let menu = app.scm_graph_menu.as_ref().unwrap();
+        let menu = app.scm.graph_menu.as_ref().unwrap();
         let mut top = menu.y + PADDING;
         for row in &menu.rows {
             if matches!(row, GraphMenuRow::Action { action: a, .. } if *a == action) {
@@ -363,7 +363,7 @@ mod tests {
     fn the_head_commit_cannot_be_checked_out_or_cherry_picked() {
         let dir = TempDir::new();
         let app = app_with_menu(&dir, true);
-        let rows = &app.scm_graph_menu.as_ref().unwrap().rows;
+        let rows = &app.scm.graph_menu.as_ref().unwrap().rows;
         for blocked in [GraphMenuAction::Checkout, GraphMenuAction::CherryPick] {
             assert!(rows.contains(&GraphMenuRow::Action {
                 action: blocked,
@@ -372,7 +372,8 @@ mod tests {
         }
         let app = app_with_menu(&dir, false);
         assert!(app
-            .scm_graph_menu
+            .scm
+            .graph_menu
             .as_ref()
             .unwrap()
             .rows
@@ -386,7 +387,7 @@ mod tests {
         let mut app = app_with_menu(&dir, false);
         let (x, y) = row_point(&app, GraphMenuAction::CreateBranch);
         assert!(app.scm_graph_menu_click(x, y));
-        assert!(app.scm_graph_menu.is_none(), "a click closes the menu");
+        assert!(app.scm.graph_menu.is_none(), "a click closes the menu");
         assert_eq!(
             app.branch_name_prompt.as_ref().unwrap().target,
             NameTarget::BranchAt("abcdef1234567".into())
@@ -416,7 +417,7 @@ mod tests {
         app.status.clear();
         assert!(app.scm_graph_menu_click(x, y), "the click was inside");
         assert!(app.status.is_empty(), "a disabled row does nothing");
-        assert!(app.scm_graph_menu.is_none());
+        assert!(app.scm.graph_menu.is_none());
     }
 
     #[test]
@@ -424,7 +425,7 @@ mod tests {
         let dir = TempDir::new();
         let mut app = app_with_menu(&dir, false);
         assert!(!app.scm_graph_menu_click(5.0, 5.0));
-        assert!(app.scm_graph_menu.is_none());
+        assert!(app.scm.graph_menu.is_none());
     }
 
     #[test]
@@ -432,7 +433,7 @@ mod tests {
         let dir = TempDir::new();
         let mut app = app_with_menu(&dir, true);
         // Checkout is disabled, so the first selectable row is Create Branch.
-        let menu = app.scm_graph_menu.as_ref().unwrap();
+        let menu = app.scm.graph_menu.as_ref().unwrap();
         assert_eq!(
             menu.rows[menu.selected],
             GraphMenuRow::Action {
@@ -441,7 +442,7 @@ mod tests {
             }
         );
         assert!(app.scm_graph_menu_key(&Key::Named(NamedKey::ArrowDown)));
-        let menu = app.scm_graph_menu.as_ref().unwrap();
+        let menu = app.scm.graph_menu.as_ref().unwrap();
         assert_eq!(
             menu.rows[menu.selected],
             GraphMenuRow::Action {
@@ -458,7 +459,7 @@ mod tests {
 
         let mut app = app_with_menu(&dir, false);
         assert!(app.scm_graph_menu_key(&Key::Named(NamedKey::Escape)));
-        assert!(app.scm_graph_menu.is_none());
+        assert!(app.scm.graph_menu.is_none());
     }
 
     #[test]
