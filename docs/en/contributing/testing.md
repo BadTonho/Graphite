@@ -14,6 +14,8 @@ The local verifier checks formatting, runs Clippy with warnings denied, builds t
 
 Requires the existing Rust/native build prerequisites plus the `rustfmt` and `clippy` toolchain components. Use the same command on Windows and Linux. No Python, PowerShell or additional Rust dependencies are needed by the verifier. Run it after a completed change; use filtered tests during development and the existing manual CI before releases.
 
+CI runs the same formatting check (on Linux) and Clippy step with warnings denied (on Windows and Linux) before the tests, so a change that passes the verifier locally passes those steps too, except for code that only compiles on the other system.
+
 Ignored tests remain visible in Cargo's output and are not passes. A successful run does not validate the other operating system, real service integrations, UI/GPU or the packaged application. See the [feature verification matrix](verification-matrix.md), [manual verification checklist](manual-verification.md) and [recorded local results](verification-results.md).
 
 Workspace tests build the `graphite-test-lsp` stdio fixture through its integration target. Before running only the application unit tests, build both process helpers:

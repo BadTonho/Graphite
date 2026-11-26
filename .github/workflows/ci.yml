@@ -22,6 +22,11 @@ jobs:
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
 
       - name: Cache cargo dependencies and build output
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -52,6 +57,11 @@ jobs:
 
       - name: Build workspace
         run: cargo build --workspace
+
+      # The same checks as `cargo run -p graphite-xtask -- verify`. Platform-specific code is
+      # linted on each system.
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build test helper binaries
         run: |

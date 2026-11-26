@@ -14,6 +14,8 @@ O verificador local confere a formatação, executa o Clippy tratando avisos com
 
 Exige os pré-requisitos existentes de compilação Rust/nativa e os componentes `rustfmt` e `clippy`. O comando é o mesmo no Windows e no Linux. O verificador não exige Python, PowerShell ou dependências Rust adicionais. Execute após concluir uma alteração; durante o desenvolvimento, use testes filtrados e, antes das versões, a CI manual existente.
 
+A CI executa a mesma verificação de formatação (no Linux) e a mesma etapa do Clippy tratando avisos como erros (no Windows e no Linux) antes dos testes, então uma alteração que passa no verificador local passa também nessas etapas, exceto por código que só compila no outro sistema.
+
 Os testes ignorados continuam visíveis na saída do Cargo e não contam como aprovados. Uma execução bem-sucedida não valida o outro sistema operacional, integrações com serviços reais, interface/GPU ou aplicativo empacotado. Consulte a [matriz de verificação](verification-matrix.md), o [roteiro de verificação manual](manual-verification.md) e os [resultados locais registrados](verification-results.md).
 
 Os testes do workspace compilam a fixture stdio `graphite-test-lsp` por seu alvo de integração. Antes de executar apenas os testes unitários da aplicação, compile os dois auxiliares de processo:
