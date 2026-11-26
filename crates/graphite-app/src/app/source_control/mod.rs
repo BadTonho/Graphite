@@ -38,3 +38,4 @@ pub(crate) mod scm_tree;
 pub(crate) mod scm_ui;
 pub(crate) mod scm_welcome;
 pub(crate) mod scm_workspace;
+mod watch_events;

@@ -68,6 +68,8 @@ Commit ids passed to git are checked to be hexadecimal, and branch and tag names
 
 Opening another folder (File menu, removing a folder from the workspace, or the command line) reloads the view for it: the lists, the Graph and its scroll position, the commit message, open menus and pickers are reset, and the file watcher follows the folders that are open now. A result still loading for the previous folder is discarded instead of replacing the new one.
 
+File changes are collected for a quarter of a second and handled together, so a build or a package install that touches thousands of files refreshes the view a few times instead of once per file. Changes to paths that the folder's `.gitignore` or `.git/info/exclude` excludes, such as `node_modules`, do not refresh the view; open files there are still checked for outside changes. Only one refresh runs at a time: a change during a refresh is shown by one more refresh when it ends.
+
 ## Tooltips
 
 Every icon button of the view (repository row, commit arrow, file rows, Changes and Graph headers) shows its name in a small card when the pointer rests on it.

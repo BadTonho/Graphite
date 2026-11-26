@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- Builds, instalações de pacotes e outras rajadas de mudanças de arquivos não iniciam mais um `git status` e uma carga do grafo de commits por arquivo alterado. As mudanças são reunidas por um quarto de segundo, caminhos excluídos pelo `.gitignore` (como `node_modules`) não atualizam mais o Controle de Código-Fonte, e só uma atualização roda por vez.
 - Desenhar texto não aloca mais memória para linhas já na tela, e atingir o limite do cache de texto mantém as linhas ainda visíveis em vez de remodelar tudo de novo.
 - O painel Chat agora tem configuração guiada de conexões, botões de conversa identificados e um campo de mensagem com envio, cancelamento e anexos de contexto removíveis.
 - Simplifique a barra lateral secundária com acesso à Estrutura pela paleta de comandos.

@@ -68,6 +68,8 @@ Os ids de commit passados ao git são conferidos como hexadecimais, e nomes de b
 
 Abrir outra pasta (menu Arquivo, remover uma pasta da área de trabalho ou a linha de comando) recarrega a visão para ela: as listas, o Grafo e a posição de rolagem, a mensagem de commit, menus e seletores abertos são reiniciados, e o observador de arquivos passa a seguir as pastas abertas agora. Um resultado que ainda carregava da pasta anterior é descartado em vez de substituir o novo.
 
+As mudanças de arquivos são reunidas por um quarto de segundo e tratadas juntas, então um build ou uma instalação de pacotes que altera milhares de arquivos atualiza a visão algumas vezes, e não uma vez por arquivo. Mudanças em caminhos excluídos pelo `.gitignore` ou pelo `.git/info/exclude` da pasta, como `node_modules`, não atualizam a visão; arquivos abertos ali continuam sendo verificados quanto a mudanças externas. Só uma atualização roda por vez: uma mudança durante uma atualização aparece em mais uma atualização quando ela termina.
+
 ## Dicas
 
 Todo botão de ícone da visão (linha do repositório, seta do commit, linhas de arquivo, cabeçalhos de Alterações e do Grafo) mostra o nome num pequeno cartão quando o mouse para sobre ele.

@@ -3106,6 +3106,7 @@ dependencies = [
  "graphite-text",
  "graphite-workspace",
  "gtk",
+ "ignore",
  "image",
  "interprocess",
  "jsonschema",

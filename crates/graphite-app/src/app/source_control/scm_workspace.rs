@@ -3,26 +3,74 @@
 
 use super::*;
 
-/// Watches `roots` and sends a refresh event when something relevant to git (or to extensions)
-/// changes.
+pub(crate) use super::watch_events::ScmPathFilter;
+
+/// Lets one source control refresh run at a time. A refresh asked for while one runs is
+/// remembered and starts once the running one has finished, so a burst of requests costs at
+/// most two refreshes instead of one per request.
+#[derive(Debug, Default)]
+pub(crate) struct RefreshGate {
+    /// Workers of the running refresh that have not reported yet.
+    running: u8,
+    queued: bool,
+}
+
+impl RefreshGate {
+    /// Whether a refresh may start now. When one is running, another is queued instead.
+    pub(crate) fn try_start(&mut self) -> bool {
+        if self.running > 0 {
+            self.queued = true;
+            return false;
+        }
+        true
+    }
+
+    /// Counts a worker of the refresh that just started.
+    pub(crate) fn started(&mut self) {
+        self.running = self.running.saturating_add(1);
+    }
+
+    /// Counts a worker that reported. Returns whether the queued refresh should start now.
+    pub(crate) fn finished(&mut self) -> bool {
+        self.running = self.running.saturating_sub(1);
+        if self.running == 0 && self.queued {
+            self.queued = false;
+            return true;
+        }
+        false
+    }
+}
+
+/// Watches `roots`. Notifications are collected for a moment and sent to the event loop as one
+/// batch (see [`super::watch_events`]): a source control refresh when a change can alter what it
+/// shows, otherwise an external-change check, plus the changes for extensions.
 pub(crate) fn start_watcher(
     proxy: winit::event_loop::EventLoopProxy<UserEvent>,
     roots: &[PathBuf],
 ) -> Option<notify::RecommendedWatcher> {
+    use super::watch_events::{coalesce, Signal, SETTLE};
     use notify::Watcher;
+    let filter = ScmPathFilter::new(roots);
+    let (sender, signals) = std::sync::mpsc::channel::<Signal>();
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-        if result
-            .as_ref()
-            .map_or(true, crate::scm::is_relevant_watch_event)
-        {
-            let _ = proxy.send_event(UserEvent::ScmRefresh);
-            if let Ok(event) = &result {
-                let changes = crate::app::plugins::file_changes(event);
-                if !changes.is_empty() {
-                    let _ = proxy.send_event(UserEvent::FileEvents(changes));
+        let signal = match &result {
+            // A failed notification may stand for any change.
+            Err(_) => Signal {
+                scm: true,
+                changes: Vec::new(),
+            },
+            Ok(event) => {
+                let (watched, scm) = crate::scm::classify_watch_event(event, &filter);
+                if !watched {
+                    return;
+                }
+                Signal {
+                    scm,
+                    changes: crate::app::plugins::file_changes(event),
                 }
             }
-        }
+        };
+        let _ = sender.send(signal);
     })
     .ok()?;
     let mut watching = false;
@@ -31,7 +79,26 @@ pub(crate) fn start_watcher(
             .watch(root, notify::RecursiveMode::Recursive)
             .is_ok();
     }
-    watching.then_some(watcher)
+    if !watching {
+        return None;
+    }
+    // Ends when the watcher, and with it the sending side, is dropped.
+    std::thread::Builder::new()
+        .name("graphite-watch-events".into())
+        .spawn(move || {
+            coalesce(signals, SETTLE, |batch| {
+                let _ = proxy.send_event(if batch.scm {
+                    UserEvent::ScmRefresh
+                } else {
+                    UserEvent::ExternalChangeCheck
+                });
+                if !batch.changes.is_empty() {
+                    let _ = proxy.send_event(UserEvent::FileEvents(batch.changes));
+                }
+            })
+        })
+        .ok()?;
+    Some(watcher)
 }
 
 impl App {
@@ -70,6 +137,26 @@ impl App {
 mod tests {
     use super::*;
     use crate::scm::FileStatus;
+
+    #[test]
+    fn a_burst_of_refresh_requests_runs_one_refresh_and_one_follow_up() {
+        let mut gate = RefreshGate::default();
+        assert!(gate.try_start());
+        gate.started();
+        gate.started();
+        for _ in 0..100 {
+            assert!(!gate.try_start());
+        }
+        assert!(!gate.finished(), "the second worker still runs");
+        assert!(
+            gate.finished(),
+            "the queued refresh starts once both report"
+        );
+        assert!(gate.try_start());
+        gate.started();
+        assert!(!gate.finished(), "nothing was queued meanwhile");
+        assert!(gate.try_start());
+    }
     use crate::test_support::TempDir;
 
     #[test]

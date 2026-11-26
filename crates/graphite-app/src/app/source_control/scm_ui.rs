@@ -819,22 +819,31 @@ impl App {
         let root = self.scm_workspace_root();
         let graph_limit = self.scm_graph_limit;
         if let Some(proxy) = self.event_proxy.clone() {
+            if !self.scm_refresh_gate.try_start() {
+                return;
+            }
             let graph_root = root.clone();
             let graph_proxy = proxy.clone();
-            std::thread::Builder::new()
+            if std::thread::Builder::new()
                 .name("graphite-scm-status".into())
                 .spawn(move || {
                     let snapshot = crate::scm::snapshot(&root);
                     let _ = proxy.send_event(UserEvent::ScmSnapshot(root, snapshot));
                 })
-                .ok();
-            std::thread::Builder::new()
+                .is_ok()
+            {
+                self.scm_refresh_gate.started();
+            }
+            if std::thread::Builder::new()
                 .name("graphite-scm-graph".into())
                 .spawn(move || {
                     let rows = crate::vcs::scm_graph::load_graph_commits(&graph_root, graph_limit);
                     let _ = graph_proxy.send_event(UserEvent::ScmGraph(graph_root, rows));
                 })
-                .ok();
+                .is_ok()
+            {
+                self.scm_refresh_gate.started();
+            }
         } else {
             self.scm_snapshot = crate::scm::snapshot(&root);
             self.scm_graph_rows =

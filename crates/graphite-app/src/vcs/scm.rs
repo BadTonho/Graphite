@@ -11,27 +11,26 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Whether a file-system event can change what the SCM view shows. Reading files (inotify
-/// reports `Access` events) and Git's own bookkeeping inside `.git` (index and lock files,
-/// rewritten by every status refresh) must not trigger another refresh, or the refresh
-/// feeds itself. Build output under `target` is ignored for the same reason.
-pub(crate) fn is_relevant_watch_event(event: &notify::Event) -> bool {
+use crate::app::scm_workspace::ScmPathFilter;
+
+/// Whether a file-system event is a change to the workspace, and whether it can change what the
+/// SCM view shows. Reading files (inotify reports `Access` events) is neither; see
+/// [`ScmPathFilter`] for the paths.
+pub(crate) fn classify_watch_event(event: &notify::Event, filter: &ScmPathFilter) -> (bool, bool) {
     use notify::EventKind;
     if matches!(event.kind, EventKind::Access(_)) {
-        return false;
+        return (false, false);
     }
-    event.paths.is_empty() || event.paths.iter().any(|path| is_relevant_watch_path(path))
-}
-
-fn is_relevant_watch_path(path: &Path) -> bool {
-    let names: Vec<_> = path.components().map(|part| part.as_os_str()).collect();
-    if let Some(git) = names.iter().position(|name| *name == ".git") {
-        // Branch switches and commits move HEAD or refs; everything else is Git internals.
-        return names
-            .get(git + 1)
-            .is_some_and(|name| *name == "HEAD" || *name == "refs" || *name == "packed-refs");
+    if event.paths.is_empty() {
+        // An event without paths may stand for any change.
+        return (true, true);
     }
-    !names.iter().any(|name| *name == "target")
+    let watched = event
+        .paths
+        .iter()
+        .any(|path| ScmPathFilter::is_watched(path));
+    let relevant = event.paths.iter().any(|path| filter.is_relevant(path));
+    (watched, relevant)
 }
 
 /// How a file differs from the commit or the index it is compared with.
@@ -1258,15 +1257,15 @@ mod tests {
         let modify = |path: &str| {
             Event::new(EventKind::Modify(notify::event::ModifyKind::Any)).add_path(path.into())
         };
-        assert!(is_relevant_watch_event(&modify("/w/src/main.rs")));
-        assert!(is_relevant_watch_event(&modify("/w/.git/HEAD")));
-        assert!(is_relevant_watch_event(&modify("/w/.git/refs/heads/main")));
-        assert!(!is_relevant_watch_event(&modify("/w/.git/index")));
-        assert!(!is_relevant_watch_event(&modify("/w/.git/index.lock")));
-        assert!(!is_relevant_watch_event(&modify(
-            "/w/target/debug/graphite"
-        )));
+        let filter = ScmPathFilter::new(&[PathBuf::from("/w")]);
+        let relevant = |event: &Event| classify_watch_event(event, &filter).1;
+        assert!(relevant(&modify("/w/src/main.rs")));
+        assert!(relevant(&modify("/w/.git/HEAD")));
+        assert!(relevant(&modify("/w/.git/refs/heads/main")));
+        assert!(!relevant(&modify("/w/.git/index")));
+        assert!(!relevant(&modify("/w/.git/index.lock")));
+        assert!(!relevant(&modify("/w/target/debug/graphite")));
         let read = Event::new(EventKind::Access(AccessKind::Any)).add_path("/w/src/a.rs".into());
-        assert!(!is_relevant_watch_event(&read));
+        assert_eq!(classify_watch_event(&read, &filter), (false, false));
     }
 }

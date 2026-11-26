@@ -919,11 +919,17 @@ impl App {
                 if root == self.scm_workspace_root() {
                     self.accept_scm_snapshot(snapshot);
                 }
+                if self.scm_refresh_gate.finished() {
+                    self.refresh_scm_async();
+                }
                 if let Some(gpu) = &self.gpu {
                     gpu.window.request_redraw();
                 }
             }
             UserEvent::ScmGraph(root, result) => {
+                if self.scm_refresh_gate.finished() {
+                    self.refresh_scm_async();
+                }
                 if root != self.scm_workspace_root() {
                     // Stale: it was loaded for the folder that was open before.
                 } else if let Ok(rows) = result {

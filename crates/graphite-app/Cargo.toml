@@ -25,6 +25,7 @@ tempfile = "3"
 jsonschema = "0.33"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 globset = "0.4"
+ignore = "0.4.34"
 serde = { version = "1.0", features = ["derive"] }
 accesskit = "0.24.1"
 accesskit_winit = "0.32.2"

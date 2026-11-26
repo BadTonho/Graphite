@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- Builds, package installs, and other bursts of file changes no longer start one `git status` and commit-graph load per changed file. Changes are collected for a quarter of a second, paths excluded by `.gitignore` (such as `node_modules`) no longer refresh Source Control, and only one refresh runs at a time.
 - Drawing text no longer allocates for lines already on screen, and reaching the shaped-text cache limit keeps the lines still in view instead of shaping everything again.
 - The Chat panel now has a guided connection setup, labeled conversation controls, and a message field with send, stop, and removable context attachments.
 - Simplify the secondary sidebar by moving access to Outline to the command palette.

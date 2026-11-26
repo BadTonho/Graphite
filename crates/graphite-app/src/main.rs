@@ -304,6 +304,7 @@ struct App {
     terminal_size: (u16, u16),
     terminal_sizes: Vec<(u16, u16)>,
     scm_watcher: Option<notify::RecommendedWatcher>,
+    scm_refresh_gate: app::scm_workspace::RefreshGate,
     scm_snapshot: scm::Snapshot,
     scm_visible: bool,
     /// Whether the source control list (not the editor) receives plain-key shortcuts.
@@ -902,6 +903,7 @@ impl App {
             terminal_size: (0, 0),
             terminal_sizes: Vec::new(),
             scm_watcher,
+            scm_refresh_gate: Default::default(),
             scm_snapshot: scm::Snapshot::default(),
             scm_visible: false,
             scm_focused: false,
