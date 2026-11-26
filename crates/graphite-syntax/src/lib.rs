@@ -573,7 +573,7 @@ mod tests {
             }),
         );
         let mut full = Highlighter::new();
-        assert_eq!(changed, full.highlight(Language::Rust, new));
+        assert_eq!(*changed, full.highlight(Language::Rust, new));
         let next = new.replace("value", "count");
         let offset = new.find("value").unwrap();
         let row = new[..offset].bytes().filter(|b| *b == b'\n').count();
@@ -590,7 +590,7 @@ mod tests {
                 new_end_position: (row, column + 5),
             }),
         );
-        assert_eq!(changed, full.highlight(Language::Rust, &next));
+        assert_eq!(*changed, full.highlight(Language::Rust, &next));
     }
 
     #[test]
@@ -613,7 +613,7 @@ mod tests {
             }),
         );
         let mut full = Highlighter::new();
-        assert_eq!(changed, full.highlight(Language::Rust, new));
+        assert_eq!(*changed, full.highlight(Language::Rust, new));
     }
 
     #[test]

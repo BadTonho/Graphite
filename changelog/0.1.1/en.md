@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- Syntax highlighting after an edit now looks again only at the changed lines and at what their syntax affects, instead of everything from the edit to the end of the file, and no longer copies and sorts the highlights of every line. Several edits made between two frames, such as a multi-cursor paste, are applied incrementally instead of highlighting the whole file again. While the code has a syntax error, everything after the edit is still checked, so highlighting stays exact.
 - Breadcrumbs, Sticky Scroll, and the Outline reuse the syntax tree that highlighting keeps up to date instead of parsing the whole file again; breadcrumbs used to copy and parse the file on every frame, which slowed scrolling in large files. The Outline also no longer rescans the file once per declaration to measure its indentation.
 - Builds, package installs, and other bursts of file changes no longer start one `git status` and commit-graph load per changed file. Changes are collected for a quarter of a second, paths excluded by `.gitignore` (such as `node_modules`) no longer refresh Source Control, and only one refresh runs at a time.
 - Drawing text no longer allocates for lines already on screen, and reaching the shaped-text cache limit keeps the lines still in view instead of shaping everything again.

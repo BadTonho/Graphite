@@ -180,9 +180,15 @@ pub struct Buffer {
     redo: Vec<Edit>,
     saved_text: Rope,
     last_change: Option<TextChange>,
+    /// The latest changes with the revision each one produced, oldest first; see
+    /// [`Buffer::changes_since`].
+    recent_changes: std::collections::VecDeque<(u64, TextChange)>,
     last_position_edits: Vec<PositionEdit>,
     read_only: bool,
 }
+
+/// How many changes [`Buffer::changes_since`] can replay.
+const RECENT_CHANGES: usize = 128;
 
 impl Buffer {
     pub fn new() -> Self {
@@ -218,6 +224,35 @@ impl Buffer {
         self.last_change
     }
 
+    /// Every change made after `revision`, oldest first, so a consumer that saw the text at
+    /// `revision` can replay them, as an incremental parser does. `None` when they are not all
+    /// known: too many changes since then, or a change that replaced the text without a record.
+    pub fn changes_since(&self, revision: u64) -> Option<Vec<TextChange>> {
+        if revision > self.revision {
+            return None;
+        }
+        if revision == self.revision {
+            return Some(Vec::new());
+        }
+        let first = self
+            .recent_changes
+            .iter()
+            .position(|(produced, _)| *produced == revision + 1)?;
+        let changes: Vec<_> = self
+            .recent_changes
+            .iter()
+            .skip(first)
+            .map(|(_, change)| *change)
+            .collect();
+        // Revisions are consecutive, so a complete run ends at the current one.
+        (self
+            .recent_changes
+            .back()
+            .is_some_and(|(produced, _)| *produced == self.revision)
+            && changes.len() as u64 == self.revision - revision)
+            .then_some(changes)
+    }
+
     /// Changes for the most recent revision, sorted by their original offsets.
     pub fn last_position_edits(&self) -> &[PositionEdit] {
         &self.last_position_edits
@@ -239,7 +274,7 @@ impl Buffer {
                 inserted.len() - inserted.rfind('\n').unwrap() - 1,
             )
         };
-        self.last_change = Some(TextChange {
+        let change = TextChange {
             start_byte,
             old_end_byte,
             new_end_byte: start_byte + inserted.len(),
@@ -249,7 +284,13 @@ impl Buffer {
             old_end_column,
             new_end_row,
             new_end_column,
-        });
+        };
+        self.last_change = Some(change);
+        // Every recorded change is followed by one revision step.
+        if self.recent_changes.len() == RECENT_CHANGES {
+            self.recent_changes.pop_front();
+        }
+        self.recent_changes.push_back((self.revision + 1, change));
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -323,6 +364,52 @@ impl Buffer {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn changes_since_replays_every_change_after_a_revision() {
+        let mut document = Buffer::new();
+        let mut view = crate::SelectionState::default();
+        let start = document.revision();
+        {
+            let mut editor = document.edit(&mut view, crate::ViewId(1));
+            editor.insert("ab");
+            editor.insert_newline();
+            editor.insert("c");
+            editor.backspace();
+        }
+        let changes = document.changes_since(start).unwrap();
+        assert_eq!(changes.len() as u64, document.revision() - start);
+        assert_eq!(changes[0].start_byte, 0);
+        assert_eq!(
+            changes[1].new_end_row, 1,
+            "the newline moves to the next row"
+        );
+        assert_eq!(
+            changes.last().unwrap().new_end_byte,
+            changes.last().unwrap().start_byte
+        );
+        assert_eq!(
+            document.changes_since(document.revision()).unwrap().len(),
+            0
+        );
+        assert!(document.changes_since(document.revision() + 1).is_none());
+    }
+
+    #[test]
+    fn changes_since_gives_up_when_the_record_is_too_old() {
+        let mut document = Buffer::new();
+        let mut view = crate::SelectionState::default();
+        let start = document.revision();
+        {
+            let mut editor = document.edit(&mut view, crate::ViewId(1));
+            for _ in 0..RECENT_CHANGES + 5 {
+                editor.insert("x");
+            }
+        }
+        assert!(document.changes_since(start).is_none());
+        let recent = document.revision() - 10;
+        assert_eq!(document.changes_since(recent).unwrap().len(), 10);
+    }
 
     #[test]
     fn insert_and_backspace() {

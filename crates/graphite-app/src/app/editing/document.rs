@@ -21,25 +21,30 @@ impl App {
         {
             return;
         }
-        let edit = if tab
+        // Every change since the last highlight, replayed on the syntax tree; `None` (no earlier
+        // highlight, or changes no longer known) highlights from scratch.
+        let edits: Option<Vec<TextEdit>> = tab
             .highlights
             .as_ref()
-            .is_some_and(|h| h.revision + 1 == revision)
-        {
-            tab.buffer.last_change().map(|c| TextEdit {
-                start_byte: c.start_byte,
-                old_end_byte: c.old_end_byte,
-                new_end_byte: c.new_end_byte,
-                start_position: (c.start_row, c.start_column),
-                old_end_position: (c.old_end_row, c.old_end_column),
-                new_end_position: (c.new_end_row, c.new_end_column),
-            })
-        } else {
-            None
-        };
+            .and_then(|h| tab.buffer.changes_since(h.revision))
+            .map(|changes| {
+                changes
+                    .into_iter()
+                    .map(|c| TextEdit {
+                        start_byte: c.start_byte,
+                        old_end_byte: c.old_end_byte,
+                        new_end_byte: c.new_end_byte,
+                        start_position: (c.start_row, c.start_column),
+                        old_end_position: (c.old_end_row, c.old_end_column),
+                        new_end_position: (c.new_end_row, c.new_end_column),
+                    })
+                    .collect()
+            });
+        // Dropping the previous copy first lets the highlighter update its lines in place.
+        tab.highlights = None;
         let lines = tab
             .highlighter
-            .highlight_rope(lang, tab.buffer.rope(), edit);
+            .highlight_rope_edits(lang, tab.buffer.rope(), edits.as_deref());
         tab.highlights = Some(HighlightCache { revision, lines });
     }
 

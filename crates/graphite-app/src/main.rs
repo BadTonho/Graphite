@@ -78,7 +78,8 @@ const PAD: f32 = 8.0;
 /// Cached highlight result for the currently open buffer revision.
 struct HighlightCache {
     revision: u64,
-    lines: Vec<Vec<Span>>,
+    /// Shared with the document's highlighter, which updates it in place on the next edit.
+    lines: std::sync::Arc<Vec<Vec<Span>>>,
 }
 
 struct Gpu {
@@ -1462,6 +1463,34 @@ mod tests {
         assert_eq!(
             app.documents[app.document_at(0)].buffer.text(),
             "let café = 1;\nlet café = 2;\n"
+        );
+    }
+
+    #[test]
+    fn several_edits_between_frames_rehighlight_like_a_fresh_parse() {
+        let dir = crate::test_support::TempDir::new();
+        let path = dir.path().join("main.rs");
+        fs::write(&path, "fn main() {\n    let a = 1;\n}\n".repeat(50)).unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.open_file(path);
+        app.refresh_highlights();
+        let before = app.documents[app.document_at(0)].buffer.revision();
+        // Several changes without a frame in between, one opening a string.
+        app.test_editor_mut(0).set_cursor_line_col(1, 12);
+        app.test_editor_mut(0).insert("2");
+        app.test_editor_mut(0).insert_newline();
+        app.test_editor_mut(0).insert("let s = \"open");
+        app.test_editor_mut(0).set_cursor_line_col(40, 0);
+        app.test_editor_mut(0).insert("// note\n");
+        assert!(app.documents[app.document_at(0)].buffer.revision() > before + 2);
+
+        app.refresh_highlights();
+
+        let tab = &app.documents[app.document_at(0)];
+        let mut fresh = IncrementalHighlighter::new();
+        assert_eq!(
+            tab.highlights.as_ref().unwrap().lines,
+            fresh.highlight_rope(Language::Rust, tab.buffer.rope(), None)
         );
     }
 

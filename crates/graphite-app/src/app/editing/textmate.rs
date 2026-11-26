@@ -184,7 +184,10 @@ impl App {
         let lines = self
             .textmate_engine()
             .and_then(|engine| engine.highlight(document, &path, &text));
-        self.documents[document].highlights = lines.map(|lines| HighlightCache { revision, lines });
+        self.documents[document].highlights = lines.map(|lines| HighlightCache {
+            revision,
+            lines: lines.into(),
+        });
     }
 }
 

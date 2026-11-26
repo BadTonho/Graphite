@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- O realce de sintaxe após uma edição agora revisa só as linhas alteradas e o que a sintaxe delas afeta, em vez de tudo da edição até o fim do arquivo, e não copia nem ordena mais os realces de todas as linhas. Várias edições feitas entre dois quadros, como colar com múltiplos cursores, são aplicadas de forma incremental em vez de realçar o arquivo inteiro de novo. Enquanto o código tem um erro de sintaxe, tudo depois da edição continua sendo verificado, então o realce continua exato.
 - Breadcrumbs, Sticky Scroll e a Estrutura reaproveitam a árvore de sintaxe que o realce mantém atualizada, em vez de analisar o arquivo inteiro de novo; os breadcrumbs copiavam e analisavam o arquivo a cada quadro, o que deixava a rolagem lenta em arquivos grandes. A Estrutura também não percorre mais o arquivo uma vez por declaração para medir a indentação.
 - Builds, instalações de pacotes e outras rajadas de mudanças de arquivos não iniciam mais um `git status` e uma carga do grafo de commits por arquivo alterado. As mudanças são reunidas por um quarto de segundo, caminhos excluídos pelo `.gitignore` (como `node_modules`) não atualizam mais o Controle de Código-Fonte, e só uma atualização roda por vez.
 - Desenhar texto não aloca mais memória para linhas já na tela, e atingir o limite do cache de texto mantém as linhas ainda visíveis em vez de remodelar tudo de novo.

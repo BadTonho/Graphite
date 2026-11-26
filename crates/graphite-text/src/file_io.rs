@@ -20,6 +20,7 @@ impl Buffer {
             undo: Vec::new(),
             redo: Vec::new(),
             last_change: None,
+            recent_changes: Default::default(),
             last_position_edits: Vec::new(),
             read_only: fs::metadata(path)?.permissions().readonly()
                 || matches!(OpenOptions::new().write(true).open(path), Err(ref e) if e.kind() == io::ErrorKind::PermissionDenied),
