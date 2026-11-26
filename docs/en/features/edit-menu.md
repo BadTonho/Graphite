@@ -2,6 +2,8 @@
 
 The title bar's **Edit** menu exposes undo/redo, clipboard actions, editor find/replace, workspace search and replacement, comment toggles, and Emmet expansion. Keyboard navigation uses the same menu rows and enabled states as pointer and accessibility input.
 
+Each file keeps up to 10,000 undo steps and up to 64 MiB of undone text; past that, the oldest steps are forgotten. The latest step can always be undone, however large.
+
 ## Workspace replacement
 
 **Find in Files** searches every workspace root. **Replace in Files** adds a replacement field; press **Tab** to switch between fields and **Ctrl+Enter** to apply **Replace All**. The result list acts as a preview. A stale result aborts the operation. Open documents receive unsaved editor changes, while closed files are updated through the workspace edit transaction.

@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- O histórico de desfazer de um arquivo não cresce mais sem limite: ele guarda os últimos 10.000 passos e até 64 MiB de texto, esquecendo primeiro os passos mais antigos.
 - Cada retângulo e glifo agora envia 52 bytes à GPU por quadro em vez de 216: o renderizador os desenha como instâncias, e o shader posiciona os cantos.
 - A busca entre arquivos lê o workspace em várias threads e não resolve mais o caminho completo de cada arquivo pesquisado; os resultados são listados por arquivo e posição, sempre na mesma ordem.
 - **Ir para símbolo no workspace** lê arquivos em várias threads, usa a lista de arquivos do abrir rápido quando ela está pronta, ignora arquivos acima de 2 MiB, não copia mais todos os arquivos abertos na thread do editor e interrompe uma busca que não é mais necessária quando o seletor fecha ou reabre. **Ir para símbolo no editor** reaproveita a árvore de sintaxe que o realce mantém.

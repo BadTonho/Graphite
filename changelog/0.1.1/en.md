@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- The undo history of a file no longer grows without limit: it keeps the latest 10,000 steps and up to 64 MiB of text, forgetting the oldest steps first.
 - Each rectangle and glyph now sends 52 bytes to the GPU per frame instead of 216: the renderer draws them as instances and the shader places the corners.
 - Search across files reads the workspace on several threads and no longer resolves the full path of every file it searches; results are listed by file and position, in the same order every time.
 - **Go to Symbol in Workspace** reads files on several threads, uses the Quick Open file list when it is ready, skips files over 2 MiB, no longer copies every open file on the editor thread, and stops a search that is no longer needed when the picker closes or reopens. **Go to Symbol in Editor** reuses the syntax tree that highlighting keeps.

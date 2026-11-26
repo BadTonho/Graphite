@@ -17,7 +17,7 @@ impl Buffer {
             path: Some(path.to_path_buf()),
             dirty: false,
             revision: 0,
-            undo: Vec::new(),
+            undo: Default::default(),
             redo: Vec::new(),
             last_change: None,
             recent_changes: Default::default(),

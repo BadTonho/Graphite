@@ -9,6 +9,7 @@ use std::{
 mod brackets;
 mod case;
 mod cursor_ops;
+mod history;
 mod selection_ops;
 pub use brackets::{
     bracket_levels, enclosing_brackets, matching_bracket, next_bracket, BracketDepths,
@@ -172,13 +173,27 @@ struct Edit {
     position_edits: Vec<PositionEdit>,
 }
 
+impl Edit {
+    /// What the step holds, for the undo budget. Only the text counts, which never changes once
+    /// the step is recorded; the selections and position edits added afterwards are small.
+    fn size(&self) -> usize {
+        self.removed.len() + self.inserted.len() + std::mem::size_of::<Self>()
+    }
+}
+
+impl Default for history::UndoStack<Edit> {
+    fn default() -> Self {
+        Self::new(Edit::size)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Buffer {
     rope: Rope,
     path: Option<PathBuf>,
     dirty: bool,
     revision: u64,
-    undo: Vec<Edit>,
+    undo: history::UndoStack<Edit>,
     redo: Vec<Edit>,
     saved_text: Rope,
     last_change: Option<TextChange>,
@@ -447,6 +462,30 @@ mod tests {
             edits[0].change.start_column, 5,
             "the byte column is kept as well"
         );
+    }
+
+    #[test]
+    fn undo_goes_back_as_far_as_the_history_keeps() {
+        let mut document = Buffer::new();
+        let mut view = crate::SelectionState::default();
+        let extra = 5;
+        for _ in 0..history::MAX_UNDO_STEPS + extra {
+            let mut editor = document.edit(&mut view, crate::ViewId(1));
+            editor.insert("x");
+        }
+        let mut undone = 0;
+        while document.can_undo() {
+            document.undo();
+            undone += 1;
+        }
+        assert_eq!(undone, history::MAX_UNDO_STEPS);
+        assert_eq!(
+            document.text(),
+            "x".repeat(extra),
+            "the oldest steps are gone"
+        );
+        document.redo();
+        assert_eq!(document.text(), "x".repeat(extra + 1));
     }
 
     #[test]
