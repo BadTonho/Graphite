@@ -279,28 +279,29 @@ pub fn resolve_workspace_path(workspace_root: &Path, raw: &str) -> Result<PathBu
         root_canonical.join(clean)
     };
 
-    let check = if joined.exists() {
-        joined.canonicalize().unwrap_or_else(|_| joined.clone())
-    } else {
-        let parent = joined.parent().unwrap_or(&root_canonical);
-        if parent.exists() {
-            let parent_canon = parent
-                .canonicalize()
-                .unwrap_or_else(|_| parent.to_path_buf());
-            if let Some(name) = joined.file_name() {
-                parent_canon.join(name)
-            } else {
-                parent_canon
-            }
-        } else {
-            joined.clone()
-        }
-    };
+    // Every existing part of the path is resolved, links included, so a link inside the
+    // workspace that points outside is caught even when the final file does not exist yet.
+    let check = resolve_existing_prefix(&joined).ok_or("Path escapes workspace root")?;
 
     if !check.starts_with(&root_canonical) {
         return Err("Path escapes workspace root".into());
     }
     Ok(check)
+}
+
+/// `path` with its longest existing prefix canonicalized and the missing rest appended. `None`
+/// when the missing rest is not plain names (a `..` there could not be checked).
+fn resolve_existing_prefix(path: &Path) -> Option<PathBuf> {
+    let mut existing = path;
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(mut resolved) = existing.canonicalize() {
+            resolved.extend(missing.iter().rev());
+            return Some(resolved);
+        }
+        missing.push(existing.file_name()?);
+        existing = existing.parent()?;
+    }
 }
 
 /// Human-readable one-line summary for approval dialogs and debug logs.
@@ -552,7 +553,14 @@ fn collect_search_matches(
         if matches!(name, ".git" | "target" | "node_modules") {
             continue;
         }
-        if path.is_dir() {
+        // Links are not followed: they can lead outside the workspace or back into a parent.
+        let Ok(kind) = fs::symlink_metadata(&path).map(|meta| meta.file_type()) else {
+            continue;
+        };
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
             collect_search_matches(root, &path, query, out, limit);
             continue;
         }
@@ -723,6 +731,74 @@ mod tests {
         assert!(policy.requires_approval(&dir, TOOL_PROPOSE_EDIT, &none));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Makes `link` a directory link to `target`: a junction on Windows, which needs no extra
+    /// privilege, and a symbolic link elsewhere.
+    fn link_dir(target: &Path, link: &Path) {
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(link)
+                .arg(target)
+                .stdout(std::process::Stdio::null())
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[test]
+    fn a_link_out_of_the_workspace_is_refused_even_for_files_that_do_not_exist() {
+        let root = temp_workspace("link-root");
+        let outside = temp_workspace("link-outside");
+        fs::write(outside.join("secret.txt"), "secret").unwrap();
+        link_dir(&outside, &root.join("link"));
+
+        for raw in [
+            "link/secret.txt",
+            "link/new.txt",
+            "link/new-dir/deeper/new.txt",
+        ] {
+            assert!(resolve_workspace_path(&root, raw).is_err(), "{raw}");
+        }
+        let inside = resolve_workspace_path(&root, "a/b/new.txt").unwrap();
+        assert!(inside.starts_with(root.canonicalize().unwrap()));
+        assert!(inside.ends_with("a/b/new.txt"));
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn search_does_not_follow_links_out_of_the_workspace() {
+        let root = temp_workspace("search-root");
+        let outside = temp_workspace("search-outside");
+        fs::write(outside.join("secret.txt"), "needle outside").unwrap();
+        fs::write(root.join("own.txt"), "needle inside").unwrap();
+        link_dir(&outside, &root.join("link"));
+        // A link back to the workspace itself must not loop.
+        link_dir(&root, &root.join("loop"));
+
+        let result = execute_tool(
+            &root,
+            AgentMode::Ask,
+            TOOL_SEARCH_WORKSPACE,
+            &json!({"query": "needle"}),
+            &FakeRunner(Mutex::new(Vec::new())),
+        );
+
+        assert!(!result.is_error);
+        assert!(result.content.contains("own.txt"), "{}", result.content);
+        assert!(!result.content.contains("outside"), "{}", result.content);
+        assert_eq!(result.content.lines().count(), 1, "{}", result.content);
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
     }
 
     #[test]

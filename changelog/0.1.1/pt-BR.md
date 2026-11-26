@@ -11,6 +11,7 @@
 
 ## Correções
 
+- As ferramentas do Chat não conseguem mais acessar arquivos fora do workspace por um link simbólico ou junction: criar um arquivo dentro de uma pasta vinculada é recusado como a leitura, e a busca no workspace não segue mais links, o que também evita que ela entre em loop.
 - Conversas do Chat e aprovações de ferramentas que não podem ser salvas agora são registradas no log de erros de severidade média em vez de se perderem em silêncio, comandos do Chat não gravam mais em um perfil isolado, e **Chat: Abrir Edição do Chat em Diff** informa quando o arquivo de comparação não pode ser criado.
 - O Chat agora encerra a resposta com um erro quando um serviço de modelo envia um único evento maior que 8 MiB, em vez de consumir cada vez mais memória, e não fica mais lento em respostas cujas linhas chegam em muitos pedaços pequenos.
 - Comandos do Chat no terminal não derrubam mais a resposta quando uma saída longa termina no meio de um caractere acentuado ou emoji, e não a travam mais para sempre: um comando que passa de 2 minutos, ou é interrompido com **Parar**, é encerrado junto com os processos que iniciou. A saída é limitada durante a leitura, e argumentos entre aspas agora chegam ao `cmd` no Windows exatamente como escritos.

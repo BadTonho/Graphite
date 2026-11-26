@@ -34,7 +34,7 @@ Os modelos gratuitos de chat restritos ao cliente OpenCode ficam indisponíveis 
   - **Edit**: Propõe edições em arquivos acompanhadas de snapshots antes/depois para revisão.
   - **Agent**: Executa ferramentas de workspace (leitura, busca, edição de arquivos e comandos no terminal dentro da raiz do workspace) em múltiplos passos.
 - **Comandos no terminal**: `run_command` roda na raiz do workspace via `cmd /C` no Windows ou `sh -c` no Linux, sem entrada. O comando é encerrado, junto com os processos que iniciou, quando passa de 2 minutos ou quando você seleciona **Parar**. No máximo 24 KB de saída são devolvidos ao modelo.
-- **Restrição de caminhos**: Todos os caminhos de ferramentas são validados dentro da raiz do workspace (`resolve_workspace_path`).
+- **Restrição de caminhos**: Todos os caminhos de ferramentas são validados dentro da raiz do workspace (`resolve_workspace_path`). Links também são resolvidos, então um link dentro do workspace que aponta para fora é recusado, inclusive para arquivos que ainda não existem. A busca no workspace ignora links.
 - **Aprovações**: Edições, comandos no terminal e ferramentas de plugins pedem aprovação com **Permitir uma vez**, **Sempre permitir aqui** ou **Negar**. Fora do modo Perguntar, leitura e busca rodam sem perguntar, a menos que **Chat: Alternar Política de Aprovação de Ferramentas** desative isso.
   - **Sempre permitir aqui** vale apenas para o workspace atual. Para um comando no terminal o botão mostra **Sempre permitir este comando**, e somente aquele comando exato roda sem perguntar; qualquer outro comando continua pedindo aprovação.
   - Em um workspace restrito (não confiável), nada é lembrado e aprovações dadas em outros workspaces não são usadas.
