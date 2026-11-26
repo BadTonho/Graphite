@@ -6,11 +6,13 @@
 
 ## Melhorias
 
+- Desenhar texto não aloca mais memória para linhas já na tela, e atingir o limite do cache de texto mantém as linhas ainda visíveis em vez de remodelar tudo de novo.
 - O painel Chat agora tem configuração guiada de conexões, botões de conversa identificados e um campo de mensagem com envio, cancelamento e anexos de contexto removíveis.
 - Simplifique a barra lateral secundária com acesso à Estrutura pela paleta de comandos.
 
 ## Correções
 
+- O texto não some mais de vez após várias mudanças de zoom ou ao abrir arquivos com muitos caracteres diferentes, como texto CJK ou emoji. Quando o atlas de glifos enche, ele é esvaziado e o quadro seguinte desenha todos os glifos de novo; imagens deixadas de fora por um atlas de imagens cheio também reaparecem na hora.
 - No Windows, terminais, tarefas, kernels de notebook e comandos do Chat não herdam mais as conexões de webviews de extensões, kernels de notebook e adaptadores de depuração do Graphite. Antes, um processo iniciado enquanto uma dessas conexões estava aberta a mantinha viva depois que o Graphite a fechava, e uma webview podia ficar esperando uma resposta que já tinha sido enviada.
 - Salvar o perfil ativo, a confiança de workspace e o armazenamento de plugins não deixa mais um arquivo pela metade quando o sistema de arquivos recusa a substituição rápida ou o Graphite para no meio do salvamento. O novo arquivo é gravado em disco primeiro e trocado em uma única etapa, e um salvamento com falha mantém o arquivo anterior.
 - Uma cor de tema escrita com um caractere não ASCII, como `#abcdeé`, não derruba mais o Graphite; cores malformadas são ignoradas. Cores curtas `#RGB` e `#RGBA` agora também são aceitas.

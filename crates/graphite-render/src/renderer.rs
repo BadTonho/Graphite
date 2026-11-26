@@ -8,7 +8,8 @@ pub use icon_fonts::IconFont;
 pub use images::Image;
 use text::measure_char_width;
 
-use crate::atlas::{ShelfPacker, Slot, ATLAS_SIZE};
+use crate::atlas::{Slot, ATLAS_SIZE};
+use crate::cache::{GlyphCache, TextCache};
 use crate::icons;
 use cosmic_text::{
     Attrs, Buffer, CacheKey, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
@@ -55,6 +56,9 @@ struct Globals {
     _pad: [f32; 2],
 }
 
+/// Shaped lines kept per generation; see [`TextCache`].
+const LINE_CACHE_LIMIT: usize = 2000;
+
 #[derive(Clone, Copy)]
 struct GlyphEntry {
     slot: Slot,
@@ -76,11 +80,14 @@ pub struct Renderer {
     vertex_buf: wgpu::Buffer,
     vertex_capacity: usize,
     vertices: Vec<Vertex>,
-    packer: ShelfPacker,
-    glyphs: HashMap<CacheKey, Option<GlyphEntry>>,
+    glyphs: GlyphCache<CacheKey, GlyphEntry>,
     font_system: FontSystem,
     swash: SwashCache,
-    line_cache: HashMap<(String, u32), Buffer>,
+    line_cache: TextCache<Buffer>,
+    /// Reused for the glyphs of one line, so drawing text allocates nothing once warm.
+    glyph_scratch: Vec<(cosmic_text::PhysicalGlyph, f32)>,
+    /// Set when an atlas was emptied after a frame that could not show everything.
+    redraw_needed: bool,
     /// Shaped icon glyphs by (font key, glyph, size bits); font key 0 is the embedded font.
     icon_cache: HashMap<(u64, char, u32), Buffer>,
     /// Family names of the icon fonts loaded at run time, by [`IconFont::id`]; `None` when the
@@ -336,11 +343,12 @@ impl Renderer {
             vertex_buf,
             vertex_capacity,
             vertices: Vec::new(),
-            packer: ShelfPacker::new(),
-            glyphs: HashMap::new(),
+            glyphs: GlyphCache::new(),
             font_system,
             swash: SwashCache::new(),
-            line_cache: HashMap::new(),
+            line_cache: TextCache::new(LINE_CACHE_LIMIT),
+            glyph_scratch: Vec::new(),
+            redraw_needed: false,
             icon_cache: HashMap::new(),
             icon_fonts: HashMap::new(),
             clear: rgb(0x1e1e1e),
@@ -539,8 +547,18 @@ impl Renderer {
         self.queue.present(frame);
         if self.images.reset_pending {
             self.images.reset();
+            self.redraw_needed = true;
+        }
+        if self.glyphs.reset_if_full() {
+            self.redraw_needed = true;
         }
         self.vertices.clear();
+    }
+
+    /// Whether the frame just presented left out glyphs or images because an atlas was full.
+    /// The atlas has been emptied, so drawing again shows them; the request is cleared.
+    pub fn take_redraw_request(&mut self) -> bool {
+        std::mem::take(&mut self.redraw_needed)
     }
 }
 

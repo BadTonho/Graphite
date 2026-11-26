@@ -6,11 +6,13 @@
 
 ## Improvements
 
+- Drawing text no longer allocates for lines already on screen, and reaching the shaped-text cache limit keeps the lines still in view instead of shaping everything again.
 - The Chat panel now has a guided connection setup, labeled conversation controls, and a message field with send, stop, and removable context attachments.
 - Simplify the secondary sidebar by moving access to Outline to the command palette.
 
 ## Fixes
 
+- Text no longer disappears for good after zooming several times or opening files with many different characters, such as CJK text or emoji. When the glyph atlas fills up it is emptied and the next frame draws every glyph again; images left out by a full image atlas now reappear right away too.
 - On Windows, terminals, tasks, notebook kernels, and Chat commands no longer inherit Graphite's extension webview, notebook kernel, and debug adapter connections. Previously a process started while such a connection was open kept it alive after Graphite closed it, so a webview could wait for a response that had already been sent.
 - Saving the active profile, workspace trust, and plugin storage can no longer leave a half-written file when the file system rejects the fast replacement or Graphite stops mid-save. The new file is flushed first and swapped in one step, and a failed save keeps the previous file.
 - A theme color written with a non-ASCII character, such as `#abcdeé`, no longer crashes Graphite; malformed colors are ignored. Short `#RGB` and `#RGBA` colors are now accepted too.

@@ -662,6 +662,10 @@ impl App {
 
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();
+        // A full glyph or image atlas was emptied: the next frame shows what this one left out.
+        if r.take_redraw_request() {
+            gpu.window.request_redraw();
+        }
         self.gpu = Some(gpu);
     }
 }

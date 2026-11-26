@@ -8,32 +8,32 @@ impl Renderer {
         }
         let (tx, ty) = self.translation;
         let (x, y) = (x + tx, y + ty);
-        let key = (text.to_owned(), self.metrics.font_size.to_bits());
-        if self.line_cache.len() > 2000 {
-            self.line_cache.clear();
-        }
         let metrics = self.metrics;
-        let buffer = self.line_cache.entry(key).or_insert_with(|| {
-            let mut buffer = Buffer::new(&mut self.font_system, metrics);
-            buffer.set_size(None, None);
-            buffer.set_text(
-                text,
-                &Attrs::new().family(Family::Monospace),
-                Shaping::Advanced,
-                None,
-            );
-            buffer.shape_until_scroll(&mut self.font_system, false);
-            buffer
-        });
+        let font_system = &mut self.font_system;
+        let buffer = self
+            .line_cache
+            .get_or_insert_with(metrics.font_size.to_bits(), text, || {
+                let mut buffer = Buffer::new(font_system, metrics);
+                buffer.set_size(None, None);
+                buffer.set_text(
+                    text,
+                    &Attrs::new().family(Family::Monospace),
+                    Shaping::Advanced,
+                    None,
+                );
+                buffer.shape_until_scroll(font_system, false);
+                buffer
+            });
 
         // Collect physical glyphs first to release the borrow on the cache.
-        let mut physical = Vec::new();
+        let mut physical = std::mem::take(&mut self.glyph_scratch);
+        physical.clear();
         for run in buffer.layout_runs() {
             for glyph in run.glyphs {
                 physical.push((glyph.physical((0.0, 0.0), 1.0), run.line_y));
             }
         }
-        for (pg, line_y) in physical {
+        for (pg, line_y) in physical.drain(..) {
             let Some(entry) = self.glyph_entry(pg.cache_key) else {
                 continue;
             };
@@ -51,6 +51,7 @@ impl Renderer {
                 color,
             );
         }
+        self.glyph_scratch = physical;
     }
 
     /// Draws an icon glyph centered inside a `size` by `size` box.
@@ -171,18 +172,29 @@ impl Renderer {
 
     fn glyph_entry(&mut self, key: CacheKey) -> Option<GlyphEntry> {
         if let Some(entry) = self.glyphs.get(&key) {
-            return *entry;
+            return entry;
         }
-        let entry = self.rasterize(key);
-        self.glyphs.insert(key, entry);
-        entry
+        match self.rasterize(key) {
+            Rasterized::Placed(entry) => {
+                self.glyphs.insert(key, Some(entry));
+                Some(entry)
+            }
+            Rasterized::Empty => {
+                self.glyphs.insert(key, None);
+                None
+            }
+            // Not remembered: the atlas is emptied after this frame and the glyph placed then.
+            Rasterized::NoRoom => None,
+        }
     }
 
-    fn rasterize(&mut self, key: CacheKey) -> Option<GlyphEntry> {
-        let image = self.swash.get_image_uncached(&mut self.font_system, key)?;
+    fn rasterize(&mut self, key: CacheKey) -> Rasterized {
+        let Some(image) = self.swash.get_image_uncached(&mut self.font_system, key) else {
+            return Rasterized::Empty;
+        };
         let (w, h) = (image.placement.width, image.placement.height);
         if w == 0 || h == 0 {
-            return None;
+            return Rasterized::Empty;
         }
         let coverage: Vec<u8> = match image.content {
             SwashContent::Mask => image.data.clone(),
@@ -190,7 +202,9 @@ impl Renderer {
             SwashContent::Color => image.data.chunks_exact(4).map(|p| p[3]).collect(),
             SwashContent::SubpixelMask => image.data.chunks_exact(4).map(|p| p[1]).collect(),
         };
-        let slot = self.packer.allocate(w, h)?;
+        let Some(slot) = self.glyphs.allocate(w, h) else {
+            return Rasterized::NoRoom;
+        };
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.atlas_tex,
@@ -214,12 +228,21 @@ impl Renderer {
                 depth_or_array_layers: 1,
             },
         );
-        Some(GlyphEntry {
+        Rasterized::Placed(GlyphEntry {
             slot,
             left: image.placement.left,
             top: image.placement.top,
         })
     }
+}
+
+/// What rasterizing a glyph gave.
+enum Rasterized {
+    Placed(GlyphEntry),
+    /// The glyph draws nothing, such as a space.
+    Empty,
+    /// The atlas is full.
+    NoRoom,
 }
 
 pub(super) fn measure_char_width(font_system: &mut FontSystem, metrics: Metrics) -> f32 {
