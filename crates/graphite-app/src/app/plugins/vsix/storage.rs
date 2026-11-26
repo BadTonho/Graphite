@@ -31,7 +31,7 @@ fn persist(path: &Path, value: impl Serialize) -> Result<()> {
         serde_json::to_writer(&mut file, &value).map_err(|error| error.to_string())?;
         file.flush().map_err(|error| error.to_string())?;
         drop(file);
-        crate::app::phase5::replace_profile_pointer(&temp, path).map_err(|error| error.to_string())
+        crate::app::phase5::replace_file_atomically(&temp, path).map_err(|error| error.to_string())
     })();
     if result.is_err() {
         let _ = fs::remove_file(temp);

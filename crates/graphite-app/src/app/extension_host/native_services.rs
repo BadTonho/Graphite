@@ -462,7 +462,7 @@ impl App {
             serde_json::to_writer(&mut file, &data).map_err(|e| ServiceError::Io(e.to_string()))?;
             file.flush().map_err(|e| ServiceError::Io(e.to_string()))?;
             drop(file);
-            crate::app::phase5::replace_profile_pointer(&temp, &path)
+            crate::app::phase5::replace_file_atomically(&temp, &path)
                 .map_err(|e| ServiceError::Io(e.to_string()))
         })();
         if write_result.is_err() {

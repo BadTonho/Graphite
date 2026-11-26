@@ -11,6 +11,7 @@
 
 ## Correções
 
+- Salvar o perfil ativo, a confiança de workspace e o armazenamento de plugins não deixa mais um arquivo pela metade quando o sistema de arquivos recusa a substituição rápida ou o Graphite para no meio do salvamento. O novo arquivo é gravado em disco primeiro e trocado em uma única etapa, e um salvamento com falha mantém o arquivo anterior.
 - Uma cor de tema escrita com um caractere não ASCII, como `#abcdeé`, não derruba mais o Graphite; cores malformadas são ignoradas. Cores curtas `#RGB` e `#RGBA` agora também são aceitas.
 - O token de login do GitHub agora fica no Gerenciador de Credenciais do Windows ou no Secret Service do Linux, em vez de texto puro na pasta do perfil. Tokens salvos por versões anteriores são movidos para lá automaticamente, e falhas ao manter o login são registradas no log de erros.
 - O log de erros agora oculta tokens de login do GitHub (`gho_`) e outros tokens do GitHub, Google, GitLab, Slack e AWS, credenciais `Basic` e `x-api-key`, segredos `chave=valor` e senhas em URLs, que antes podiam ser gravados em disco. O log de erros e o relator de problemas agora compartilham um único conjunto de regras de ocultação.

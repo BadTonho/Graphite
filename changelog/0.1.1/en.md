@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- Saving the active profile, workspace trust, and plugin storage can no longer leave a half-written file when the file system rejects the fast replacement or Graphite stops mid-save. The new file is flushed first and swapped in one step, and a failed save keeps the previous file.
 - A theme color written with a non-ASCII character, such as `#abcdeé`, no longer crashes Graphite; malformed colors are ignored. Short `#RGB` and `#RGBA` colors are now accepted too.
 - The GitHub sign-in token is now kept in Windows Credential Manager or the Linux Secret Service instead of in plain text in the profile folder. Tokens saved by earlier versions are moved there automatically, and failures to keep the sign-in are recorded in the error log.
 - The error log now redacts GitHub sign-in tokens (`gho_`) and other GitHub, Google, GitLab, Slack, and AWS tokens, `Basic` and `x-api-key` credentials, `key=value` secrets, and passwords in URLs, which could previously be written to disk. The error log and the issue reporter now share one set of redaction rules.

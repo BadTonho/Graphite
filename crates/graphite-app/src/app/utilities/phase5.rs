@@ -70,7 +70,7 @@ impl WorkspaceTrust {
         let bytes = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
         let tmp = self.path.with_extension("json.tmp");
         fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-        replace_profile_pointer(&tmp, &self.path).map_err(|e| e.to_string())?;
+        replace_file_atomically(&tmp, &self.path).map_err(|e| e.to_string())?;
         self.trusted = value.trusted_workspaces;
         Ok(())
     }
@@ -196,7 +196,7 @@ impl Profiles {
             serde_json::to_vec(name).map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        if let Err(error) = replace_profile_pointer(&temp_path, &active_path) {
+        if let Err(error) = replace_file_atomically(&temp_path, &active_path) {
             let _ = fs::remove_file(&temp_path);
             return Err(error.to_string());
         }
@@ -321,27 +321,37 @@ fn validate_profile_name(name: &str) -> Result<(), String> {
     }
     Ok(())
 }
+/// Replaces `to` with the finished file `from` in one step, so readers see the old file or the
+/// new one, never a partial file. `from` is flushed to disk first. When the replacement fails,
+/// `to` is left as it was.
+pub(crate) fn replace_file_atomically(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    fs::OpenOptions::new().write(true).open(from)?.sync_all()?;
+    replace_file(from, to)
+}
 #[cfg(not(windows))]
-pub(crate) fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+fn replace_file(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     fs::rename(from, to)
 }
 #[cfg(windows)]
-pub(crate) fn replace_profile_pointer(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+fn replace_file(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
     extern "system" {
         fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
     }
+    const MOVEFILE_REPLACE_EXISTING: u32 = 1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 8;
     let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-    if unsafe { MoveFileExW(from_wide.as_ptr(), to_wide.as_ptr(), 1 | 8) } != 0 {
+    // SAFETY: both strings are NUL-terminated and live for the call.
+    let flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH;
+    if unsafe { MoveFileExW(from_wide.as_ptr(), to_wide.as_ptr(), flags) } != 0 {
         return Ok(());
     }
     let native_error = std::io::Error::last_os_error();
-    // Some Windows filesystems and restricted test environments reject the
-    // native replacement call. A same-volume copy is the portable fallback.
-    fs::copy(from, to).map_err(|_| native_error)?;
-    fs::remove_file(from)
+    // Some file systems reject write-through moves. The standard rename also replaces the file
+    // in one step; copying over it would not.
+    fs::rename(from, to).map_err(|_| native_error)
 }
 fn copy_tree_no_links(source: &Path, destination: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
@@ -630,6 +640,46 @@ mod tests {
         trust.trust(&trusted).unwrap();
         assert!(trust.is_trusted(&trusted));
         assert!(!trust.is_trusted(&restricted));
+    }
+
+    #[test]
+    fn atomic_replace_swaps_in_the_new_file_and_consumes_the_temporary_one() {
+        let temp = crate::test_support::TempDir::new();
+        let target = temp.path().join("state.json");
+        let staged = temp.path().join("state.json.tmp");
+        fs::write(&target, "old").unwrap();
+        fs::write(&staged, "new").unwrap();
+
+        replace_file_atomically(&staged, &target).unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn failed_atomic_replace_leaves_the_destination_untouched() {
+        let temp = crate::test_support::TempDir::new();
+        // A non-empty folder cannot be replaced by a file.
+        let target = temp.path().join("state");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("kept.txt"), "kept").unwrap();
+        let staged = temp.path().join("state.tmp");
+        fs::write(&staged, "new").unwrap();
+
+        assert!(replace_file_atomically(&staged, &target).is_err());
+
+        assert_eq!(fs::read_to_string(target.join("kept.txt")).unwrap(), "kept");
+        assert_eq!(fs::read_to_string(&staged).unwrap(), "new");
+    }
+
+    #[test]
+    fn atomic_replace_of_a_missing_file_is_an_error() {
+        let temp = crate::test_support::TempDir::new();
+        let target = temp.path().join("state.json");
+        fs::write(&target, "old").unwrap();
+
+        assert!(replace_file_atomically(&temp.path().join("missing"), &target).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "old");
     }
     use super::*;
     fn temp() -> PathBuf {
