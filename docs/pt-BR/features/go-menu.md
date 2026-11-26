@@ -1,6 +1,6 @@
 # Menu Ir
 
-O menu Ir permite navegar entre abas e grupos do editor, arquivos, símbolos, linhas e diagnósticos. A busca de arquivos usa o seletor rápido do workspace. Os seletores de símbolos do editor e do workspace usam as declarações reconhecidas pelo parser de sintaxe do Graphite; os resultados do workspace abrangem todas as raízes e usam o texto ainda não salvo dos arquivos abertos.
+O menu Ir permite navegar entre abas e grupos do editor, arquivos, símbolos, linhas e diagnósticos. A busca de arquivos usa o seletor rápido do workspace. Os seletores de símbolos do editor e do workspace usam as declarações reconhecidas pelo parser de sintaxe do Graphite; os resultados do workspace abrangem todas as raízes e usam o texto ainda não salvo dos arquivos abertos. Arquivos maiores que 2 MiB, como bundles minificados, são ignorados. Os arquivos são lidos em várias threads, e fechar ou reabrir o seletor interrompe uma busca ainda em andamento.
 
 Ir para Linha/Coluna aceita uma linha iniciada em 1 ou `linha:coluna`. O submenu Alternar Editor percorre as vistas abertas na ordem visual ou na ordem de uso recente, com opções limitadas ao grupo atual. Alternar Grupo foca um dos cinco primeiros grupos, o próximo ou anterior, ou o grupo mais próximo na direção escolhida.
 

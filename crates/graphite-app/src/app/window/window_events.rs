@@ -34,6 +34,7 @@ impl ApplicationHandler<UserEvent> for App {
             }
         }
         self.collect_closed_documents();
+        self.drop_finished_symbol_scan();
         let draft_deadline = self.draft_tick(std::time::Instant::now());
         self.offer_draft_review();
         self.poll_extension_host(std::time::Instant::now());

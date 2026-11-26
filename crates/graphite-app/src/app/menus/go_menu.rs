@@ -688,8 +688,18 @@ impl App {
         let Some(language) = document.language else {
             return Vec::new();
         };
-        let source = document.buffer.text();
-        graphite_syntax::declaration_headers(language, &source)
+        // The highlighter's tree is reused when it matches the text; otherwise parse once.
+        let tree_is_current = document
+            .highlights
+            .as_ref()
+            .is_some_and(|highlights| highlights.revision == document.buffer.revision());
+        let headers = tree_is_current
+            .then(|| document.highlighter.declarations(document.buffer.rope()))
+            .flatten()
+            .unwrap_or_else(|| {
+                graphite_syntax::declaration_headers(language, &document.buffer.text())
+            });
+        headers
             .into_iter()
             .map(|symbol| GoSymbolItem {
                 path: path.to_path_buf(),
@@ -705,6 +715,7 @@ impl App {
             return;
         };
         let workspace = self.tree.workspace_snapshot();
+        // Ropes are shared, not copied: open files cost nothing here.
         let opened = self
             .documents
             .iter()
@@ -712,16 +723,43 @@ impl App {
                 document
                     .buffer
                     .path()
-                    .map(|path| (path.to_path_buf(), document.buffer.text()))
+                    .map(|path| (path.to_path_buf(), document.buffer.rope().clone()))
             })
             .collect::<std::collections::HashMap<_, _>>();
+        let files = self
+            .file_index
+            .index
+            .as_ref()
+            .map(|index| index.paths().map(Path::to_path_buf).collect::<Vec<_>>());
+        // Replacing the token stops a scan started for an earlier picker.
+        let scan = ScanToken::default();
+        let cancelled = scan.0.clone();
+        self.go_symbols_scan = Some(scan);
         std::thread::spawn(move || {
-            let results = collect_workspace_symbols(&workspace, &opened);
+            let files = files.unwrap_or_else(|| {
+                workspace.fuzzy_files("", usize::MAX, || cancelled.load(Ordering::Relaxed))
+            });
+            let results =
+                collect_workspace_symbols(&files, &opened, &|| cancelled.load(Ordering::Relaxed));
+            if cancelled.load(Ordering::Relaxed) {
+                return;
+            }
             let _ = proxy.send_event(UserEvent::GoSymbolsReady {
                 generation,
                 items: results,
             });
         });
+    }
+
+    /// Stops the workspace symbol scan once its picker is gone. Cheap enough for every loop.
+    pub(crate) fn drop_finished_symbol_scan(&mut self) {
+        if self.go_symbols_scan.is_some()
+            && !self.go_picker.as_ref().is_some_and(|picker| {
+                picker.kind == GoPickerKind::WorkspaceSymbols && picker.loading
+            })
+        {
+            self.go_symbols_scan = None;
+        }
     }
 
     pub(crate) fn accept_go_symbols(&mut self, generation: u64, items: Vec<GoSymbolItem>) {
@@ -1051,42 +1089,101 @@ impl App {
     }
 }
 
+/// Files larger than this are not read for symbols: minified bundles and generated data would
+/// cost more than they give.
+const MAX_SYMBOL_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Cancels a workspace symbol scan when dropped.
+#[derive(Default)]
+pub(crate) struct ScanToken(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for ScanToken {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// The declarations of `files`, in their order, reading open files from `opened` (unsaved text
+/// included). The files are parsed on several threads. Empty when `cancelled` turns true.
 fn collect_workspace_symbols(
-    workspace: &Workspace,
-    opened: &std::collections::HashMap<PathBuf, String>,
+    files: &[PathBuf],
+    opened: &std::collections::HashMap<PathBuf, graphite_text::Rope>,
+    cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Vec<GoSymbolItem> {
-    let mut results = Vec::new();
-    for path in workspace.fuzzy_files("", usize::MAX, || false) {
-        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.clone());
-        let text = opened
-            .get(&path)
-            .or_else(|| {
-                opened.iter().find_map(|(open_path, text)| {
-                    (open_path
-                        .canonicalize()
-                        .unwrap_or_else(|_| open_path.clone())
-                        == canonical_path)
-                        .then_some(text)
+    // Open files are matched by name first, so only a file sharing a name with one is
+    // canonicalized; comparing canonical paths catches different spellings of the same file.
+    let opened_names: std::collections::HashSet<_> =
+        opened.keys().filter_map(|path| path.file_name()).collect();
+    let canonical_opened: std::collections::HashMap<PathBuf, &graphite_text::Rope> = opened
+        .iter()
+        .map(|(path, rope)| (path.canonicalize().unwrap_or_else(|_| path.clone()), rope))
+        .collect();
+    let text_of = |path: &Path| -> Option<String> {
+        if let Some(rope) = opened.get(path) {
+            return Some(rope.to_string());
+        }
+        if path
+            .file_name()
+            .is_some_and(|name| opened_names.contains(name))
+        {
+            let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+            if let Some(rope) = canonical_opened.get(&canonical) {
+                return Some(rope.to_string());
+            }
+        }
+        let size = std::fs::metadata(path).ok()?.len();
+        (size <= MAX_SYMBOL_FILE_BYTES)
+            .then(|| std::fs::read_to_string(path).ok())
+            .flatten()
+    };
+    let symbols_of = |path: &PathBuf| -> Vec<GoSymbolItem> {
+        let Some(language) = graphite_syntax::Language::from_path(path) else {
+            return Vec::new();
+        };
+        let Some(text) = text_of(path) else {
+            return Vec::new();
+        };
+        graphite_syntax::declaration_headers(language, &text)
+            .into_iter()
+            .map(|symbol| GoSymbolItem {
+                name: symbol.text.clone(),
+                scope: symbol.text,
+                path: path.clone(),
+                line: symbol.line,
+            })
+            .collect()
+    };
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |count| count.get())
+        .clamp(1, 8);
+    let chunk = files.len().div_ceil(workers).max(1);
+    let symbols_of = &symbols_of;
+    let parts: Vec<Vec<GoSymbolItem>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = files
+            .chunks(chunk)
+            .map(|paths| {
+                scope.spawn(move || {
+                    let mut found = Vec::new();
+                    for path in paths {
+                        if cancelled() {
+                            break;
+                        }
+                        found.extend(symbols_of(path));
+                    }
+                    found
                 })
             })
-            .cloned()
-            .or_else(|| std::fs::read_to_string(&path).ok());
-        let Some(text) = text else { continue };
-        let Some(language) = graphite_syntax::Language::from_path(&path) else {
-            continue;
-        };
-        results.extend(
-            graphite_syntax::declaration_headers(language, &text)
-                .into_iter()
-                .map(|symbol| GoSymbolItem {
-                    name: symbol.text.clone(),
-                    scope: symbol.text,
-                    path: path.clone(),
-                    line: symbol.line,
-                }),
-        );
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap_or_default())
+            .collect()
+    });
+    if cancelled() {
+        return Vec::new();
     }
-    results
+    // Chunks are contiguous, so joining them in order keeps the files' order.
+    parts.into_iter().flatten().collect()
 }
 
 pub(crate) fn go_row_height(row: GoMenuRow) -> f32 {
@@ -1241,9 +1338,12 @@ mod tests {
             .iter()
             .any(|item| item.name.contains("alpha")));
         let workspace = Workspace::from_roots([first, second]).unwrap();
-        let opened =
-            std::collections::HashMap::from([(one.clone(), "fn unsaved_symbol() {}".to_owned())]);
-        let symbols = collect_workspace_symbols(&workspace, &opened);
+        let opened = std::collections::HashMap::from([(
+            one.clone(),
+            graphite_text::Rope::from_str("fn unsaved_symbol() {}"),
+        )]);
+        let files = workspace.fuzzy_files("", usize::MAX, || false);
+        let symbols = collect_workspace_symbols(&files, &opened, &|| false);
         assert!(symbols
             .iter()
             .any(|item| item.name.contains("unsaved_symbol")));
@@ -1252,6 +1352,67 @@ mod tests {
             .iter()
             .all(|item| item.path.file_name() == one.file_name()
                 || item.path.file_name() == two.file_name()));
+    }
+
+    #[test]
+    fn workspace_symbols_keep_file_order_skip_huge_files_and_stop_when_cancelled() {
+        let temp = crate::test_support::TempDir::new();
+        let files: Vec<PathBuf> = (0..40)
+            .map(|index| {
+                let path = temp.path().join(format!("f{index:02}.rs"));
+                std::fs::write(&path, format!("fn symbol_{index:02}() {{}}\n")).unwrap();
+                path
+            })
+            .collect();
+        let huge = temp.path().join("huge.rs");
+        let mut text = String::from("fn hidden_in_a_huge_file() {}\n");
+        text.push_str(&"// filler\n".repeat(300_000));
+        std::fs::write(&huge, text).unwrap();
+        let mut all = files.clone();
+        all.push(huge);
+        let opened = std::collections::HashMap::new();
+
+        let symbols = collect_workspace_symbols(&all, &opened, &|| false);
+
+        let names: Vec<_> = symbols.iter().map(|item| item.name.as_str()).collect();
+        let expected: Vec<_> = (0..40)
+            .map(|index| format!("fn symbol_{index:02}() {{}}"))
+            .collect();
+        assert_eq!(names, expected, "every file once, in the given order");
+        assert!(collect_workspace_symbols(&all, &opened, &|| true).is_empty());
+    }
+
+    #[test]
+    fn an_open_file_reached_through_another_spelling_uses_its_unsaved_text() {
+        let temp = crate::test_support::TempDir::new();
+        std::fs::create_dir(temp.path().join("src")).unwrap();
+        let file = temp.path().join("src/lib.rs");
+        std::fs::write(&file, "fn on_disk() {}\n").unwrap();
+        let other_spelling = temp.path().join("src/../src/lib.rs");
+        let opened = std::collections::HashMap::from([(
+            file.clone(),
+            graphite_text::Rope::from_str("fn unsaved() {}\n"),
+        )]);
+
+        let symbols = collect_workspace_symbols(&[other_spelling], &opened, &|| false);
+
+        assert_eq!(symbols.len(), 1);
+        assert!(symbols[0].name.contains("unsaved"));
+    }
+
+    #[test]
+    fn closing_the_symbol_picker_stops_its_scan() {
+        let temp = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+        let scan = ScanToken::default();
+        let cancelled = scan.0.clone();
+        app.go_symbols_scan = Some(scan);
+        app.go_picker = None;
+
+        app.drop_finished_symbol_scan();
+
+        assert!(app.go_symbols_scan.is_none());
+        assert!(cancelled.load(Ordering::Relaxed));
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- **Go to Symbol in Workspace** reads files on several threads, uses the Quick Open file list when it is ready, skips files over 2 MiB, no longer copies every open file on the editor thread, and stops a search that is no longer needed when the picker closes or reopens. **Go to Symbol in Editor** reuses the syntax tree that highlighting keeps.
 - Quick Open no longer walks the whole workspace for every character typed. It keeps a list of the workspace files, built once in the background and rebuilt only when files are created or removed, and ranks only the best results instead of sorting every match.
 - Typing in a file with a language server no longer copies the whole file several times per keystroke. Language servers that accept incremental changes receive exactly the edits made, and the text is shared with the server thread instead of copied; full-text servers get their copy on that thread, away from the editor.
 - Graphite no longer wakes up 100 times a second while a web view (such as the Markdown preview or an extension view) is open, a debug session runs, a file is being saved, or an extension host or task is busy. Those parts now wake the editor when they have something for it, which saves CPU time and battery; on Linux, open web views are still serviced every 16 ms.

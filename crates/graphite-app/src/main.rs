@@ -232,6 +232,8 @@ struct App {
     local_search: Option<LocalSearch>,
     quick_open: Option<QuickOpen>,
     file_index: app::file_index::FileIndexState,
+    /// Stops the workspace symbol scan when replaced or dropped.
+    go_symbols_scan: Option<app::go_menu::ScanToken>,
     command_palette: Option<app::command_palette::CommandPalette>,
     command_center: Option<CommandCenter>,
     snippet_query: Option<String>,
@@ -836,6 +838,7 @@ impl App {
             local_search: None,
             quick_open: None,
             file_index: Default::default(),
+            go_symbols_scan: None,
             command_palette: None,
             command_center: None,
             snippet_query: None,

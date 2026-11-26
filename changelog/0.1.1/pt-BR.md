@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- **Ir para símbolo no workspace** lê arquivos em várias threads, usa a lista de arquivos do abrir rápido quando ela está pronta, ignora arquivos acima de 2 MiB, não copia mais todos os arquivos abertos na thread do editor e interrompe uma busca que não é mais necessária quando o seletor fecha ou reabre. **Ir para símbolo no editor** reaproveita a árvore de sintaxe que o realce mantém.
 - O abrir rápido não percorre mais o workspace inteiro a cada caractere digitado. Ele mantém uma lista dos arquivos do workspace, montada uma vez em segundo plano e refeita só quando arquivos são criados ou removidos, e ordena apenas os melhores resultados em vez de todas as correspondências.
 - Digitar num arquivo com servidor de linguagem não copia mais o arquivo inteiro várias vezes por tecla. Servidores de linguagem que aceitam mudanças incrementais recebem exatamente as edições feitas, e o texto é compartilhado com a thread do servidor em vez de copiado; servidores de texto completo recebem sua cópia nessa thread, fora do editor.
 - O Graphite não acorda mais 100 vezes por segundo enquanto há uma visão web aberta (como a prévia de Markdown ou uma visão de extensão), uma sessão de depuração, um arquivo sendo salvo ou um extension host ou tarefa ocupados. Essas partes agora acordam o editor quando têm algo para ele, o que economiza CPU e bateria; no Linux, visões web abertas continuam sendo atendidas a cada 16 ms.
