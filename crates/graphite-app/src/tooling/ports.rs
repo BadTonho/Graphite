@@ -46,6 +46,7 @@ pub(crate) fn parse_windows_netstat(text: &str, owned: &BTreeSet<u32>) -> Vec<Lo
     listeners
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 pub(crate) fn parse_linux_ss(text: &str, owned: &BTreeSet<u32>) -> Vec<LocalPort> {
     let mut listeners = Vec::new();
     for line in text.lines() {
@@ -104,6 +105,7 @@ impl PortManager {
         self.listeners = parse_windows_netstat(text, &self.owned_processes);
     }
 
+    #[cfg_attr(windows, allow(dead_code))]
     pub(crate) fn refresh_from_ss(&mut self, text: &str) {
         self.listeners = parse_linux_ss(text, &self.owned_processes);
     }

@@ -313,22 +313,25 @@ impl ChatState {
         self.persist_session(profile_root, isolated, self.active_session())
     }
 
-    /// Saves every session; returns whether all of them are saved.
+    /// Saves every session, carrying on past a failure; returns whether all of them are saved.
     pub fn persist_all_sessions(&self, profile_root: &Path, isolated: bool) -> bool {
-        self.sessions.iter().fold(true, |saved, session| {
-            self.persist_session(profile_root, isolated, session) && saved
-        })
+        let mut all_saved = true;
+        for session in &self.sessions {
+            all_saved &= self.persist_session(profile_root, isolated, session);
+        }
+        all_saved
     }
 
     pub(super) fn active_connection(&self) -> Option<&Connection> {
         let session = self.active_session();
-        let id = session.connection_id.as_ref().or_else(|| {
-            if session.turns.is_empty() {
+        let id = session
+            .connection_id
+            .as_ref()
+            .or(if session.turns.is_empty() {
                 self.connections.preferred.as_ref()
             } else {
                 None
-            }
-        })?;
+            })?;
         let connection = self.connections.get(id)?;
         if session.turns.is_empty()
             || session.connection_destination.as_deref() == Some(connection.destination().as_str())

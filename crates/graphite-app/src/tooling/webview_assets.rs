@@ -7,7 +7,6 @@
 //! allowed roots after canonicalization, so `..` segments and symbolic links cannot escape them.
 
 use std::{
-    borrow::Cow,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -17,7 +16,11 @@ use std::{
     },
     thread::{self, JoinHandle},
 };
-use wry::http::{header, Request, Response, StatusCode};
+#[cfg(test)]
+use std::borrow::Cow;
+#[cfg(test)]
+use wry::http::{header, Request, Response};
+use wry::http::StatusCode;
 
 /// Path of the page itself on the custom origin.
 pub(crate) const PAGE_PATH: &str = "/index.html";

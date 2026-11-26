@@ -216,7 +216,7 @@ impl App {
             crate::app::error_log::record(
                 crate::app::error_log::ErrorSeverity::Low,
                 "webview.focus",
-                &format!("Could not return keyboard focus to the window: {error}"),
+                format!("Could not return keyboard focus to the window: {error}"),
             );
         }
     }

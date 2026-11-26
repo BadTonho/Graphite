@@ -606,7 +606,7 @@ mod tests {
         assert_eq!(queue[1].len(), big.len());
         assert_eq!(queue[2], "last");
         // The limit still leaves room for the largest payload extensions use (45 MiB).
-        assert!(MAX_PAGE_MESSAGE >= 45 * 1024 * 1024);
+        const { assert!(MAX_PAGE_MESSAGE >= 45 * 1024 * 1024) };
     }
 
     #[test]

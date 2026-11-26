@@ -350,9 +350,8 @@ impl App {
             return true;
         }
         if self.plugins.bisect.is_some() {
-            match key {
-                Key::Named(NamedKey::Escape) => self.cancel_plugin_bisect(),
-                _ => {}
+            if let Key::Named(NamedKey::Escape) = key {
+                self.cancel_plugin_bisect();
             }
             return true;
         }

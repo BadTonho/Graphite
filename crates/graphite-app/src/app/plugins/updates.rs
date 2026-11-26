@@ -49,7 +49,8 @@ pub(super) struct UpdateState {
 
 enum AutomaticOutcome {
     Checked(CheckResult),
-    Downloaded(DownloadedUpdate),
+    // Boxed: a downloaded update is far larger than a check result.
+    Downloaded(Box<DownloadedUpdate>),
 }
 
 fn is_newer(installed: &str, available: &str) -> bool {
@@ -286,7 +287,7 @@ impl App {
                     self.start_automatic_plugin_worker(move |store| {
                         let registry = Registry::new()?;
                         download_update(&registry, &store.root, candidate)
-                            .map(AutomaticOutcome::Downloaded)
+                            .map(|update| AutomaticOutcome::Downloaded(Box::new(update)))
                     });
                 }
                 return;
@@ -350,7 +351,7 @@ impl App {
         self.plugins.update_state.worker = None;
         match result {
             Ok(AutomaticOutcome::Checked(result)) => self.finish_plugin_update_check(result),
-            Ok(AutomaticOutcome::Downloaded(update)) => self.finish_plugin_update_download(update),
+            Ok(AutomaticOutcome::Downloaded(update)) => self.finish_plugin_update_download(*update),
             Err(_) => error_log::record(
                 ErrorSeverity::Low,
                 "plugins.update.automatic",

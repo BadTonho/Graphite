@@ -36,14 +36,6 @@ impl SecondaryTabStyle {
             _ => None,
         }
     }
-
-    pub(crate) fn as_setting_str(self) -> &'static str {
-        match self {
-            Self::Text => "text",
-            Self::Icons => "icons",
-            Self::IconsAndText => "iconsAndText",
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

@@ -1528,7 +1528,7 @@ impl App {
                         ("version", &detail.metadata.version()),
                     ],
                 ));
-                let body = detail.readme.as_deref().unwrap_or_else(|| match &detail.metadata {
+                let body = detail.readme.as_deref().unwrap_or(match &detail.metadata {
                     graphite_plugins::manifest::Metadata::Native(m) => m.description.as_str(),
                     graphite_plugins::manifest::Metadata::Vsix(v) => v.description.as_str(),
                 });

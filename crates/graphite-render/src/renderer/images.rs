@@ -86,6 +86,8 @@ impl Renderer {
         self.draw_image_mode(image, x, y, w, h, color, 2.0);
     }
 
+    // The arguments are the image placement and its draw mode; a struct would only rename them.
+    #[allow(clippy::too_many_arguments)]
     fn draw_image_mode(
         &mut self,
         image: &Image,
