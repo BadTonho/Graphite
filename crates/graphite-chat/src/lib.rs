@@ -28,7 +28,7 @@ pub use session::{
     extract_code_blocks, AgentLogEntry, AgentMode, ChatSession, ChatTurn, Checkpoint,
     CheckpointEntry, CodeBlock, EditReviewStatus, PendingFileEdit, TurnStatus, UsageSummary,
 };
-pub use sse::{SseEvent, SseParser};
+pub use sse::{SseEvent, SseOverflow, SseParser, MAX_SSE_EVENT_BYTES};
 pub use store::{
     delete_session, load_approval_policy, load_sessions, save_approval_policy, save_session,
     APPROVAL_POLICY_FILE, SESSIONS_DIR,

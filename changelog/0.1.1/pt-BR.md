@@ -11,6 +11,7 @@
 
 ## Correções
 
+- O Chat agora encerra a resposta com um erro quando um serviço de modelo envia um único evento maior que 8 MiB, em vez de consumir cada vez mais memória, e não fica mais lento em respostas cujas linhas chegam em muitos pedaços pequenos.
 - Comandos do Chat no terminal não derrubam mais a resposta quando uma saída longa termina no meio de um caractere acentuado ou emoji, e não a travam mais para sempre: um comando que passa de 2 minutos, ou é interrompido com **Parar**, é encerrado junto com os processos que iniciou. A saída é limitada durante a leitura, e argumentos entre aspas agora chegam ao `cmd` no Windows exatamente como escritos.
 - **Sempre permitir** no Chat agora vale apenas para o workspace atual e, para comandos no terminal, apenas para o comando exato aprovado. Antes, uma única aprovação permitia ao assistente executar qualquer comando ou editar qualquer arquivo em todos os workspaces. Workspaces restritos nunca lembram aprovações, e aprovações salvas por versões anteriores voltam a ser pedidas.
 - Edições do Chat não sobrescrevem, descartam, desfazem nem refazem mais um arquivo cujo editor tem alterações não salvas, o que antes apagava essas alterações e o histórico de desfazer do editor. O modelo agora é informado se a edição foi realmente gravada, e falhas de gravação são informadas e registradas no log em vez de aparecerem como aplicadas. Plugins nativos que gravam arquivos do workspace têm a mesma proteção.

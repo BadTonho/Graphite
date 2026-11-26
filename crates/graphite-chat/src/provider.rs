@@ -254,7 +254,10 @@ fn stream_at_url(
             parser.finish()
         } else {
             parser.push(&buffer[..read])
-        };
+        }
+        .map_err(|_| {
+            ChatError::Network("The model service sent an event that is too large".into())
+        })?;
         for event in events {
             let decoded = match &mut decoder {
                 Decoder::Anthropic(decoder) => decoder.push(&event),
