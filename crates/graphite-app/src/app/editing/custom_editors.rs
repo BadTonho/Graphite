@@ -120,6 +120,7 @@ impl App {
             highlights: None,
             sticky_headers_cache: None,
             highlighter: IncrementalHighlighter::new(),
+            bracket_depths: Default::default(),
             diagnostics: Vec::new(),
             inlay_hints: Vec::new(),
             inlay_revision: None,

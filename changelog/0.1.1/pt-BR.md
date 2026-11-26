@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- As cores dos pares de colchetes não percorrem mais o documento desde a primeira linha a cada quadro. A profundidade dos colchetes é lembrada a cada 256 linhas, e só o que uma edição pode mudar é recalculado, então a rolagem perto do fim de um arquivo grande continua rápida.
 - O realce de sintaxe após uma edição agora revisa só as linhas alteradas e o que a sintaxe delas afeta, em vez de tudo da edição até o fim do arquivo, e não copia nem ordena mais os realces de todas as linhas. Várias edições feitas entre dois quadros, como colar com múltiplos cursores, são aplicadas de forma incremental em vez de realçar o arquivo inteiro de novo. Enquanto o código tem um erro de sintaxe, tudo depois da edição continua sendo verificado, então o realce continua exato.
 - Breadcrumbs, Sticky Scroll e a Estrutura reaproveitam a árvore de sintaxe que o realce mantém atualizada, em vez de analisar o arquivo inteiro de novo; os breadcrumbs copiavam e analisavam o arquivo a cada quadro, o que deixava a rolagem lenta em arquivos grandes. A Estrutura também não percorre mais o arquivo uma vez por declaração para medir a indentação.
 - Builds, instalações de pacotes e outras rajadas de mudanças de arquivos não iniciam mais um `git status` e uma carga do grafo de commits por arquivo alterado. As mudanças são reunidas por um quarto de segundo, caminhos excluídos pelo `.gitignore` (como `node_modules`) não atualizam mais o Controle de Código-Fonte, e só uma atualização roda por vez.
@@ -15,6 +16,7 @@
 
 ## Correções
 
+- Colchetes em linhas exibidas abaixo de uma região dobrada, ou na linha dona de uma dobra para dentro da qual a visão foi rolada, voltam a ser coloridos.
 - O texto não some mais de vez após várias mudanças de zoom ou ao abrir arquivos com muitos caracteres diferentes, como texto CJK ou emoji. Quando o atlas de glifos enche, ele é esvaziado e o quadro seguinte desenha todos os glifos de novo; imagens deixadas de fora por um atlas de imagens cheio também reaparecem na hora.
 - No Windows, terminais, tarefas, kernels de notebook e comandos do Chat não herdam mais as conexões de webviews de extensões, kernels de notebook e adaptadores de depuração do Graphite. Antes, um processo iniciado enquanto uma dessas conexões estava aberta a mantinha viva depois que o Graphite a fechava, e uma webview podia ficar esperando uma resposta que já tinha sido enviada.
 - Salvar o perfil ativo, a confiança de workspace e o armazenamento de plugins não deixa mais um arquivo pela metade quando o sistema de arquivos recusa a substituição rápida ou o Graphite para no meio do salvamento. O novo arquivo é gravado em disco primeiro e trocado em uma única etapa, e um salvamento com falha mantém o arquivo anterior.

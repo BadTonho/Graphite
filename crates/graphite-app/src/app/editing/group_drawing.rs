@@ -276,13 +276,6 @@ impl App {
             let highlight_current_line = primary.anchor == primary.head;
             let chrome = super::drawing_helpers::editor_chrome();
             let visible = ((body_height / lh) as usize).max(1);
-            let last = (view.scroll_line + visible).min(buffer.len_lines());
-            let levels_end = if last < buffer.len_lines() {
-                buffer.line_start_char(last)
-            } else {
-                buffer.len_chars()
-            };
-            let bracket_levels = graphite_text::bracket_levels(buffer.rope(), levels_end);
             let mut bracket_match_cells = Vec::new();
             if let Some((a, b)) = graphite_text::matching_bracket(buffer.rope(), cursor) {
                 for index in [a, b] {
@@ -345,6 +338,20 @@ impl App {
             );
             let lines =
                 super::folding::visible_lines(buffer, &fold_hidden, view.scroll_line, visible);
+            // Bracket colors for the lines shown, which may reach past folded regions, scanned
+            // from the nearest remembered depth above them.
+            // A view scrolled into a fold starts at the line that owns it, above the scroll line.
+            let first_shown = lines.iter().min().copied().unwrap_or(view.scroll_line);
+            let after_shown = lines.iter().max().map_or(view.scroll_line, |line| line + 1);
+            let levels_end = if after_shown < buffer.len_lines() {
+                buffer.line_start_char(after_shown)
+            } else {
+                buffer.len_chars()
+            };
+            let bracket_levels =
+                tab.bracket_depths
+                    .borrow_mut()
+                    .levels(buffer, first_shown, levels_end);
             let rows = super::lens_rows::body_rows(&lines, visible, |line| {
                 decoration_uri
                     .as_deref()

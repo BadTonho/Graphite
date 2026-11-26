@@ -7,6 +7,9 @@ pub(crate) struct Document {
     pub(crate) highlights: Option<HighlightCache>,
     pub(crate) sticky_headers_cache: Option<(u64, usize, Vec<graphite_syntax::ScopeHeader>)>,
     pub(crate) highlighter: IncrementalHighlighter,
+    /// Remembered bracket depths for colorizing brackets; drawing only reads the document, so
+    /// the cache is updated through a cell.
+    pub(crate) bracket_depths: std::cell::RefCell<graphite_text::BracketDepths>,
     pub(crate) diagnostics: Vec<lsp_types::Diagnostic>,
     pub(crate) inlay_hints: Vec<lsp_types::InlayHint>,
     pub(crate) inlay_revision: Option<u64>,

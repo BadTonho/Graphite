@@ -337,6 +337,7 @@ fn document_store_identity_survives_data_replacement_and_retention_release() {
         highlights: None,
         sticky_headers_cache: None,
         highlighter: IncrementalHighlighter::new(),
+        bracket_depths: Default::default(),
         diagnostics: Vec::new(),
         inlay_hints: Vec::new(),
         inlay_revision: None,

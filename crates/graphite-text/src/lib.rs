@@ -10,7 +10,9 @@ mod brackets;
 mod case;
 mod cursor_ops;
 mod selection_ops;
-pub use brackets::{bracket_levels, enclosing_brackets, matching_bracket, next_bracket};
+pub use brackets::{
+    bracket_levels, enclosing_brackets, matching_bracket, next_bracket, BracketDepths,
+};
 pub use case::CaseTransform;
 pub use selection_ops::next_value;
 mod edit;
