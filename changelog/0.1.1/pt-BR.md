@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- Breadcrumbs, Sticky Scroll e a Estrutura reaproveitam a árvore de sintaxe que o realce mantém atualizada, em vez de analisar o arquivo inteiro de novo; os breadcrumbs copiavam e analisavam o arquivo a cada quadro, o que deixava a rolagem lenta em arquivos grandes. A Estrutura também não percorre mais o arquivo uma vez por declaração para medir a indentação.
 - Builds, instalações de pacotes e outras rajadas de mudanças de arquivos não iniciam mais um `git status` e uma carga do grafo de commits por arquivo alterado. As mudanças são reunidas por um quarto de segundo, caminhos excluídos pelo `.gitignore` (como `node_modules`) não atualizam mais o Controle de Código-Fonte, e só uma atualização roda por vez.
 - Desenhar texto não aloca mais memória para linhas já na tela, e atingir o limite do cache de texto mantém as linhas ainda visíveis em vez de remodelar tudo de novo.
 - O painel Chat agora tem configuração guiada de conexões, botões de conversa identificados e um campo de mensagem com envio, cancelamento e anexos de contexto removíveis.

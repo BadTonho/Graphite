@@ -234,16 +234,25 @@ impl App {
         let Some(language) = document.language else {
             return Vec::new();
         };
-        let text = document.buffer.text();
+        let rope = document.buffer.rope();
         let tab = document.indentation.tab_size.max(1);
-        graphite_syntax::declaration_headers(language, &text)
+        // The highlighter's tree is reused when it matches the text; otherwise parse once.
+        let tree_is_current = document
+            .highlights
+            .as_ref()
+            .is_some_and(|highlights| highlights.revision == document.buffer.revision());
+        let headers = tree_is_current
+            .then(|| document.highlighter.declarations(rope))
+            .flatten()
+            .unwrap_or_else(|| graphite_syntax::declaration_headers(language, &rope.to_string()));
+        headers
             .into_iter()
             .map(|header| {
-                let indent: usize = text
-                    .lines()
-                    .nth(header.line)
-                    .unwrap_or_default()
-                    .chars()
+                let indent: usize = rope
+                    .get_line(header.line)
+                    .map(|line| line.chars())
+                    .into_iter()
+                    .flatten()
                     .take_while(|c| c.is_whitespace())
                     .map(|c| if c == '\t' { tab } else { 1 })
                     .sum();

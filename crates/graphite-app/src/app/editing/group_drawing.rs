@@ -238,7 +238,7 @@ impl App {
                             .replace('\\', " / ")
                     })
                     .unwrap_or_else(|| self.t("common.untitled").to_owned());
-                if let Some(language) = tab.language {
+                if tab.language.is_some() {
                     let cursor = view
                         .selection_state
                         .selections()
@@ -247,10 +247,12 @@ impl App {
                         .unwrap_or_default()
                         .min(buffer.len_chars());
                     let line = buffer.rope().char_to_line(cursor);
-                    let text = buffer.text();
-                    if let Some(symbol) =
-                        graphite_syntax::enclosing_scope_headers(language, &text, line).last()
-                    {
+                    // The tree the highlighter keeps is current: this frame refreshed it above.
+                    let scopes = tab
+                        .highlighter
+                        .enclosing_scopes(buffer.rope(), line)
+                        .unwrap_or_default();
+                    if let Some(symbol) = scopes.last() {
                         breadcrumb.push_str("  ›  ");
                         breadcrumb.push_str(&symbol.text);
                     }

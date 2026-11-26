@@ -35,15 +35,14 @@ impl App {
             })
             .map(|(_, _, headers)| headers.clone());
         let headers = cached.unwrap_or_else(|| {
+            // Reuses the syntax tree the highlighter keeps instead of parsing the file again.
+            self.refresh_document_highlights(document);
             let tab = &self.documents[document];
             let headers = tab
                 .language
-                .map(|language| {
-                    graphite_syntax::enclosing_scope_headers(
-                        language,
-                        &tab.buffer.text(),
-                        scroll_line,
-                    )
+                .and_then(|_| {
+                    tab.highlighter
+                        .enclosing_scopes(tab.buffer.rope(), scroll_line)
                 })
                 .unwrap_or_default();
             self.documents[document].sticky_headers_cache =
@@ -155,6 +154,32 @@ mod tests {
     fn focused(app: &App) -> Option<usize> {
         let view = app.editor_groups.active_view();
         app.sticky_focus_index(view.id, view.scroll_line)
+    }
+
+    #[test]
+    fn pinned_headers_follow_edits_through_the_reused_syntax_tree() {
+        let (mut app, _dir) = app_scrolled_into_a_method(3);
+        let document = app.active_document();
+        let before: Vec<_> = app
+            .sticky_headers_for(document, 3)
+            .into_iter()
+            .map(|header| header.line)
+            .collect();
+        assert!(!before.is_empty());
+
+        // Two new lines at the top move every declaration down by two.
+        app.editor_mut().set_selection(0, 0);
+        app.editor_mut().insert("// one\n// two\n");
+        let after: Vec<_> = app
+            .sticky_headers_for(document, 5)
+            .into_iter()
+            .map(|header| header.line)
+            .collect();
+
+        assert_eq!(
+            after,
+            before.iter().map(|line| line + 2).collect::<Vec<_>>()
+        );
     }
 
     #[test]

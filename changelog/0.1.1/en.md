@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- Breadcrumbs, Sticky Scroll, and the Outline reuse the syntax tree that highlighting keeps up to date instead of parsing the whole file again; breadcrumbs used to copy and parse the file on every frame, which slowed scrolling in large files. The Outline also no longer rescans the file once per declaration to measure its indentation.
 - Builds, package installs, and other bursts of file changes no longer start one `git status` and commit-graph load per changed file. Changes are collected for a quarter of a second, paths excluded by `.gitignore` (such as `node_modules`) no longer refresh Source Control, and only one refresh runs at a time.
 - Drawing text no longer allocates for lines already on screen, and reaching the shaped-text cache limit keeps the lines still in view instead of shaping everything again.
 - The Chat panel now has a guided connection setup, labeled conversation controls, and a message field with send, stop, and removable context attachments.

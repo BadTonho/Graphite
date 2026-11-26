@@ -297,47 +297,62 @@ pub struct ScopeHeader {
 
 /// Return all supported declarations in source order for an Outline view.
 pub fn declaration_headers(language: Language, source: &str) -> Vec<ScopeHeader> {
-    let mut parser = tree_sitter::Parser::new();
-    if parser.set_language(&language.ts_language()).is_err() {
-        return Vec::new();
-    }
-    let Some(tree) = parser.parse(source, None) else {
+    let Some(tree) = parse_source(language, source) else {
         return Vec::new();
     };
-    let mut nodes = Vec::new();
-    collect_all_scope_nodes(tree.root_node(), &mut nodes);
-    nodes.sort_by_key(|node| (node.start_position().row, node.start_position().column));
     let lines: Vec<_> = source.lines().collect();
-    nodes
-        .into_iter()
-        .filter_map(|node| {
-            let row = node.start_position().row;
-            lines.get(row).map(|text| ScopeHeader {
-                line: row,
-                text: text.trim().to_owned(),
-            })
-        })
-        .collect()
+    declarations_in(&tree, |row| lines.get(row).map(|text| (*text).to_owned()))
 }
 
 /// Return enclosing declaration headers from outermost to innermost.
 pub fn enclosing_scope_headers(language: Language, source: &str, line: usize) -> Vec<ScopeHeader> {
-    let mut parser = tree_sitter::Parser::new();
-    if parser.set_language(&language.ts_language()).is_err() {
-        return Vec::new();
-    }
-    let Some(tree) = parser.parse(source, None) else {
+    let Some(tree) = parse_source(language, source) else {
         return Vec::new();
     };
+    let lines: Vec<_> = source.lines().collect();
+    enclosing_scopes_in(&tree, line, |row| {
+        lines.get(row).map(|text| (*text).to_owned())
+    })
+}
+
+fn parse_source(language: Language, source: &str) -> Option<tree_sitter::Tree> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language.ts_language()).ok()?;
+    parser.parse(source, None)
+}
+
+/// The declarations of a parsed document in source order; `line_text` gives a line's text.
+pub(crate) fn declarations_in(
+    tree: &tree_sitter::Tree,
+    line_text: impl Fn(usize) -> Option<String>,
+) -> Vec<ScopeHeader> {
+    let mut nodes = Vec::new();
+    collect_all_scope_nodes(tree.root_node(), &mut nodes);
+    nodes.sort_by_key(|node| (node.start_position().row, node.start_position().column));
+    scope_headers(nodes, line_text)
+}
+
+/// The declarations of a parsed document that enclose `line`, outermost first.
+pub(crate) fn enclosing_scopes_in(
+    tree: &tree_sitter::Tree,
+    line: usize,
+    line_text: impl Fn(usize) -> Option<String>,
+) -> Vec<ScopeHeader> {
     let mut nodes = Vec::new();
     collect_scope_nodes(tree.root_node(), line, &mut nodes);
     nodes.sort_by_key(|node| node.start_position().row);
-    let lines: Vec<_> = source.lines().collect();
+    scope_headers(nodes, line_text)
+}
+
+fn scope_headers(
+    nodes: Vec<tree_sitter::Node<'_>>,
+    line_text: impl Fn(usize) -> Option<String>,
+) -> Vec<ScopeHeader> {
     nodes
         .into_iter()
         .filter_map(|node| {
             let row = node.start_position().row;
-            lines.get(row).map(|text| ScopeHeader {
+            line_text(row).map(|text| ScopeHeader {
                 line: row,
                 text: text.trim().to_owned(),
             })
@@ -461,6 +476,63 @@ mod tests {
         );
         assert!(headers[2].text.contains("fn load"));
         assert!(headers[3].text.contains("fn main"));
+    }
+
+    #[test]
+    fn scopes_from_the_highlighter_tree_match_a_fresh_parse() {
+        let source = "mod outer {\n    struct S;\n    impl S {\n        fn method(&self) {\n            let x = 1;\n        }\n    }\n}\nfn free() {}\n";
+        let rope = ropey::Rope::from_str(source);
+        let mut highlighter = IncrementalHighlighter::new();
+        assert!(highlighter.enclosing_scopes(&rope, 4).is_none());
+        highlighter.highlight_rope(Language::Rust, &rope, None);
+
+        assert_eq!(
+            highlighter.enclosing_scopes(&rope, 4).unwrap(),
+            enclosing_scope_headers(Language::Rust, source, 4)
+        );
+        let enclosing: Vec<_> = highlighter
+            .enclosing_scopes(&rope, 4)
+            .unwrap()
+            .into_iter()
+            .map(|header| header.line)
+            .collect();
+        assert_eq!(enclosing, vec![0, 2, 3]);
+        assert_eq!(
+            highlighter.declarations(&rope).unwrap(),
+            declaration_headers(Language::Rust, source)
+        );
+        assert_eq!(highlighter.declarations(&rope).unwrap().len(), 5);
+    }
+
+    #[test]
+    fn scopes_follow_incremental_edits() {
+        let before = "fn a() {\n    1\n}\n";
+        let mut rope = ropey::Rope::from_str(before);
+        let mut highlighter = IncrementalHighlighter::new();
+        highlighter.highlight_rope(Language::Rust, &rope, None);
+        // Insert a second function at the end.
+        let insert = "fn b() {}\n";
+        let at = rope.len_chars();
+        rope.insert(at, insert);
+        highlighter.highlight_rope(
+            Language::Rust,
+            &rope,
+            Some(TextEdit {
+                start_byte: before.len(),
+                old_end_byte: before.len(),
+                new_end_byte: before.len() + insert.len(),
+                start_position: (3, 0),
+                old_end_position: (3, 0),
+                new_end_position: (4, 0),
+            }),
+        );
+        let lines: Vec<_> = highlighter
+            .declarations(&rope)
+            .unwrap()
+            .into_iter()
+            .map(|header| header.text)
+            .collect();
+        assert_eq!(lines, vec!["fn a() {", "fn b() {}"]);
     }
 
     #[test]

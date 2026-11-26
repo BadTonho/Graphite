@@ -42,6 +42,24 @@ impl IncrementalHighlighter {
         result
     }
 
+    /// The declarations that enclose `line`, outermost first, from the current syntax tree.
+    /// `source` must be the text last highlighted; `None` when nothing was highlighted yet.
+    pub fn enclosing_scopes(&self, source: &Rope, line: usize) -> Option<Vec<ScopeHeader>> {
+        let tree = self.tree.as_ref()?;
+        Some(crate::enclosing_scopes_in(tree, line, |row| {
+            source.get_line(row).map(|text| text.to_string())
+        }))
+    }
+
+    /// Every declaration in source order, from the current syntax tree. `source` must be the
+    /// text last highlighted; `None` when nothing was highlighted yet.
+    pub fn declarations(&self, source: &Rope) -> Option<Vec<ScopeHeader>> {
+        let tree = self.tree.as_ref()?;
+        Some(crate::declarations_in(tree, |row| {
+            source.get_line(row).map(|text| text.to_string())
+        }))
+    }
+
     pub fn new() -> Self {
         Self {
             parser: Parser::new(),
