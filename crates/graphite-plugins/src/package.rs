@@ -226,7 +226,9 @@ pub fn extract(path: &Path, destination: &Path) -> Result<Metadata> {
             #[cfg(unix)]
             if let Metadata::Native(ref manifest) = m {
                 if manifest.runtime == crate::manifest::PluginRuntime::Native
-                    && entry.name().is_ok_and(|name| name == manifest.main.as_str())
+                    && entry
+                        .name()
+                        .is_ok_and(|name| name == manifest.main.as_str())
                 {
                     use std::os::unix::fs::PermissionsExt;
                     let _ = fs::set_permissions(&out, fs::Permissions::from_mode(0o755));

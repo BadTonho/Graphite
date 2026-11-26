@@ -316,13 +316,7 @@ impl App {
         let max_side = ((sidebar_width - pad * 2.0) / cell_width).max(1.0) as usize;
         let max_btn_text = ((sidebar_width - pad * 4.0) / cell_width).max(1.0) as usize;
         for button in buttons {
-            renderer.draw_rect(
-                button.x,
-                button.y,
-                button.w,
-                button.h,
-                rgb(button.bg),
-            );
+            renderer.draw_rect(button.x, button.y, button.w, button.h, rgb(button.bg));
             renderer.draw_text(
                 &fit(self.t(button.label_key), max_btn_text),
                 button.x + pad,
@@ -377,11 +371,7 @@ impl App {
         let (buttons, _) =
             installed_detail_buttons(sidebar_x, body_y, sidebar_width, line_height, record, busy);
         if let Some(button) = buttons.into_iter().find(|btn| {
-            btn.enabled
-                && x >= btn.x
-                && x < btn.x + btn.w
-                && y >= btn.y
-                && y < btn.y + btn.h
+            btn.enabled && x >= btn.x && x < btn.x + btn.w && y >= btn.y && y < btn.y + btn.h
         }) {
             self.installed_plugin_action_confirmed(&id, button.action);
         }
@@ -582,7 +572,10 @@ mod tests {
             crate::app::group_drawing::tab_close_area(tab_x, width, 9.0);
 
         // Clicking on the label activates the tab (not close).
-        assert_eq!(hit_test_detail_tab(tab_x, width, tab_x + 12.0, 9.0), Some(false));
+        assert_eq!(
+            hit_test_detail_tab(tab_x, width, tab_x + 12.0, 9.0),
+            Some(false)
+        );
         // Clicking anywhere on the drawn `×` close area closes the tab.
         assert_eq!(
             hit_test_detail_tab(tab_x, width, close_left + 0.6 * 9.0, 9.0),
@@ -614,7 +607,9 @@ mod tests {
         let (btns, next_y) =
             installed_detail_buttons(500.0, 40.0, 260.0, 20.0, Some(&disabled), false);
         assert_eq!(
-            btns.iter().map(|b| (b.action, b.label_key)).collect::<Vec<_>>(),
+            btns.iter()
+                .map(|b| (b.action, b.label_key))
+                .collect::<Vec<_>>(),
             vec![
                 ('e', "plugins.action.trust_and_enable"),
                 ('u', "plugins.action.update"),
@@ -630,7 +625,9 @@ mod tests {
         };
         let (btns, _) = installed_detail_buttons(500.0, 40.0, 260.0, 20.0, Some(&enabled), false);
         assert_eq!(
-            btns.iter().map(|b| (b.action, b.label_key)).collect::<Vec<_>>(),
+            btns.iter()
+                .map(|b| (b.action, b.label_key))
+                .collect::<Vec<_>>(),
             vec![
                 ('d', "plugins.action.disable"),
                 ('r', "plugins.action.restart"),

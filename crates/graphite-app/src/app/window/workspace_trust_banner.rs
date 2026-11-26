@@ -170,9 +170,8 @@ mod tests {
     fn banner_shows_when_workspace_untrusted_and_hides_after_trust_or_restrict() {
         let temp = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(temp.path().into(), None, true);
-        app.workspace_trust = Some(
-            crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap(),
-        );
+        app.workspace_trust =
+            Some(crate::app::phase5::WorkspaceTrust::open(temp.path().join("trust.json")).unwrap());
         assert!(app.should_show_workspace_trust_banner());
 
         app.workspace_trust_dismissed_root = Some(app.tree.root().to_path_buf());

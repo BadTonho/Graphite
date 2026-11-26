@@ -61,7 +61,12 @@ impl App {
         self.installed_plugin_action_with_trust(id, action, true);
     }
 
-    fn installed_plugin_action_with_trust(&mut self, id: &str, action: char, trust_confirmed: bool) {
+    fn installed_plugin_action_with_trust(
+        &mut self,
+        id: &str,
+        action: char,
+        trust_confirmed: bool,
+    ) {
         if self.plugins.worker.is_some() || self.plugins.bisect.is_some() {
             return;
         }

@@ -152,7 +152,10 @@ fn codicon_glyph(spec: &str) -> Option<char> {
         .then_some(glyph)
 }
 
-fn load_plugin_icon_file(plugin_root: &Path, relative_spec: &str) -> Result<ActivityBarIcon, String> {
+fn load_plugin_icon_file(
+    plugin_root: &Path,
+    relative_spec: &str,
+) -> Result<ActivityBarIcon, String> {
     let rel = Path::new(relative_spec);
     if rel.is_absolute() {
         return Err("absolute icon paths are not permitted".into());
@@ -175,8 +178,8 @@ fn load_plugin_icon_file(plugin_root: &Path, relative_spec: &str) -> Result<Acti
     if metadata.len() > MAX_ICON_BYTES {
         return Err("icon file exceeds size limit".into());
     }
-    let data = std::fs::read(&canonical_file)
-        .map_err(|err| format!("failed to read icon file: {err}"))?;
+    let data =
+        std::fs::read(&canonical_file).map_err(|err| format!("failed to read icon file: {err}"))?;
 
     let is_svg = canonical_file
         .extension()
@@ -335,10 +338,7 @@ mod tests {
         let icon = cache
             .get_or_load("sample.plugin", Some(&root), Some("media/brand.svg"))
             .expect("multicolor SVG should load");
-        assert!(matches!(
-            icon,
-            ActivityBarIcon::Image { tinted: false, .. }
-        ));
+        assert!(matches!(icon, ActivityBarIcon::Image { tinted: false, .. }));
     }
 
     #[test]

@@ -42,7 +42,11 @@ impl App {
                     .is_ok_and(|condition| condition.evaluate(&context))
             })
         };
-        let store_root = self.plugins.store.as_ref().map(|store| store.root.as_path());
+        let store_root = self
+            .plugins
+            .store
+            .as_ref()
+            .map(|store| store.root.as_path());
         self.plugins
             .installed_plugins()
             .iter()
@@ -258,7 +262,12 @@ impl App {
             }
             SecondaryTabStyle::Icons => {
                 let tab_width = (lh * 1.7).max(26.0);
-                layout_icon_tabs(views.len(), tab_width, active, self.secondary_sidebar_width())
+                layout_icon_tabs(
+                    views.len(),
+                    tab_width,
+                    active,
+                    self.secondary_sidebar_width(),
+                )
             }
             SecondaryTabStyle::IconsAndText => {
                 let icon_chars = ((lh * 1.1) / cw.max(1.0)).ceil() as usize + 1;
@@ -403,7 +412,11 @@ impl App {
         let dragged_key = self
             .bar_drag
             .as_ref()
-            .filter(|d| d.active && d.target.is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Secondary))
+            .filter(|d| {
+                d.active
+                    && d.target
+                        .is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Secondary)
+            })
             .map(|d| d.source_key.as_str());
 
         r.draw_rect(x, top, width, (h - lh - top).max(0.0), bg);
@@ -521,7 +534,8 @@ impl App {
                         );
                     }
                     let text_x = icon_x + icon_size + cw * 0.6;
-                    let chars = ((tab_x + slot.width - PAD - text_x) / cw.max(1.0)).max(0.0) as usize;
+                    let chars =
+                        ((tab_x + slot.width - PAD - text_x) / cw.max(1.0)).max(0.0) as usize;
                     r.draw_text(
                         &label.chars().take(chars).collect::<String>(),
                         text_x,
@@ -566,7 +580,13 @@ impl App {
                 let tip_w = (tip_text.chars().count() as f32 * cw + PAD * 2.0).min(width);
                 let tip_x = tip_x.clamp(x, (x + width - tip_w).max(x));
                 let tip_y = body + 2.0;
-                r.draw_rect(tip_x, tip_y, tip_w, lh * 1.2, rgb(Theme::color(Theme::SIDEBAR, 0x252526)));
+                r.draw_rect(
+                    tip_x,
+                    tip_y,
+                    tip_w,
+                    lh * 1.2,
+                    rgb(Theme::color(Theme::SIDEBAR, 0x252526)),
+                );
                 r.draw_text(&tip_text, tip_x + PAD, tip_y + lh * 0.1, fg);
             }
         }

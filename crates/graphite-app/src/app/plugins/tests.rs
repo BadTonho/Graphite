@@ -349,7 +349,11 @@ fn installed_plugin_opens_detail_tab_in_editor_group_with_readme_and_scroll() {
     let store_root = temp.path().join("plugins");
     let first_ext_dir = store_root.join("author.first@1.0.0").join("extension");
     std::fs::create_dir_all(&first_ext_dir).unwrap();
-    std::fs::write(first_ext_dir.join("README.md"), "# First Plugin\n\nDetails here.\n").unwrap();
+    std::fs::write(
+        first_ext_dir.join("README.md"),
+        "# First Plugin\n\nDetails here.\n",
+    )
+    .unwrap();
 
     let mut app = App::new_with_options(temp.path().into(), None, true);
     app.use_plugin_store(store_root);

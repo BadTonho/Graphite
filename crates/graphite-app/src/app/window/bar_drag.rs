@@ -305,7 +305,9 @@ pub(crate) fn apply_bar_preview<T>(
     let Some(target) = drag.target else {
         return items;
     };
-    let old_idx = items.iter().position(|item| key_fn(item) == drag.source_key);
+    let old_idx = items
+        .iter()
+        .position(|item| key_fn(item) == drag.source_key);
     if target.bar != bar {
         if let Some(idx) = old_idx {
             items.remove(idx);
@@ -345,7 +347,10 @@ mod tests {
 
     #[test]
     fn reorder_keys_moves_forward_and_backward_cleanly() {
-        let keys: Vec<String> = ["a", "b", "c", "d"].into_iter().map(str::to_owned).collect();
+        let keys: Vec<String> = ["a", "b", "c", "d"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         // Move "a" (index 0) after "c" (insertion slot 3 -> final index 2)
         assert_eq!(reorder_keys(&keys, "a", 3), vec!["b", "c", "a", "d"]);
         // Move "d" (index 3) to front (insertion slot 0)
@@ -369,11 +374,7 @@ mod tests {
         );
         assert_eq!(
             prefs.secondary_order,
-            vec![
-                "chat",
-                "plugin:anthropic.claude-code:claude",
-                "outline"
-            ]
+            vec!["chat", "plugin:anthropic.claude-code:claude", "outline"]
         );
 
         let primary_keys = vec![

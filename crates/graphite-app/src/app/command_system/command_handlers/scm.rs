@@ -1,5 +1,5 @@
-use crate::process_util::HideConsole;
 use super::*;
+use crate::process_util::HideConsole;
 
 pub(super) fn graphite_scm_stage(
     app: &mut App,

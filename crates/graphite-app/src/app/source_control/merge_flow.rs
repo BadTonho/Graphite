@@ -1,8 +1,8 @@
 //! Opening, closing and driving the merge editor.
 
-use crate::process_util::HideConsole;
 use super::merge_editor::{BasePlacement, MergeEditor, MergeFormat, MergeLayout};
 use super::*;
+use crate::process_util::HideConsole;
 
 impl App {
     /// Window size and line height used to place the merge panes; a fixed size without a window.

@@ -269,7 +269,11 @@ pub(crate) fn activity_at(y: f32) -> Option<Activity> {
 
 impl App {
     pub(crate) fn raw_primary_plugin_entries(&self) -> Vec<PluginActivityEntry> {
-        let store_root = self.plugins.store.as_ref().map(|store| store.root.as_path());
+        let store_root = self
+            .plugins
+            .store
+            .as_ref()
+            .map(|store| store.root.as_path());
         self.plugins
             .installed_plugins()
             .iter()
@@ -1166,12 +1170,9 @@ impl App {
                     self.t(activity.label_key()).to_owned(),
                     Some(activity.glyph()),
                 ),
-                VisibleActivityItem::Plugin(entry) => (
-                    entry.key.clone(),
-                    true,
-                    entry.title.clone(),
-                    None,
-                ),
+                VisibleActivityItem::Plugin(entry) => {
+                    (entry.key.clone(), true, entry.title.clone(), None)
+                }
             })
         })
     }
@@ -1288,7 +1289,11 @@ impl App {
         let dragged_key = self
             .bar_drag
             .as_ref()
-            .filter(|d| d.active && d.target.is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Primary))
+            .filter(|d| {
+                d.active
+                    && d.target
+                        .is_some_and(|t| t.bar == crate::app::bar_drag::BarKind::Primary)
+            })
             .map(|d| d.source_key.as_str());
         let gear = settings_gear_rect(layout, window_width, height, renderer.line_height());
         let profile = profile_button_rect(layout, gear);
@@ -1413,7 +1418,11 @@ impl App {
                         );
                         let indicator_pos = if target.index < entries.len() {
                             let rect = layout.item_rect(target.index);
-                            if horizontal { rect.x } else { rect.y }
+                            if horizontal {
+                                rect.x
+                            } else {
+                                rect.y
+                            }
                         } else if let Some(last) = entries.len().checked_sub(1) {
                             let rect = layout.item_rect(last);
                             if horizontal {
@@ -1423,7 +1432,11 @@ impl App {
                             }
                         } else {
                             let rect = layout.item_rect(0);
-                            if horizontal { rect.x } else { rect.y }
+                            if horizontal {
+                                rect.x
+                            } else {
+                                rect.y
+                            }
                         };
                         let accent = rgb(Theme::color(Theme::STATUS, 0x007acc));
                         if horizontal {

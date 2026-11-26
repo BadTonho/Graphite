@@ -190,13 +190,12 @@ impl App {
                         });
                     }
                 } else {
-                    let label_key = if record.trusted_version.as_deref()
-                        != Some(record.metadata.version())
-                    {
-                        "plugins.action.trust_and_enable"
-                    } else {
-                        "plugins.action.enable"
-                    };
+                    let label_key =
+                        if record.trusted_version.as_deref() != Some(record.metadata.version()) {
+                            "plugins.action.trust_and_enable"
+                        } else {
+                            "plugins.action.enable"
+                        };
                     rows.push(PluginContextMenuRow::Action {
                         label_key,
                         shortcut: "E",

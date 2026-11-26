@@ -6,6 +6,8 @@
 //! scripts and cross-origin local files there. Every resource request is checked against the
 //! allowed roots after canonicalization, so `..` segments and symbolic links cannot escape them.
 
+#[cfg(test)]
+use std::borrow::Cow;
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
@@ -16,11 +18,9 @@ use std::{
     },
     thread::{self, JoinHandle},
 };
-#[cfg(test)]
-use std::borrow::Cow;
+use wry::http::StatusCode;
 #[cfg(test)]
 use wry::http::{header, Request, Response};
-use wry::http::StatusCode;
 
 /// Path of the page itself on the custom origin.
 pub(crate) const PAGE_PATH: &str = "/index.html";
@@ -234,7 +234,10 @@ fn handle_http(
     let mut content_length = 0usize;
     loop {
         let mut header_line = String::new();
-        if reader.read_line(&mut header_line).is_err() || header_line == "\r\n" || header_line.is_empty() {
+        if reader.read_line(&mut header_line).is_err()
+            || header_line == "\r\n"
+            || header_line.is_empty()
+        {
             break;
         }
         if let Some((name, value)) = header_line.split_once(':') {
@@ -245,7 +248,9 @@ fn handle_http(
     }
     if method == "POST" && path == "/__graphite_ipc" {
         if content_length > 48 * 1024 * 1024 {
-            let _ = stream.write_all(b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = stream.write_all(
+                b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
             return;
         }
         let mut body = vec![0u8; content_length];
@@ -255,7 +260,9 @@ fn handle_http(
         if let Ok(text) = String::from_utf8(body) {
             on_ipc(text);
         }
-        let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+        let _ = stream.write_all(
+            b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        );
         return;
     }
     let (status, mime, body) = match method {

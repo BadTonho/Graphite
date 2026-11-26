@@ -1,10 +1,10 @@
 //! The timeline of the active file: its saved local history versions together with the Git
 //! commits that touched it, newest first. Picking an entry opens a diff with the current file.
 
-use crate::process_util::HideConsole;
 use super::go_menu::{GoPicker, GoPickerKind, GoSymbolItem};
 use super::local_history::format_utc;
 use super::*;
+use crate::process_util::HideConsole;
 use std::process::Command;
 
 /// How many commits of the file are listed.

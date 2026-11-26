@@ -477,7 +477,8 @@ const SETTINGS: &[SettingDef] = &[
         key: "workbench.secondarySidebar.tabStyle",
         category: "workbench.appearance",
         title: "Workbench > Secondary Side Bar: Tab Style",
-        description: "Controls whether Secondary Side Bar header tabs display text, icons, or both.",
+        description:
+            "Controls whether Secondary Side Bar header tabs display text, icons, or both.",
         kind: SettingKind::Enum(&["text", "icons", "iconsAndText"]),
         default_value: "text",
         commonly_used: false,

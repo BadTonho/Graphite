@@ -4,8 +4,8 @@
 //! `CustomExecution` task runs inside trusted workspaces, streams output lines into Graphite's
 //! task output buffer, and relays task lifecycle events back to the extension host.
 
-use crate::process_util::HideConsole;
 use super::*;
+use crate::process_util::HideConsole;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};

@@ -1,5 +1,5 @@
-use crate::process_util::HideConsole;
 use super::*;
+use crate::process_util::HideConsole;
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},

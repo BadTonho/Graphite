@@ -1,7 +1,7 @@
-use crate::process_util::HideConsole;
 use super::requests::PendingClientRequests;
 pub(super) use super::requests::ServerRequests;
 use super::*;
+use crate::process_util::HideConsole;
 
 pub(super) fn run_server(
     config: ServerConfig,
