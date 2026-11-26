@@ -39,3 +39,42 @@ pub use tools::{
     ToolExecutionResult, WorkspaceApprovals, TOOL_LIST_FILES, TOOL_PROPOSE_EDIT, TOOL_READ_FILE,
     TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
 };
+
+/// Taken by tests that start processes and by tests that serve HTTP, so the two never overlap.
+/// On Windows a process started while a test server holds an accepted connection inherits that
+/// socket and keeps the connection open after the server closes it, which resets it later.
+/// The guard can move to the server thread, which holds it until the connection is closed.
+#[cfg(test)]
+pub(crate) fn process_and_socket_test_lock() -> TestLockGuard {
+    let mut busy = TEST_LOCK
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    while *busy {
+        busy = TEST_LOCK
+            .1
+            .wait(busy)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+    }
+    *busy = true;
+    TestLockGuard
+}
+
+#[cfg(test)]
+static TEST_LOCK: (std::sync::Mutex<bool>, std::sync::Condvar) =
+    (std::sync::Mutex::new(false), std::sync::Condvar::new());
+
+/// Releases [`process_and_socket_test_lock`] when dropped.
+#[cfg(test)]
+pub(crate) struct TestLockGuard;
+
+#[cfg(test)]
+impl Drop for TestLockGuard {
+    fn drop(&mut self) {
+        *TEST_LOCK
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = false;
+        TEST_LOCK.1.notify_one();
+    }
+}

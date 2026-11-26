@@ -291,6 +291,7 @@ mod tests {
 
     #[test]
     fn successful_command_reports_its_output() {
+        let _lock = crate::process_and_socket_test_lock();
         let dir = workspace();
         let output = SystemCommandRunner::new()
             .run(dir.path(), "echo graphite-ok")
@@ -301,6 +302,7 @@ mod tests {
 
     #[test]
     fn failing_command_is_an_error_with_its_exit_code() {
+        let _lock = crate::process_and_socket_test_lock();
         let dir = workspace();
         let output = SystemCommandRunner::new()
             .run(dir.path(), "exit 3")
@@ -319,6 +321,7 @@ mod tests {
 
     #[test]
     fn command_that_runs_too_long_is_stopped() {
+        let _lock = crate::process_and_socket_test_lock();
         let dir = workspace();
         let started = Instant::now();
         let error = SystemCommandRunner::new()
@@ -331,6 +334,7 @@ mod tests {
 
     #[test]
     fn cancelling_stops_a_running_command() {
+        let _lock = crate::process_and_socket_test_lock();
         let dir = workspace();
         let cancel = Arc::new(AtomicBool::new(false));
         let trigger = cancel.clone();
