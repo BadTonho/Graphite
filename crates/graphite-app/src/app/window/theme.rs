@@ -98,12 +98,19 @@ impl Theme {
         }
     }
 }
+/// `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA` as `0xRRGGBB`; the alpha part is ignored. Anything
+/// else, including text with non-ASCII characters, is not a color.
 fn parse_hex_color(s: &str) -> Option<u32> {
-    let s = s.strip_prefix('#')?;
-    if s.len() < 6 {
+    let digits = s.trim().strip_prefix('#')?;
+    if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
-    u32::from_str_radix(&s[..6], 16).ok()
+    let rgb = match digits.len() {
+        3 | 4 => digits[..3].chars().flat_map(|c| [c, c]).collect(),
+        6 | 8 => digits[..6].to_owned(),
+        _ => return None,
+    };
+    u32::from_str_radix(&rgb, 16).ok()
 }
 
 #[cfg(test)]
@@ -118,5 +125,33 @@ mod high_contrast_tests {
         assert_eq!(high_contrast_color(0x569cd6), 0x569cd6);
         assert_eq!(high_contrast_color(0x858585), 0x858585);
         assert_eq!(high_contrast_color(Theme::ACTIVE_ROW), 0x006ab1);
+    }
+
+    #[test]
+    fn hex_colors_parse_in_every_css_length() {
+        assert_eq!(parse_hex_color("#1e1e1e"), Some(0x1e1e1e));
+        assert_eq!(parse_hex_color("#1E1E1E80"), Some(0x1e1e1e));
+        assert_eq!(parse_hex_color("#abc"), Some(0xaabbcc));
+        assert_eq!(parse_hex_color("#abcd"), Some(0xaabbcc));
+        assert_eq!(parse_hex_color(" #ffffff "), Some(0xffffff));
+    }
+
+    #[test]
+    fn malformed_colors_are_ignored_without_panicking() {
+        for value in [
+            "",
+            "#",
+            "1e1e1e",
+            "#12345",
+            "#1234567",
+            "#12345é",
+            "#abcdeé",
+            "#éééé",
+            "#+12345",
+            "#gggggg",
+            "#1e1e1e1e1e",
+        ] {
+            assert_eq!(parse_hex_color(value), None, "{value}");
+        }
     }
 }
