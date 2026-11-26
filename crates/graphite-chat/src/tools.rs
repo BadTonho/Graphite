@@ -174,53 +174,6 @@ pub trait CommandRunner: Send + Sync {
     fn run(&self, cwd: &Path, command: &str) -> Result<String, String>;
 }
 
-/// Default OS command runner (`cmd /C` on Windows, `sh -c` elsewhere).
-pub struct SystemCommandRunner;
-
-impl CommandRunner for SystemCommandRunner {
-    fn run(&self, cwd: &Path, command: &str) -> Result<String, String> {
-        let output = if cfg!(windows) {
-            let mut shell = std::process::Command::new("cmd");
-            shell.args(["/C", command]).current_dir(cwd);
-            #[cfg(windows)]
-            {
-                // No console window of its own: the output is read through the pipes.
-                use std::os::windows::process::CommandExt;
-                shell.creation_flags(0x0800_0000);
-            }
-            shell.output()
-        } else {
-            std::process::Command::new("sh")
-                .args(["-c", command])
-                .current_dir(cwd)
-                .output()
-        }
-        .map_err(|e| format!("Failed to launch command: {e}"))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let code = output.status.code().unwrap_or(-1);
-        let mut combined = format!("exit code: {code}\n");
-        if !stdout.is_empty() {
-            combined.push_str("stdout:\n");
-            combined.push_str(&stdout);
-        }
-        if !stderr.is_empty() {
-            combined.push_str("stderr:\n");
-            combined.push_str(&stderr);
-        }
-        if combined.len() > 24_000 {
-            combined.truncate(24_000);
-            combined.push_str("\n...[truncated]");
-        }
-        if output.status.success() {
-            Ok(combined)
-        } else {
-            Err(combined)
-        }
-    }
-}
-
 /// Returns the tool definitions allowed for `mode`.
 pub fn tool_specs_for_mode(mode: AgentMode) -> Vec<ToolSpec> {
     let mut specs = vec![

@@ -6,6 +6,7 @@
 
 pub mod agent;
 pub mod anthropic;
+mod command;
 mod message;
 pub mod openai;
 mod provider;
@@ -18,6 +19,7 @@ pub use agent::{
     build_system_prompt, run_turn, run_turn_with_tools, write_proposed_edit, ActiveFileContext,
     AgentTurnEvent, ChatContext, FileAttachment, HttpModelStreamer, ModelStreamer,
 };
+pub use command::{SystemCommandRunner, DEFAULT_COMMAND_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES};
 pub use message::{
     Block, ChatError, Message, Request, Role, StopReason, StreamEvent, ToolSpec, Usage,
 };
@@ -33,7 +35,7 @@ pub use store::{
 };
 pub use tools::{
     execute_tool, resolve_workspace_path, summarize_tool_call, tool_specs_for_mode,
-    ApprovalDecision, CommandRunner, PendingToolApproval, ProposedEdit, SystemCommandRunner,
-    ToolApprovalPolicy, ToolExecutionResult, WorkspaceApprovals, TOOL_LIST_FILES,
-    TOOL_PROPOSE_EDIT, TOOL_READ_FILE, TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
+    ApprovalDecision, CommandRunner, PendingToolApproval, ProposedEdit, ToolApprovalPolicy,
+    ToolExecutionResult, WorkspaceApprovals, TOOL_LIST_FILES, TOOL_PROPOSE_EDIT, TOOL_READ_FILE,
+    TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
 };

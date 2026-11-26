@@ -102,7 +102,7 @@ impl App {
             .spawn(move || {
                 let mut policy = policy;
                 let mut streamer = HttpModelStreamer;
-                let runner = SystemCommandRunner;
+                let runner = SystemCommandRunner::new().with_cancel(cancel.clone());
                 run_turn_with_tools(
                     &config,
                     mode,
@@ -534,7 +534,7 @@ impl App {
             .spawn(move || {
                 let mut policy = graphite_chat::ToolApprovalPolicy::default();
                 let mut streamer = HttpModelStreamer;
-                let runner = SystemCommandRunner;
+                let runner = SystemCommandRunner::new();
                 run_turn(
                     &config,
                     AgentMode::Ask,

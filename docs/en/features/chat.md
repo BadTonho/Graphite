@@ -33,6 +33,7 @@ OpenCode free-tier chat models that are restricted to the OpenCode client are un
   - **Ask**: The default for new chats. Reading or searching workspace files requires approval for each tool call.
   - **Edit**: Proposes file edits tracked with before/after snapshots for review.
   - **Agent**: Executes workspace tools (reading, searching, editing, and terminal commands inside the workspace root) across multi-step turns.
+- **Terminal commands**: `run_command` runs in the workspace root through `cmd /C` on Windows or `sh -c` on Linux, with no input. A command is stopped, together with the processes it started, when it runs longer than 2 minutes or when you select **Stop**. At most 24 KB of output is returned to the model.
 - **Path confinement**: All file tool paths are resolved inside the workspace root (`resolve_workspace_path`).
 - **Approvals**: Edits, terminal commands, and plugin tools ask for approval with **Allow once**, **Always allow here**, or **Deny**. Outside Ask mode, reading and searching run without asking unless **Chat: Cycle Tool Approval Policy** turns that off.
   - **Always allow here** applies only to the current workspace. For a terminal command the button reads **Always allow this command**, and only that exact command runs without asking; any other command still asks.
