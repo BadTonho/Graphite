@@ -38,14 +38,17 @@ pub fn rgb(hex: u32) -> Color {
     ]
 }
 
+/// One rectangle, drawn as an instance of six vertices the shader places at its corners.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    pos: [f32; 2],
-    uv: [f32; 2],
+struct Quad {
+    /// Left, top, right, bottom, in pixels.
+    rect: [f32; 4],
+    /// Texture coordinates of the top-left and bottom-right corners.
+    uv: [f32; 4],
     color: [f32; 4],
     /// 0 for rectangles and glyphs (the atlas gives coverage), 1 for images (the atlas gives
-    /// color).
+    /// color), 2 for tinted image masks.
     mode: f32,
 }
 
@@ -77,9 +80,9 @@ pub struct Renderer {
     atlas_tex: wgpu::Texture,
     image_tex: wgpu::Texture,
     images: images::ImageAtlas,
-    vertex_buf: wgpu::Buffer,
-    vertex_capacity: usize,
-    vertices: Vec<Vertex>,
+    quad_buf: wgpu::Buffer,
+    quad_capacity: usize,
+    quads: Vec<Quad>,
     glyphs: GlyphCache<CacheKey, GlyphEntry>,
     font_system: FontSystem,
     swash: SwashCache,
@@ -201,53 +204,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let bgl = bind_group_layout(&device);
         let atlas_view = atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let image_view = image_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -277,49 +234,12 @@ impl Renderer {
             ],
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("pipeline layout"),
-            bind_group_layouts: &[Some(&bgl)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Float32],
-                })],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = render_pipeline(&device, &bgl, format);
 
-        let vertex_capacity = 4096;
-        let vertex_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("vertices"),
-            size: (vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
+        let quad_capacity = 1024;
+        let quad_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("quads"),
+            size: (quad_capacity * std::mem::size_of::<Quad>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -340,9 +260,9 @@ impl Renderer {
             atlas_tex,
             image_tex,
             images: images::ImageAtlas::new(),
-            vertex_buf,
-            vertex_capacity,
-            vertices: Vec::new(),
+            quad_buf,
+            quad_capacity,
+            quads: Vec::new(),
             glyphs: GlyphCache::new(),
             font_system,
             swash: SwashCache::new(),
@@ -460,26 +380,18 @@ impl Renderer {
         else {
             return;
         };
-        let v = |x, y, u, t| Vertex {
-            pos: [x, y],
-            uv: [u, t],
+        self.quads.push(Quad {
+            rect: [x0, y0, x1, y1],
+            uv: [uv0[0], uv0[1], uv1[0], uv1[1]],
             color,
             mode,
-        };
-        self.vertices.extend_from_slice(&[
-            v(x0, y0, uv0[0], uv0[1]),
-            v(x1, y0, uv1[0], uv0[1]),
-            v(x0, y1, uv0[0], uv1[1]),
-            v(x1, y0, uv1[0], uv0[1]),
-            v(x1, y1, uv1[0], uv1[1]),
-            v(x0, y1, uv0[0], uv1[1]),
-        ]);
+        });
     }
 
     /// Submits everything drawn since the last call and presents the frame.
     pub fn present(&mut self) {
         if self.suspended {
-            self.vertices.clear();
+            self.quads.clear();
             return;
         }
         let frame = match self.surface.get_current_texture() {
@@ -488,7 +400,7 @@ impl Renderer {
             _ => {
                 // Surface lost/outdated: reconfigure and skip this frame.
                 self.surface.configure(&self.device, &self.config);
-                self.vertices.clear();
+                self.quads.clear();
                 return;
             }
         };
@@ -504,17 +416,17 @@ impl Renderer {
                 _pad: [0.0; 2],
             }),
         );
-        if self.vertices.len() > self.vertex_capacity {
-            self.vertex_capacity = self.vertices.len().next_power_of_two();
-            self.vertex_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("vertices"),
-                size: (self.vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
+        if self.quads.len() > self.quad_capacity {
+            self.quad_capacity = self.quads.len().next_power_of_two();
+            self.quad_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("quads"),
+                size: (self.quad_capacity * std::mem::size_of::<Quad>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
         }
         self.queue
-            .write_buffer(&self.vertex_buf, 0, bytemuck::cast_slice(&self.vertices));
+            .write_buffer(&self.quad_buf, 0, bytemuck::cast_slice(&self.quads));
 
         let mut encoder = self
             .device
@@ -540,8 +452,9 @@ impl Renderer {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bind_group, &[]);
-            pass.set_vertex_buffer(0, self.vertex_buf.slice(..));
-            pass.draw(0..self.vertices.len() as u32, 0..1);
+            pass.set_vertex_buffer(0, self.quad_buf.slice(..));
+            // Six vertices, two triangles, for every rectangle.
+            pass.draw(0..6, 0..self.quads.len() as u32);
         }
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
@@ -552,7 +465,7 @@ impl Renderer {
         if self.glyphs.reset_if_full() {
             self.redraw_needed = true;
         }
-        self.vertices.clear();
+        self.quads.clear();
     }
 
     /// Whether the frame just presented left out glyphs or images because an atlas was full.
@@ -562,8 +475,276 @@ impl Renderer {
     }
 }
 
+/// The bindings the shader reads: the screen size, the glyph atlas and the image atlas.
+fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+/// The pipeline that draws every rectangle as an instance, into `format` targets.
+fn render_pipeline(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+    format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("pipeline layout"),
+        bind_group_layouts: &[Some(bgl)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Quad>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32],
+            })],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    /// Draws `quads` into a 64x64 RGBA texture on a GPU without a window and returns its pixels,
+    /// or `None` when this machine has no adapter.
+    fn render_offscreen(quads: &[super::Quad]) -> Option<Vec<[u8; 4]>> {
+        const SIZE: u32 = 64;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .ok()?;
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()?;
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let bgl = super::bind_group_layout(&device);
+        let pipeline = super::render_pipeline(&device, &bgl, format);
+        let texture = |format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: SIZE,
+                    height: SIZE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let sampled = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let atlas = texture(wgpu::TextureFormat::R8Unorm, sampled);
+        // Full coverage everywhere, like the solid block rectangles sample.
+        queue.write_texture(
+            atlas.as_image_copy(),
+            &vec![255u8; (SIZE * SIZE) as usize],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SIZE),
+                rows_per_image: Some(SIZE),
+            },
+            atlas.size(),
+        );
+        let images = texture(wgpu::TextureFormat::Rgba8Unorm, sampled);
+        let target = texture(
+            format,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let globals = wgpu::util::DeviceExt::create_buffer_init(
+            &device,
+            &wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::bytes_of(&super::Globals {
+                    screen: [SIZE as f32, SIZE as f32],
+                    _pad: [0.0; 2],
+                }),
+                usage: wgpu::BufferUsages::UNIFORM,
+            },
+        );
+        let instances = wgpu::util::DeviceExt::create_buffer_init(
+            &device,
+            &wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(quads),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+        let atlas_view = atlas.create_view(&Default::default());
+        let images_view = images.create_view(&Default::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: globals.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&images_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: u64::from(SIZE * SIZE * 4),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let view = target.create_view(&Default::default());
+        let mut encoder = device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_vertex_buffer(0, instances.slice(..));
+            pass.draw(0..6, 0..quads.len() as u32);
+        }
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(SIZE * 4),
+                    rows_per_image: Some(SIZE),
+                },
+            },
+            target.size(),
+        );
+        queue.submit(Some(encoder.finish()));
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
+        let pixels = slice
+            .get_mapped_range()
+            .ok()?
+            .chunks_exact(4)
+            .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
+            .collect();
+        Some(pixels)
+    }
+
+    #[test]
+    fn instanced_rectangles_are_drawn_where_they_were_placed() {
+        let quad = |rect, color| super::Quad {
+            rect,
+            uv: [0.0, 0.0, 1.0 / 64.0, 1.0 / 64.0],
+            color,
+            mode: 0.0,
+        };
+        let Some(pixels) = render_offscreen(&[
+            quad([8.0, 8.0, 24.0, 24.0], [1.0, 0.0, 0.0, 1.0]),
+            quad([40.0, 32.0, 56.0, 60.0], [0.0, 1.0, 0.0, 1.0]),
+        ]) else {
+            eprintln!("No GPU adapter on this machine; the drawing check was skipped.");
+            return;
+        };
+        let at = |x: usize, y: usize| pixels[y * 64 + x];
+        assert_eq!(at(16, 16), [255, 0, 0, 255], "inside the red rectangle");
+        assert_eq!(at(48, 46), [0, 255, 0, 255], "inside the green rectangle");
+        assert_eq!(at(32, 16), [0, 0, 0, 255], "between them");
+        assert_eq!(at(7, 16), [0, 0, 0, 255], "left of the red rectangle");
+        assert_eq!(at(16, 24), [0, 0, 0, 255], "below the red rectangle");
+        assert_eq!(at(48, 31), [0, 0, 0, 255], "above the green rectangle");
+    }
+
     #[test]
     fn the_shader_parses_and_validates() {
         let module = wgpu::naga::front::wgsl::parse_str(include_str!("shader.wgsl"))
@@ -577,8 +758,47 @@ mod tests {
     }
 
     #[test]
-    fn vertices_keep_a_tight_layout() {
-        // Position, texture coordinates, color and the mode, as the pipeline declares them.
-        assert_eq!(std::mem::size_of::<super::Vertex>(), 36);
+    fn the_shader_reads_each_rectangle_as_the_pipeline_lays_it_out() {
+        use wgpu::naga::{Binding, BuiltIn, ScalarKind, TypeInner, VectorSize};
+        let module = wgpu::naga::front::wgsl::parse_str(include_str!("shader.wgsl")).unwrap();
+        let entry = module
+            .entry_points
+            .iter()
+            .find(|entry| entry.name == "vs_main")
+            .unwrap();
+        let input = &module.types[entry.function.arguments[0].ty];
+        let TypeInner::Struct { members, .. } = &input.inner else {
+            panic!("vs_main takes a struct");
+        };
+        let mut locations = Vec::new();
+        let mut corner_index = false;
+        for member in members {
+            match member.binding {
+                Some(Binding::BuiltIn(BuiltIn::VertexIndex)) => corner_index = true,
+                Some(Binding::Location { location, .. }) => {
+                    let width = match module.types[member.ty].inner {
+                        TypeInner::Vector {
+                            size: VectorSize::Quad,
+                            scalar,
+                        } if scalar.kind == ScalarKind::Float => 4,
+                        TypeInner::Scalar(scalar) if scalar.kind == ScalarKind::Float => 1,
+                        ref other => panic!("unexpected input {other:?}"),
+                    };
+                    locations.push((location, width));
+                }
+                _ => {}
+            }
+        }
+        assert!(corner_index, "the corner comes from the vertex index");
+        locations.sort();
+        // Float32x4 rect, Float32x4 uv, Float32x4 color, Float32 mode, as in the pipeline.
+        assert_eq!(locations, vec![(0, 4), (1, 4), (2, 4), (3, 1)]);
+    }
+
+    #[test]
+    fn quads_keep_a_tight_layout() {
+        // Corners, texture corners, color and mode: 52 bytes per rectangle, where six vertices
+        // used to take 216.
+        assert_eq!(std::mem::size_of::<super::Quad>(), 52);
     }
 }

@@ -9,9 +9,11 @@ struct Globals {
 @group(0) @binding(3) var images: texture_2d<f32>;
 @group(0) @binding(4) var image_sampler: sampler;
 
+// One instance per rectangle: its corners and texture corners, color, and mode.
 struct VsIn {
-    @location(0) pos: vec2<f32>,
-    @location(1) uv: vec2<f32>,
+    @builtin(vertex_index) corner: u32,
+    @location(0) rect: vec4<f32>,
+    @location(1) uv: vec4<f32>,
     @location(2) color: vec4<f32>,
     @location(3) mode: f32,
 };
@@ -25,13 +27,24 @@ struct VsOut {
 
 @vertex
 fn vs_main(in: VsIn) -> VsOut {
+    // Two triangles: top-left, top-right, bottom-left, then top-right, bottom-right, bottom-left.
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(0.0, 1.0),
+    );
+    let corner = corners[in.corner];
+    let pos = mix(in.rect.xy, in.rect.zw, corner);
     var out: VsOut;
     let ndc = vec2<f32>(
-        in.pos.x / globals.screen.x * 2.0 - 1.0,
-        1.0 - in.pos.y / globals.screen.y * 2.0,
+        pos.x / globals.screen.x * 2.0 - 1.0,
+        1.0 - pos.y / globals.screen.y * 2.0,
     );
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
-    out.uv = in.uv;
+    out.uv = mix(in.uv.xy, in.uv.zw, corner);
     out.color = in.color;
     out.mode = in.mode;
     return out;
