@@ -13,7 +13,10 @@ use std::{
     net::{Shutdown, TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::mpsc::{self, Receiver, SyncSender, TryRecvError},
+    sync::{
+        mpsc::{self, Receiver, SyncSender, TryRecvError},
+        Arc,
+    },
     thread,
     time::Duration,
 };
@@ -130,7 +133,7 @@ pub struct DapSession {
     child: Option<Child>,
     stdin: Option<Box<dyn Write + Send>>,
     /// The connection of a TCP session, kept to shut it down on stop.
-    socket: Option<TcpStream>,
+    socket: Option<Arc<TcpStream>>,
     /// Ends the connection of a pipe session, which wakes its reader thread.
     closer: Option<Box<dyn Fn() + Send>>,
     events: Receiver<AdapterEvent>,
@@ -1411,16 +1414,18 @@ impl DapSession {
                     server.host, server.port
                 ))
             })?;
-        let stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))?;
-        let reader = stream.try_clone()?;
-        let socket = stream.try_clone()?;
+        let socket = Arc::new(TcpStream::connect_timeout(
+            &address,
+            Duration::from_secs(5),
+        )?);
+        let reader = SharedTcp(socket.clone());
         let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
         thread::Builder::new()
             .name("graphite-dap-reader".into())
             .spawn(move || read_messages(reader, sender))?;
         Ok(Self {
             child: None,
-            stdin: Some(Box::new(stream)),
+            stdin: Some(Box::new(SharedTcp(socket.clone()))),
             socket: Some(socket),
             closer: None,
             events,
@@ -1707,6 +1712,27 @@ mod transport_tests {
         assert_eq!(reply["command"], "initialize");
         session.stop().unwrap();
         adapter.join().unwrap();
+    }
+}
+
+/// One TCP connection used from several places. It is shared, not duplicated with `try_clone`:
+/// on Windows a duplicated socket is inheritable, so a process started later (a terminal, a task)
+/// would keep the connection open after the session ends.
+struct SharedTcp(Arc<TcpStream>);
+
+impl Read for SharedTcp {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        (&*self.0).read(buffer)
+    }
+}
+
+impl Write for SharedTcp {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        (&*self.0).write(buffer)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        (&*self.0).flush()
     }
 }
 

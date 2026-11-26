@@ -738,7 +738,6 @@ mod tests {
     fn link_dir(target: &Path, link: &Path) {
         #[cfg(windows)]
         {
-            let _lock = crate::process_and_socket_test_lock();
             let status = std::process::Command::new("cmd")
                 .arg("/C")
                 .arg("mklink")

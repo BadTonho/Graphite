@@ -6,6 +6,7 @@ use std::io::{self, Read, Write};
 #[cfg(test)]
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::sync::Arc;
 #[cfg(test)]
 use std::time::Duration;
 
@@ -17,9 +18,11 @@ const FLAG_COMMAND: u8 = 0x04;
 /// memory. Notebook outputs with images stay well below it.
 const MAX_FRAME: u64 = 256 * 1024 * 1024;
 
-/// The two ends of one connection.
+/// The two ends of one connection. Shared between threads by reference, never by duplicating
+/// the handle: on Windows a duplicated socket is inheritable, so a process started later (another
+/// kernel, a terminal) would keep the connection open after Graphite closes it.
 pub(crate) struct Socket {
-    stream: TcpStream,
+    stream: Arc<TcpStream>,
 }
 
 fn greeting() -> [u8; 64] {
@@ -70,7 +73,9 @@ impl Socket {
         if peer[0] != 0xff || peer[9] != 0x7f || peer[10] < 3 {
             return Err(protocol_error("the peer does not speak ZMTP 3"));
         }
-        let mut socket = Self { stream };
+        let mut socket = Self {
+            stream: Arc::new(stream),
+        };
         // The peer's READY: a command frame we only need to see go by.
         let (flags, _) = socket.read_frame()?;
         if flags & FLAG_COMMAND == 0 {
@@ -96,10 +101,11 @@ impl Socket {
         Self::handshake(stream, socket_type, None)
     }
 
-    pub(crate) fn try_clone(&self) -> io::Result<Self> {
-        Ok(Self {
-            stream: self.stream.try_clone()?,
-        })
+    /// Another owner of the same connection, for reading on its own thread.
+    pub(crate) fn share(&self) -> Self {
+        Self {
+            stream: self.stream.clone(),
+        }
     }
 
     #[cfg(test)]
@@ -113,22 +119,22 @@ impl Socket {
 
     fn read_frame(&mut self) -> io::Result<(u8, Vec<u8>)> {
         let mut flags = [0u8; 1];
-        self.stream.read_exact(&mut flags)?;
+        (&*self.stream).read_exact(&mut flags)?;
         let flags = flags[0];
         let size = if flags & FLAG_LONG != 0 {
             let mut bytes = [0u8; 8];
-            self.stream.read_exact(&mut bytes)?;
+            (&*self.stream).read_exact(&mut bytes)?;
             u64::from_be_bytes(bytes)
         } else {
             let mut byte = [0u8; 1];
-            self.stream.read_exact(&mut byte)?;
+            (&*self.stream).read_exact(&mut byte)?;
             byte[0] as u64
         };
         if size > MAX_FRAME {
             return Err(protocol_error("a frame is too large"));
         }
         let mut body = vec![0u8; size as usize];
-        self.stream.read_exact(&mut body)?;
+        (&*self.stream).read_exact(&mut body)?;
         Ok((flags, body))
     }
 
@@ -166,7 +172,7 @@ impl Socket {
             }
             bytes.extend_from_slice(frame);
         }
-        self.stream.write_all(&bytes)
+        (&*self.stream).write_all(&bytes)
     }
 
     /// Subscribes a `SUB` socket to every message.
@@ -257,7 +263,7 @@ mod tests {
     #[test]
     fn oversized_frames_are_refused() {
         let (mut client, server) = pair("DEALER", "ROUTER");
-        let mut raw = server.stream.try_clone().unwrap();
+        let mut raw: &TcpStream = &server.stream;
         let mut header = vec![FLAG_LONG];
         header.extend_from_slice(&(MAX_FRAME + 1).to_be_bytes());
         raw.write_all(&header).unwrap();

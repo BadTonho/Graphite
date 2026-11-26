@@ -254,8 +254,8 @@ mod tests {
         let addr = listener.local_addr().unwrap();
 
         let server = std::thread::spawn(move || {
-            let (mut conn, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(conn.try_clone().unwrap());
+            let (conn, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&conn);
             let mut key = String::new();
             loop {
                 let mut line = String::new();
@@ -273,12 +273,12 @@ mod tests {
             let resp = format!(
                 "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
             );
-            conn.write_all(resp.as_bytes()).unwrap();
+            (&conn).write_all(resp.as_bytes()).unwrap();
 
             let (opcode, payload) = read_ws_frame(&mut reader).unwrap();
             assert_eq!(opcode, 0x1);
             let frame = encode_ws_frame(0x1, &payload, false);
-            conn.write_all(&frame).unwrap();
+            (&conn).write_all(&frame).unwrap();
         });
 
         let url = format!("ws://{addr}/relay");

@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- On Windows, terminals, tasks, notebook kernels, and Chat commands no longer inherit Graphite's extension webview, notebook kernel, and debug adapter connections. Previously a process started while such a connection was open kept it alive after Graphite closed it, so a webview could wait for a response that had already been sent.
 - Saving the active profile, workspace trust, and plugin storage can no longer leave a half-written file when the file system rejects the fast replacement or Graphite stops mid-save. The new file is flushed first and swapped in one step, and a failed save keeps the previous file.
 - A theme color written with a non-ASCII character, such as `#abcdeé`, no longer crashes Graphite; malformed colors are ignored. Short `#RGB` and `#RGBA` colors are now accepted too.
 - The GitHub sign-in token is now kept in Windows Credential Manager or the Linux Secret Service instead of in plain text in the profile folder. Tokens saved by earlier versions are moved there automatically, and failures to keep the sign-in are recorded in the error log.

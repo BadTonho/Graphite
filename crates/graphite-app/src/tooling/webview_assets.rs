@@ -214,15 +214,16 @@ impl Drop for LoopbackOrigin {
 }
 
 fn handle_http(
-    mut stream: TcpStream,
+    stream: TcpStream,
     page: &str,
     roots: &[PathBuf],
     on_ipc: &(dyn Fn(String) + Send + Sync),
 ) {
-    let mut reader = BufReader::new(match stream.try_clone() {
-        Ok(cloned) => cloned,
-        Err(_) => return,
-    });
+    // Read and written through shared references rather than a `try_clone` copy: on Windows a
+    // duplicated socket is inheritable, and a process started meanwhile (a terminal, a task)
+    // would keep the connection open after the response, so the page would wait for it.
+    let mut reader = BufReader::new(&stream);
+    let mut writer = &stream;
     let mut request_line = String::new();
     if reader.read_line(&mut request_line).is_err() {
         return;
@@ -248,7 +249,7 @@ fn handle_http(
     }
     if method == "POST" && path == "/__graphite_ipc" {
         if content_length > 48 * 1024 * 1024 {
-            let _ = stream.write_all(
+            let _ = writer.write_all(
                 b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
             );
             return;
@@ -260,7 +261,7 @@ fn handle_http(
         if let Ok(text) = String::from_utf8(body) {
             on_ipc(text);
         }
-        let _ = stream.write_all(
+        let _ = writer.write_all(
             b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         );
         return;
@@ -279,9 +280,9 @@ fn handle_http(
         status.as_u16(),
         body.len()
     );
-    let _ = stream.write_all(header.as_bytes());
+    let _ = writer.write_all(header.as_bytes());
     if method != "HEAD" {
-        let _ = stream.write_all(&body);
+        let _ = writer.write_all(&body);
     }
 }
 
@@ -450,5 +451,42 @@ mod tests {
         post_stream.read_to_string(&mut post_response).unwrap();
         assert!(post_response.starts_with("HTTP/1.1 204 No Content\r\n"));
         assert_eq!(received.lock().unwrap().as_slice(), [payload]);
+    }
+
+    #[test]
+    fn a_process_started_during_a_request_does_not_keep_the_response_open() {
+        let origin =
+            LoopbackOrigin::start("<h1>ok</h1>".into(), Vec::new(), Arc::new(|_| {})).unwrap();
+        let mut client = TcpStream::connect(("127.0.0.1", origin.port)).unwrap();
+        client.write_all(b"GET /index.html HTTP/1.1\r\n").unwrap();
+        // The server is now handling the connection.
+        thread::sleep(std::time::Duration::from_millis(100));
+        // Piped standard streams make the child inherit every inheritable handle on Windows.
+        let mut child = if cfg!(windows) {
+            let mut command = std::process::Command::new("ping");
+            command.args(["-n", "60", "127.0.0.1"]);
+            command
+        } else {
+            let mut command = std::process::Command::new("sleep");
+            command.arg("60");
+            command
+        }
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+        client.write_all(b"Host: 127.0.0.1\r\n\r\n").unwrap();
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut response = String::new();
+        let read = client.read_to_string(&mut response);
+        let _ = child.kill();
+        let _ = child.wait();
+
+        read.expect("the response must end when the server closes the connection");
+        assert!(response.ends_with("<h1>ok</h1>"), "{response}");
     }
 }

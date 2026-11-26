@@ -347,7 +347,7 @@ fn supervise(
     }
     let readers: Vec<(Socket, bool)> = [(&shell, true), (&iopub, true), (&control, false)]
         .into_iter()
-        .filter_map(|(socket, forward)| socket.try_clone().ok().map(|clone| (clone, forward)))
+        .map(|(socket, forward)| (socket.share(), forward))
         .collect();
     for (socket, forward) in readers {
         let (key, events, notify) = (key.clone(), events.clone(), notify.clone());

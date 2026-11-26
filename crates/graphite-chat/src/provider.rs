@@ -332,15 +332,12 @@ mod tests {
         content_type: &'static str,
         body: String,
     ) -> (String, std::thread::JoinHandle<String>) {
-        // Held until the connection is closed; see `process_and_socket_test_lock`.
-        let guard = crate::process_and_socket_test_lock();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
         let status = status.to_string();
         let handle = std::thread::spawn(move || {
-            let _guard = guard;
-            let (mut socket, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let (socket, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&socket);
             let mut head = String::new();
             let mut length = 0usize;
             loop {
@@ -358,7 +355,7 @@ mod tests {
             reader.read_exact(&mut payload).unwrap();
             head.push_str(&String::from_utf8_lossy(&payload));
             let reply = format!("HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n{body}");
-            socket.write_all(reply.as_bytes()).unwrap();
+            (&socket).write_all(reply.as_bytes()).unwrap();
             head
         });
         (address, handle)

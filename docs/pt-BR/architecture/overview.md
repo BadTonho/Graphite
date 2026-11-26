@@ -39,6 +39,8 @@ graphite-app ──► graphite-render     (wgpu + cosmic-text + Window do winit
 
 Windows e Linux; as diferenças de plataforma ficam a cargo de `winit`, `wgpu` e `cosmic-text`.
 
+Nunca duplique uma conexão TCP com `TcpStream::try_clone`. No Windows a cópia é herdável, então todo processo iniciado depois (um terminal, uma tarefa, um kernel de notebook, um comando executado pelo Chat) fica com a conexão, e fechá-la no Graphite não a encerra. Leia e escreva por meio de `&TcpStream`, que implementa `Read` e `Write`, e compartilhe uma conexão entre threads com `Arc<TcpStream>`. Sockets retornados por `TcpListener::accept` e arquivos duplicados com `File::try_clone` não são herdáveis.
+
 ## Limitações conhecidas
 
 - O realce incremental pode invalidar o restante do documento após uma edição.

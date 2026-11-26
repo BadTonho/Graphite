@@ -537,8 +537,8 @@ mod tests {
         let recorded = log.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { continue };
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let Ok(stream) = stream else { continue };
+                let mut reader = BufReader::new(&stream);
                 let mut request_line = String::new();
                 if reader.read_line(&mut request_line).unwrap_or(0) == 0 {
                     continue;
@@ -574,7 +574,7 @@ mod tests {
                     "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
                     payload.len()
                 );
-                let _ = stream.write_all(response.as_bytes());
+                let _ = (&stream).write_all(response.as_bytes());
             }
         });
         (base, log)
