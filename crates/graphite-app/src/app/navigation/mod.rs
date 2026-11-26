@@ -6,6 +6,7 @@ use super::*;
 pub(crate) mod explorer_context_menu;
 pub(crate) mod explorer_files;
 pub(crate) mod explorer_nav;
+pub(crate) mod file_index;
 pub(crate) mod local_search;
 pub(crate) mod project_search;
 pub(crate) mod project_search_filters;

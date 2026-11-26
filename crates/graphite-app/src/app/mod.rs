@@ -22,8 +22,8 @@ pub(crate) use editing::{
 };
 mod navigation;
 pub(crate) use navigation::{
-    explorer_context_menu, explorer_files, explorer_nav, local_search, project_search_filters,
-    quick_open,
+    explorer_context_menu, explorer_files, explorer_nav, file_index, local_search,
+    project_search_filters, quick_open,
 };
 mod source_control;
 pub(crate) use source_control::{

@@ -312,6 +312,13 @@ impl ActivationHandler for AccessibilityActivation {
 pub(crate) enum UserEvent {
     /// A background thread left work in a queue the loop reads; see `app::wake`.
     Wake,
+    /// The workspace file index finished building; see `app::file_index`.
+    FileIndexReady {
+        generation: u64,
+        index: std::sync::Arc<graphite_workspace::FileIndex>,
+    },
+    /// Files were created or removed in the workspace.
+    FileIndexStale,
     ExtensionHostWake,
     CommandCompleted {
         execution: u64,

@@ -57,6 +57,7 @@ pub(crate) fn start_watcher(
             // A failed notification may stand for any change.
             Err(_) => Signal {
                 scm: true,
+                files: true,
                 changes: Vec::new(),
             },
             Ok(event) => {
@@ -64,9 +65,15 @@ pub(crate) fn start_watcher(
                 if !watched {
                     return;
                 }
+                let changes = crate::app::plugins::file_changes(event);
+                let files = changes.iter().any(|(change, path)| {
+                    !matches!(change, crate::app::plugins::FileChange::Changed)
+                        && filter.is_listed(path)
+                });
                 Signal {
                     scm,
-                    changes: crate::app::plugins::file_changes(event),
+                    files,
+                    changes,
                 }
             }
         };
@@ -92,6 +99,9 @@ pub(crate) fn start_watcher(
                 } else {
                     UserEvent::ExternalChangeCheck
                 });
+                if batch.files {
+                    let _ = proxy.send_event(UserEvent::FileIndexStale);
+                }
                 if !batch.changes.is_empty() {
                     let _ = proxy.send_event(UserEvent::FileEvents(batch.changes));
                 }
@@ -129,6 +139,7 @@ impl App {
             .event_proxy
             .clone()
             .and_then(|proxy| start_watcher(proxy, &roots));
+        self.reset_file_index();
         self.refresh_scm_async();
     }
 }

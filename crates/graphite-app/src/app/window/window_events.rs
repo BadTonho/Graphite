@@ -839,6 +839,14 @@ impl App {
         match event {
             // `about_to_wait`, which follows every event, reads the queues.
             UserEvent::Wake => crate::app::wake::handled(),
+            UserEvent::FileIndexReady { generation, index } => {
+                self.accept_file_index(generation, index);
+                // Quick Open, if open, ranks from the new index.
+                if self.quick_open.is_some() {
+                    self.request_quick_open();
+                }
+            }
+            UserEvent::FileIndexStale => self.mark_file_index_stale(),
             UserEvent::ExtensionHostWake => self.poll_extension_host(std::time::Instant::now()),
             UserEvent::SettingsImported(settings) => self.apply_imported_settings(*settings),
             UserEvent::SnippetsLoaded { snippets, warnings } => {

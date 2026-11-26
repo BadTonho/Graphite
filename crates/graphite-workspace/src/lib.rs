@@ -4,6 +4,7 @@ mod find;
 mod quick_open;
 mod search;
 
+pub use quick_open::FileIndex;
 pub use search::{parse_glob_list, validate_search, SearchOptions};
 
 use ignore::WalkBuilder;
@@ -359,6 +360,45 @@ mod tests {
         assert!(paths[0].ends_with("main.rs"));
         assert!(ws.fuzzy_files("ignored", 10, || false).is_empty());
         assert!(ws.fuzzy_files("main", 10, || true).is_empty());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_index_built_once_answers_many_queries_like_a_fresh_walk() {
+        let dir = std::env::temp_dir().join(format!("graphite_file_index_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        for folder in ["src/app", "src/util", "tests", "docs"] {
+            fs::create_dir_all(dir.join(folder)).unwrap();
+        }
+        for index in 0..60 {
+            let folder = ["src/app", "src/util", "tests", "docs"][index % 4];
+            fs::write(dir.join(folder).join(format!("file_{index}.rs")), "").unwrap();
+        }
+        fs::write(dir.join("Ärger.md"), "").unwrap();
+        let ws = Workspace::open(&dir).unwrap();
+        let index = ws.file_index(|| false).unwrap();
+        assert_eq!(index.len(), 61);
+
+        for query in ["", "f1", "srcapp", "file_5", "rs", "ärg", "zzz"] {
+            for limit in [1, 5, 100] {
+                assert_eq!(
+                    index.fuzzy(query, limit, || false),
+                    ws.fuzzy_files(query, limit, || false),
+                    "{query} {limit}"
+                );
+            }
+        }
+        // Matching ignores case, also beyond ASCII, and follows the folders typed.
+        assert!(index.fuzzy("ärg", 1, || false)[0].ends_with("Ärger.md"));
+        assert!(index
+            .fuzzy("srcapp", 3, || false)
+            .iter()
+            .all(|path| path.parent().unwrap().ends_with("src/app")));
+        // The best few equal the head of the complete ranking.
+        let all = index.fuzzy("rs", usize::MAX, || false);
+        assert_eq!(index.fuzzy("rs", 7, || false), all[..7]);
+        assert!(index.fuzzy("rs", 7, || true).is_empty(), "cancelled");
+        assert!(ws.file_index(|| true).is_none());
         fs::remove_dir_all(dir).unwrap();
     }
 

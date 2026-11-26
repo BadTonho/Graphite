@@ -12,6 +12,7 @@ impl App {
         self.local_search = None;
         self.search_query = None;
         self.quick_open = Some(QuickOpen::default());
+        self.ensure_file_index();
         self.request_quick_open();
     }
 
@@ -26,6 +27,8 @@ impl App {
             return;
         };
         let workspace = self.tree.workspace_snapshot();
+        // Ranked from the index once it is built; until then, by walking the disk.
+        let index = self.file_index.index.clone();
         let cancel = self.search_cancel.clone();
         let tracked = self
             .command_runtime
@@ -38,12 +41,16 @@ impl App {
             None
         };
         std::thread::spawn(move || {
-            let paths = workspace.fuzzy_files(&query, 100, || {
+            let cancelled = || {
                 cancel.load(Ordering::Relaxed) != generation
                     || job
                         .as_ref()
                         .is_some_and(|job| job.cancellation.is_cancelled())
-            });
+            };
+            let paths = match &index {
+                Some(index) => index.fuzzy(&query, 100, cancelled),
+                None => workspace.fuzzy_files(&query, 100, cancelled),
+            };
             let outcome = if cancel.load(Ordering::Relaxed) != generation {
                 Err(super::command_execution::CommandError::Cancelled)
             } else {

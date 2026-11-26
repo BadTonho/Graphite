@@ -1,5 +1,7 @@
 # Comandos de abrir rápido e de histórico de editores
 
+O abrir rápido de arquivos classifica os arquivos de todas as raízes do workspace, deixando de fora `.git` e o que os arquivos de ignorar excluem. Na primeira vez que abre, o Graphite lista os arquivos numa thread em segundo plano e guarda a lista na memória; até lá, cada consulta percorre as pastas. Depois, a lista só é refeita quando um arquivo é criado ou removido fora dos caminhos excluídos pelo `.gitignore` da raiz, então digitar uma consulta não lê mais o disco.
+
 | Comando | O que faz |
 | --- | --- |
 | Abrir rápido o editor anterior do histórico (e Abrir rápido o editor anterior) | Abre uma lista com os editores abertos, o mais recente primeiro, com o anterior selecionado. Enter troca para ele. |

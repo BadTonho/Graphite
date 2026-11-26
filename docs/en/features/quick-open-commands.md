@@ -1,5 +1,7 @@
 # Quick open and editor history commands
 
+File quick open ranks the files of every workspace root, leaving out `.git` and what ignore files exclude. The first time it opens, Graphite lists the files on a background thread and keeps the list in memory; until then, each query walks the folders. Afterwards the list is rebuilt only when a file is created or removed outside the paths the root `.gitignore` excludes, so typing a query no longer reads the disk.
+
 | Command | What it does |
 | --- | --- |
 | Quick Open Previous Editor from History (and Quick Open Previous Editor) | Opens a picker with the open editors, most recently used first, with the previous one selected. Enter switches to it. |

@@ -20,6 +20,8 @@ pub(crate) const SETTLE: Duration = Duration::from_millis(250);
 pub(crate) struct Signal {
     /// Whether the change can alter what source control shows.
     pub(crate) scm: bool,
+    /// Whether a file Quick Open lists was created or removed.
+    pub(crate) files: bool,
     pub(crate) changes: Vec<(FileChange, PathBuf)>,
 }
 
@@ -27,6 +29,7 @@ pub(crate) struct Signal {
 #[derive(Default, Debug, PartialEq)]
 pub(crate) struct Batch {
     pub(crate) scm: bool,
+    pub(crate) files: bool,
     /// Distinct changes in the order they first happened.
     pub(crate) changes: Vec<(FileChange, PathBuf)>,
 }
@@ -34,6 +37,7 @@ pub(crate) struct Batch {
 impl Batch {
     fn add(&mut self, signal: Signal) {
         self.scm |= signal.scm;
+        self.files |= signal.files;
         for change in signal.changes {
             if !self.changes.contains(&change) {
                 self.changes.push(change);
@@ -103,6 +107,12 @@ impl ScmPathFilter {
         !names.iter().any(|name| *name == "target")
     }
 
+    /// Whether creating or removing `path` changes the files Quick Open lists, which leave out
+    /// `.git` and what the root `.gitignore` excludes.
+    pub(crate) fn is_listed(&self, path: &Path) -> bool {
+        !path.components().any(|part| part.as_os_str() == ".git") && self.is_relevant(path)
+    }
+
     /// Whether a change to `path` can alter what source control shows: a watched path that the
     /// root `.gitignore` does not exclude.
     pub(crate) fn is_relevant(&self, path: &Path) -> bool {
@@ -127,6 +137,7 @@ mod tests {
     fn signal(scm: bool, path: &str) -> Signal {
         Signal {
             scm,
+            files: false,
             changes: vec![(FileChange::Changed, PathBuf::from(path))],
         }
     }
@@ -185,6 +196,23 @@ mod tests {
         assert!(!filter.is_relevant(&root.join(".git/objects/ab/cdef")));
         assert!(filter.is_relevant(&root.join(".git/HEAD")));
         assert!(filter.is_relevant(&root.join(".git/refs/heads/main")));
+    }
+
+    #[test]
+    fn quick_open_lists_files_outside_git_and_ignored_folders() {
+        let dir = crate::test_support::TempDir::new();
+        let root = dir.path().to_path_buf();
+        std::fs::write(
+            root.join(".gitignore"),
+            "node_modules/
+",
+        )
+        .unwrap();
+        let filter = ScmPathFilter::new(std::slice::from_ref(&root));
+
+        assert!(filter.is_listed(&root.join("src/new.rs")));
+        assert!(!filter.is_listed(&root.join("node_modules/pkg/index.js")));
+        assert!(!filter.is_listed(&root.join(".git/refs/heads/main")));
     }
 
     #[test]
