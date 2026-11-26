@@ -8,6 +8,7 @@ mod worker;
 use dispatch::dispatch_server_message;
 #[cfg(test)]
 use protocol::incremental_text_change;
+pub(crate) use protocol::recorded_change;
 use protocol::{change_params, hover_to_string, text_sync_kind};
 pub use protocol::{diagnostics_are_current, path_to_uri, position_at_char, uri_to_path};
 use worker::run_server;
@@ -139,8 +140,11 @@ enum LspCommand {
     },
     Change {
         uri: String,
-        text: String,
+        /// The whole text, cheap to clone; turned into a string only for full-sync servers.
+        text: graphite_text::Rope,
         version: i32,
+        /// The exact changes since the previous version, when the buffer still knows them.
+        edits: Option<Vec<lsp_types::TextDocumentContentChangeEvent>>,
     },
     Close {
         uri: String,
@@ -390,13 +394,20 @@ impl LspManager {
         self.documents.insert(path.to_path_buf(), uri);
     }
 
-    pub fn change(&self, path: &Path, text: String, version: i32) {
+    pub fn change(
+        &self,
+        path: &Path,
+        text: graphite_text::Rope,
+        version: i32,
+        edits: Option<Vec<lsp_types::TextDocumentContentChangeEvent>>,
+    ) {
         self.send(
             path,
             LspCommand::Change {
                 uri: String::new(),
                 text,
                 version,
+                edits,
             },
         );
     }
@@ -849,7 +860,7 @@ mod tests {
 
     #[test]
     fn incremental_change_keeps_unicode_boundaries_and_lines() {
-        let event = incremental_text_change("a🌎b\nold", "a🌎b\nnew!");
+        let event = incremental_text_change(&rope("a🌎b\nold"), &rope("a🌎b\nnew!"));
         assert_eq!(
             event.range,
             Some(Range::new(Position::new(1, 0), Position::new(1, 3)))
@@ -860,7 +871,8 @@ mod tests {
 
     #[test]
     fn incremental_change_replaces_multiline_astral_text_in_utf16() {
-        let event = incremental_text_change("prefix 🌎\nold end", "prefix é\nnew end");
+        let event =
+            incremental_text_change(&rope("prefix 🌎\nold end"), &rope("prefix é\nnew end"));
         assert_eq!(
             event.range,
             Some(Range::new(Position::new(0, 7), Position::new(1, 3)))
@@ -904,17 +916,114 @@ mod tests {
 
     #[test]
     fn change_sync_modes_build_correct_lsp_notifications() {
-        let incremental = change_params("file:///workspace/a.rs", "a🌎b", "a🌎c", 5, 2).unwrap();
+        let incremental = change_params(
+            "file:///workspace/a.rs",
+            &rope("a🌎b"),
+            &rope("a🌎c"),
+            5,
+            2,
+            None,
+        )
+        .unwrap();
         assert_eq!(incremental.text_document.version, 5);
         assert_eq!(
             incremental.content_changes[0].range,
             Some(Range::new(Position::new(0, 3), Position::new(0, 4)))
         );
         assert_eq!(incremental.content_changes[0].text, "c");
-        let full = change_params("file:///workspace/a.rs", "old", "new", 6, 1).unwrap();
+        let full = change_params(
+            "file:///workspace/a.rs",
+            &rope("old"),
+            &rope("new"),
+            6,
+            1,
+            None,
+        )
+        .unwrap();
         assert_eq!(full.content_changes[0].range, None);
         assert_eq!(full.content_changes[0].text, "new");
-        assert!(change_params("file:///workspace/a.rs", "old", "new", 6, 0).is_none());
+        assert!(change_params(
+            "file:///workspace/a.rs",
+            &rope("old"),
+            &rope("new"),
+            6,
+            0,
+            None
+        )
+        .is_none());
+    }
+
+    fn rope(text: &str) -> graphite_text::Rope {
+        graphite_text::Rope::from_str(text)
+    }
+
+    #[test]
+    fn known_edits_are_sent_as_they_are_to_incremental_servers() {
+        let mut document = graphite_text::Buffer::new();
+        let mut view = graphite_text::SelectionState::default();
+        {
+            let mut editor = document.edit(&mut view, graphite_text::ViewId(1));
+            editor.insert("fn a() {}\n");
+        }
+        let before = document.revision();
+        let previous = document.rope().clone();
+        {
+            let mut editor = document.edit(&mut view, graphite_text::ViewId(1));
+            editor.set_selection(3, 4);
+            editor.insert("🌎");
+            editor.set_selection(0, 0);
+            editor.insert("// x\n");
+        }
+        let edits: Vec<_> = document
+            .edits_since(before)
+            .unwrap()
+            .iter()
+            .map(recorded_change)
+            .collect();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(
+            edits[0].range,
+            Some(Range::new(Position::new(0, 3), Position::new(0, 4)))
+        );
+        assert_eq!(edits[0].text, "🌎");
+        assert_eq!(edits[1].text, "// x\n");
+
+        let params = change_params(
+            "file:///workspace/a.rs",
+            &previous,
+            document.rope(),
+            7,
+            2,
+            Some(edits.clone()),
+        )
+        .unwrap();
+        assert_eq!(params.content_changes, edits);
+        // Without known edits, the one differing range is computed from the two texts.
+        let fallback = change_params(
+            "file:///workspace/a.rs",
+            &previous,
+            document.rope(),
+            7,
+            2,
+            None,
+        )
+        .unwrap();
+        assert_eq!(fallback.content_changes.len(), 1);
+        assert_eq!(
+            fallback.content_changes[0].range,
+            Some(Range::new(Position::new(0, 0), Position::new(0, 4)))
+        );
+        assert_eq!(fallback.content_changes[0].text, "// x\nfn 🌎");
+    }
+
+    #[test]
+    fn identical_texts_produce_an_empty_change() {
+        let event = incremental_text_change(&rope("same 🌎"), &rope("same 🌎"));
+        assert_eq!(
+            event.range,
+            Some(Range::new(Position::new(0, 7), Position::new(0, 7)))
+        );
+        assert_eq!(event.text, "");
     }
 
     #[test]

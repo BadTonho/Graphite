@@ -7,7 +7,7 @@ pub(super) mod lsp;
 mod saving;
 mod window;
 mod workspace;
-pub(super) use documents::snapshot_document;
+pub(super) use documents::{document_uri, snapshot_document};
 pub(super) fn edit_error(error: String) -> ServiceError {
     if error.contains("version") || error.contains("changed") {
         ServiceError::StaleDocument

@@ -79,6 +79,15 @@ impl Drop for EditorSession<'_> {
         if *self.lsp_revision == Some(revision) {
             return;
         }
+        if let Some(previous) = *self.lsp_revision {
+            // The server has the document: send the edits, sharing the rope instead of copying.
+            if super::services::lsp::publish_change(self.manager, path, &self.editor, previous)
+                .is_ok()
+            {
+                *self.lsp_revision = Some(revision);
+            }
+            return;
+        }
         let Ok(uri) = graphite_core_api::DocumentUri::from_path(path) else {
             return;
         };

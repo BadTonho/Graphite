@@ -214,7 +214,7 @@ pub(super) fn run_server(
     for message in deferred {
         let _ = signal_tx.send(message);
     }
-    let mut text_cache = HashMap::<String, String>::new();
+    let mut text_cache = HashMap::<String, graphite_text::Rope>::new();
     let mut pending = PendingClientRequests::new(event_tx.clone(), translator);
     let mut server_requests = ServerRequests::default();
     let mut next_id = 2i32;
@@ -314,7 +314,7 @@ pub(super) fn run_server(
                         text,
                         version,
                     } => {
-                        text_cache.insert(uri.clone(), text.clone());
+                        text_cache.insert(uri.clone(), graphite_text::Rope::from_str(&text));
                         vec![Message::Notification(Notification {
                             method: "textDocument/didOpen".into(),
                             params: serde_json::to_value(lsp_types::DidOpenTextDocumentParams {
@@ -328,11 +328,16 @@ pub(super) fn run_server(
                             .unwrap_or_default(),
                         })]
                     }
-                    LspCommand::Change { uri, text, version } => {
+                    LspCommand::Change {
+                        uri,
+                        text,
+                        version,
+                        edits,
+                    } => {
                         let previous = text_cache
                             .insert(uri.clone(), text.clone())
                             .unwrap_or_default();
-                        change_params(&uri, &previous, &text, version, sync_kind)
+                        change_params(&uri, &previous, &text, version, sync_kind, edits)
                             .map(|params| {
                                 Message::Notification(Notification {
                                     method: "textDocument/didChange".into(),

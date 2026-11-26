@@ -1,6 +1,6 @@
 //! Text buffer backed by a rope, with cursor editing and file I/O.
 
-use ropey::Rope;
+pub use ropey::Rope;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -184,13 +184,23 @@ pub struct Buffer {
     last_change: Option<TextChange>,
     /// The latest changes with the revision each one produced, oldest first; see
     /// [`Buffer::changes_since`].
-    recent_changes: std::collections::VecDeque<(u64, TextChange)>,
+    recent_changes: std::collections::VecDeque<(u64, RecordedEdit)>,
     last_position_edits: Vec<PositionEdit>,
     read_only: bool,
 }
 
 /// How many changes [`Buffer::changes_since`] can replay.
 const RECENT_CHANGES: usize = 128;
+
+/// One recorded change with what a protocol needs to replay it: the inserted text, and the
+/// columns of its ends in UTF-16 code units, as the Language Server Protocol counts them.
+#[derive(Debug, Clone)]
+pub struct RecordedEdit {
+    pub change: TextChange,
+    pub inserted: std::sync::Arc<str>,
+    pub start_utf16_column: usize,
+    pub old_end_utf16_column: usize,
+}
 
 impl Buffer {
     pub fn new() -> Self {
@@ -230,6 +240,12 @@ impl Buffer {
     /// `revision` can replay them, as an incremental parser does. `None` when they are not all
     /// known: too many changes since then, or a change that replaced the text without a record.
     pub fn changes_since(&self, revision: u64) -> Option<Vec<TextChange>> {
+        self.edits_since(revision)
+            .map(|edits| edits.into_iter().map(|edit| edit.change).collect())
+    }
+
+    /// Like [`Self::changes_since`], with the inserted text and UTF-16 columns of each change.
+    pub fn edits_since(&self, revision: u64) -> Option<Vec<RecordedEdit>> {
         if revision > self.revision {
             return None;
         }
@@ -244,7 +260,7 @@ impl Buffer {
             .recent_changes
             .iter()
             .skip(first)
-            .map(|(_, change)| *change)
+            .map(|(_, edit)| edit.clone())
             .collect();
         // Revisions are consecutive, so a complete run ends at the current one.
         (self
@@ -288,11 +304,21 @@ impl Buffer {
             new_end_column,
         };
         self.last_change = Some(change);
+        let utf16_column = |char_index: usize, row: usize| {
+            self.rope.char_to_utf16_cu(char_index)
+                - self.rope.char_to_utf16_cu(self.rope.line_to_char(row))
+        };
+        let edit = RecordedEdit {
+            change,
+            inserted: inserted.into(),
+            start_utf16_column: utf16_column(start, start_row),
+            old_end_utf16_column: utf16_column(end, old_end_row),
+        };
         // Every recorded change is followed by one revision step.
         if self.recent_changes.len() == RECENT_CHANGES {
             self.recent_changes.pop_front();
         }
-        self.recent_changes.push_back((self.revision + 1, change));
+        self.recent_changes.push_back((self.revision + 1, edit));
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -395,6 +421,32 @@ mod tests {
             0
         );
         assert!(document.changes_since(document.revision() + 1).is_none());
+    }
+
+    #[test]
+    fn recorded_edits_carry_the_text_and_utf16_columns() {
+        let mut document = Buffer::new();
+        let mut view = crate::SelectionState::default();
+        {
+            let mut editor = document.edit(&mut view, crate::ViewId(1));
+            editor.insert("a🌎b");
+        }
+        let start = document.revision();
+        {
+            let mut editor = document.edit(&mut view, crate::ViewId(1));
+            // Replace "b", after the emoji: column 2 in chars, 3 in UTF-16 code units.
+            editor.set_selection(2, 3);
+            editor.insert("é");
+        }
+        let edits = document.edits_since(start).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(&*edits[0].inserted, "é");
+        assert_eq!(edits[0].start_utf16_column, 3);
+        assert_eq!(edits[0].old_end_utf16_column, 4);
+        assert_eq!(
+            edits[0].change.start_column, 5,
+            "the byte column is kept as well"
+        );
     }
 
     #[test]

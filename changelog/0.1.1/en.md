@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- Typing in a file with a language server no longer copies the whole file several times per keystroke. Language servers that accept incremental changes receive exactly the edits made, and the text is shared with the server thread instead of copied; full-text servers get their copy on that thread, away from the editor.
 - Graphite no longer wakes up 100 times a second while a web view (such as the Markdown preview or an extension view) is open, a debug session runs, a file is being saved, or an extension host or task is busy. Those parts now wake the editor when they have something for it, which saves CPU time and battery; on Linux, open web views are still serviced every 16 ms.
 - Bracket pair colors no longer scan the document from its first line on every frame. The bracket depth is remembered every 256 lines and only what an edit can change is found again, so scrolling near the end of a large file stays fast.
 - Syntax highlighting after an edit now looks again only at the changed lines and at what their syntax affects, instead of everything from the edit to the end of the file, and no longer copies and sorts the highlights of every line. Several edits made between two frames, such as a multi-cursor paste, are applied incrementally instead of highlighting the whole file again. While the code has a syntax error, everything after the edit is still checked, so highlighting stays exact.

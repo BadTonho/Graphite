@@ -870,3 +870,58 @@ fn lsp_precedes_real_host_participant_and_both_commit_as_one_transaction() {
     app.editor_mut().undo();
     assert_eq!(app.editor().text(), "abc");
 }
+
+#[test]
+fn typing_sends_the_exact_edits_to_the_language_server() {
+    let (_dir, mut app, messages, _path) = fixture();
+    app.editor_mut().set_selection(3, 3);
+    app.editor_mut().insert("🌎");
+    app.editor_mut().insert("d");
+
+    let changes: Vec<_> = messages
+        .try_iter()
+        .filter_map(|message| match message {
+            WorkerMessage::Command(LspCommand::Change {
+                text,
+                version,
+                edits,
+                ..
+            }) => Some((
+                text.to_string(),
+                version,
+                edits.expect("the buffer knows the edits"),
+            )),
+            _ => None,
+        })
+        .collect();
+
+    // One notification per edit session, each with only what it changed.
+    assert_eq!(changes.len(), 2);
+    let (first_text, _, first_edits) = &changes[0];
+    assert_eq!(first_text, "abc🌎");
+    assert_eq!(first_edits.len(), 1);
+    assert_eq!(first_edits[0].text, "🌎");
+    assert_eq!(
+        first_edits[0].range,
+        Some(lsp_types::Range::new(
+            lsp_types::Position::new(0, 3),
+            lsp_types::Position::new(0, 3)
+        ))
+    );
+    let (last_text, last_version, last_edits) = &changes[1];
+    assert_eq!(last_text, "abc🌎d");
+    assert_eq!(
+        *last_version as u64,
+        app.documents[app.active_document()].buffer.revision()
+    );
+    assert_eq!(last_edits.len(), 1);
+    assert_eq!(last_edits[0].text, "d");
+    // After the emoji: two UTF-16 code units further than its char index.
+    assert_eq!(
+        last_edits[0].range,
+        Some(lsp_types::Range::new(
+            lsp_types::Position::new(0, 5),
+            lsp_types::Position::new(0, 5)
+        ))
+    );
+}

@@ -6,6 +6,7 @@
 
 ## Melhorias
 
+- Digitar num arquivo com servidor de linguagem não copia mais o arquivo inteiro várias vezes por tecla. Servidores de linguagem que aceitam mudanças incrementais recebem exatamente as edições feitas, e o texto é compartilhado com a thread do servidor em vez de copiado; servidores de texto completo recebem sua cópia nessa thread, fora do editor.
 - O Graphite não acorda mais 100 vezes por segundo enquanto há uma visão web aberta (como a prévia de Markdown ou uma visão de extensão), uma sessão de depuração, um arquivo sendo salvo ou um extension host ou tarefa ocupados. Essas partes agora acordam o editor quando têm algo para ele, o que economiza CPU e bateria; no Linux, visões web abertas continuam sendo atendidas a cada 16 ms.
 - As cores dos pares de colchetes não percorrem mais o documento desde a primeira linha a cada quadro. A profundidade dos colchetes é lembrada a cada 256 linhas, e só o que uma edição pode mudar é recalculado, então a rolagem perto do fim de um arquivo grande continua rápida.
 - O realce de sintaxe após uma edição agora revisa só as linhas alteradas e o que a sintaxe delas afeta, em vez de tudo da edição até o fim do arquivo, e não copia nem ordena mais os realces de todas as linhas. Várias edições feitas entre dois quadros, como colar com múltiplos cursores, são aplicadas de forma incremental em vez de realçar o arquivo inteiro de novo. Enquanto o código tem um erro de sintaxe, tudo depois da edição continua sendo verificado, então o realce continua exato.

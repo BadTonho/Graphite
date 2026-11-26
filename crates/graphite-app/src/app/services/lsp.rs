@@ -81,7 +81,12 @@ pub(in crate::app) fn publish_document(
     let version = i32::try_from(document.version.ok_or(ServiceError::NotFound)?)
         .map_err(|_| ServiceError::Failed("LSP version exceeds i32".into()))?;
     if opened {
-        manager.change(&path, document.text.clone(), version)
+        manager.change(
+            &path,
+            graphite_text::Rope::from_str(&document.text),
+            version,
+            None,
+        )
     } else {
         manager.open(
             &path,
@@ -92,6 +97,27 @@ pub(in crate::app) fn publish_document(
             translator,
         )
     };
+    Ok(())
+}
+
+/// Sends the changes of a document the server already has, without copying its text: the
+/// buffer's rope is shared, and the exact edits since `since` go along when the buffer still
+/// knows them.
+pub(in crate::app) fn publish_change(
+    manager: &LspManager,
+    path: &std::path::Path,
+    buffer: &graphite_text::Buffer,
+    since: u64,
+) -> ServiceResult<()> {
+    let version = i32::try_from(buffer.revision())
+        .map_err(|_| ServiceError::Failed("LSP version exceeds i32".into()))?;
+    let edits = buffer.edits_since(since).map(|edits| {
+        edits
+            .iter()
+            .map(crate::lsp::recorded_change)
+            .collect::<Vec<_>>()
+    });
+    manager.change(path, buffer.rope().clone(), version, edits);
     Ok(())
 }
 

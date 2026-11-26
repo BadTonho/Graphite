@@ -5,6 +5,36 @@ impl App {
         if document == self.active_document() {
             self.sync_schema_active();
         }
+        let revision = self.documents[document].buffer.revision();
+        if let Some(previous) = self.documents[document].lsp_revision {
+            if previous == revision {
+                return;
+            }
+            // A change needs no snapshot, and so no copy of the text.
+            let Ok(path) = super::services::document_uri(document, &self.documents[document])
+                .and_then(|uri| uri.to_path())
+            else {
+                return;
+            };
+            if !self.lsp_manager.supports_path(&path) {
+                return;
+            }
+            if super::services::lsp::publish_change(
+                &self.lsp_manager,
+                &path,
+                &self.documents[document].buffer,
+                previous,
+            )
+            .is_ok()
+            {
+                self.documents[document].lsp_revision = Some(revision);
+                if document == self.active_document() {
+                    self.request_inlay_hints();
+                    self.request_semantic_tokens();
+                }
+            }
+            return;
+        }
         let Ok(snapshot) = super::services::snapshot_document(document, &self.documents[document])
         else {
             return;
