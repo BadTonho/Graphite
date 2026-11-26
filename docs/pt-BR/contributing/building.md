@@ -19,6 +19,8 @@ cargo test --workspace
 cargo run -p graphite-app -- <pasta>
 ```
 
+As compilações de depuração otimizam as dependências (`opt-level = 2` para todo pacote fora do workspace) e deixam os crates do próprio workspace sem otimização. Tree-sitter, wgpu, regex e a modelagem de texto então rodam várias vezes mais rápido no `cargo run` e nos testes (os testes de sintaxe levam cerca de um terço do tempo), enquanto alterações no código do Graphite continuam recompilando rápido. A primeira compilação após um checkout limpo ou uma atualização de dependências demora mais, já que cada dependência é otimizada uma vez. Entrar em código de dependências pelo depurador mostra código otimizado.
+
 ## Ícone do aplicativo
 
 A arte temporária fica em `assets/branding/graphite.png`. Substitua esse PNG e recompile para atualizar todos os ícones gerados. O build ajusta a arte em telas quadradas sem recortar, preserva o canal alfa, incorpora pixels RGBA de 256×256 na janela e gera ICO com vários tamanhos para executáveis Windows. Os arquivos gerados ficam no `OUT_DIR` do Cargo; não é preciso distribuir uma imagem ao lado do executável. Builds Windows exigem o compilador de recursos do Windows SDK (ou `windres` para GNU Windows).

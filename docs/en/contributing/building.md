@@ -16,6 +16,8 @@ cargo test --workspace
 cargo run -p graphite-app -- <folder>
 ```
 
+Debug builds optimize the dependencies (`opt-level = 2` for every package outside the workspace) and leave the workspace's own crates unoptimized. Tree-sitter, wgpu, regex, and text shaping then run several times faster in `cargo run` and the tests (the syntax tests take about a third of the time), while edits to Graphite's code still rebuild quickly. The first build after a clean checkout or a dependency update takes longer, since every dependency is optimized once. Stepping into dependency code in a debugger shows optimized code.
+
 ## Application icon
 
 The temporary artwork lives in `assets/branding/graphite.png`. Replace this source PNG and rebuild to update every generated icon. The build fits the artwork into square canvases without cropping, preserves alpha, embeds 256×256 RGBA pixels in the window, and generates a multi-size ICO for Windows executables. Generated files stay in Cargo's `OUT_DIR`; no image file is required alongside the executable. Windows builds require the resource compiler from the Windows SDK (or `windres` when targeting GNU Windows).
