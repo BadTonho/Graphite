@@ -335,13 +335,13 @@ mod tests {
         )
         .unwrap();
         let ws = Workspace::open(&dir).unwrap();
-        let checks = std::cell::Cell::new(0);
+        // The search runs on several threads, so the count is atomic.
+        let checks = std::sync::atomic::AtomicUsize::new(0);
         let results = ws.search_cancellable("needle", || {
-            checks.set(checks.get() + 1);
-            checks.get() >= 5
+            checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1 >= 5
         });
         assert!(results.is_empty());
-        assert!(checks.get() >= 5);
+        assert!(checks.load(std::sync::atomic::Ordering::Relaxed) >= 5);
         assert_eq!(ws.search("needle").len(), 1);
         fs::remove_dir_all(dir).unwrap();
     }

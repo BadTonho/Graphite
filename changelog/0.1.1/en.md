@@ -6,6 +6,7 @@
 
 ## Improvements
 
+- Search across files reads the workspace on several threads and no longer resolves the full path of every file it searches; results are listed by file and position, in the same order every time.
 - **Go to Symbol in Workspace** reads files on several threads, uses the Quick Open file list when it is ready, skips files over 2 MiB, no longer copies every open file on the editor thread, and stops a search that is no longer needed when the picker closes or reopens. **Go to Symbol in Editor** reuses the syntax tree that highlighting keeps.
 - Quick Open no longer walks the whole workspace for every character typed. It keeps a list of the workspace files, built once in the background and rebuilt only when files are created or removed, and ranks only the best results instead of sorting every match.
 - Typing in a file with a language server no longer copies the whole file several times per keystroke. Language servers that accept incremental changes receive exactly the edits made, and the text is shared with the server thread instead of copied; full-text servers get their copy on that thread, away from the editor.

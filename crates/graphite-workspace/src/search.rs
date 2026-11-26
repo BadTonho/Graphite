@@ -103,7 +103,7 @@ impl Workspace {
     pub fn search_cancellable(
         &self,
         query: &str,
-        cancelled: impl Fn() -> bool,
+        cancelled: impl Fn() -> bool + Sync,
     ) -> Vec<SearchResult> {
         self.search_with_overlays(query, &HashMap::new(), cancelled)
     }
@@ -113,7 +113,7 @@ impl Workspace {
         &self,
         query: &str,
         overlays: &HashMap<PathBuf, String>,
-        cancelled: impl Fn() -> bool,
+        cancelled: impl Fn() -> bool + Sync,
     ) -> Vec<SearchResult> {
         self.search_with_options(query, &SearchOptions::default(), overlays, cancelled)
     }
@@ -125,7 +125,7 @@ impl Workspace {
         query: &str,
         options: &SearchOptions,
         overlays: &HashMap<PathBuf, String>,
-        cancelled: impl Fn() -> bool,
+        cancelled: impl Fn() -> bool + Sync,
     ) -> Vec<SearchResult> {
         if query.is_empty() {
             return Vec::new();
@@ -140,11 +140,22 @@ impl Workspace {
         else {
             return Vec::new();
         };
-        let mut searcher = SearcherBuilder::new()
-            .line_number(true)
-            .binary_detection(BinaryDetection::quit(b'\0'))
-            .build();
-        let mut results = Vec::new();
+        // Overlays are keyed by canonical path. Only a file sharing a name with one is
+        // canonicalized, instead of every file searched.
+        let overlay_names: std::collections::HashSet<_> = overlays
+            .keys()
+            .filter_map(|path| path.file_name())
+            .collect();
+        let overlay_for = |path: &Path| -> Option<&String> {
+            if !path
+                .file_name()
+                .is_some_and(|name| overlay_names.contains(name))
+            {
+                return None;
+            }
+            overlays.get(&path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+        };
+        let results = std::sync::Mutex::new(Vec::new());
         for root in &self.roots {
             let mut walk = WalkBuilder::new(root);
             walk.standard_filters(true)
@@ -154,59 +165,111 @@ impl Workspace {
             if let Some(overrides) = build_overrides(root, options) {
                 walk.overrides(overrides);
             }
-            for entry in walk.build().filter_map(Result::ok) {
-                if cancelled() {
-                    break;
-                }
-                if !entry.file_type().is_some_and(|t| t.is_file()) {
-                    continue;
-                }
-                let path = entry.into_path();
-                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-                let mut file_results = Vec::new();
-                let mut sink = UTF8(|line_number, line: &str| {
+            // Files are searched on several threads, each with its own searcher.
+            walk.build_parallel().run(|| {
+                let mut searcher = SearcherBuilder::new()
+                    .line_number(true)
+                    .binary_detection(BinaryDetection::quit(b'\0'))
+                    .build();
+                let (matcher, pattern, results) = (&matcher, &pattern, &results);
+                let (cancelled, overlay_for) = (&cancelled, &overlay_for);
+                Box::new(move |entry| {
                     if cancelled() {
-                        return Ok(false);
+                        return ignore::WalkState::Quit;
                     }
-                    let line = line.trim_end_matches(['\r', '\n']);
-                    for found in pattern.find_iter(line) {
-                        file_results.push(SearchResult {
-                            path: path.clone(),
-                            line: line_number as usize - 1,
-                            start: found.start(),
-                            end: found.end(),
-                            text: line.to_owned(),
-                        });
+                    let Ok(entry) = entry else {
+                        return ignore::WalkState::Continue;
+                    };
+                    if !entry.file_type().is_some_and(|t| t.is_file()) {
+                        return ignore::WalkState::Continue;
                     }
-                    Ok(true)
-                });
-                let outcome = match overlays.get(&canonical) {
-                    Some(text) => searcher.search_reader(
-                        &matcher,
-                        CancellableReader {
-                            source: text.as_bytes(),
-                            cancelled: &cancelled,
-                        },
-                        &mut sink,
-                    ),
-                    None => match std::fs::File::open(&path) {
-                        Ok(file) => searcher.search_reader(
-                            &matcher,
-                            CancellableReader {
-                                source: file,
-                                cancelled: &cancelled,
-                            },
-                            &mut sink,
-                        ),
-                        Err(error) => Err(error),
-                    },
-                };
-                if outcome.is_ok() {
-                    results.extend(file_results);
-                }
+                    let path = entry.into_path();
+                    let file_results = search_file(
+                        &mut searcher,
+                        matcher,
+                        pattern,
+                        &path,
+                        overlay_for(&path),
+                        cancelled,
+                    );
+                    if !file_results.is_empty() {
+                        if let Ok(mut results) = results.lock() {
+                            results.extend(file_results);
+                        }
+                    }
+                    ignore::WalkState::Continue
+                })
+            });
+            if cancelled() {
+                break;
             }
         }
+        let mut results = results
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Threads finish in any order; the results are listed by file, then position.
+        results.sort_by(|a: &SearchResult, b: &SearchResult| {
+            a.path
+                .cmp(&b.path)
+                .then(a.line.cmp(&b.line))
+                .then(a.start.cmp(&b.start))
+        });
         results
+    }
+}
+
+/// The matches in one file, read from `overlay` when the file has unsaved text. Empty when the
+/// file cannot be read or the search is cancelled midway.
+fn search_file(
+    searcher: &mut grep_searcher::Searcher,
+    matcher: &grep_regex::RegexMatcher,
+    pattern: &Regex,
+    path: &Path,
+    overlay: Option<&String>,
+    cancelled: &impl Fn() -> bool,
+) -> Vec<SearchResult> {
+    let mut file_results = Vec::new();
+    let mut sink = UTF8(|line_number, line: &str| {
+        if cancelled() {
+            return Ok(false);
+        }
+        let line = line.trim_end_matches(['\r', '\n']);
+        for found in pattern.find_iter(line) {
+            file_results.push(SearchResult {
+                path: path.to_path_buf(),
+                line: line_number as usize - 1,
+                start: found.start(),
+                end: found.end(),
+                text: line.to_owned(),
+            });
+        }
+        Ok(true)
+    });
+    let outcome = match overlay {
+        Some(text) => searcher.search_reader(
+            matcher,
+            CancellableReader {
+                source: text.as_bytes(),
+                cancelled,
+            },
+            &mut sink,
+        ),
+        None => match std::fs::File::open(path) {
+            Ok(file) => searcher.search_reader(
+                matcher,
+                CancellableReader {
+                    source: file,
+                    cancelled,
+                },
+                &mut sink,
+            ),
+            Err(error) => Err(error),
+        },
+    };
+    if outcome.is_ok() {
+        file_results
+    } else {
+        Vec::new()
     }
 }
 
@@ -222,6 +285,50 @@ mod options_tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn a_parallel_search_finds_every_match_in_a_stable_order_and_reads_overlays() {
+        let dir = TempDir(
+            std::env::temp_dir().join(format!("graphite_parallel_search_{}", std::process::id())),
+        );
+        let _ = fs::remove_dir_all(&dir.0);
+        for folder in ["a", "b/c", "d"] {
+            fs::create_dir_all(dir.0.join(folder)).unwrap();
+        }
+        for index in 0..90 {
+            let folder = ["a", "b/c", "d"][index % 3];
+            fs::write(
+                dir.0.join(folder).join(format!("f{index:02}.txt")),
+                "needle one\nnothing\nneedle needle\n",
+            )
+            .unwrap();
+        }
+        // A file with unsaved text, reached here through another spelling of its path.
+        let edited = dir.0.join("d/f02.txt");
+        let overlays = HashMap::from([(edited.canonicalize().unwrap(), "unsaved".to_owned())]);
+        // Same name as the edited file, different folder: still read from disk.
+        fs::write(dir.0.join("a/f02.txt"), "needle\n").unwrap();
+        let workspace = Workspace::open(&dir.0).unwrap();
+
+        let first =
+            workspace.search_with_options("needle", &SearchOptions::default(), &overlays, || false);
+        let second =
+            workspace.search_with_options("needle", &SearchOptions::default(), &overlays, || false);
+
+        assert_eq!(first, second, "the order does not depend on thread timing");
+        // 89 files on disk with three matches, a/f02.txt with one, d/f02.txt from its overlay.
+        assert_eq!(first.len(), 89 * 3 + 1);
+        assert!(first
+            .windows(2)
+            .all(|pair| (&pair[0].path, pair[0].line, pair[0].start)
+                <= (&pair[1].path, pair[1].line, pair[1].start)));
+        assert!(first
+            .iter()
+            .all(|result| !result.path.ends_with("d/f02.txt")));
+        assert!(first
+            .iter()
+            .any(|result| result.path.ends_with("a/f02.txt")));
     }
 
     fn workspace_with_files() -> (TempDir, Workspace) {
