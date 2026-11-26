@@ -33,7 +33,11 @@ OpenCode free-tier chat models that are restricted to the OpenCode client are un
   - **Ask**: The default for new chats. Reading or searching workspace files requires approval for each tool call.
   - **Edit**: Proposes file edits tracked with before/after snapshots for review.
   - **Agent**: Executes workspace tools (reading, searching, editing, and terminal commands inside the workspace root) across multi-step turns.
-- **Path confinement & Approvals**: All file tool paths are resolved inside the workspace root (`resolve_workspace_path`). Mutable operations and terminal commands respect `ToolApprovalPolicy` (`AlwaysAsk`, `AutoApproveReads`, `AutoApproveAll`), prompting interactively with Accept Once / Deny decisions when confirmation is required.
+- **Path confinement**: All file tool paths are resolved inside the workspace root (`resolve_workspace_path`).
+- **Approvals**: Edits, terminal commands, and plugin tools ask for approval with **Allow once**, **Always allow here**, or **Deny**. Outside Ask mode, reading and searching run without asking unless **Chat: Cycle Tool Approval Policy** turns that off.
+  - **Always allow here** applies only to the current workspace. For a terminal command the button reads **Always allow this command**, and only that exact command runs without asking; any other command still asks.
+  - In a restricted (untrusted) workspace, nothing is remembered and approvals given in other workspaces are not used.
+  - **Chat: Reset Trusted Tools** forgets every remembered approval. Approvals saved by earlier versions applied to every workspace and are no longer used.
 - **Checkpoints & Edits**: Pending file edits can be accepted, discarded, inspected in diff view (`chatEditing.openFileInDiff`), or rolled back via session checkpoints (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
 - **Unsaved changes are protected**: Chat never writes, discards, undoes, or redoes an edit to a file whose editor has unsaved changes. The model is told the edit was not applied, and the status bar asks you to save or revert the file first. Edits that cannot be written to disk are reported to the model and recorded in the high-severity error log instead of being staged. Native plugins writing workspace files follow the same rule.
 

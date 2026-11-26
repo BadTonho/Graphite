@@ -88,7 +88,11 @@ impl App {
         let plugin_tools = self.plugin_chat_tool_specs();
         let plugin_tool_names: std::collections::HashSet<String> =
             plugin_tools.iter().map(|t| t.name.clone()).collect();
-        let policy = self.chat.policy.clone();
+        let mut policy = self.chat.policy.clone();
+        if self.chat_workspace_restricted() {
+            // Approvals remembered while the workspace was trusted do not apply in restricted mode.
+            policy.reset_trusted();
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.chat.running_turn = Some((session_id.clone(), turn_id, cancel.clone()));
         let event_session_id = session_id.clone();
@@ -205,20 +209,34 @@ impl App {
         }
     }
 
+    /// Whether the workspace is in restricted mode, where no approval is remembered or reused.
+    pub(crate) fn chat_workspace_restricted(&self) -> bool {
+        self.workspace_trust
+            .as_ref()
+            .is_some_and(|trust| !trust.is_trusted(self.tree.root()))
+    }
+
+    /// Whether "Always allow" may be remembered for `tool_name` now.
+    pub(crate) fn chat_can_remember_approval(&self, tool_name: &str) -> bool {
+        !self.chat_workspace_restricted()
+            && !(self.chat.active_session().mode == AgentMode::Ask
+                && graphite_chat::ToolApprovalPolicy::is_read_only(tool_name))
+    }
+
     pub(crate) fn respond_chat_approval(&mut self, decision: ApprovalDecision) {
         let Some((pending, reply)) = self.chat.pending_approval.take() else {
             return;
         };
-        let decision = if self.chat.active_session().mode == AgentMode::Ask
-            && graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
-            && decision == ApprovalDecision::AllowAlways
+        let decision = if decision == ApprovalDecision::AllowAlways
+            && !self.chat_can_remember_approval(&pending.name)
         {
             ApprovalDecision::AllowOnce
         } else {
             decision
         };
         if decision == ApprovalDecision::AllowAlways {
-            self.chat.policy.trust_tool(&pending.name);
+            let root = self.tree.root().to_path_buf();
+            self.chat.policy.trust(&root, &pending.name, &pending.input);
             let _ = self
                 .chat
                 .persist_policy(&self.profile_root, self.profiles.is_none());

@@ -4,7 +4,7 @@ use crate::message::ToolSpec;
 use crate::session::AgentMode;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -16,12 +16,29 @@ pub const TOOL_PROPOSE_EDIT: &str = "propose_edit";
 pub const TOOL_RUN_COMMAND: &str = "run_command";
 
 /// Controls which tools can run automatically vs. requiring explicit user approval.
+///
+/// "Always allow" is remembered for one workspace only. For `run_command` it covers the exact
+/// command that was approved, never every command. Files saved by older versions kept a single
+/// list of trusted tools for every workspace; that list is not read, so those approvals are
+/// asked for again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolApprovalPolicy {
     #[serde(default = "default_true")]
     pub auto_approve_read_only: bool,
+    /// Remembered approvals, keyed by the workspace root they were given in.
     #[serde(default)]
-    pub trusted_tools: BTreeSet<String>,
+    pub workspaces: BTreeMap<String, WorkspaceApprovals>,
+}
+
+/// The approvals remembered for one workspace.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceApprovals {
+    /// Tools (other than `run_command`) that run without asking.
+    #[serde(default)]
+    pub tools: BTreeSet<String>,
+    /// Exact `run_command` commands that run without asking.
+    #[serde(default)]
+    pub commands: BTreeSet<String>,
 }
 
 fn default_true() -> bool {
@@ -32,9 +49,31 @@ impl Default for ToolApprovalPolicy {
     fn default() -> Self {
         Self {
             auto_approve_read_only: true,
-            trusted_tools: BTreeSet::new(),
+            workspaces: BTreeMap::new(),
         }
     }
+}
+
+/// The key a workspace's approvals are stored under.
+fn workspace_key(workspace_root: &Path) -> String {
+    let root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+    let key = root.to_string_lossy().into_owned();
+    // Windows paths are case-insensitive.
+    if cfg!(windows) {
+        key.to_lowercase()
+    } else {
+        key
+    }
+}
+
+fn command_of(input: &Value) -> Option<&str> {
+    input
+        .get("command")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|command| !command.is_empty())
 }
 
 impl ToolApprovalPolicy {
@@ -45,22 +84,55 @@ impl ToolApprovalPolicy {
         )
     }
 
-    pub fn requires_approval(&self, tool_name: &str) -> bool {
-        if self.trusted_tools.contains(tool_name) {
+    /// Whether this call was allowed with "Always allow" in `workspace_root`.
+    pub fn is_trusted(&self, workspace_root: &Path, tool_name: &str, input: &Value) -> bool {
+        let Some(approvals) = self.workspaces.get(&workspace_key(workspace_root)) else {
             return false;
+        };
+        if tool_name == TOOL_RUN_COMMAND {
+            command_of(input).is_some_and(|command| approvals.commands.contains(command))
+        } else {
+            approvals.tools.contains(tool_name)
         }
+    }
+
+    pub fn requires_approval(&self, workspace_root: &Path, tool_name: &str, input: &Value) -> bool {
         if self.auto_approve_read_only && Self::is_read_only(tool_name) {
             return false;
         }
-        true
+        !self.is_trusted(workspace_root, tool_name, input)
     }
 
-    pub fn trust_tool(&mut self, tool_name: impl Into<String>) {
-        self.trusted_tools.insert(tool_name.into());
+    /// Remembers "Always allow" for this call in `workspace_root`: the exact command for
+    /// `run_command`, the tool for anything else.
+    pub fn trust(&mut self, workspace_root: &Path, tool_name: &str, input: &Value) {
+        if tool_name == TOOL_RUN_COMMAND {
+            let Some(command) = command_of(input) else {
+                return;
+            };
+            self.workspaces
+                .entry(workspace_key(workspace_root))
+                .or_default()
+                .commands
+                .insert(command.to_owned());
+        } else {
+            self.workspaces
+                .entry(workspace_key(workspace_root))
+                .or_default()
+                .tools
+                .insert(tool_name.to_owned());
+        }
     }
 
     pub fn reset_trusted(&mut self) {
-        self.trusted_tools.clear();
+        self.workspaces.clear();
+    }
+
+    /// Whether any approval is remembered, in any workspace.
+    pub fn has_trusted(&self) -> bool {
+        self.workspaces
+            .values()
+            .any(|approvals| !approvals.tools.is_empty() || !approvals.commands.is_empty())
     }
 }
 
@@ -688,14 +760,66 @@ mod tests {
         assert_eq!(runner.0.lock().unwrap().as_slice(), ["cargo test"]);
 
         let mut policy = ToolApprovalPolicy::default();
-        assert!(!policy.requires_approval(TOOL_READ_FILE));
-        assert!(policy.requires_approval(TOOL_PROPOSE_EDIT));
-        assert!(policy.requires_approval(TOOL_RUN_COMMAND));
-        policy.trust_tool(TOOL_PROPOSE_EDIT);
-        assert!(!policy.requires_approval(TOOL_PROPOSE_EDIT));
+        let none = json!({});
+        assert!(!policy.requires_approval(&dir, TOOL_READ_FILE, &none));
+        assert!(policy.requires_approval(&dir, TOOL_PROPOSE_EDIT, &none));
+        assert!(policy.requires_approval(&dir, TOOL_RUN_COMMAND, &none));
+        policy.trust(&dir, TOOL_PROPOSE_EDIT, &none);
+        assert!(!policy.requires_approval(&dir, TOOL_PROPOSE_EDIT, &none));
         policy.reset_trusted();
-        assert!(policy.requires_approval(TOOL_PROPOSE_EDIT));
+        assert!(policy.requires_approval(&dir, TOOL_PROPOSE_EDIT, &none));
 
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn always_allow_is_limited_to_its_workspace() {
+        let first = temp_workspace("trust-first");
+        let second = temp_workspace("trust-second");
+        let none = json!({});
+        let mut policy = ToolApprovalPolicy::default();
+
+        policy.trust(&first, TOOL_PROPOSE_EDIT, &none);
+
+        assert!(!policy.requires_approval(&first, TOOL_PROPOSE_EDIT, &none));
+        assert!(policy.requires_approval(&second, TOOL_PROPOSE_EDIT, &none));
+        let _ = fs::remove_dir_all(&first);
+        let _ = fs::remove_dir_all(&second);
+    }
+
+    #[test]
+    fn always_allow_for_a_command_covers_only_that_command() {
+        let dir = temp_workspace("trust-command");
+        let mut policy = ToolApprovalPolicy::default();
+
+        policy.trust(&dir, TOOL_RUN_COMMAND, &json!({"command": " cargo test "}));
+
+        assert!(!policy.requires_approval(
+            &dir,
+            TOOL_RUN_COMMAND,
+            &json!({"command": "cargo test"})
+        ));
+        assert!(policy.requires_approval(
+            &dir,
+            TOOL_RUN_COMMAND,
+            &json!({"command": "cargo test && curl example.invalid"})
+        ));
+        assert!(policy.requires_approval(&dir, TOOL_RUN_COMMAND, &json!({"command": "rm -rf ."})));
+        assert!(policy.requires_approval(&dir, TOOL_RUN_COMMAND, &json!({})));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn approvals_saved_for_every_workspace_by_older_versions_are_not_honored() {
+        let dir = temp_workspace("trust-legacy");
+        let policy: ToolApprovalPolicy = serde_json::from_str(
+            r#"{"auto_approve_read_only":true,"trusted_tools":["run_command","propose_edit"]}"#,
+        )
+        .unwrap();
+
+        assert!(policy.requires_approval(&dir, TOOL_RUN_COMMAND, &json!({"command": "ls"})));
+        assert!(policy.requires_approval(&dir, TOOL_PROPOSE_EDIT, &json!({})));
+        assert!(!policy.has_trusted());
         let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- **Always allow** in Chat now applies only to the current workspace, and for terminal commands only to the exact command that was approved. Previously one approval let the assistant run any command or edit any file in every workspace. Restricted workspaces never remember approvals, and approvals saved by earlier versions are asked for again.
 - Chat edits no longer overwrite, discard, undo, or redo a file whose editor has unsaved changes, which previously erased those changes and the editor's undo history. The model is now told whether an edit was really written, and failed writes are reported and logged instead of being shown as applied. Native plugins writing workspace files are protected the same way.
 - Failed `graphite plugin` commands now write one entry to the high-severity error log.
 - Render plugin-contributed SVG, bitmap, and codicon icons in the Activity Bar and Secondary Side Bar instead of showing only the first letter of the container title.

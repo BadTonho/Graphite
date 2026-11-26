@@ -157,7 +157,12 @@ impl App {
         {
             let label = format!("{} {}", self.t("chat.approval"), pending.summary);
             draw_label(r, title, &label, lh, cw, foreground());
-            for (i, label) in ["chat.allow_once", "chat.allow_always", "chat.deny"]
+            let always = if pending.name == graphite_chat::TOOL_RUN_COMMAND {
+                "chat.allow_command_always"
+            } else {
+                "chat.allow_always"
+            };
+            for (i, label) in ["chat.allow_once", always, "chat.deny"]
                 .into_iter()
                 .enumerate()
             {

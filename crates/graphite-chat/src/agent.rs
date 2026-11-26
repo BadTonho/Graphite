@@ -284,7 +284,9 @@ pub fn run_turn_with_tools(
             }
             let require_read_approval =
                 mode == AgentMode::Ask && ToolApprovalPolicy::is_read_only(&name);
-            let approved = if require_read_approval || policy.requires_approval(&name) {
+            let approved = if require_read_approval
+                || policy.requires_approval(&ctx.workspace_root, &name, &input)
+            {
                 let pending = PendingToolApproval {
                     id: id.clone(),
                     name: name.clone(),
@@ -296,7 +298,7 @@ pub fn run_turn_with_tools(
                     ApprovalDecision::AllowOnce => true,
                     ApprovalDecision::AllowAlways => {
                         if !require_read_approval {
-                            policy.trust_tool(&name);
+                            policy.trust(&ctx.workspace_root, &name, &input);
                         }
                         true
                     }
@@ -476,7 +478,7 @@ mod tests {
         );
 
         assert_eq!(approvals_asked, vec![TOOL_PROPOSE_EDIT]);
-        assert!(policy.trusted_tools.contains(TOOL_PROPOSE_EDIT));
+        assert!(policy.is_trusted(&dir, TOOL_PROPOSE_EDIT, &json!({})));
         assert!(events.iter().any(|ev| matches!(
             ev,
             AgentTurnEvent::ToolResult {

@@ -60,7 +60,11 @@ mod tests {
 
         app.respond_chat_approval(ApprovalDecision::AllowAlways);
         assert_eq!(rx.recv().unwrap(), ApprovalDecision::AllowAlways);
-        assert!(app.chat.policy.trusted_tools.contains("propose_edit"));
+        let root = app.tree.root().to_path_buf();
+        assert!(app
+            .chat
+            .policy
+            .is_trusted(&root, "propose_edit", &json!({})));
 
         app.handle_chat_ui_event(ChatUiEvent::TurnEvent {
             run: run.clone(),
@@ -110,6 +114,59 @@ mod tests {
             app.chat.active_session().pending_edits[0].status,
             EditReviewStatus::Accepted
         );
+    }
+
+    fn pending_command(app: &mut App, command: &str) -> mpsc::Receiver<ApprovalDecision> {
+        let (tx, rx) = mpsc::channel();
+        app.chat.pending_approval = Some((
+            PendingToolApproval {
+                id: "call".into(),
+                name: "run_command".into(),
+                summary: format!("Run `{command}`"),
+                input: json!({ "command": command }),
+            },
+            tx,
+        ));
+        rx
+    }
+
+    #[test]
+    fn always_allowing_a_command_remembers_only_that_command_in_this_workspace() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.chat.active_session_mut().mode = graphite_chat::AgentMode::Agent;
+        let rx = pending_command(&mut app, "cargo test");
+
+        app.respond_chat_approval(ApprovalDecision::AllowAlways);
+
+        assert_eq!(rx.recv().unwrap(), ApprovalDecision::AllowAlways);
+        let root = app.tree.root().to_path_buf();
+        let policy = &app.chat.policy;
+        assert!(!policy.requires_approval(&root, "run_command", &json!({"command": "cargo test"})));
+        assert!(policy.requires_approval(&root, "run_command", &json!({"command": "cargo run"})));
+        let other = crate::test_support::TempDir::new();
+        assert!(policy.requires_approval(
+            other.path(),
+            "run_command",
+            &json!({"command": "cargo test"})
+        ));
+    }
+
+    #[test]
+    fn restricted_workspace_never_remembers_an_approval() {
+        let dir = crate::test_support::TempDir::new();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        app.chat.active_session_mut().mode = graphite_chat::AgentMode::Agent;
+        app.workspace_trust = Some(crate::app::phase5::WorkspaceTrust::restricted(
+            dir.path().join("trust.json"),
+        ));
+        let rx = pending_command(&mut app, "cargo test");
+        assert!(!app.chat_allows_always());
+
+        app.respond_chat_approval(ApprovalDecision::AllowAlways);
+
+        assert_eq!(rx.recv().unwrap(), ApprovalDecision::AllowOnce);
+        assert!(!app.chat.policy.has_trusted());
     }
 
     #[test]

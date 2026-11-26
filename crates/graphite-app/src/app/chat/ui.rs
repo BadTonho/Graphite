@@ -299,14 +299,10 @@ impl App {
     }
 
     pub(super) fn chat_allows_always(&self) -> bool {
-        self.chat.active_session().mode != AgentMode::Ask
-            || !self
-                .chat
-                .pending_approval
-                .as_ref()
-                .is_some_and(|(pending, _)| {
-                    graphite_chat::ToolApprovalPolicy::is_read_only(&pending.name)
-                })
+        self.chat
+            .pending_approval
+            .as_ref()
+            .is_some_and(|(pending, _)| self.chat_can_remember_approval(&pending.name))
     }
 
     fn toggle_composer_menu(&mut self, menu: ComposerMenu) {

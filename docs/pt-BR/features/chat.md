@@ -33,7 +33,11 @@ Os modelos gratuitos de chat restritos ao cliente OpenCode ficam indisponíveis 
   - **Perguntar**: Modo padrão das novas conversas. A leitura ou busca de arquivos no workspace exige aprovação a cada chamada da ferramenta.
   - **Edit**: Propõe edições em arquivos acompanhadas de snapshots antes/depois para revisão.
   - **Agent**: Executa ferramentas de workspace (leitura, busca, edição de arquivos e comandos no terminal dentro da raiz do workspace) em múltiplos passos.
-- **Restrição de caminhos e aprovações**: Todos os caminhos de ferramentas são validados dentro da raiz do workspace (`resolve_workspace_path`). Alterações e execuções respeitam `ToolApprovalPolicy` (`AlwaysAsk`, `AutoApproveReads`, `AutoApproveAll`), solicitando confirmação explícita quando necessário.
+- **Restrição de caminhos**: Todos os caminhos de ferramentas são validados dentro da raiz do workspace (`resolve_workspace_path`).
+- **Aprovações**: Edições, comandos no terminal e ferramentas de plugins pedem aprovação com **Permitir uma vez**, **Sempre permitir aqui** ou **Negar**. Fora do modo Perguntar, leitura e busca rodam sem perguntar, a menos que **Chat: Alternar Política de Aprovação de Ferramentas** desative isso.
+  - **Sempre permitir aqui** vale apenas para o workspace atual. Para um comando no terminal o botão mostra **Sempre permitir este comando**, e somente aquele comando exato roda sem perguntar; qualquer outro comando continua pedindo aprovação.
+  - Em um workspace restrito (não confiável), nada é lembrado e aprovações dadas em outros workspaces não são usadas.
+  - **Chat: Redefinir Ferramentas Confiáveis** esquece todas as aprovações lembradas. Aprovações salvas por versões anteriores valiam para todos os workspaces e não são mais usadas.
 - **Pontos de verificação e edições**: Edições pendentes podem ser aceitas, descartadas, inspecionadas em diff (`chatEditing.openFileInDiff`) ou revertidas via pontos de verificação (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
 - **Alterações não salvas são protegidas**: O Chat nunca grava, descarta, desfaz ou refaz uma edição em um arquivo cujo editor tem alterações não salvas. O modelo é informado de que a edição não foi aplicada, e a barra de status pede que você salve ou reverta o arquivo antes. Edições que não podem ser gravadas em disco são informadas ao modelo e registradas no log de erros de severidade alta em vez de ficarem pendentes. Plugins nativos que gravam arquivos do workspace seguem a mesma regra.
 

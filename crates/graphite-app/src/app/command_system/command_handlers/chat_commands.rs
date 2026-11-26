@@ -517,7 +517,7 @@ fn edit_tool_approval(app: &mut App, _: &CommandInvocation) -> Result<(), Comman
 
 fn reset_trusted_tools(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.chat.policy.auto_approve_read_only = true;
-    app.chat.policy.trusted_tools.clear();
+    app.chat.policy.reset_trusted();
     let _ = save_approval_policy(&app.profile_root, &app.chat.policy);
     app.status = "Reset trusted chat tools".into();
     Ok(())
@@ -1599,10 +1599,13 @@ mod tests {
 
         app.run_ui_command("workbench.action.chat.editToolApproval");
         assert!(!app.chat.policy.auto_approve_read_only);
-        app.chat.policy.trusted_tools.insert("run_command".into());
+        let root = app.tree.root().to_path_buf();
+        app.chat
+            .policy
+            .trust(&root, "run_command", &serde_json::json!({"command": "ls"}));
         app.run_ui_command("workbench.action.chat.resetTrustedTools");
         assert!(app.chat.policy.auto_approve_read_only);
-        assert!(app.chat.policy.trusted_tools.is_empty());
+        assert!(!app.chat.policy.has_trusted());
 
         app.chat
             .active_session_mut()

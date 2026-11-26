@@ -34,6 +34,6 @@ pub use store::{
 pub use tools::{
     execute_tool, resolve_workspace_path, summarize_tool_call, tool_specs_for_mode,
     ApprovalDecision, CommandRunner, PendingToolApproval, ProposedEdit, SystemCommandRunner,
-    ToolApprovalPolicy, ToolExecutionResult, TOOL_LIST_FILES, TOOL_PROPOSE_EDIT, TOOL_READ_FILE,
-    TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
+    ToolApprovalPolicy, ToolExecutionResult, WorkspaceApprovals, TOOL_LIST_FILES,
+    TOOL_PROPOSE_EDIT, TOOL_READ_FILE, TOOL_RUN_COMMAND, TOOL_SEARCH_WORKSPACE,
 };
