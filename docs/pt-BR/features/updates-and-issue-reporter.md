@@ -28,7 +28,7 @@ O Graphite inclui um gerenciador de atualizações baseado em GitHub Releases e 
 
 ## Relator de Problemas e Solução de Problemas (`crates/graphite-app/src/app/issue_reporter/`)
 
-- **Redação de Segredos (`redact.rs`)**: Substitui automaticamente tokens do GitHub, chaves de API (`sk-`, `sk-ant-`, `AIza`, tokens Slack), cabeçalhos `Authorization`, chaves JSON/env, blocos PEM privados e caminhos do diretório do usuário por `[REDACTED]` / `~`.
+- **Redação de Segredos (`redact.rs`)**: Aplica as regras de credenciais compartilhadas com o log de erros (`app::redaction`) e substitui caminhos do diretório do usuário por `~`. Tokens do GitHub, chaves de API (`sk-`, `AIza`, GitLab, Slack, AWS), valores de `Authorization`, campos de credenciais em JSON/env/query, senhas em URLs e blocos PEM privados viram `[REDACTED]`.
 - **Sessão de Solução de Problemas**: Registra o estado da sessão e metadados de ambiente (versão, SO, arquitetura, contagem de extensões instaladas, alias remoto) sem coletar credenciais.
 
 ### Comandos de Relato e Diagnóstico

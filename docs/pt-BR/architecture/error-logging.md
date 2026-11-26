@@ -31,4 +31,4 @@ Quando um arquivo atinge 5 MB, ele é rotacionado para `<severity>.1.jsonl` ante
 
 ## Segurança e Privacidade
 
-Antes de gravar em disco, as mensagens passam por `sanitize_message`, que oculta tokens Bearer e prefixos comuns de chaves de API (`Bearer ...`, `ghp_...`, `github_pat_...`, `sk-...`). Conteúdos brutos de arquivos e credenciais nunca devem ser registrados.
+Antes de gravar em disco, as mensagens passam por `sanitize_message`, que usa as mesmas regras do relator de problemas (`app::redaction::redact_credentials`). Ela oculta credenciais `Bearer`, `Basic` e `token`; campos de segredo `chave=valor` e JSON como `api_key`, `x-api-key`, `password` e `*_TOKEN=`; senhas em URLs; chaves privadas PEM; e tokens de acesso do GitHub (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `sk-`, Google (`AIza`), GitLab, Slack e AWS. Conteúdos brutos de arquivos e credenciais nunca devem ser registrados.

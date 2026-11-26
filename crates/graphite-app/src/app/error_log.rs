@@ -1,6 +1,5 @@
 //! Four-tier error persistence for Graphite (`critical`, `high`, `medium`, `low`).
 
-use regex::Regex;
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -143,14 +142,9 @@ fn rotate_if_oversized(target: &Path, backup: &Path, max_bytes: u64) {
     }
 }
 
-/// Redacts common bearer tokens and API key prefixes before persisting log lines.
+/// Redacts credentials before log lines are persisted.
 pub(crate) fn sanitize_message(raw: &str) -> String {
-    static TOKEN_RE: OnceLock<Regex> = OnceLock::new();
-    let re = TOKEN_RE.get_or_init(|| {
-        Regex::new(r"(?i)(bearer\s+[A-Za-z0-9._\-]+|ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_\-]+)")
-            .expect("valid sanitization regex")
-    });
-    re.replace_all(raw, "[REDACTED]").into_owned()
+    crate::app::redaction::redact_credentials(raw)
 }
 
 /// Initializes the global error logger and installs a panic hook for `Critical` crashes.

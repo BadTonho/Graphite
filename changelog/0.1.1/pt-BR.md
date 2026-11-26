@@ -11,6 +11,7 @@
 
 ## Correções
 
+- O log de erros agora oculta tokens de login do GitHub (`gho_`) e outros tokens do GitHub, Google, GitLab, Slack e AWS, credenciais `Basic` e `x-api-key`, segredos `chave=valor` e senhas em URLs, que antes podiam ser gravados em disco. O log de erros e o relator de problemas agora compartilham um único conjunto de regras de ocultação.
 - As ferramentas do Chat não conseguem mais acessar arquivos fora do workspace por um link simbólico ou junction: criar um arquivo dentro de uma pasta vinculada é recusado como a leitura, e a busca no workspace não segue mais links, o que também evita que ela entre em loop.
 - Conversas do Chat e aprovações de ferramentas que não podem ser salvas agora são registradas no log de erros de severidade média em vez de se perderem em silêncio, comandos do Chat não gravam mais em um perfil isolado, e **Chat: Abrir Edição do Chat em Diff** informa quando o arquivo de comparação não pode ser criado.
 - O Chat agora encerra a resposta com um erro quando um serviço de modelo envia um único evento maior que 8 MiB, em vez de consumir cada vez mais memória, e não fica mais lento em respostas cujas linhas chegam em muitos pedaços pequenos.

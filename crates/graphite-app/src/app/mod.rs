@@ -45,6 +45,7 @@ pub(crate) mod chat;
 pub(crate) mod error_log;
 pub(crate) mod error_notification;
 pub(crate) mod issue_reporter;
+pub(crate) mod redaction;
 pub(crate) mod plugins;
 pub(crate) mod remote;
 pub(crate) mod updates;

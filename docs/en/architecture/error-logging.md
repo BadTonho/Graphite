@@ -31,4 +31,4 @@ When a log file reaches 5 MB, it is rotated to `<severity>.1.jsonl` before new e
 
 ## Security & Privacy
 
-Before writing to disk, messages pass through `sanitize_message`, which redacts bearer tokens and common API key prefixes (`Bearer ...`, `ghp_...`, `github_pat_...`, `sk-...`). Raw file contents and credentials must never be logged.
+Before writing to disk, messages pass through `sanitize_message`, which uses the same rules as the issue reporter (`app::redaction::redact_credentials`). It redacts `Bearer`, `Basic`, and `token` credentials; `key=value` and JSON secret fields such as `api_key`, `x-api-key`, `password`, and `*_TOKEN=`; passwords in URLs; PEM private keys; and GitHub (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `sk-`, Google (`AIza`), GitLab, Slack, and AWS access tokens. Raw file contents and credentials must never be logged.

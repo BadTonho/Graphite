@@ -28,7 +28,7 @@ Graphite includes an application update manager backed by GitHub Releases and a 
 
 ## Issue Reporter & Troubleshooting (`crates/graphite-app/src/app/issue_reporter/`)
 
-- **Secret Redaction (`redact.rs`)**: Automatically replaces GitHub tokens, API keys (`sk-`, `sk-ant-`, `AIza`, Slack tokens), `Authorization` headers, credential JSON/env fields, PEM private keys, and local user home paths with `[REDACTED]` / `~`.
+- **Secret Redaction (`redact.rs`)**: Applies the credential rules shared with the error log (`app::redaction`) and replaces local user home paths with `~`. GitHub tokens, API keys (`sk-`, `AIza`, GitLab, Slack, AWS), `Authorization` values, credential JSON/env/query fields, passwords in URLs, and PEM private keys become `[REDACTED]`.
 - **Interactive Troubleshooting**: Tracks session state and appends environment metadata (version, OS, architecture, installed extensions count, remote alias) without reading secrets.
 
 ### Issue Reporter Commands
