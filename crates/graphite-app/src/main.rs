@@ -645,7 +645,7 @@ impl App {
         let github_session = if isolated {
             None
         } else {
-            graphite_auth::load_session(&profile_root)
+            graphite_auth::load_session(&profile_root, &app::credentials::GitHubTokenVault)
         };
         let chat = if isolated {
             app::chat::ChatState::default()

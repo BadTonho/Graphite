@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- The GitHub sign-in token is now kept in Windows Credential Manager or the Linux Secret Service instead of in plain text in the profile folder. Tokens saved by earlier versions are moved there automatically, and failures to keep the sign-in are recorded in the error log.
 - The error log now redacts GitHub sign-in tokens (`gho_`) and other GitHub, Google, GitLab, Slack, and AWS tokens, `Basic` and `x-api-key` credentials, `key=value` secrets, and passwords in URLs, which could previously be written to disk. The error log and the issue reporter now share one set of redaction rules.
 - Chat tools can no longer reach files outside the workspace through a symbolic link or junction: creating a file under a linked folder is refused like reading one, and workspace search no longer follows links, which also prevents it from looping.
 - Chat conversations and tool approvals that cannot be saved are now recorded in the medium-severity error log instead of being lost silently, Chat commands no longer write to an isolated profile, and **Chat: Open Chat Edit in Diff** reports when its comparison file cannot be created.

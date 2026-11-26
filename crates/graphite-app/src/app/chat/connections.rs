@@ -235,13 +235,7 @@ pub(super) struct SystemVault;
 
 #[cfg(any(windows, target_os = "linux"))]
 fn entry(profile: &Path, id: &str) -> Result<keyring::Entry, &'static str> {
-    let profile = profile
-        .canonicalize()
-        .unwrap_or_else(|_| profile.to_owned());
-    let namespace =
-        hex(digest::digest(&digest::SHA256, profile.to_string_lossy().as_bytes()).as_ref());
-    keyring::Entry::new("Graphite Chat", &format!("{namespace}:{id}"))
-        .map_err(|_| "The system credential store is unavailable")
+    crate::app::credentials::system_entry("Graphite Chat", profile, id)
 }
 
 #[cfg(any(windows, target_os = "linux"))]

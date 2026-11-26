@@ -51,6 +51,7 @@ impl App {
         self.github_sign_in_pending = true;
         self.status = self.t("github.sign_in.starting").into();
         let profile = self.profile_root.clone();
+        let persist = self.profiles.is_some();
         let client = client.to_owned();
         let scope = scope.to_owned();
         std::thread::spawn(move || {
@@ -69,8 +70,19 @@ impl App {
                     std::thread::sleep,
                 )
             });
-            if let Ok(session) = &outcome {
-                let _ = graphite_auth::save_session(&profile, session);
+            if let (Ok(session), true) = (&outcome, persist) {
+                // The account still works for this run when it cannot be kept.
+                if let Err(error) = graphite_auth::save_session(
+                    &profile,
+                    session,
+                    &crate::app::credentials::GitHubTokenVault,
+                ) {
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Medium,
+                        "github.auth",
+                        format!("Could not keep the GitHub sign-in: {error}"),
+                    );
+                }
             }
             let _ = proxy.send_event(UserEvent::GitHubAuth(GitHubAuthEvent::Finished(outcome)));
         });
@@ -110,7 +122,16 @@ impl App {
 
     /// Forgets the GitHub account of this profile on this computer.
     pub(crate) fn sign_out_github(&mut self) {
-        match graphite_auth::delete_session(&self.profile_root) {
+        let forgotten = if self.profiles.is_some() {
+            graphite_auth::delete_session(
+                &self.profile_root,
+                &crate::app::credentials::GitHubTokenVault,
+            )
+        } else {
+            // An isolated profile never saved the account.
+            Ok(())
+        };
+        match forgotten {
             Ok(()) => {
                 self.github_session = None;
                 self.status = self.t("github.sign_out.done").into();
@@ -156,11 +177,12 @@ mod tests {
         let dir = crate::test_support::TempDir::new();
         let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
         app.profile_root = dir.path().join("profile");
-        graphite_auth::save_session(&app.profile_root, &session()).unwrap();
         app.github_session = Some(session());
         app.sign_out_github();
         assert!(app.github_session.is_none());
-        assert!(graphite_auth::load_session(&app.profile_root).is_none());
+        assert!(app.status.contains(app.t("github.sign_out.done")));
+        // An isolated profile never touches the saved account files.
+        assert!(!app.profile_root.join(graphite_auth::SESSION_FILE).exists());
     }
 
     #[test]

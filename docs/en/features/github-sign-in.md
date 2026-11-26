@@ -14,7 +14,7 @@ Graphite asks GitHub only for `read:user`, which gives the public profile (login
 
 ### Where the sign-in is kept
 
-The access token is saved as `github-session.json` in the profile folder. On Linux and macOS the file is readable only by your user account. On Windows it is protected by the permissions of your user profile folder. Each profile has its own sign-in.
+The access token is kept in the system credential store: Windows Credential Manager or the Linux Secret Service. The profile folder holds only the account name and scopes, in `github-session.json`, readable only by your user account on Linux. Each profile has its own sign-in. A token saved in `github-session.json` by an earlier version is moved to the credential store the next time Graphite starts. If the credential store is unavailable, you stay signed in until Graphite closes and the failure is recorded in the medium-severity error log.
 
 ## For people who distribute Graphite
 

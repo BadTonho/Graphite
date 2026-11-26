@@ -14,7 +14,7 @@ O Graphite pede ao GitHub apenas o escopo `read:user`, que dá acesso ao perfil 
 
 ### Onde o login fica guardado
 
-O token de acesso é salvo em `github-session.json` na pasta do perfil. No Linux e no macOS, o arquivo só pode ser lido pela sua conta de usuário. No Windows, ele é protegido pelas permissões da pasta de perfil do usuário. Cada perfil tem seu próprio login.
+O token de acesso fica no cofre de credenciais do sistema: o Gerenciador de Credenciais do Windows ou o Secret Service do Linux. A pasta do perfil guarda apenas o nome da conta e os escopos, em `github-session.json`, que no Linux só pode ser lido pela sua conta de usuário. Cada perfil tem seu próprio login. Um token salvo em `github-session.json` por uma versão anterior é movido para o cofre de credenciais na próxima vez que o Graphite iniciar. Se o cofre de credenciais estiver indisponível, você continua conectado até fechar o Graphite e a falha é registrada no log de erros de severidade média.
 
 ## Para quem distribui o Graphite
 

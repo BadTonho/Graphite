@@ -2,14 +2,17 @@
 //!
 //! The device flow needs only the public client ID of a GitHub OAuth App, never a client secret,
 //! so it works in a binary that is distributed to many users. The user enters a short code on
-//! github.com; Graphite polls for the token and keeps it in the profile folder.
+//! github.com; Graphite polls for the token and keeps it in the system credential store, with the
+//! account details in the profile folder.
 
 mod device;
 mod store;
 mod transport;
 
 pub use device::{sign_in, sign_in_with_scope, start, start_with_scope, DeviceCode, Poll};
-pub use store::{delete_session, load_session, save_session, Session, SESSION_FILE};
+pub use store::{
+    delete_session, load_session, save_session, MemoryVault, Session, TokenVault, SESSION_FILE,
+};
 pub use transport::{ReqwestTransport, Transport};
 
 /// Scope requested from GitHub: read the signed-in user's public profile only.
