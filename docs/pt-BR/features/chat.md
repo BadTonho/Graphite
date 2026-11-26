@@ -35,6 +35,7 @@ Os modelos gratuitos de chat restritos ao cliente OpenCode ficam indisponíveis 
   - **Agent**: Executa ferramentas de workspace (leitura, busca, edição de arquivos e comandos no terminal dentro da raiz do workspace) em múltiplos passos.
 - **Restrição de caminhos e aprovações**: Todos os caminhos de ferramentas são validados dentro da raiz do workspace (`resolve_workspace_path`). Alterações e execuções respeitam `ToolApprovalPolicy` (`AlwaysAsk`, `AutoApproveReads`, `AutoApproveAll`), solicitando confirmação explícita quando necessário.
 - **Pontos de verificação e edições**: Edições pendentes podem ser aceitas, descartadas, inspecionadas em diff (`chatEditing.openFileInDiff`) ou revertidas via pontos de verificação (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
+- **Alterações não salvas são protegidas**: O Chat nunca grava, descarta, desfaz ou refaz uma edição em um arquivo cujo editor tem alterações não salvas. O modelo é informado de que a edição não foi aplicada, e a barra de status pede que você salve ou reverta o arquivo antes. Edições que não podem ser gravadas em disco são informadas ao modelo e registradas no log de erros de severidade alta em vez de ficarem pendentes. Plugins nativos que gravam arquivos do workspace seguem a mesma regra.
 
 No compositor, escolha **Arquivo**, **Seleção** ou **Diagnósticos** para anexar contexto do editor ativo à próxima mensagem. Cada anexo escolhido aparece marcado. O Chat Inline usa a seleção ou a linha em que o cursor está.
 

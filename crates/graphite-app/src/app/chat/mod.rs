@@ -7,6 +7,7 @@ mod connection_view;
 mod connections;
 pub(crate) mod context;
 pub(crate) mod drawing;
+mod edits;
 mod layout;
 pub(crate) mod state;
 pub(crate) mod ui;

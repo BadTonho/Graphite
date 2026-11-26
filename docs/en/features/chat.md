@@ -35,6 +35,7 @@ OpenCode free-tier chat models that are restricted to the OpenCode client are un
   - **Agent**: Executes workspace tools (reading, searching, editing, and terminal commands inside the workspace root) across multi-step turns.
 - **Path confinement & Approvals**: All file tool paths are resolved inside the workspace root (`resolve_workspace_path`). Mutable operations and terminal commands respect `ToolApprovalPolicy` (`AlwaysAsk`, `AutoApproveReads`, `AutoApproveAll`), prompting interactively with Accept Once / Deny decisions when confirmation is required.
 - **Checkpoints & Edits**: Pending file edits can be accepted, discarded, inspected in diff view (`chatEditing.openFileInDiff`), or rolled back via session checkpoints (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
+- **Unsaved changes are protected**: Chat never writes, discards, undoes, or redoes an edit to a file whose editor has unsaved changes. The model is told the edit was not applied, and the status bar asks you to save or revert the file first. Edits that cannot be written to disk are reported to the model and recorded in the high-severity error log instead of being staged. Native plugins writing workspace files follow the same rule.
 
 In the composer, choose **File**, **Selection**, or **Diagnostics** to attach the active editor context to the next message. Each selected attachment is marked in the composer. Inline Chat uses the text selection or the line at the cursor.
 

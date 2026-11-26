@@ -384,6 +384,12 @@ impl App {
 
     fn native_workspace_write_file(&mut self, path: &str, content: &str) -> ServiceResult<Value> {
         let target = self.resolve_plugin_workspace_path(path, false)?;
+        if self.open_document_has_unsaved_changes(&target) {
+            return Err(ServiceError::Failed(format!(
+                "{} has unsaved changes in the editor",
+                target.display()
+            )));
+        }
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| ServiceError::Io(e.to_string()))?;
         }

@@ -11,6 +11,7 @@
 
 ## Correções
 
+- Edições do Chat não sobrescrevem, descartam, desfazem nem refazem mais um arquivo cujo editor tem alterações não salvas, o que antes apagava essas alterações e o histórico de desfazer do editor. O modelo agora é informado se a edição foi realmente gravada, e falhas de gravação são informadas e registradas no log em vez de aparecerem como aplicadas. Plugins nativos que gravam arquivos do workspace têm a mesma proteção.
 - Comandos `graphite plugin` que falham agora gravam uma única entrada no log de erros de severidade alta.
 - Ícones SVG, bitmap e codicon contribuídos por plugins agora são renderizados na Barra de Atividades e na Barra Lateral Secundária em vez de exibir apenas a primeira letra do título do container.
 - `vscode.window.tabGroups` (`ExtHostEditorTabs`) agora é inicializado e sincronizado no extension host VSIX para evitar falhas ao acessar `activeTabGroup` na ativação, a capacidade da fila do extension host foi ampliada para ativações concorrentes, e erros de ativação/execução de extensões passaram a ser gravados no log de erros de severidade média.

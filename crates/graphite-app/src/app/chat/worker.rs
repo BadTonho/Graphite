@@ -1,10 +1,10 @@
-//! Background model execution, approval bridging, and edit/checkpoint application.
+//! Background model execution and approval bridging.
 
 use super::*;
 use graphite_chat::{
-    run_turn, run_turn_with_tools, write_proposed_edit, AgentMode, AgentTurnEvent,
-    ApprovalDecision, ChatContext, HttpModelStreamer, Message, PendingToolApproval,
-    SystemCommandRunner, TurnStatus,
+    execute_tool, run_turn, run_turn_with_tools, AgentMode, AgentTurnEvent, ApprovalDecision,
+    ChatContext, HttpModelStreamer, Message, PendingToolApproval, ProposedEdit,
+    SystemCommandRunner, TurnStatus, TOOL_PROPOSE_EDIT,
 };
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
@@ -27,6 +27,15 @@ pub(crate) enum ChatUiEvent {
         run: Arc<AtomicBool>,
         name: String,
         input: serde_json::Value,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    /// An approved `propose_edit` call. The worker waits for the reply, so the model learns
+    /// whether the file was really written.
+    ApplyEdit {
+        run: Arc<AtomicBool>,
+        session_id: String,
+        turn_id: u64,
+        edit: ProposedEdit,
         reply: mpsc::Sender<Result<String, String>>,
     },
 }
@@ -83,6 +92,7 @@ impl App {
         let cancel = Arc::new(AtomicBool::new(false));
         self.chat.running_turn = Some((session_id.clone(), turn_id, cancel.clone()));
         let event_session_id = session_id.clone();
+        let workspace_root = ctx.workspace_root.clone();
         let started = std::thread::Builder::new()
             .name("graphite-chat-turn".into())
             .spawn(move || {
@@ -100,6 +110,31 @@ impl App {
                     &runner,
                     &plugin_tools,
                     |name, input| {
+                        if name == TOOL_PROPOSE_EDIT {
+                            // Validated here, written by the main thread, which can see the
+                            // editors' unsaved changes.
+                            let outcome = execute_tool(&workspace_root, mode, name, input, &runner);
+                            let Some(edit) = outcome.proposed_edit else {
+                                return Some(Err(outcome.content));
+                            };
+                            let (tx, rx) = mpsc::channel();
+                            if proxy
+                                .send_event(UserEvent::Chat(ChatUiEvent::ApplyEdit {
+                                    run: cancel.clone(),
+                                    session_id: session_id.clone(),
+                                    turn_id,
+                                    edit,
+                                    reply: tx,
+                                }))
+                                .is_err()
+                            {
+                                return Some(Err("Editor event loop unavailable".into()));
+                            }
+                            return Some(
+                                rx.recv()
+                                    .unwrap_or_else(|_| Err("Edit channel closed".into())),
+                            );
+                        }
                         if !plugin_tool_names.contains(name) {
                             return None;
                         }
@@ -258,6 +293,25 @@ impl App {
                     let _ = reply.send(Err(err));
                 }
             }
+            ChatUiEvent::ApplyEdit {
+                run,
+                session_id,
+                turn_id,
+                edit,
+                reply,
+            } => {
+                let result = if self
+                    .chat
+                    .running_turn
+                    .as_ref()
+                    .is_some_and(|(_, _, active)| Arc::ptr_eq(active, &run))
+                {
+                    self.apply_chat_proposed_edit(&session_id, turn_id, edit)
+                } else {
+                    Err("Chat turn has ended".into())
+                };
+                let _ = reply.send(result);
+            }
         }
         if let Some(gpu) = &self.gpu {
             gpu.window.request_redraw();
@@ -309,13 +363,10 @@ impl App {
                 is_error,
                 proposed_edit,
             } => {
+                // Edits normally arrive through `ApplyEdit`; one carried by a tool result is
+                // applied with the same checks.
                 if let Some(edit) = proposed_edit {
-                    if write_proposed_edit(&edit.path, &edit.after).is_ok() {
-                        self.sync_open_document_text(&edit.path, Some(&edit.after));
-                    }
-                    if let Some(session) = self.chat.session_by_id_mut(session_id) {
-                        session.stage_edit(turn_id, edit.path, edit.before, edit.after);
-                    }
+                    let _ = self.apply_chat_proposed_edit(session_id, turn_id, edit);
                 }
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
                     if let Some(turn) = session.turn_mut(turn_id) {
@@ -369,123 +420,6 @@ impl App {
                 self.status = "Chat cancelled".into();
                 self.chat
                     .persist_active_session(&self.profile_root, self.profiles.is_none());
-            }
-        }
-    }
-
-    /// Updates an already-open document buffer when a file on disk is updated or reverted by chat.
-    pub(crate) fn sync_open_document_text(&mut self, path: &Path, new_text: Option<&str>) {
-        let Some(doc_id) = self
-            .documents
-            .iter()
-            .find(|tab| {
-                tab.buffer
-                    .path()
-                    .is_some_and(|open| same_file_path(open, path))
-            })
-            .map(|tab| tab.id)
-        else {
-            return;
-        };
-        if let Some(text) = new_text {
-            let tab = &mut self.documents[doc_id];
-            let outcome = tab.buffer.reload_text(text);
-            let line_count = tab.buffer.len_lines();
-            tab.highlights = None;
-            tab.sticky_headers_cache = None;
-            tab.highlighter = IncrementalHighlighter::new();
-            self.editor_groups.for_each_view_mut(|_, view| {
-                if view.document == doc_id {
-                    view.selection_state
-                        .remap(&outcome.positions, outcome.len_chars);
-                    view.scroll_line = view.scroll_line.min(line_count.saturating_sub(1));
-                }
-            });
-        }
-    }
-
-    pub(crate) fn accept_chat_edit(&mut self, path: &Path) -> bool {
-        let accepted = self.chat.active_session_mut().accept_edit(path);
-        if accepted {
-            self.chat
-                .persist_active_session(&self.profile_root, self.profiles.is_none());
-            self.status = format!("Accepted changes to {}", path.display());
-        }
-        accepted
-    }
-
-    pub(crate) fn discard_chat_edit(&mut self, path: &Path) -> bool {
-        let Some(before) = self.chat.active_session_mut().discard_edit(path) else {
-            return false;
-        };
-        Self::restore_file_content(path, before.as_deref());
-        self.sync_open_document_text(path, before.as_deref());
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.refresh_scm_async();
-        self.status = format!("Discarded changes to {}", path.display());
-        true
-    }
-
-    pub(crate) fn accept_all_chat_edits(&mut self) -> usize {
-        let count = self.chat.active_session_mut().accept_all_edits();
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.status = format!("Accepted {count} file edit(s)");
-        count
-    }
-
-    pub(crate) fn discard_all_chat_edits(&mut self) -> usize {
-        let reverted = self.chat.active_session_mut().discard_all_edits();
-        let count = reverted.len();
-        for (path, before) in reverted {
-            Self::restore_file_content(&path, before.as_deref());
-            self.sync_open_document_text(&path, before.as_deref());
-        }
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.refresh_scm_async();
-        self.status = format!("Discarded {count} file edit(s)");
-        count
-    }
-
-    pub(crate) fn undo_chat_edit(&mut self) -> bool {
-        let Some(cp) = self.chat.active_session_mut().undo_checkpoint() else {
-            return false;
-        };
-        for entry in &cp.entries {
-            Self::restore_file_content(&entry.path, entry.before.as_deref());
-            self.sync_open_document_text(&entry.path, entry.before.as_deref());
-        }
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.refresh_scm_async();
-        self.status = format!("Undid {}", cp.label);
-        true
-    }
-
-    pub(crate) fn redo_chat_edit(&mut self) -> bool {
-        let Some(cp) = self.chat.active_session_mut().redo_checkpoint() else {
-            return false;
-        };
-        for entry in &cp.entries {
-            Self::restore_file_content(&entry.path, entry.after.as_deref());
-            self.sync_open_document_text(&entry.path, entry.after.as_deref());
-        }
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.refresh_scm_async();
-        self.status = format!("Redid {}", cp.label);
-        true
-    }
-
-    fn restore_file_content(path: &Path, content: Option<&str>) {
-        match content {
-            Some(text) => {
-                let _ = write_proposed_edit(path, text);
-            }
-            None => {
-                let _ = std::fs::remove_file(path);
             }
         }
     }

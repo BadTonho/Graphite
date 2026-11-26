@@ -11,6 +11,7 @@
 
 ## Fixes
 
+- Chat edits no longer overwrite, discard, undo, or redo a file whose editor has unsaved changes, which previously erased those changes and the editor's undo history. The model is now told whether an edit was really written, and failed writes are reported and logged instead of being shown as applied. Native plugins writing workspace files are protected the same way.
 - Failed `graphite plugin` commands now write one entry to the high-severity error log.
 - Render plugin-contributed SVG, bitmap, and codicon icons in the Activity Bar and Secondary Side Bar instead of showing only the first letter of the container title.
 - Initialize and sync `vscode.window.tabGroups` (`ExtHostEditorTabs`) in the VSIX extension host so extensions reading `activeTabGroup` on activation no longer fail, raise extension-host queue capacity for concurrent startup activations, and record extension activation/runtime errors in the medium-severity error log.
