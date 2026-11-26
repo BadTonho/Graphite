@@ -38,6 +38,18 @@ O binário da fixture pertence à infraestrutura de testes da aplicação e nunc
 - `cargo test -p graphite-app --test startup_update` inicia três vezes uma cópia descartável do executável, rejeita uma atualização preparada cujo checksum não confere e verifica que o executável original pode continuar em uso. Defina `GRAPHITE_TEST_PACKAGED_EXE` com o caminho absoluto do `graphite.exe` extraído do pacote de lançamento ou instalado pelo assistente para aplicar a mesma verificação a esse executável.
 - Em uma conta descartável do Windows, defina `GRAPHITE_TEST_WINDOWS_INSTALLER` com o caminho do instalador real e execute `python -m unittest discover -s packaging/release/tests -p test_windows_install.py -v`. O teste instala em uma pasta temporária, verifica o runtime incluído, o atalho, o registro de desinstalação e a primeira execução pela CLI, e então executa o desinstalador e verifica a remoção. O instalador real escreve no menu Iniciar e no registro dessa conta.
 
+## Medindo o desempenho
+
+Os benchmarks usam só a biblioteca padrão e mostram a mediana do tempo de cada caso:
+
+```sh
+cargo bench -p graphite-syntax     # realce do zero e durante a digitação, busca de escopos
+cargo bench -p graphite-text       # cores de colchetes com e sem as profundidades lembradas
+cargo bench -p graphite-workspace  # abrir rápido com e sem o índice de arquivos, busca no projeto
+```
+
+Os casos marcados com "(before)" executam a abordagem que o editor usava antes, então cada execução mostra o ganho na mesma máquina. O benchmark do workspace gera 2.000 arquivos na pasta temporária do sistema e os remove ao fim. Os benchmarks de digitação cobrem tanto uma edição que mantém o código válido quanto uma que deixa um erro de sintaxe, já que o realce reverifica tudo depois da edição enquanto o código tem um erro. Os tempos dependem da máquina; compare execuções feitas na mesma.
+
 ## Medindo a cobertura de código
 
 Com `cargo-llvm-cov` e o componente `llvm-tools-preview` da toolchain Rust disponíveis, execute `cargo llvm-cov --workspace --locked --html --output-dir target/graphite-coverage`. Abra `target/graphite-coverage/html/index.html` para ver as linhas executadas e investigar lacunas por arquivo. A cobertura depende do sistema operacional e dos cenários executados, incluindo quais testes opcionais rodaram.

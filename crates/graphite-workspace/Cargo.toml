@@ -11,3 +11,7 @@ ignore = "0.4.34"
 regex = "1.13.1"
 thiserror = "2.0.21"
 serde_json = "1.0"
+
+[[bench]]
+name = "workspace"
+harness = false

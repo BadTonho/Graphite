@@ -38,6 +38,18 @@ The fixture binary lives under application test infrastructure and is never star
 - `cargo test -p graphite-app --test startup_update` starts a disposable copy of the executable three times, rejects a staged update whose checksum does not match, and verifies that the original executable is still usable. Set `GRAPHITE_TEST_PACKAGED_EXE` to the absolute path of the `graphite.exe` extracted from the release archive or installed by the setup program to run the same check against that executable.
 - In a disposable Windows account, set `GRAPHITE_TEST_WINDOWS_INSTALLER` to the real setup executable and run `python -m unittest discover -s packaging/release/tests -p test_windows_install.py -v`. The test installs into a temporary directory, checks the bundled runtime, shortcut, uninstall registration and first CLI launch, then runs the uninstaller and verifies removal. The real installer writes to that account's Start menu and registry.
 
+## Measuring performance
+
+Benchmarks use only the standard library and print the median time of each case:
+
+```sh
+cargo bench -p graphite-syntax     # highlighting from scratch and while typing, scope lookups
+cargo bench -p graphite-text       # bracket colors with and without remembered depths
+cargo bench -p graphite-workspace  # Quick Open with and without the file index, project search
+```
+
+Cases marked "(before)" run the approach the editor used earlier, so each run shows the gain on the same machine. The workspace benchmark generates 2,000 files in the system temporary folder and removes them. Typing benchmarks cover both an edit that keeps the code valid and one that leaves a syntax error, since highlighting re-checks everything after the edit while the code has an error. Times depend on the machine; compare runs made on the same one.
+
 ## Measuring code coverage
 
 With `cargo-llvm-cov` and the matching Rust `llvm-tools-preview` component available, run `cargo llvm-cov --workspace --locked --html --output-dir target/graphite-coverage`. Open `target/graphite-coverage/html/index.html` to see which lines ran and inspect gaps per file. Coverage depends on the operating system and the scenarios executed, including which optional tests ran.
