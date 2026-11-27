@@ -208,6 +208,7 @@ pub(super) fn graphite_action_close_diff_editor(
     app: &mut App,
     _invocation: &CommandInvocation,
 ) -> Result<(), CommandError> {
+    app.finish_ai_review();
     app.diff_view = None;
     Ok(())
 }

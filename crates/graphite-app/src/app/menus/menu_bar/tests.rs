@@ -8,6 +8,7 @@ fn layout(width: f32, scale: f32) -> TitlebarLayout {
         scale,
         [72.0, 64.0, 96.0, 56.0, 32.0, 64.0, 72.0, 56.0].map(|width| width * scale),
         0.0,
+        0.0,
     )
 }
 
@@ -66,6 +67,29 @@ fn one_mode_button_toggles_from_both_edges_and_stays_centered() {
         assert!(app.ai_mode.is_some());
         assert!(app.click_mode_button(layout.mode_button, button.x + button.width - 1.0, y));
         assert!(app.ai_mode.is_none());
+    }
+}
+
+#[test]
+fn review_return_fits_between_layout_controls_and_mode_button() {
+    for (width, scale) in [(640.0, 1.0), (900.0, 1.5), (1400.0, 1.0)] {
+        let layout = TitlebarLayout::new(
+            width,
+            32.0 * scale,
+            8.0 * scale,
+            scale,
+            [72.0 * scale; 8],
+            0.0,
+            145.0 * scale,
+        );
+        let back = layout.return_button.unwrap();
+        let (_, (last_x, _, last_w, _)) = layout.layout_controls[3];
+        assert!(last_x + last_w < back.x);
+        assert!(back.x + back.width < layout.mode_button.x);
+        assert!(
+            layout.command_center.field.x + layout.command_center.field.width
+                <= layout.layout_controls[0].1 .0
+        );
     }
 }
 

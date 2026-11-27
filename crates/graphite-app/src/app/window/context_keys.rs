@@ -283,6 +283,14 @@ impl super::App {
             global.insert(key.into(), value.to_string());
         }
         global.insert("diffLoading".into(), self.diff_loading.to_string());
+        global.insert(
+            "canOpenReviewHunk".into(),
+            self.can_open_review_hunk().to_string(),
+        );
+        global.insert(
+            "canReturnToReview".into(),
+            self.can_return_to_review().to_string(),
+        );
         let (in_notebook, editing_notebook) = self.notebook_context();
         global.insert("notebookFocus".into(), in_notebook.to_string());
         global.insert("notebookEditing".into(), editing_notebook.to_string());
@@ -365,7 +373,9 @@ impl super::App {
         let plugin_keyboard = self.plugin_owns_keyboard();
         let focused = self.editor_groups.active_view().id;
         let ai_editor_focused = self.ai_mode.is_none()
-            || (self.ai_file_group() == Some(self.editor_groups.focused()) && !self.chat.focused);
+            || (!self.chat_review_open()
+                && self.ai_file_group() == Some(self.editor_groups.focused())
+                && !self.chat.focused);
         for view in self.editor_groups.all_views() {
             let document = &self.documents[view.document];
             let editor = document.buffer.view(&view.selection_state);

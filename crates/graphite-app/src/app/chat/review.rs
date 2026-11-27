@@ -106,6 +106,19 @@ impl App {
             .persist_active_session(&self.profile_root, self.profiles.is_none());
     }
 
+    pub(crate) fn resolve_chat_review_source(
+        &self,
+        proposal: &FileProposal,
+    ) -> Result<PathBuf, String> {
+        if self.saving.transition_pending()
+            || self.tree.root().canonicalize().ok().as_deref() != Some(proposal.workspace.as_path())
+        {
+            return Err(self.t("chat.review.wrong_workspace").into());
+        }
+        resolve_target(&proposal.workspace, &proposal.path)
+            .map_err(|_| self.t("workbench.review.source_unavailable").into())
+    }
+
     fn verify_chat_target(&self, workspace: &Path, path: &Path) -> Result<(), String> {
         if self.saving.transition_pending()
             || self.tree.root().canonicalize().ok().as_deref() != Some(workspace)

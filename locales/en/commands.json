@@ -939,6 +939,8 @@
   "command.workbench.action.editor.changeEncoding": "Change File Encoding",
   "command.workbench.action.previewColorTheme": "Preview Color Theme",
   "command.workbench.action.tryNewDefaultThemes": "Try New Default Themes",
+  "command.graphite.diff.openHunkInEditor": "Open Hunk in Editor",
+  "command.graphite.workbench.returnToReview": "Return to Review",
   "command.graphite.workbench.toggleMode": "Toggle Editor / AI Mode",
   "command.graphite.chat.continueTask": "Continue Chat Task"
 }

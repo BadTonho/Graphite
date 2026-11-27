@@ -158,6 +158,7 @@ pub(crate) struct TitlebarLayout {
     ); 4],
     pub(crate) update_button: Option<MenuItemRectLike>,
     mode_button: MenuItemRectLike,
+    return_button: Option<MenuItemRectLike>,
     command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
@@ -172,6 +173,7 @@ impl TitlebarLayout {
         scale: f32,
         localized_widths: [f32; 8],
         update_button_width: f32,
+        return_button_width: f32,
     ) -> Self {
         let scale = scale.max(0.5);
         let control_width = TITLEBAR_CONTROL_WIDTH * scale;
@@ -210,8 +212,16 @@ impl TitlebarLayout {
             width: button_width,
             height,
         };
+        let return_right = (mode_button.x - gap).max(0.0);
+        let return_width = return_button_width.min(return_right);
+        let return_button = (return_width > 0.0).then_some(MenuItemRectLike {
+            x: return_right - return_width,
+            y: 0.0,
+            width: return_width,
+            height,
+        });
         let layout_controls = super::titlebar_layout_controls::layout_control_rects(
-            mode_button.x - gap,
+            return_button.map_or(mode_button.x, |button| button.x) - gap,
             height,
             scale,
         );
@@ -228,7 +238,7 @@ impl TitlebarLayout {
             None
         };
         let right = update_button.map_or(layout_controls[0].1 .0, |btn| btn.x) - 5.0 * scale;
-        let center_x = width * 0.5;
+        let center_x = (width * 0.5).min(right.max(0.0));
         let max_field_width = ((right - center_x - 4.0 * scale) * 2.0).max(0.0);
         let preferred_field_width = (COMMAND_CENTER_WIDTH * scale)
             .min(width * 0.4)
@@ -312,6 +322,7 @@ impl TitlebarLayout {
             layout_controls,
             update_button,
             mode_button,
+            return_button,
             command_center,
             menus: menu_rects,
             overflowed,

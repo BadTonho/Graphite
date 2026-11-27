@@ -9,6 +9,7 @@ pub(crate) enum FocusRegion {
     Terminal,
     Explorer,
     Chat,
+    Review,
     ActivityBar,
     StatusBar,
 }
@@ -20,6 +21,7 @@ impl FocusRegion {
             FocusRegion::Terminal => "focus.region.terminal",
             FocusRegion::Explorer => "focus.region.explorer",
             FocusRegion::Chat => "focus.region.chat",
+            FocusRegion::Review => "workbench.review.tab",
             FocusRegion::ActivityBar => "focus.region.activity_bar",
             FocusRegion::StatusBar => "focus.region.status_bar",
         }
@@ -50,7 +52,9 @@ impl App {
     pub(crate) fn available_focus_regions(&self) -> Vec<FocusRegion> {
         if self.ai_mode.is_some() {
             let mut regions = vec![FocusRegion::Chat];
-            if self.ai_file_group().is_some() {
+            if self.chat_review_open() {
+                regions.push(FocusRegion::Review);
+            } else if self.ai_file_group().is_some() {
                 regions.push(FocusRegion::Editor);
             }
             if self.terminal_visible {
@@ -90,6 +94,8 @@ impl App {
             FocusRegion::ActivityBar
         } else if self.status_bar_focused {
             FocusRegion::StatusBar
+        } else if self.ai_mode.is_some() && self.chat_review_open() {
+            FocusRegion::Review
         } else {
             FocusRegion::Editor
         }
@@ -128,7 +134,11 @@ impl App {
             FocusRegion::Editor => {}
             FocusRegion::Terminal => self.terminal_focused = true,
             FocusRegion::Explorer => self.explorer_focused = true,
-            FocusRegion::Chat => self.chat.focused = true,
+            FocusRegion::Chat => {
+                self.chat.focused = true;
+                self.set_ai_review_tab(false);
+            }
+            FocusRegion::Review => self.set_ai_review_tab(true),
             FocusRegion::ActivityBar => self.activity_bar_focused = true,
             FocusRegion::StatusBar => self.status_bar_focused = true,
         }

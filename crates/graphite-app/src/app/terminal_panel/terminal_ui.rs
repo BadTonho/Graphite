@@ -14,7 +14,7 @@ impl App {
             let region = if self.terminal_visible {
                 crate::app::focus_regions::FocusRegion::Terminal
             } else {
-                crate::app::focus_regions::FocusRegion::Chat
+                self.ai_main_focus_region()
             };
             self.focus_region(region);
         } else {

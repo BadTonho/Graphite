@@ -485,6 +485,11 @@ pub(crate) fn accessibility_tree(
 pub(crate) const MODE_SELECTOR_NODE: NodeId = NodeId(6);
 pub(crate) const AI_CHAT_NODE: NodeId = NodeId(7);
 pub(crate) const AI_CLOSE_FILE_NODE: NodeId = NodeId(8);
+pub(crate) const AI_RETURN_REVIEW_NODE: NodeId = NodeId(0xAC22_0001);
+pub(crate) const AI_OPEN_HUNK_NODE: NodeId = NodeId(0xAC22_0002);
+pub(crate) const AI_CHAT_TAB_NODE: NodeId = NodeId(0xAC22_0003);
+pub(crate) const AI_REVIEW_TAB_NODE: NodeId = NodeId(0xAC22_0004);
+pub(crate) const AI_REVIEW_NODE: NodeId = NodeId(0xAC22_0005);
 
 impl App {
     /// Build one accessible editor and tab list for each visible group.
@@ -566,9 +571,24 @@ impl App {
         }
         children.extend(rects.iter().map(|rect| group_node(rect.id)));
         children.extend([NodeId(3), MODE_SELECTOR_NODE]);
-        if self.ai_mode.is_some() {
-            children.push(AI_CHAT_NODE);
-            if self.ai_file_group().is_some() {
+        let ai_layout = self
+            .ai_mode
+            .as_ref()
+            .map(|_| self.ai_layout(width, height, line_height));
+        if self.can_return_to_review() {
+            children.push(AI_RETURN_REVIEW_NODE);
+        }
+        if let Some(layout) = &ai_layout {
+            if layout.chat.height > 0.0 {
+                children.push(AI_CHAT_NODE);
+            }
+            if layout.review.is_some() {
+                children.push(AI_REVIEW_NODE);
+            }
+            if layout.review_tabs.is_some() {
+                children.extend([AI_CHAT_TAB_NODE, AI_REVIEW_TAB_NODE]);
+            }
+            if layout.file.is_some() {
                 children.push(AI_CLOSE_FILE_NODE);
             }
         } else {
@@ -1621,13 +1641,57 @@ impl App {
         selector.set_label(self.t("command.graphite.workbench.toggleMode"));
         selector.add_action(Action::Click);
         nodes.push((MODE_SELECTOR_NODE, selector));
-        if self.ai_mode.is_some() {
-            let mut chat = Node::new(Role::TextInput);
-            chat.set_label(self.t("workbench.mode.chat"));
-            chat.set_value(self.chat.input.as_str());
-            chat.add_action(Action::Focus);
-            nodes.push((AI_CHAT_NODE, chat));
-            if self.ai_file_group().is_some() {
+        if self.can_return_to_review() {
+            let mut back = Node::new(Role::Button);
+            back.set_label(self.t("command.graphite.workbench.returnToReview"));
+            back.add_action(Action::Click);
+            nodes.push((AI_RETURN_REVIEW_NODE, back));
+        }
+        if let Some(layout) = &ai_layout {
+            if layout.chat.height > 0.0 {
+                let mut chat = Node::new(Role::TextInput);
+                chat.set_label(self.t("workbench.mode.chat"));
+                chat.set_value(self.chat.input.as_str());
+                chat.add_action(Action::Focus);
+                nodes.push((AI_CHAT_NODE, chat));
+            }
+            if layout.review.is_some() {
+                let mut review = Node::new(Role::Group);
+                review.set_label(self.t("workbench.review.tab"));
+                review.add_action(Action::Focus);
+                review.set_children(vec![AI_OPEN_HUNK_NODE]);
+                nodes.push((AI_REVIEW_NODE, review));
+                let mut open = Node::new(Role::Button);
+                open.set_label(self.t("command.graphite.diff.openHunkInEditor"));
+                if self.can_open_review_hunk() {
+                    open.add_action(Action::Click);
+                } else {
+                    open.set_disabled();
+                    open.set_description(self.t("workbench.review.new_file"));
+                }
+                nodes.push((AI_OPEN_HUNK_NODE, open));
+            }
+            if layout.review_tabs.is_some() {
+                for (id, label, selected) in [
+                    (
+                        AI_CHAT_TAB_NODE,
+                        "workbench.review.chat",
+                        !self.ai_review_tab_selected(),
+                    ),
+                    (
+                        AI_REVIEW_TAB_NODE,
+                        "workbench.review.tab",
+                        self.ai_review_tab_selected(),
+                    ),
+                ] {
+                    let mut button = Node::new(Role::Button);
+                    button.set_label(self.t(label));
+                    button.set_selected(selected);
+                    button.add_action(Action::Click);
+                    nodes.push((id, button));
+                }
+            }
+            if layout.file.is_some() {
                 let mut close = Node::new(Role::Button);
                 close.set_label(self.t("workbench.mode.close_file"));
                 close.add_action(Action::Click);
@@ -1658,10 +1722,17 @@ impl App {
                 run_breakpoint_prompt_input_node()
             } else if panel_focus {
                 NodeId(5)
-            } else if self.ai_mode.is_some()
-                && (self.chat.focused || self.ai_file_group().is_none())
-            {
-                AI_CHAT_NODE
+            } else if let Some(layout) = &ai_layout {
+                match self.current_focus_region() {
+                    super::focus_regions::FocusRegion::Review if layout.review.is_some() => {
+                        AI_REVIEW_NODE
+                    }
+                    super::focus_regions::FocusRegion::Editor if layout.file.is_some() => {
+                        editor_node(self.editor_groups.focused())
+                    }
+                    _ if layout.chat.height > 0.0 => AI_CHAT_NODE,
+                    _ => root,
+                }
             } else {
                 editor_node(self.editor_groups.focused())
             },

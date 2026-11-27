@@ -33,6 +33,7 @@ impl App {
                 selected_change: 0,
             });
             self.diff_scroll = 0;
+            self.start_ai_review();
         }
     }
 
@@ -71,6 +72,7 @@ impl App {
             self.discard_chat_proposal(id)
         };
         if done {
+            self.finish_ai_review();
             self.diff_view = None;
         }
     }

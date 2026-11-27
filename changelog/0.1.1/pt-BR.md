@@ -9,6 +9,8 @@
 
 ## Melhorias
 
+- O Modo IA dá mais espaço ao diff em janelas largas, oferece abas de Chat e Revisão em janelas estreitas e permite editar um trecho no Editor antes de voltar à mesma posição na revisão.
+
 - O histórico de desfazer de um arquivo não cresce mais sem limite: ele guarda os últimos 10.000 passos e até 64 MiB de texto, esquecendo primeiro os passos mais antigos.
 - Cada retângulo e glifo agora envia 52 bytes à GPU por quadro em vez de 216: o renderizador os desenha como instâncias, e o shader posiciona os cantos.
 - A busca entre arquivos lê o workspace em várias threads e não resolve mais o caminho completo de cada arquivo pesquisado; os resultados são listados por arquivo e posição, sempre na mesma ordem.

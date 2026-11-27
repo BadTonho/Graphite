@@ -719,13 +719,13 @@ impl App {
         }
         let layout = self.chat_panel_layout(width, height, lh);
         if !layout.bounds.contains(x, y) {
-            self.chat.focused = false;
+            if self.ai_mode.is_none() {
+                self.chat.focused = false;
+            }
             self.chat.composer_menu = None;
             return false;
         }
-        self.chat.focused = true;
-        self.explorer_focused = false;
-        self.terminal_focused = false;
+        self.focus_region(crate::app::focus_regions::FocusRegion::Chat);
 
         if let Some(menu) = layout.menu {
             if let Some(index) = menu.iter().position(|rect| rect.contains(x, y)) {

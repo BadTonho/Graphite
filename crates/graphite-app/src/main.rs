@@ -105,6 +105,8 @@ struct App {
 
     editor_groups: app::editor_groups::EditorGroups,
     ai_mode: Option<app::workbench_mode::AiMode>,
+    ai_review_return: Option<app::workbench_mode::ReviewReturn>,
+    ai_terminal_layout: (bool, bool),
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
     keymap: keybindings::Keymap,
@@ -669,6 +671,8 @@ impl App {
             ),
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
             ai_mode: None,
+            ai_review_return: None,
+            ai_terminal_layout: (false, false),
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             keymap,

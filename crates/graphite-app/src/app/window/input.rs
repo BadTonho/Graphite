@@ -50,7 +50,12 @@ impl App {
             self.open_file_dialog();
             return true;
         }
-        if (ctrl || alt || self.modifiers.shift_key()) && self.handle_custom_keybinding(event) {
+        if (ctrl
+            || alt
+            || self.modifiers.shift_key()
+            || matches!(event.logical_key, Key::Named(NamedKey::F6)))
+            && self.handle_custom_keybinding(event)
+        {
             return true;
         }
         if self.terminal_focused {
@@ -185,10 +190,32 @@ impl App {
         if self.handle_command_center_key(&event.logical_key, event.text.as_deref()) {
             return;
         }
-        if (self.chat_review_open() || (self.ai_mode.is_some() && self.diff_view.is_some()))
-            && !self.close_confirm
-            && !self.close_window_confirm
-        {
+        let diff_focused = if self.ai_mode.is_some() && self.chat_review_open() {
+            self.current_focus_region() == super::focus_regions::FocusRegion::Review
+        } else {
+            self.chat_review_open() || (self.ai_mode.is_some() && self.diff_view.is_some())
+        };
+        if diff_focused && !self.close_confirm && !self.close_window_confirm {
+            if self.ai_mode.is_some() {
+                if self.quick_input_open() && self.handle_ai_focus_key(event) {
+                    return;
+                }
+                let ctrl = self.modifiers.control_key();
+                let review_approval = ctrl
+                    && matches!(
+                        event.logical_key,
+                        Key::Named(NamedKey::Enter | NamedKey::Backspace)
+                    );
+                if !review_approval
+                    && (ctrl
+                        || self.modifiers.alt_key()
+                        || self.modifiers.shift_key()
+                        || matches!(event.logical_key, Key::Named(NamedKey::F6)))
+                    && self.handle_custom_keybinding(event)
+                {
+                    return;
+                }
+            }
             self.handle_open_diff_key(event);
             return;
         }

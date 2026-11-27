@@ -26,7 +26,7 @@ Graphite starts in **Editor** mode. Click the mode button in the title bar. It s
 
 Use **Open File** or Quick Open in AI mode to show an editable file beside Chat. Narrow windows stack the two panes. The file uses the same document and undo history as Editor mode. **Close panel** returns the space to Chat and keeps the file and any unsaved changes available in Editor mode. Switching back restores the active editor tab and its view.
 
-The integrated terminal starts collapsed when entering AI mode. Use **Toggle Terminal** to open it. Terminal sessions continue when switching modes.
+The integrated terminal starts collapsed the first time you enter AI mode. Use **Toggle Terminal** to open it. Terminal sessions continue when switching modes.
 
 ## Surfaces and Navigation
 
@@ -53,6 +53,8 @@ In the composer, choose **File**, **Selection**, or **Diagnostics** to attach th
 ## Review proposed file changes
 
 Use **Review files** in the Chat panel to open the diff for a proposal. **Apply** writes the displayed version to disk and refreshes the editor. **Discard** removes the proposal from the queue. Use **Apply all** to apply the listed proposals individually. The results show which files were applied and which still need attention.
+
+In AI mode, select a diff line and choose **Open Hunk in Editor**. If you have not selected a line, the action opens the current change. New files can be opened after applying their proposals. Choose **Return to Review** in the Editor title bar or Command Palette to return to your conversation and diff position. Unsaved edits stay in the shared buffer and can cause a proposal conflict.
 
 Graphite checks the original workspace, disk contents and editor before writing. A file that changed, is read-only, is being saved or has unsaved edits stays pending. Use **Stop** to cancel a turn while retaining proposals already received. Reopen the conversation in the original workspace to continue the review.
 

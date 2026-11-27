@@ -2,6 +2,7 @@ use super::*;
 
 impl App {
     pub(crate) fn draw(&mut self) {
+        self.reconcile_ai_review();
         self.refresh_debug_inline_values();
         self.resize_terminal();
         let sidebar_width = self.sidebar_layout_width_px();
@@ -690,10 +691,11 @@ impl App {
         if self.terminal_visible {
             self.draw_terminal_panel(r, w, h, lh, cw);
         }
-        self.draw_chat_overlays(r, w, h, lh);
         if self.diff_view.is_some() {
             self.draw_diff_view(r, w, h, lh);
         }
+        self.draw_ai_review_tabs(r, &layout, lh);
+        self.draw_chat_overlays(r, w, h, lh);
         r.set_clip(Some([0.0, h - lh, w, h]));
         r.draw_text(
             &self.status,

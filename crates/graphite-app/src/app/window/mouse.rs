@@ -123,6 +123,12 @@ impl App {
             return;
         }
 
+        if self.ai_mode.is_some() {
+            let layout = self.ai_layout(window_width, window_height, lh);
+            if self.click_ai_review_tab(&layout, mx, my) {
+                return;
+            }
+        }
         if (self.chat_review_open() || self.ai_mode.is_some())
             && self.click_diff_view(mx, my, window_width, window_height, lh, cw)
         {
@@ -156,7 +162,7 @@ impl App {
                     prev_terminal_toolbar_menu,
                 );
                 if !self.terminal_visible {
-                    self.focus_ai_chat();
+                    self.focus_region(self.ai_main_focus_region());
                 }
                 return;
             }

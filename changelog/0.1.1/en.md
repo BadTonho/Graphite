@@ -9,6 +9,8 @@
 
 ## Improvements
 
+- AI mode gives wide proposal diffs more space, offers Chat and Review tabs in narrow windows, and lets you edit a hunk in the Editor before returning to the same review position.
+
 - The undo history of a file no longer grows without limit: it keeps the latest 10,000 steps and up to 64 MiB of text, forgetting the oldest steps first.
 - Each rectangle and glyph now sends 52 bytes to the GPU per frame instead of 216: the renderer draws them as instances and the shader places the corners.
 - Search across files reads the workspace on several threads and no longer resolves the full path of every file it searches; results are listed by file and position, in the same order every time.

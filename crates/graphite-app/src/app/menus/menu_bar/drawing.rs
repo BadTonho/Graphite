@@ -9,7 +9,7 @@ impl App {
         let char_width = renderer.char_width();
         let layout = self.titlebar_layout(width, char_width);
         if self.zen_mode && self.ai_mode.is_none() {
-            self.draw_mode_button(renderer, layout.mode_button);
+            self.draw_workbench_mode_buttons(renderer, &layout);
             return;
         }
         let menu_height = layout.height;
@@ -142,10 +142,26 @@ impl App {
             self.draw_layout_controls(renderer, &layout.layout_controls, layout.height);
         }
         self.draw_titlebar_update_button(renderer, &layout);
-        self.draw_mode_button(renderer, layout.mode_button);
+        self.draw_workbench_mode_buttons(renderer, &layout);
     }
 
-    fn draw_mode_button(&self, renderer: &mut Renderer, slot: MenuItemRectLike) {
+    fn draw_workbench_mode_buttons(&self, renderer: &mut Renderer, layout: &TitlebarLayout) {
+        let mode_label = self.t(if self.ai_mode.is_some() {
+            "workbench.mode.editor"
+        } else {
+            "workbench.mode.ai"
+        });
+        self.draw_mode_button(renderer, layout.mode_button, mode_label);
+        if let Some(button) = layout.return_button {
+            self.draw_mode_button(
+                renderer,
+                button,
+                self.t("command.graphite.workbench.returnToReview"),
+            );
+        }
+    }
+
+    fn draw_mode_button(&self, renderer: &mut Renderer, slot: MenuItemRectLike, label: &str) {
         let rect = self.mode_button_rect(slot);
         let hovered = rect.contains(self.mouse.x as f32, self.mouse.y as f32);
         let background = if hovered {
@@ -174,11 +190,6 @@ impl App {
             rect.height,
             rgb(Theme::color(Theme::DIM, 0x454545)),
         );
-        let label = self.t(if self.ai_mode.is_some() {
-            "workbench.mode.editor"
-        } else {
-            "workbench.mode.ai"
-        });
         let text_width = label.chars().count() as f32 * renderer.char_width();
         renderer.draw_text(
             label,

@@ -276,6 +276,46 @@ impl DiffModel {
         items
     }
 
+    /// Original line at the given diff row, with insertions anchored to original context.
+    pub(crate) fn original_line(&self, row: usize, original_on_left: bool) -> Option<usize> {
+        self.rows.get(row)?;
+        self.rows[..=row]
+            .iter()
+            .rev()
+            .chain(&self.rows[row + 1..])
+            .find_map(|entry| {
+                let cell = if original_on_left {
+                    &entry.left
+                } else {
+                    &entry.right
+                };
+                cell.as_ref().map(|cell| cell.number)
+            })
+    }
+
+    /// The model row shown in a display slot. Fold markers have no line to select.
+    pub(crate) fn row_at_slot(&self, slot: usize, inline: bool, collapse: bool) -> Option<usize> {
+        let mut rows = 0;
+        let mut displayed = 0;
+        for item in self.items(collapse) {
+            let (row_count, slots) = display_span(&item, inline);
+            if slot < displayed + slots {
+                return matches!(item, Item::Row(_)).then_some(rows);
+            }
+            rows += row_count;
+            displayed += slots;
+        }
+        None
+    }
+
+    pub(crate) fn slot_for_row(&self, items: &[Item], row: usize, inline: bool) -> usize {
+        let index = self.item_index_of_row(items, row);
+        items[..index]
+            .iter()
+            .map(|item| display_span(item, inline).1)
+            .sum()
+    }
+
     /// Index in the folded list of the item showing the row `row_index` of `rows`.
     pub(crate) fn item_index_of_row(&self, items: &[Item], row_index: usize) -> usize {
         let mut seen = 0usize;
@@ -333,6 +373,14 @@ impl DiffModel {
     }
 }
 
+fn display_span(item: &Item, inline: bool) -> (usize, usize) {
+    match item {
+        Item::Folded(count) => (*count, 1),
+        Item::Row(row) if inline && row.kind == RowKind::Modified => (1, 2),
+        Item::Row(_) => (1, 1),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum InlineItem {
     Line {
@@ -350,6 +398,30 @@ mod tests {
 
     fn kinds(model: &DiffModel) -> Vec<RowKind> {
         model.rows.iter().map(|row| row.kind).collect()
+    }
+
+    #[test]
+    fn review_slots_anchor_insertions_to_original_lines_and_skip_folds() {
+        let model = DiffModel::build("one\ntwo\nthree\n", "start\none\nTWO\nthree\nend\n");
+        assert_eq!(model.original_line(0, true), Some(1));
+        assert_eq!(model.original_line(2, true), Some(2));
+        assert_eq!(model.original_line(4, true), Some(3));
+        let reversed = DiffModel::build("start\none\nTWO\nthree\nend\n", "one\ntwo\nthree\n");
+        assert_eq!(reversed.original_line(2, false), Some(2));
+        assert_eq!(model.row_at_slot(2, false, false), Some(2));
+        assert_eq!(model.row_at_slot(2, true, false), Some(2));
+        assert_eq!(model.row_at_slot(3, true, false), Some(2));
+
+        let before: String = (0..20).map(|line| format!("line {line}\n")).collect();
+        let after = before.replace("line 10\n", "changed\n");
+        let model = DiffModel::build(&before, &after);
+        let items = model.items(true);
+        assert_eq!(model.row_at_slot(0, false, true), None);
+        assert_eq!(model.row_at_slot(0, true, true), None);
+        for inline in [false, true] {
+            let slot = model.slot_for_row(&items, 10, inline);
+            assert_eq!(model.row_at_slot(slot, inline, true), Some(10));
+        }
     }
 
     #[test]

@@ -26,7 +26,7 @@ O Graphite abre no **Editor**. Clique no botão de modo na barra de título. Ele
 
 Use **Abrir Arquivo** ou a abertura rápida no Modo IA para mostrar um arquivo editável ao lado do Chat. Em janelas estreitas, os painéis ficam empilhados. O arquivo usa o mesmo documento e histórico de desfazer do Modo Editor. **Fechar painel** devolve o espaço ao Chat e mantém o arquivo e as alterações não salvas disponíveis no Editor. Ao voltar, o Editor restaura a aba ativa e sua vista.
 
-O terminal integrado começa recolhido ao entrar no Modo IA. Use **Alternar Terminal** para abri-lo. As sessões de terminal continuam durante a troca.
+O terminal integrado começa recolhido na primeira vez que você entra no Modo IA. Use **Alternar Terminal** para abri-lo. As sessões de terminal continuam durante a troca.
 
 ## Superfícies e Navegação
 
@@ -53,6 +53,8 @@ No compositor, escolha **Arquivo**, **Seleção** ou **Diagnósticos** para anex
 ## Revisar propostas de alteração
 
 Use **Revisar arquivos** no painel Chat para abrir o diff de uma proposta. **Aplicar** grava a versão exibida no disco e atualiza o editor. **Descartar** remove a proposta da fila. Use **Aplicar tudo** para aplicar individualmente as propostas da lista. O resultado mostra quais arquivos foram aplicados e quais ainda requerem atenção.
+
+No Modo IA, selecione uma linha do diff e escolha **Abrir trecho no Editor**. Sem uma linha selecionada, a ação abre a alteração atual. Arquivos novos podem ser abertos depois de aplicar a proposta. Use **Voltar à revisão** no topo do Editor ou na paleta de comandos para voltar à conversa e à posição no diff. Alterações não salvas permanecem no buffer compartilhado e podem gerar conflito com a proposta.
 
 O Graphite confere o workspace original, o conteúdo em disco e o editor antes de gravar. Um arquivo que mudou, está em somente leitura, está sendo salvo ou tem alterações não salvas continua pendente. Use **Parar** para cancelar o turno e manter as propostas já recebidas. Reabra a conversa no workspace original para retomar a revisão.
 

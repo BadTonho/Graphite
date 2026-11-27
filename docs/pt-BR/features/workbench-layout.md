@@ -2,6 +2,10 @@
 
 A janela é feita de quatro blocos que se encaixam sem se sobrepor: a barra lateral primária, a coluna do editor (os grupos do editor com o painel embaixo) e a barra lateral secundária. A barra de atividades fica ao lado deles. Mudar o tamanho de um bloco faz os vizinhos acompanharem.
 
+## Modo IA
+
+O Chat e o progresso da tarefa ocupam a área principal. Durante a revisão de uma proposta, o diff usa cerca de dois terços de uma janela larga e o Chat ocupa o terço restante. Em uma janela estreita, use as abas **Chat** e **Revisão**. O terminal integrado abre sob demanda abaixo da área principal.
+
 ## A coluna do editor
 
 Os grupos do editor e o painel dividem uma só coluna. As bordas esquerda e direita dela são definidas uma única vez (`editor_column` em `app/window/layout.rs`) e todo mundo lê esses valores: os grupos do editor, o painel (terminal, problemas, console de depuração e semelhantes), a contagem de colunas do terminal e a rotina principal de desenho. O painel nunca passa por baixo de uma barra lateral, em qualquer lado em que a barra primária esteja, no modo zen e com o painel posicionado à direita do editor. Um painel alinhado fica alinhado dentro da coluna.

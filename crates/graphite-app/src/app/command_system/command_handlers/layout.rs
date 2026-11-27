@@ -14,6 +14,32 @@ pub(super) fn register(registry: &mut CommandRegistry) {
     );
     add(
         registry,
+        "graphite.diff.openHunkInEditor",
+        "Open Hunk in Editor",
+        "Chat",
+        ALL,
+        "canOpenReviewHunk",
+        None,
+        |app, _| {
+            app.open_review_hunk_in_editor();
+            Ok(())
+        },
+    );
+    add(
+        registry,
+        "graphite.workbench.returnToReview",
+        "Return to Review",
+        "Chat",
+        ALL,
+        "canReturnToReview",
+        None,
+        |app, _| {
+            app.toggle_workbench_mode();
+            Ok(())
+        },
+    );
+    add(
+        registry,
         "graphite.layout.customize",
         "Customize Layout...",
         "Workbench",

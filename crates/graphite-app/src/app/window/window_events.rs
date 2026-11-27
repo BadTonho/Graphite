@@ -675,10 +675,13 @@ impl ApplicationHandler<UserEvent> for App {
                 if self.chat_review_open() || (self.ai_mode.is_some() && self.diff_view.is_some()) {
                     let within_diff = self.gpu.as_ref().is_some_and(|gpu| {
                         let (width, height) = gpu.renderer.size();
-                        let (x, y, w, h) =
-                            self.diff_area(width, height, gpu.renderer.line_height());
-                        let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
-                        mx >= x && mx < x + w && my >= y && my < y + h
+                        self.diff_contains_point(
+                            width,
+                            height,
+                            gpu.renderer.line_height(),
+                            self.mouse.x as f32,
+                            self.mouse.y as f32,
+                        )
                     });
                     if within_diff {
                         self.scroll_diff(lines.round() as isize);

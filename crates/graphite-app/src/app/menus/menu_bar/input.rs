@@ -45,6 +45,15 @@ impl App {
         let update_button_width = self.titlebar_update_button().map_or(0.0, |btn| {
             btn.label.chars().count() as f32 * char_width + 16.0 * scale
         });
+        let return_button_width = if self.can_return_to_review() {
+            self.t("command.graphite.workbench.returnToReview")
+                .chars()
+                .count() as f32
+                * char_width
+                + 16.0 * scale
+        } else {
+            0.0
+        };
         TitlebarLayout::new(
             width,
             self.top_menu_height(),
@@ -52,6 +61,7 @@ impl App {
             scale,
             localized_widths,
             update_button_width,
+            return_button_width,
         )
     }
 
@@ -155,7 +165,9 @@ impl App {
             self.click_titlebar_update_button();
             return true;
         }
-        if self.click_mode_button(layout.mode_button, x, y) {
+        if self.click_return_button(&layout, x, y)
+            || self.click_mode_button(layout.mode_button, x, y)
+        {
             return true;
         }
         if let Some(control) = (self.ai_mode.is_none())
@@ -175,6 +187,17 @@ impl App {
         let target = layout.controls.at(x, y);
         let Some(target) = target else { return false };
         self.titlebar_control_action(target);
+        true
+    }
+
+    fn click_return_button(&mut self, layout: &TitlebarLayout, x: f32, y: f32) -> bool {
+        if !layout
+            .return_button
+            .is_some_and(|slot| self.mode_button_rect(slot).contains(x, y))
+        {
+            return false;
+        }
+        self.run_ui_command("graphite.workbench.returnToReview");
         true
     }
 
@@ -241,7 +264,8 @@ impl App {
         };
         let layout = self.titlebar_layout(width, char_width);
         if self.zen_mode && self.ai_mode.is_none() {
-            return self.click_mode_button(layout.mode_button, x, y);
+            return self.click_return_button(&layout, x, y)
+                || self.click_mode_button(layout.mode_button, x, y);
         }
         if y >= layout.height {
             return false;

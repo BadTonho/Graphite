@@ -7,16 +7,23 @@ use crate::app::{
     focus_regions::FocusRegion,
 };
 
+mod review;
+pub(crate) use review::ReviewReturn;
+
 pub(crate) struct AiMode {
     editor_view: ViewId,
     editor_focus: FocusRegion,
     editor_chat: (bool, ChatSurface),
     editor_terminal: (bool, bool),
     file_group: Option<u64>,
+    review_tab: bool,
+    selected_row: Option<usize>,
 }
 
 pub(crate) struct AiLayout {
     pub chat: GroupRect,
+    pub review: Option<GroupRect>,
+    pub review_tabs: Option<[GroupRect; 2]>,
     pub file: Option<(GroupRect, GroupRect)>,
     pub terminal: GroupRect,
 }
@@ -27,10 +34,12 @@ impl App {
             return;
         }
         if self.ai_mode.is_some() {
+            self.suspend_ai_review();
             self.close_ai_file_panel();
             let mode = self.ai_mode.take().expect("leaving AI mode");
             self.editor_groups.focus_view(mode.editor_view);
             (self.chat.visible, self.chat.surface) = mode.editor_chat;
+            self.ai_terminal_layout = (self.terminal_visible, self.terminal_problems);
             (self.terminal_visible, self.terminal_problems) = mode.editor_terminal;
             self.focus_region(
                 if self.available_focus_regions().contains(&mode.editor_focus) {
@@ -46,10 +55,12 @@ impl App {
                 editor_chat: (self.chat.visible, self.chat.surface),
                 editor_terminal: (self.terminal_visible, self.terminal_problems),
                 file_group: None,
+                review_tab: false,
+                selected_row: None,
             });
-            self.terminal_visible = false;
-            self.terminal_problems = false;
+            (self.terminal_visible, self.terminal_problems) = self.ai_terminal_layout;
             self.focus_ai_chat();
+            self.restore_ai_review();
         }
         let show_editor = self.ai_mode.is_none();
         for view in [self.webview.as_ref(), self.graphite_detail_webview.as_ref()]
@@ -98,6 +109,7 @@ impl App {
             self.editor_groups.focus_view(previous_view);
             return;
         };
+        self.finish_ai_review();
         let source = self.editor_groups.active_view().id;
         let group = if let Some(group) = self.ai_file_group() {
             self.editor_groups.focus(group);
@@ -142,8 +154,7 @@ impl App {
         let top = self.top_menu_height().min(height);
         let bottom = (height - line_height).max(top);
         let terminal_height = if self.terminal_visible {
-            terminal_panel_height_with_delta(height, self.view_preferences.panel_height_delta)
-                .min((bottom - top) * 0.45)
+            terminal_panel_height_with_delta(height, 0).min((bottom - top) * 0.45)
         } else {
             0.0
         };
@@ -161,27 +172,63 @@ impl App {
             width,
             height: terminal.y - top,
         };
-        let file = self.ai_file_group().map(|id| {
-            let mut panel = GroupRect { id, ..chat };
-            if width >= 720.0 * self.sidebar_scale_factor {
-                chat.width = (width * 0.48).floor();
+        let mut review_tabs = None;
+        let mut review = None;
+        let wide = width >= 720.0 * self.sidebar_scale_factor;
+        if self.chat_review_open() {
+            let mut panel = chat;
+            if wide {
+                chat.width = (width / 3.0).floor();
                 panel.x = chat.width;
                 panel.width -= chat.width;
+                review = Some(panel);
             } else {
-                chat.height = (chat.height * 0.55).floor();
-                panel.y += chat.height;
-                panel.height -= chat.height;
+                let tab_height = (line_height * 1.5).min(chat.height);
+                let first = GroupRect {
+                    width: (width / 2.0).floor(),
+                    height: tab_height,
+                    ..chat
+                };
+                let second = GroupRect {
+                    x: first.width,
+                    width: width - first.width,
+                    ..first
+                };
+                review_tabs = Some([first, second]);
+                chat.y += tab_height;
+                chat.height -= tab_height;
+                if self.ai_review_tab_selected() {
+                    review = Some(chat);
+                    chat.height = 0.0;
+                }
             }
-            let header = GroupRect {
-                height: (line_height * 1.5).min(panel.height),
-                ..panel
-            };
-            panel.y += header.height;
-            panel.height -= header.height;
-            (header, panel)
-        });
+        }
+        let file = self
+            .ai_file_group()
+            .filter(|_| !self.chat_review_open())
+            .map(|id| {
+                let mut panel = GroupRect { id, ..chat };
+                if wide {
+                    chat.width = (width * 0.48).floor();
+                    panel.x = chat.width;
+                    panel.width -= chat.width;
+                } else {
+                    chat.height = (chat.height * 0.55).floor();
+                    panel.y += chat.height;
+                    panel.height -= chat.height;
+                }
+                let header = GroupRect {
+                    height: (line_height * 1.5).min(panel.height),
+                    ..panel
+                };
+                panel.y += header.height;
+                panel.height -= header.height;
+                (header, panel)
+            });
         AiLayout {
             chat,
+            review,
+            review_tabs,
             file,
             terminal,
         }

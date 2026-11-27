@@ -24,6 +24,34 @@ impl App {
                 self.run_ui_command("graphite.workbench.toggleMode");
                 return;
             }
+            super::accessibility::AI_RETURN_REVIEW_NODE
+                if self.can_return_to_review() && request.action == Action::Click =>
+            {
+                self.run_ui_command("graphite.workbench.returnToReview");
+                return;
+            }
+            super::accessibility::AI_OPEN_HUNK_NODE
+                if self.can_open_review_hunk() && request.action == Action::Click =>
+            {
+                self.run_ui_command("graphite.diff.openHunkInEditor");
+                return;
+            }
+            super::accessibility::AI_CHAT_TAB_NODE
+                if self.ai_mode.is_some()
+                    && self.chat_review_open()
+                    && request.action == Action::Click =>
+            {
+                self.focus_ai_chat();
+                return;
+            }
+            super::accessibility::AI_REVIEW_NODE | super::accessibility::AI_REVIEW_TAB_NODE
+                if self.ai_mode.is_some()
+                    && self.chat_review_open()
+                    && matches!(request.action, Action::Click | Action::Focus) =>
+            {
+                self.focus_region(super::focus_regions::FocusRegion::Review);
+                return;
+            }
             super::accessibility::AI_CHAT_NODE
                 if self.ai_mode.is_some() && request.action == Action::Focus =>
             {

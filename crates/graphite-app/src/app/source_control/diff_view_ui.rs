@@ -65,10 +65,53 @@ fn review_buttons(area: Rect, lh: f32, cw: f32, apply: &str, discard: &str) -> (
 }
 
 impl App {
+    fn ai_hunk_button(&self, area: Rect, lh: f32) -> Option<Rect> {
+        (self.ai_mode.is_some() && self.chat_review_open()).then(|| {
+            let header = diff_header_height(lh);
+            (
+                area.0 + PAD,
+                area.1 + header * 2.0,
+                (area.2 - PAD * 2.0).max(0.0),
+                header,
+            )
+        })
+    }
+
+    fn diff_titles_y(&self, area: Rect, lh: f32) -> f32 {
+        let count = 1
+            + usize::from(self.chat_review_open())
+            + usize::from(self.ai_hunk_button(area, lh).is_some());
+        area.1 + diff_header_height(lh) * count as f32
+    }
+
+    fn diff_visible_row_count(&self, area: Rect, lh: f32) -> usize {
+        let rows_top = self.diff_titles_y(area, lh) + lh * 1.2;
+        ((area.1 + area.3 - rows_top) / lh).floor().max(0.0) as usize
+    }
+
+    pub(crate) fn diff_contains_point(
+        &self,
+        width: f32,
+        height: f32,
+        lh: f32,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        inside(self.diff_area(width, height, lh), x, y)
+    }
+
     /// The editor area the diff view occupies: right of the activity bar and sidebar, below the
     /// menu bar and above the status bar.
     pub(crate) fn diff_area(&self, width: f32, height: f32, line_height: f32) -> Rect {
         let top = self.top_menu_height();
+        if self.ai_mode.is_some() && self.chat_review_open() {
+            return self
+                .ai_layout(width, height, line_height)
+                .review
+                .map_or((0.0, 0.0, 0.0, 0.0), |area| {
+                    (area.x, area.y, area.width, area.height)
+                });
+        }
         if self.chat_review_open() || self.ai_mode.is_some() {
             let (left, right) = if self.ai_mode.is_some() {
                 (0.0, width)
@@ -126,6 +169,16 @@ impl App {
         let area = self.diff_area(width, height, line_height);
         if inside(area, mx, my) {
             if self.chat_review_open() {
+                if self.ai_mode.is_some() {
+                    self.focus_region(crate::app::focus_regions::FocusRegion::Review);
+                }
+                if self
+                    .ai_hunk_button(area, line_height)
+                    .is_some_and(|rect| inside(rect, mx, my))
+                {
+                    self.open_review_hunk_in_editor();
+                    return true;
+                }
                 let (apply, discard) = review_buttons(
                     area,
                     line_height,
@@ -146,12 +199,32 @@ impl App {
             match diff_header_hit(area, line_height, char_width, label_chars, mx, my) {
                 DiffHeaderHit::Close => self.close_diff_view(),
                 DiffHeaderHit::ToggleLayout => self.run_ui_command("graphite.diff.toggleLayout"),
-                DiffHeaderHit::None => {}
+                DiffHeaderHit::None => {
+                    if self.ai_mode.is_some() && self.chat_review_open() {
+                        let rows_top = self.diff_titles_y(area, line_height) + line_height * 1.2;
+                        let slot = ((my - rows_top) / line_height).floor();
+                        if slot >= 0.0
+                            && (slot as usize) < self.diff_visible_row_count(area, line_height)
+                        {
+                            if let Some(diff) = &self.diff_view {
+                                let first = self.diff_scroll.min(self.diff_max_scroll());
+                                let row = self.diff_model().row_at_slot(
+                                    first + slot as usize,
+                                    diff.inline,
+                                    diff.collapse_unchanged,
+                                );
+                                self.select_review_row(row);
+                            }
+                        }
+                    }
+                }
             }
             return true;
         }
         // Using the sidebar means leaving the comparison; the click is then handled normally.
-        if self.primary_sidebar_contains(mx, my, width, height, line_height) {
+        if self.ai_mode.is_none()
+            && self.primary_sidebar_contains(mx, my, width, height, line_height)
+        {
             self.close_diff_view();
         }
         false
@@ -208,17 +281,8 @@ impl App {
             return;
         };
         let model = self.diff_model();
-        let position = if diff.inline {
-            // Inline lists a modified row as two lines; count what comes before the row.
-            let before = &model.rows[..row.min(model.rows.len())];
-            before
-                .iter()
-                .map(|r| if r.kind == RowKind::Modified { 2 } else { 1 })
-                .sum::<usize>()
-        } else {
-            let items = model.items(diff.collapse_unchanged);
-            model.item_index_of_row(&items, row)
-        };
+        let items = model.items(diff.collapse_unchanged);
+        let position = model.slot_for_row(&items, row, diff.inline);
         let max = self.diff_max_scroll();
         self.diff_scroll = position.saturating_sub(2).min(max);
     }
@@ -235,6 +299,10 @@ impl App {
         };
         let cw = renderer.char_width();
         let (x, y, w, h) = self.diff_area(width, height, line_height);
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        renderer.set_clip(Some([x, y, x + w, y + h]));
         let bg = rgb(Theme::color(Theme::BG, 0xffffff));
         let text = rgb(Theme::color(Theme::TEXT, 0x1e1e1e));
         let dim = rgb(Theme::color(Theme::DIM, 0x616161));
@@ -288,13 +356,13 @@ impl App {
             text,
         );
 
-        let mut titles_y = y + header;
+        let titles_y = self.diff_titles_y((x, y, w, h), line_height);
         if self.chat_review_open() {
-            renderer.draw_rect(x, titles_y, w, header, header_bg);
+            renderer.draw_rect(x, y + header, w, header, header_bg);
             let labels = [self.t("chat.review.apply"), self.t("chat.review.discard")];
             let (apply, discard) =
                 review_buttons((x, y, w, h), line_height, cw, labels[0], labels[1]);
-            let row_y = titles_y + (header - line_height) * 0.5;
+            let row_y = y + header + (header - line_height) * 0.5;
             for (rect, label) in [apply, discard].into_iter().zip(labels) {
                 renderer.draw_rect(rect.0, rect.1 + 2.0, rect.2, rect.3 - 4.0, button_bg);
                 renderer.draw_text(
@@ -313,7 +381,24 @@ impl App {
                     text,
                 );
             }
-            titles_y += header;
+        }
+        if let Some(rect) = self.ai_hunk_button((x, y, w, h), line_height) {
+            let enabled = self.can_open_review_hunk();
+            let label = self.t(if enabled {
+                "command.graphite.diff.openHunkInEditor"
+            } else {
+                "workbench.review.new_file"
+            });
+            renderer.draw_rect(x, rect.1, w, header, header_bg);
+            if enabled {
+                renderer.draw_rect(rect.0, rect.1 + 2.0, rect.2, rect.3 - 4.0, button_bg);
+            }
+            renderer.draw_text(
+                &Self::help_menu_visible_label(label, cw, (rect.2 - PAD * 2.0).max(0.0)),
+                rect.0 + PAD,
+                rect.1 + (header - line_height) * 0.5,
+                if enabled { text } else { dim },
+            );
         }
         let pane_width = w / 2.0;
         renderer.draw_rect(x, titles_y, w, line_height * 1.2, bg);
@@ -340,7 +425,7 @@ impl App {
         }
 
         let rows_top = titles_y + line_height * 1.2;
-        let visible = (((y + h) - rows_top) / line_height).floor().max(0.0) as usize;
+        let visible = self.diff_visible_row_count((x, y, w, h), line_height);
         self.diff_visible_rows.set(visible);
 
         if !model.has_changes() {
@@ -350,6 +435,7 @@ impl App {
                 rows_top + line_height,
                 dim,
             );
+            renderer.set_clip(None);
             return;
         }
 
@@ -366,6 +452,21 @@ impl App {
         let gutter = (digits as f32 + 1.0) * cw + 6.0;
         let sign_w = cw + 4.0;
         let first = self.diff_scroll.min(self.diff_max_scroll());
+        let selected = self.selected_review_row().map(|row| {
+            let items = model.items(diff.collapse_unchanged);
+            let start = model.slot_for_row(&items, row, diff.inline);
+            let lines = if diff.inline
+                && model
+                    .rows
+                    .get(row)
+                    .is_some_and(|row| row.kind == RowKind::Modified)
+            {
+                2
+            } else {
+                1
+            };
+            start..start + lines
+        });
         let mut painter = DiffPainter {
             renderer,
             cw,
@@ -433,10 +534,24 @@ impl App {
                 x + pane_width - 0.5,
                 rows_top,
                 1.0,
-                h - (rows_top - y),
+                (h - (rows_top - y)).max(0.0),
                 header_bg,
             );
         }
+        if let Some(range) = selected {
+            let start = range.start.max(first);
+            let end = range.end.min(first + visible);
+            if start < end {
+                painter.renderer.draw_rect(
+                    x,
+                    rows_top + (start - first) as f32 * line_height,
+                    2.0,
+                    (end - start) as f32 * line_height,
+                    rgb(Theme::color(Theme::STATUS, 0x007acc)),
+                );
+            }
+        }
+        painter.renderer.set_clip(None);
     }
 }
 

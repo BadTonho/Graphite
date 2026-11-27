@@ -528,6 +528,7 @@ fn diff_switch_side(app: &mut App, _: &CommandInvocation) -> Result<(), CommandE
         std::mem::swap(&mut diff.left_name, &mut diff.right_name);
         std::mem::swap(&mut diff.left, &mut diff.right);
     }
+    app.select_review_row(None);
     Ok(())
 }
 fn diff_collapse_unchanged(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
@@ -579,6 +580,7 @@ fn diff_step_change(app: &mut App, forward: bool) {
     if let Some(diff) = &mut app.diff_view {
         diff.selected_change = next;
     }
+    app.select_review_row(None);
     app.scroll_diff_to_row(next);
 }
 fn terminal_new(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {

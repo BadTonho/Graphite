@@ -3,7 +3,8 @@ use super::*;
 impl App {
     pub(crate) fn ime_preedit(&mut self, text: String) {
         if self.plugin_owns_keyboard()
-            || (self.ai_mode.is_some() && (self.ai_file_group().is_none() || self.chat.focused))
+            || (self.ai_mode.is_some()
+                && (self.ai_file_group().is_none() || self.chat_review_open() || self.chat.focused))
         {
             return;
         }
@@ -41,7 +42,9 @@ impl App {
             query.push_str(text);
         } else if self.ai_mode.is_some() && self.chat.focused {
             self.chat.input.push_str(text);
-        } else if self.ai_mode.is_none() || self.ai_file_group().is_some() {
+        } else if self.ai_mode.is_none()
+            || (self.ai_file_group().is_some() && !self.chat_review_open())
+        {
             let before = self.editor_state();
             self.editor_mut().insert(text);
             if before != self.editor_state() {

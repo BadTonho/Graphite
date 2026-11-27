@@ -2,6 +2,10 @@
 
 The window is made of four blocks that tile without overlapping: the primary side bar, the editor column (the editor groups with the panel below them), and the secondary side bar. The activity bar sits beside them. Changing the size of one block makes its neighbours follow.
 
+## AI mode
+
+Chat and task progress fill the main area. During proposal review, the diff uses about two thirds of a wide window and Chat uses the remaining third. In a narrow window, use the **Chat** and **Review** tabs. The integrated terminal opens below the main area on demand.
+
 ## The editor column
 
 The editor groups and the panel share one column. Its left and right edges are defined once (`editor_column` in `app/window/layout.rs`) and every consumer reads them: the editor groups, the panel (terminal, problems, debug console and the like), the terminal's column count and the main draw routine. The panel never runs under a side bar, whichever side the primary side bar is on, in zen mode, and with a panel placed to the right of the editor. An aligned panel is aligned within the column.
