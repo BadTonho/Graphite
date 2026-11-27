@@ -939,5 +939,6 @@
   "command.workbench.action.editor.changeEncoding": "Change File Encoding",
   "command.workbench.action.previewColorTheme": "Preview Color Theme",
   "command.workbench.action.tryNewDefaultThemes": "Try New Default Themes",
-  "command.graphite.workbench.toggleMode": "Toggle Editor / AI Mode"
+  "command.graphite.workbench.toggleMode": "Toggle Editor / AI Mode",
+  "command.graphite.chat.continueTask": "Continue Chat Task"
 }

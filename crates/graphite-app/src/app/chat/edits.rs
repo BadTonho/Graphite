@@ -116,8 +116,17 @@ impl App {
 
     pub(crate) fn discard_all_chat_edits(&mut self) -> usize {
         if !self.chat.active_session().proposals.is_empty() {
-            let count = self.chat.active_session().proposals.len();
-            self.chat.active_session_mut().proposals.clear();
+            let ids: Vec<_> = self
+                .chat
+                .active_session()
+                .proposals
+                .iter()
+                .map(|proposal| proposal.id)
+                .collect();
+            let count = ids.len();
+            for id in ids {
+                self.chat.active_session_mut().discard_proposal(id);
+            }
             self.persist_chat_review();
             self.status = self.tf("chat.review.discarded_many", &[("count", &count)]);
             return count;
@@ -245,7 +254,30 @@ mod tests {
         assert_eq!(session.proposals.len(), 2);
         assert!(session.proposals.iter().all(|entry| entry.issue.is_some()));
         assert_eq!(session.checkpoints.len(), 1);
+        let activity = &session.turns[0].files;
+        assert_eq!(
+            activity
+                .iter()
+                .filter(|entry| entry.status == graphite_chat::FileActivityStatus::Conflict)
+                .count(),
+            2
+        );
+        assert_eq!(
+            activity
+                .iter()
+                .filter(|entry| entry.status == graphite_chat::FileActivityStatus::Applied)
+                .count(),
+            1
+        );
         assert_eq!(turn.app.discard_all_chat_edits(), 2);
+        assert_eq!(
+            turn.app.chat.active_session().turns[0]
+                .files
+                .iter()
+                .filter(|entry| entry.status == graphite_chat::FileActivityStatus::Discarded)
+                .count(),
+            2
+        );
         assert_eq!(turn.app.editor().text(), "typed original");
     }
 

@@ -218,7 +218,18 @@ impl App {
                 );
             }
         } else {
-            self.draw_chat_messages(r, layout.body, lh, cw, read_only);
+            let (continuation, body) = self.chat_task_layout(layout.body, lh);
+            if let Some(button) = continuation {
+                draw_control(
+                    r,
+                    button,
+                    self.t("chat.task.continue"),
+                    lh,
+                    cw,
+                    ControlStyle::Primary,
+                );
+            }
+            self.draw_chat_messages(r, body, lh, cw, read_only);
         }
         if let (Some((title, buttons)), Some((pending, _))) =
             (layout.approval, &self.chat.pending_approval)
@@ -381,6 +392,9 @@ impl App {
                     error_color(),
                 )),
                 TurnStatus::Cancelled => Some((self.t("chat.cancelled").to_owned(), muted())),
+                TurnStatus::Interrupted => {
+                    Some((self.t("chat.task.interrupted").to_owned(), muted()))
+                }
                 TurnStatus::Done
                     if self.chat.show_context_usage
                         && (turn.usage.input_tokens > 0 || turn.usage.output_tokens > 0) =>
@@ -395,6 +409,9 @@ impl App {
                         muted(),
                     ))
                 }
+                TurnStatus::Done if !turn.commands.is_empty() || !turn.files.is_empty() => {
+                    Some((self.t("chat.task.completed").to_owned(), muted()))
+                }
                 TurnStatus::Done => None,
             };
             if let Some((status, color)) = status {
@@ -403,6 +420,17 @@ impl App {
                         .into_iter()
                         .map(|line| (line, color, false)),
                 );
+            }
+            let activity = self.chat_task_activity(turn, true);
+            if !activity.is_empty() {
+                lines.push((self.t("chat.task.activity").into(), accent_text(), false));
+                for entry in activity {
+                    lines.extend(
+                        wrap_text(&entry, capacity)
+                            .into_iter()
+                            .map(|line| (line, muted(), false)),
+                    );
+                }
             }
             lines.push((String::new(), muted(), false));
         }

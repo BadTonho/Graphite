@@ -112,6 +112,10 @@ pub enum AgentTurnEvent {
         input: Value,
     },
     ApprovalRequested(PendingToolApproval),
+    CommandUpdate {
+        id: String,
+        status: crate::CommandStatus,
+    },
     ToolResult {
         id: String,
         name: String,
@@ -312,6 +316,23 @@ pub fn run_turn_with_tools(
                 emit(AgentTurnEvent::Cancelled);
                 return;
             }
+            if approved
+                && name == crate::TOOL_RUN_COMMAND
+                && mode == AgentMode::Agent
+                && input
+                    .get("command")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+            {
+                emit(AgentTurnEvent::CommandUpdate {
+                    id: id.clone(),
+                    status: crate::CommandStatus::Started,
+                });
+                if cancel.load(Ordering::Relaxed) {
+                    emit(AgentTurnEvent::Cancelled);
+                    return;
+                }
+            }
             let outcome = if approved {
                 if let Some(custom_result) = run_extra_tool(&name, &input) {
                     match custom_result {
@@ -319,11 +340,13 @@ pub fn run_turn_with_tools(
                             content,
                             is_error: false,
                             proposed_edit: None,
+                            command_status: None,
                         },
                         Err(content) => crate::tools::ToolExecutionResult {
                             content,
                             is_error: true,
                             proposed_edit: None,
+                            command_status: None,
                         },
                     }
                 } else {
@@ -334,9 +357,23 @@ pub fn run_turn_with_tools(
                     content: "Tool call denied by user.".into(),
                     is_error: true,
                     proposed_edit: None,
+                    command_status: None,
                 }
             };
 
+            if name == crate::TOOL_RUN_COMMAND {
+                let status = if approved {
+                    outcome
+                        .command_status
+                        .unwrap_or(crate::CommandStatus::Unknown)
+                } else {
+                    crate::CommandStatus::Denied
+                };
+                emit(AgentTurnEvent::CommandUpdate {
+                    id: id.clone(),
+                    status,
+                });
+            }
             emit(AgentTurnEvent::ToolResult {
                 id: id.clone(),
                 name: name.clone(),
@@ -399,6 +436,56 @@ mod tests {
         fn run(&self, _cwd: &Path, _command: &str) -> Result<String, String> {
             Ok(String::new())
         }
+    }
+
+    #[test]
+    fn denied_command_reports_denial_without_starting_the_runner() {
+        struct UnreachableRunner;
+        impl CommandRunner for UnreachableRunner {
+            fn run(&self, _cwd: &Path, _command: &str) -> Result<String, String> {
+                panic!("a denied command must never run");
+            }
+        }
+        let mut streamer = FakeStreamer {
+            rounds: VecDeque::from([vec![
+                StreamEvent::ToolUse {
+                    id: "cmd".into(),
+                    name: crate::TOOL_RUN_COMMAND.into(),
+                    input: json!({"command":"echo fixture"}),
+                },
+                StreamEvent::Finished {
+                    stop: StopReason::ToolUse,
+                    usage: Usage::default(),
+                },
+            ]]),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let context = ChatContext {
+            workspace_root: dir.path().into(),
+            ..Default::default()
+        };
+        let config = ProviderConfig::default_for(ProviderKind::OpenAiCompatible);
+        let mut events = Vec::new();
+        run_turn(
+            &config,
+            AgentMode::Agent,
+            &context,
+            &[Message::user("check")],
+            &mut ToolApprovalPolicy::default(),
+            &AtomicBool::new(false),
+            &mut streamer,
+            &UnreachableRunner,
+            |_| ApprovalDecision::Deny,
+            |event| events.push(event),
+        );
+        let statuses = events
+            .iter()
+            .filter_map(|event| match event {
+                AgentTurnEvent::CommandUpdate { status, .. } => Some(*status),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(statuses, [crate::CommandStatus::Denied]);
     }
 
     #[test]

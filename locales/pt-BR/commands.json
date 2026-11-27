@@ -939,5 +939,6 @@
   "command.workbench.action.editor.changeEncoding": "Alterar Codificação do Arquivo",
   "command.workbench.action.previewColorTheme": "Pré-visualizar Tema de Cores",
   "command.workbench.action.tryNewDefaultThemes": "Experimentar Novos Temas Padrão",
-  "command.graphite.workbench.toggleMode": "Alternar entre Editor e IA"
+  "command.graphite.workbench.toggleMode": "Alternar entre Editor e IA",
+  "command.graphite.chat.continueTask": "Continuar tarefa do Chat"
 }

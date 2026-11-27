@@ -19,15 +19,17 @@ pub use agent::{
     build_system_prompt, run_turn, run_turn_with_tools, write_proposed_edit, ActiveFileContext,
     AgentTurnEvent, ChatContext, FileAttachment, HttpModelStreamer, ModelStreamer,
 };
-pub use command::{SystemCommandRunner, DEFAULT_COMMAND_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES};
+pub use command::{
+    CommandStatus, SystemCommandRunner, DEFAULT_COMMAND_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES,
+};
 pub use message::{
     Block, ChatError, Message, Request, Role, StopReason, StreamEvent, ToolSpec, Usage,
 };
 pub use provider::{stream, ProviderConfig, ProviderKind};
 pub use session::{
     extract_code_blocks, AgentLogEntry, AgentMode, ChatSession, ChatTurn, Checkpoint,
-    CheckpointEntry, CodeBlock, EditReviewStatus, FileProposal, PendingFileEdit, ReviewedFile,
-    TurnStatus, UsageSummary,
+    CheckpointEntry, CodeBlock, CommandActivity, EditReviewStatus, FileActivity,
+    FileActivityStatus, FileProposal, PendingFileEdit, ReviewedFile, TurnStatus, UsageSummary,
 };
 pub use sse::{SseEvent, SseOverflow, SseParser, MAX_SSE_EVENT_BYTES};
 pub use store::{

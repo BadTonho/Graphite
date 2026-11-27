@@ -1,5 +1,6 @@
 //! Workspace tools, path safety, approval policies, and execution outcomes.
 
+use crate::command::CommandStatus;
 use crate::message::ToolSpec;
 use crate::session::AgentMode;
 use serde::{Deserialize, Serialize};
@@ -167,11 +168,20 @@ pub struct ToolExecutionResult {
     pub content: String,
     pub is_error: bool,
     pub proposed_edit: Option<ProposedEdit>,
+    pub command_status: Option<CommandStatus>,
 }
 
 /// Pluggable shell/command runner so `run_command` can be tested deterministically.
 pub trait CommandRunner: Send + Sync {
     fn run(&self, cwd: &Path, command: &str) -> Result<String, String>;
+
+    fn run_with_status(
+        &self,
+        cwd: &Path,
+        command: &str,
+    ) -> (Result<String, String>, CommandStatus) {
+        (self.run(cwd, command), CommandStatus::Unknown)
+    }
 }
 
 /// Returns the tool definitions allowed for `mode`.
@@ -353,6 +363,7 @@ pub fn execute_tool(
                     content: "Editing is disabled in Ask mode.".into(),
                     is_error: true,
                     proposed_edit: None,
+                    command_status: None,
                 };
             }
             run_propose_edit(workspace_root, input)
@@ -363,6 +374,7 @@ pub fn execute_tool(
                     content: "Running commands is only enabled in Agent mode.".into(),
                     is_error: true,
                     proposed_edit: None,
+                    command_status: None,
                 };
             }
             let Some(cmd) = input.get("command").and_then(Value::as_str) else {
@@ -370,18 +382,22 @@ pub fn execute_tool(
                     content: "Missing 'command' string".into(),
                     is_error: true,
                     proposed_edit: None,
+                    command_status: None,
                 };
             };
-            match runner.run(workspace_root, cmd) {
+            let (result, status) = runner.run_with_status(workspace_root, cmd);
+            match result {
                 Ok(out) => ToolExecutionResult {
                     content: out,
                     is_error: false,
                     proposed_edit: None,
+                    command_status: Some(status),
                 },
                 Err(err) => ToolExecutionResult {
                     content: err,
                     is_error: true,
                     proposed_edit: None,
+                    command_status: Some(status),
                 },
             }
         }
@@ -389,6 +405,7 @@ pub fn execute_tool(
             content: format!("Unknown tool: {other}"),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         },
     }
 }
@@ -399,6 +416,7 @@ fn run_read_file(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
             content: "Missing 'path' string".into(),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         };
     };
     let path = match resolve_workspace_path(workspace_root, raw) {
@@ -408,6 +426,7 @@ fn run_read_file(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
                 content: err,
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -418,6 +437,7 @@ fn run_read_file(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
                 content: format!("Failed to read {}: {err}", path.display()),
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -451,6 +471,7 @@ fn run_read_file(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
         content: out,
         is_error: false,
         proposed_edit: None,
+        command_status: None,
     }
 }
 
@@ -463,6 +484,7 @@ fn run_list_files(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
                 content: err,
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -473,6 +495,7 @@ fn run_list_files(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
                 content: format!("Failed to list {}: {err}", dir.display()),
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -495,6 +518,7 @@ fn run_list_files(workspace_root: &Path, input: &Value) -> ToolExecutionResult {
         content: names.join("\n"),
         is_error: false,
         proposed_edit: None,
+        command_status: None,
     }
 }
 
@@ -504,6 +528,7 @@ fn run_search_workspace(workspace_root: &Path, input: &Value) -> ToolExecutionRe
             content: "Missing 'query' string".into(),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         };
     };
     if query.is_empty() {
@@ -511,6 +536,7 @@ fn run_search_workspace(workspace_root: &Path, input: &Value) -> ToolExecutionRe
             content: "Search query must not be empty".into(),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         };
     }
     let root = workspace_root
@@ -527,6 +553,7 @@ fn run_search_workspace(workspace_root: &Path, input: &Value) -> ToolExecutionRe
         content,
         is_error: false,
         proposed_edit: None,
+        command_status: None,
     }
 }
 
@@ -592,6 +619,7 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
             content: "Missing 'path' string".into(),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         };
     };
     let Some(after) = input.get("content").and_then(Value::as_str) else {
@@ -599,6 +627,7 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
             content: "Missing 'content' string".into(),
             is_error: true,
             proposed_edit: None,
+            command_status: None,
         };
     };
     let path = match resolve_workspace_path(workspace_root, raw) {
@@ -608,6 +637,7 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
                 content: err,
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -619,6 +649,7 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
                 content: format!("Could not read the proposed edit target: {error}"),
                 is_error: true,
                 proposed_edit: None,
+                command_status: None,
             }
         }
     };
@@ -630,6 +661,7 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
     ToolExecutionResult {
         content: format!("{action} for {} ({} bytes)", path.display(), after.len()),
         is_error: false,
+        command_status: None,
         proposed_edit: Some(ProposedEdit {
             path,
             before,

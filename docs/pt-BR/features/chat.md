@@ -58,6 +58,14 @@ O Graphite confere o workspace original, o conteúdo em disco e o editor antes d
 
 Alterações aplicadas criam pontos de verificação para desfazer e refazer. Essas ações conferem o arquivo novamente antes de gravar. A aprovação da ferramenta de proposta é separada da decisão de aplicar. Ferramentas do terminal e de plugins mantêm suas próprias regras de aprovação.
 
+## Recuperar e continuar uma tarefa
+
+Cada turno do Chat mostra os arquivos propostos, aplicados, descartados ou em conflito. Ele também registra o estado dos comandos do terminal e exibe o código de saída e a saída disponível, incluindo os resultados de comandos de teste. O resumo de arquivos cobre as mudanças acompanhadas pela revisão do Chat.
+
+Se o Graphite fechar durante um turno ativo, a conversa reaberta marca esse turno como **Interrompido**. As propostas já recebidas continuam disponíveis para revisão. Um comando do terminal cujo resultado não pôde ser salvo aparece como **Resultado não registrado**.
+
+Escolha **Continuar tarefa** no workspace original e com a conexão da conversa disponível. Isso inicia um novo turno na mesma conversa com o histórico salvo. Novas chamadas de ferramentas seguem as regras de aprovação do workspace. Ao aplicar uma proposta, a execução de testes fica a cargo do agente ou do usuário.
+
 ## Sessões, Área de Transferência e Exportação
 
 - Sessões são persistidas por perfil com suporte a fixar, arquivar, marcar como lida, alternar orientação (`lado a lado` ou `empilhado`) e filtros (`Arquivadas`, `Execuções de Automação`, `Agendadas`).

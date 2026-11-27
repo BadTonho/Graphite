@@ -157,6 +157,11 @@ fn add_files_from_references(app: &mut App, _: &CommandInvocation) -> Result<(),
     Ok(())
 }
 
+fn continue_task(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.continue_chat_task();
+    Ok(())
+}
+
 fn retry_turn(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     app.retry_last_chat_turn();
     Ok(())
@@ -416,6 +421,7 @@ fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
     imported.connection_id = None;
     imported.connection_destination = None;
     imported.opencode_session = None;
+    imported.recover_interrupted_turns();
     // Imported history may be inspected, but its saved paths carry no write authority.
     imported.proposals.clear();
     imported.pending_edits.clear();
@@ -716,6 +722,13 @@ fn inline_rephrase(app: &mut App, _: &CommandInvocation) -> Result<(), CommandEr
 
 pub(super) fn register(registry: &mut CommandRegistry) {
     let entries: &[Entry] = &[
+        (
+            "graphite.chat.continueTask",
+            "Continue Chat Task",
+            "Chat",
+            EDITOR_OR_CHAT,
+            continue_task,
+        ),
         (
             "chat.action.focus",
             "Focus Chat",

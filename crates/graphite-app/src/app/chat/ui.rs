@@ -392,6 +392,7 @@ impl App {
             let (w, h) = gpu.renderer.size();
             let lh = gpu.renderer.line_height();
             let body = self.chat_panel_layout(w, h, lh).body;
+            let (_, body) = self.chat_task_layout(body, lh);
             let capacity = super::drawing::text_capacity(body, gpu.renderer.char_width());
             let read_only = self.chat.active_connection().is_none()
                 && !self.chat.active_session().turns.is_empty();
@@ -734,6 +735,14 @@ impl App {
             if !layout.mode.contains(x, y) && !layout.context.contains(x, y) {
                 self.chat.composer_menu = None;
             }
+        }
+        if self
+            .chat_task_layout(layout.body, lh)
+            .0
+            .is_some_and(|button| button.contains(x, y))
+        {
+            self.continue_chat_task();
+            return true;
         }
         if self.chat.review_list.is_some()
             && layout.body.contains(x, y)

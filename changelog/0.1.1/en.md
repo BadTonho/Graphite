@@ -5,6 +5,7 @@
 - Choose which components to install on Windows. VSIX Plugins, Copilot SDK and Foundry Local SDK can be selected independently and are all enabled by default.
 - Switch between Editor and AI mode with one title bar button. AI mode shows Chat, opens editable files alongside the conversation, and provides an integrated terminal on demand.
 - Review file proposals from Chat before writing them to disk. Apply or discard one file at a time or process all proposals together, with conflicts reported per file.
+- Recover interrupted Chat tasks with a per-turn summary of proposed changes and recorded command results. Continue the task in the same conversation.
 
 ## Improvements
 

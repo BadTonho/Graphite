@@ -3,7 +3,7 @@
 use super::*;
 use crate::app::error_log::{self, ErrorSeverity};
 use crate::file_format::{self, DecodedFile};
-use graphite_chat::{FileProposal, ProposedEdit, ReviewedFile};
+use graphite_chat::{FileActivityStatus, FileProposal, ProposedEdit, ReviewedFile};
 
 const LOG_SOURCE: &str = "chat.review";
 
@@ -279,6 +279,11 @@ impl App {
                 true
             }
             Err(issue) => {
+                self.chat.active_session_mut().record_file_status(
+                    proposal.turn_id,
+                    &proposal.path,
+                    FileActivityStatus::Conflict,
+                );
                 error_log::record(ErrorSeverity::Low, LOG_SOURCE, &issue);
                 if let Some(entry) = self
                     .chat
@@ -326,10 +331,7 @@ impl App {
     }
 
     pub(crate) fn discard_chat_proposal(&mut self, id: u64) -> bool {
-        let proposals = &mut self.chat.active_session_mut().proposals;
-        let count = proposals.len();
-        proposals.retain(|proposal| proposal.id != id);
-        if proposals.len() == count {
+        if !self.chat.active_session_mut().discard_proposal(id) {
             self.status = self.t("chat.review.outdated").into();
             return false;
         }
@@ -386,6 +388,7 @@ impl App {
             self.status = self.t("chat.review.outdated").into();
             return false;
         };
+        let origin = checkpoint.turn_id;
         let entry = entry.clone();
         let restored = if let Some(reviewed) = entry.reviewed {
             let (expected, replacement) = if undo {
@@ -412,6 +415,15 @@ impl App {
             return false;
         }
         let session = self.chat.active_session_mut();
+        session.record_file_status(
+            origin,
+            &entry.path,
+            if undo {
+                FileActivityStatus::Reverted
+            } else {
+                FileActivityStatus::Applied
+            },
+        );
         if undo {
             session.undo_checkpoint();
         } else {

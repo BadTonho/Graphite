@@ -42,6 +42,40 @@ pub enum TurnStatus {
     Done,
     Error { message: String },
     Cancelled,
+    Interrupted,
+}
+
+impl TurnStatus {
+    pub fn can_continue(&self) -> bool {
+        matches!(
+            self,
+            Self::Error { .. } | Self::Cancelled | Self::Interrupted
+        )
+    }
+}
+
+/// Status of one command associated with a tool-call identifier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandActivity {
+    pub id: String,
+    pub status: crate::CommandStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileActivityStatus {
+    Proposed,
+    Applied,
+    Discarded,
+    Conflict,
+    Replaced,
+    Reverted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileActivity {
+    pub path: PathBuf,
+    pub status: FileActivityStatus,
 }
 
 /// Extracted fenced code block from an assistant reply.
@@ -64,6 +98,12 @@ pub struct ChatTurn {
     pub status: TurnStatus,
     #[serde(default)]
     pub helpful: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<CommandActivity>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<FileActivity>,
     #[serde(default)]
     pub created_at_epoch_s: u64,
 }
@@ -329,6 +369,9 @@ impl ChatSession {
             steps: Vec::new(),
             usage: UsageSummary::default(),
             status: TurnStatus::Streaming,
+            workspace: None,
+            commands: Vec::new(),
+            files: Vec::new(),
             helpful: None,
             created_at_epoch_s: now,
         });
@@ -417,7 +460,68 @@ impl ChatSession {
         turn.steps.push(Message::tool_results(vec![block]));
     }
 
+    pub fn recover_interrupted_turns(&mut self) -> bool {
+        let mut changed = false;
+        for turn in &mut self.turns {
+            if matches!(
+                turn.status,
+                TurnStatus::Streaming | TurnStatus::WaitingApproval
+            ) {
+                turn.status = TurnStatus::Interrupted;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn record_command_status(
+        &mut self,
+        turn_id: u64,
+        id: String,
+        status: crate::CommandStatus,
+    ) -> bool {
+        let Some(turn) = self.turn_mut(turn_id) else {
+            return false;
+        };
+        if let Some(command) = turn.commands.iter_mut().find(|command| command.id == id) {
+            if command.status != crate::CommandStatus::Started {
+                return false;
+            }
+            command.status = status;
+        } else {
+            turn.commands.push(CommandActivity { id, status });
+        }
+        true
+    }
+
+    pub fn record_file_status(&mut self, turn_id: u64, path: &Path, status: FileActivityStatus) {
+        if let Some(turn) = self.turn_mut(turn_id) {
+            if let Some(file) = turn.files.iter_mut().find(|file| file.path == path) {
+                file.status = status;
+            } else {
+                turn.files.push(FileActivity {
+                    path: path.to_path_buf(),
+                    status,
+                });
+            }
+        }
+    }
+
     pub fn queue_proposal(&mut self, mut proposal: FileProposal) {
+        if let Some(previous_turn) = self
+            .proposals
+            .iter()
+            .find(|entry| entry.path == proposal.path && entry.workspace == proposal.workspace)
+            .map(|entry| entry.turn_id)
+            .filter(|id| *id != proposal.turn_id)
+        {
+            self.record_file_status(previous_turn, &proposal.path, FileActivityStatus::Replaced);
+        }
+        self.record_file_status(
+            proposal.turn_id,
+            &proposal.path,
+            FileActivityStatus::Proposed,
+        );
         proposal.id = self.next_checkpoint_id;
         self.next_checkpoint_id += 1;
         if let Some(previous) = self
@@ -432,8 +536,26 @@ impl ChatSession {
         self.updated_at_epoch_s = now_epoch_s();
     }
 
+    pub fn discard_proposal(&mut self, id: u64) -> bool {
+        let Some(index) = self.proposals.iter().position(|proposal| proposal.id == id) else {
+            return false;
+        };
+        let proposal = self.proposals.remove(index);
+        self.record_file_status(
+            proposal.turn_id,
+            &proposal.path,
+            FileActivityStatus::Discarded,
+        );
+        true
+    }
+
     pub fn record_reviewed_file(&mut self, proposal: &FileProposal, reviewed: ReviewedFile) {
         self.proposals.retain(|entry| entry.id != proposal.id);
+        self.record_file_status(
+            proposal.turn_id,
+            &proposal.path,
+            FileActivityStatus::Applied,
+        );
         if reviewed.before.as_ref() != Some(&reviewed.after) {
             self.checkpoints.push(Checkpoint {
                 id: proposal.id,
@@ -574,8 +696,31 @@ impl ChatSession {
             if !turn.prompt.is_empty() {
                 out.push(Message::user(&turn.prompt));
             }
-            for step in &turn.steps {
+            let mut steps = turn.steps.iter().peekable();
+            while let Some(step) = steps.next() {
                 out.push(step.clone());
+                if step.role != Role::Assistant {
+                    continue;
+                }
+                let mut results = Vec::new();
+                if let Some(next) = steps.peek().filter(|next| next.role == Role::User) {
+                    results.clone_from(&next.blocks);
+                    steps.next();
+                }
+                for block in &step.blocks {
+                    if let Block::ToolUse { id, .. } = block {
+                        if !results.iter().any(|block| matches!(block, Block::ToolResult { id: received, .. } if received == id)) {
+                            results.push(Block::ToolResult {
+                                id: id.clone(),
+                                content: "Interrupted before a result was recorded. Execution outcome is unknown.".into(),
+                                is_error: true,
+                            });
+                        }
+                    }
+                }
+                if !results.is_empty() {
+                    out.push(Message::tool_results(results));
+                }
             }
         }
         out
@@ -664,6 +809,37 @@ impl ChatSession {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn recovered_tool_batch_retains_real_results_and_closes_missing_calls() {
+        let mut session = ChatSession::new("fixture", "Task", AgentMode::Agent);
+        let turn = session.start_turn("Run checks");
+        for id in ["ran", "missing"] {
+            session.record_tool_use(
+                turn,
+                id.into(),
+                crate::TOOL_RUN_COMMAND.into(),
+                serde_json::json!({}),
+            );
+        }
+        session.record_command_status(turn, "ran".into(), crate::CommandStatus::Exited(3));
+        session.record_tool_result(turn, "ran".into(), "a real result".into(), true);
+        assert!(session.recover_interrupted_turns());
+        let json = session.export_json().unwrap();
+        let mut restored = ChatSession::import_json(&json).unwrap();
+        assert!(!restored.recover_interrupted_turns());
+        assert_eq!(restored.turns[0].status, TurnStatus::Interrupted);
+        assert_eq!(
+            restored.turns[0].commands[0].status,
+            crate::CommandStatus::Exited(3)
+        );
+        let messages = restored.to_request_messages();
+        assert!(matches!(&messages[2].blocks[..], [
+            Block::ToolResult { id: first, content, .. },
+            Block::ToolResult { id: second, is_error: true, .. },
+        ] if first == "ran" && content == "a real result" && second == "missing"));
+        assert_eq!(restored.turns[0].steps[1].blocks.len(), 1);
+    }
 
     #[test]
     fn session_turns_code_blocks_and_export_round_trip() {

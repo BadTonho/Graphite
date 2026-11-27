@@ -139,6 +139,7 @@ pub(crate) struct ChatState {
     pub selected_code_block: usize,
     pub pending_approval: Option<(PendingToolApproval, mpsc::Sender<ApprovalDecision>)>,
     pub running_turn: Option<(String, u64, Arc<AtomicBool>)>,
+    pub(super) stopping_turns: Vec<(String, u64, Arc<AtomicBool>)>,
     pub inline_chat: Option<InlineChatState>,
     pub inline_cancel: Option<Arc<AtomicBool>>,
     pub last_copied_text: Option<String>,
@@ -180,6 +181,7 @@ impl Default for ChatState {
             selected_code_block: 0,
             pending_approval: None,
             running_turn: None,
+            stopping_turns: Vec::new(),
             inline_chat: None,
             inline_cancel: None,
             last_copied_text: None,
@@ -243,7 +245,12 @@ impl ChatState {
             }
             Err(error) => super::connection_ui::record_connection_error(error),
         }
-        let loaded = load_sessions(profile_root);
+        let mut loaded = load_sessions(profile_root);
+        for session in &mut loaded {
+            if session.recover_interrupted_turns() {
+                state.persist_session(profile_root, false, session);
+            }
+        }
         if !loaded.is_empty() {
             state.active_session_id = loaded[0].id.clone();
             state.next_session_seq = loaded

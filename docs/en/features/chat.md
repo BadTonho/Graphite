@@ -58,6 +58,14 @@ Graphite checks the original workspace, disk contents and editor before writing.
 
 Applied file changes create checkpoints for **Undo Edit** and **Redo Edit**. These actions check the file again before writing. The tool approval for proposing an edit is separate from the decision to apply it. Terminal and plugin tools retain their own approval rules.
 
+## Recover and continue a task
+
+Each Chat turn shows the files the assistant proposed or the user applied, discarded or left in conflict. It also records the status of terminal commands and displays the exit code and available output, including results from test commands. The file summary covers changes tracked through Chat review.
+
+If Graphite closes during an active turn, reopening the conversation marks that turn as **Interrupted**. Proposals already received stay available for review. A terminal command whose result could not be saved displays **No result recorded**.
+
+Choose **Continue task** in the original workspace and with the conversation's connection available. This starts a new turn in the same conversation using its saved history. New tool calls follow the workspace approval rules. Applying a proposal leaves test execution to the agent or user.
+
 ## Sessions, Clipboard, and Export
 
 - Sessions persist per profile with pinning, archiving, unread markers, orientation toggles (`side-by-side` vs `stacked`), and view filters (`Archived`, `AutomationRuns`, `Scheduled`).

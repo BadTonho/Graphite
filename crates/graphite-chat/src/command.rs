@@ -57,40 +57,84 @@ impl SystemCommandRunner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandStatus {
+    Started,
+    Denied,
+    Exited(i32),
+    TimedOut,
+    Cancelled,
+    Failed,
+    Unknown,
+}
+
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, cwd: &Path, command: &str) -> Result<String, String> {
+        self.run_with_status(cwd, command).0
+    }
+
+    fn run_with_status(
+        &self,
+        cwd: &Path,
+        command: &str,
+    ) -> (Result<String, String>, CommandStatus) {
         if self.cancelled() {
-            return Err("Command was cancelled".into());
+            return (
+                Err("Command was cancelled".into()),
+                CommandStatus::Cancelled,
+            );
         }
-        let mut child = shell(command)
+        let mut child = match shell(command)
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|error| format!("Failed to launch command: {error}"))?;
+        {
+            Ok(child) => child,
+            Err(error) => {
+                return (
+                    Err(format!("Failed to launch command: {error}")),
+                    CommandStatus::Failed,
+                )
+            }
+        };
         let stdout = Capture::start(child.stdout.take());
         let stderr = Capture::start(child.stderr.take());
 
         let deadline = Instant::now() + self.timeout;
         let ended = loop {
             match child.try_wait() {
-                Ok(Some(status)) => break Ok(status.code().unwrap_or(-1)),
+                Ok(Some(status)) => {
+                    break status.code().ok_or_else(|| {
+                        (
+                            "Command ended without an exit code".into(),
+                            CommandStatus::Failed,
+                        )
+                    })
+                }
                 Ok(None) => {}
                 Err(error) => {
                     kill_tree(&mut child);
-                    break Err(format!("Could not wait for the command: {error}"));
+                    break Err((
+                        format!("Could not wait for the command: {error}"),
+                        CommandStatus::Failed,
+                    ));
                 }
             }
             if self.cancelled() {
                 kill_tree(&mut child);
-                break Err("Command was cancelled".into());
+                break Err(("Command was cancelled".into(), CommandStatus::Cancelled));
             }
             if Instant::now() >= deadline {
                 kill_tree(&mut child);
-                break Err(format!(
-                    "Command timed out after {} s and was stopped",
-                    self.timeout.as_secs_f32()
+                break Err((
+                    format!(
+                        "Command timed out after {} s and was stopped",
+                        self.timeout.as_secs_f32()
+                    ),
+                    CommandStatus::TimedOut,
                 ));
             }
             thread::sleep(POLL_INTERVAL);
@@ -105,9 +149,9 @@ impl CommandRunner for SystemCommandRunner {
         };
         let report = format_output(code, &out, &err, out_cut || err_cut);
         match ended {
-            Ok(0) => Ok(report),
-            Ok(_) => Err(report),
-            Err(reason) => Err(format!("{reason}\n{report}")),
+            Ok(0) => (Ok(report), CommandStatus::Exited(0)),
+            Ok(code) => (Err(report), CommandStatus::Exited(code)),
+            Err((reason, status)) => (Err(format!("{reason}\n{report}")), status),
         }
     }
 }
@@ -292,9 +336,10 @@ mod tests {
     #[test]
     fn successful_command_reports_its_output() {
         let dir = workspace();
-        let output = SystemCommandRunner::new()
-            .run(dir.path(), "echo graphite-ok")
-            .unwrap();
+        let (output, status) =
+            SystemCommandRunner::new().run_with_status(dir.path(), "echo graphite-ok");
+        assert_eq!(status, CommandStatus::Exited(0));
+        let output = output.unwrap();
         assert!(output.starts_with("exit code: 0"), "{output}");
         assert!(output.contains("graphite-ok"), "{output}");
     }
@@ -302,9 +347,9 @@ mod tests {
     #[test]
     fn failing_command_is_an_error_with_its_exit_code() {
         let dir = workspace();
-        let output = SystemCommandRunner::new()
-            .run(dir.path(), "exit 3")
-            .unwrap_err();
+        let (output, status) = SystemCommandRunner::new().run_with_status(dir.path(), "exit 3");
+        assert_eq!(status, CommandStatus::Exited(3));
+        let output = output.unwrap_err();
         assert!(output.starts_with("exit code: 3"), "{output}");
     }
 
@@ -321,10 +366,11 @@ mod tests {
     fn command_that_runs_too_long_is_stopped() {
         let dir = workspace();
         let started = Instant::now();
-        let error = SystemCommandRunner::new()
+        let (result, status) = SystemCommandRunner::new()
             .with_timeout(Duration::from_millis(300))
-            .run(dir.path(), long_command())
-            .unwrap_err();
+            .run_with_status(dir.path(), long_command());
+        assert_eq!(status, CommandStatus::TimedOut);
+        let error = result.unwrap_err();
         assert!(error.contains("timed out"), "{error}");
         assert!(started.elapsed() < Duration::from_secs(20));
     }
@@ -340,10 +386,11 @@ mod tests {
         });
         let started = Instant::now();
 
-        let error = SystemCommandRunner::new()
+        let (result, status) = SystemCommandRunner::new()
             .with_cancel(cancel)
-            .run(dir.path(), long_command())
-            .unwrap_err();
+            .run_with_status(dir.path(), long_command());
+        assert_eq!(status, CommandStatus::Cancelled);
+        let error = result.unwrap_err();
 
         stopper.join().unwrap();
         assert!(error.contains("cancelled"), "{error}");

@@ -29,6 +29,14 @@ pub(crate) enum ChatUiEvent {
         input: serde_json::Value,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    /// Waits for the session to record the command before launching it.
+    CommandStarting {
+        run: Arc<AtomicBool>,
+        session_id: String,
+        turn_id: u64,
+        id: String,
+        reply: mpsc::Sender<bool>,
+    },
     /// An approved `propose_edit` call. The worker waits for the reply, so the model learns
     /// whether the proposal was queued for review.
     StageEdit {
@@ -79,11 +87,25 @@ impl App {
         let session_id = self.chat.active_session_id.clone();
         self.chat.active_session_mut().connection_destination = Some(connection.destination());
         self.chat.active_session_mut().connection_id = Some(connection.id);
+        let workspace = ctx.workspace_root.canonicalize().ok();
         let turn_id = self.chat.active_session_mut().start_turn(prompt);
+        if let Some(turn) = self.chat.active_session_mut().turn_mut(turn_id) {
+            turn.workspace = workspace;
+        }
         self.chat.active_session_mut().log(
             "turn.start",
             format!("mode={}, turn={turn_id}", mode.label()),
         );
+        if !self.persist_chat_turn_session(&session_id) {
+            let message = self.t("chat.task.storage_failed").to_owned();
+            if let Some(turn) = self.chat.active_session_mut().turn_mut(turn_id) {
+                turn.status = TurnStatus::Error {
+                    message: message.clone(),
+                };
+            }
+            self.status = message;
+            return;
+        }
         let history = self.chat.active_session().to_request_messages();
         let plugin_tools = self.plugin_chat_tool_specs();
         let plugin_tool_names: std::collections::HashSet<String> =
@@ -178,6 +200,27 @@ impl App {
                         if matches!(event, AgentTurnEvent::ApprovalRequested(_)) {
                             return;
                         }
+                        if let AgentTurnEvent::CommandUpdate {
+                            id,
+                            status: graphite_chat::CommandStatus::Started,
+                        } = event
+                        {
+                            let (tx, rx) = mpsc::channel();
+                            if proxy
+                                .send_event(UserEvent::Chat(ChatUiEvent::CommandStarting {
+                                    run: cancel.clone(),
+                                    session_id: session_id.clone(),
+                                    turn_id,
+                                    id,
+                                    reply: tx,
+                                }))
+                                .is_err()
+                                || !rx.recv().unwrap_or(false)
+                            {
+                                cancel.store(true, Ordering::Relaxed);
+                            }
+                            return;
+                        }
                         let _ = proxy.send_event(UserEvent::Chat(ChatUiEvent::TurnEvent {
                             run: cancel.clone(),
                             session_id: session_id.clone(),
@@ -201,14 +244,20 @@ impl App {
     }
 
     pub(crate) fn cancel_chat_turn(&mut self) {
-        let cancelled = self.chat.running_turn.take().map(|(id, turn, cancel)| {
+        let cancelled = self.chat.running_turn.take();
+        if let Some((id, turn, cancel)) = &cancelled {
             cancel.store(true, Ordering::Relaxed);
-            (id, turn)
-        });
+            if self.chat.stopping_turns.len() >= 32 {
+                self.chat.stopping_turns.remove(0);
+            }
+            self.chat
+                .stopping_turns
+                .push((id.clone(), *turn, cancel.clone()));
+        }
         if let Some((_, reply)) = self.chat.pending_approval.take() {
             let _ = reply.send(ApprovalDecision::Deny);
         }
-        if let Some((session_id, turn_id)) = cancelled {
+        if let Some((session_id, turn_id, _)) = cancelled {
             self.apply_chat_turn_event(&session_id, turn_id, AgentTurnEvent::Cancelled, None);
         }
     }
@@ -248,7 +297,20 @@ impl App {
             "tool.approval",
             format!("{} -> {:?}", pending.name, decision),
         );
+        let session_id = self.chat.active_session_id.clone();
+        self.persist_chat_turn_session(&session_id);
         let _ = reply.send(decision);
+    }
+
+    fn persist_chat_turn_session(&self, id: &str) -> bool {
+        self.chat
+            .sessions
+            .iter()
+            .find(|session| session.id == id)
+            .is_some_and(|session| {
+                self.chat
+                    .persist_session(&self.profile_root, self.profiles.is_none(), session)
+            })
     }
 
     pub(crate) fn retry_last_chat_turn(&mut self) {
@@ -276,9 +338,29 @@ impl App {
                     .chat
                     .running_turn
                     .as_ref()
-                    .is_some_and(|(_, _, active)| Arc::ptr_eq(active, &run))
+                    .is_some_and(|(session, turn, active)| {
+                        session == &session_id && *turn == turn_id && Arc::ptr_eq(active, &run)
+                    })
                 {
                     self.apply_chat_turn_event(&session_id, turn_id, event, approval_reply);
+                } else if let Some(index) =
+                    self.chat
+                        .stopping_turns
+                        .iter()
+                        .position(|(session, turn, token)| {
+                            session == &session_id && *turn == turn_id && Arc::ptr_eq(token, &run)
+                        })
+                {
+                    if matches!(
+                        event,
+                        AgentTurnEvent::Cancelled
+                            | AgentTurnEvent::Finished { .. }
+                            | AgentTurnEvent::Error(_)
+                    ) {
+                        self.chat.stopping_turns.remove(index);
+                    } else {
+                        self.record_stopped_chat_result(&session_id, turn_id, event);
+                    }
                 }
             }
             ChatUiEvent::InlineEvent {
@@ -314,6 +396,42 @@ impl App {
                     let _ = reply.send(Err(err));
                 }
             }
+            ChatUiEvent::CommandStarting {
+                run,
+                session_id,
+                turn_id,
+                id,
+                reply,
+            } => {
+                let active =
+                    self.chat
+                        .running_turn
+                        .as_ref()
+                        .is_some_and(|(session, turn, token)| {
+                            session == &session_id && *turn == turn_id && Arc::ptr_eq(token, &run)
+                        });
+                let ready = active
+                    && self
+                        .chat
+                        .session_by_id_mut(&session_id)
+                        .is_some_and(|session| {
+                            session.record_command_status(
+                                turn_id,
+                                id,
+                                graphite_chat::CommandStatus::Started,
+                            )
+                        })
+                    && self.persist_chat_turn_session(&session_id);
+                if active && !ready {
+                    self.apply_chat_turn_event(
+                        &session_id,
+                        turn_id,
+                        AgentTurnEvent::Error(self.t("chat.task.storage_failed").into()),
+                        None,
+                    );
+                }
+                let _ = reply.send(ready);
+            }
             ChatUiEvent::StageEdit {
                 run,
                 session_id,
@@ -339,6 +457,44 @@ impl App {
         }
     }
 
+    fn record_stopped_chat_result(
+        &mut self,
+        session_id: &str,
+        turn_id: u64,
+        event: AgentTurnEvent,
+    ) {
+        let Some(session) = self.chat.session_by_id_mut(session_id) else {
+            return;
+        };
+        let Some(turn) = session.turn_mut(turn_id) else {
+            return;
+        };
+        let changed = match event {
+            AgentTurnEvent::CommandUpdate { id, status }
+                if status != graphite_chat::CommandStatus::Started
+                    && turn.commands.iter().any(|command| command.id == id) =>
+            {
+                session.record_command_status(turn_id, id, status)
+            }
+            AgentTurnEvent::ToolResult {
+                id,
+                name,
+                content,
+                is_error,
+                ..
+            } if name == graphite_chat::TOOL_RUN_COMMAND
+                && turn.commands.iter().any(|command| command.id == id) =>
+            {
+                session.record_tool_result(turn_id, id, content, is_error);
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.persist_chat_turn_session(session_id);
+        }
+    }
+
     fn apply_chat_turn_event(
         &mut self,
         session_id: &str,
@@ -354,6 +510,7 @@ impl App {
         if is_cancelled {
             return;
         }
+        let save = !matches!(event, AgentTurnEvent::DeltaText(_));
         match event {
             AgentTurnEvent::DeltaText(delta) => {
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
@@ -375,6 +532,21 @@ impl App {
                 }
                 if let Some(reply) = approval_reply {
                     self.chat.pending_approval = Some((pending, reply));
+                }
+            }
+            AgentTurnEvent::CommandUpdate { id, status } => {
+                if let Some(session) = self.chat.session_by_id_mut(session_id) {
+                    session.record_command_status(turn_id, id, status);
+                }
+                if matches!(
+                    status,
+                    graphite_chat::CommandStatus::Failed | graphite_chat::CommandStatus::TimedOut
+                ) {
+                    crate::app::error_log::record(
+                        crate::app::error_log::ErrorSeverity::Medium,
+                        "chat.command",
+                        format!("Command ended with {status:?}"),
+                    );
                 }
             }
             AgentTurnEvent::ToolResult {
@@ -417,8 +589,6 @@ impl App {
                     );
                 }
                 self.chat.running_turn = None;
-                self.chat
-                    .persist_active_session(&self.profile_root, self.profiles.is_none());
                 self.refresh_scm_async();
             }
             AgentTurnEvent::Error(message) => {
@@ -426,13 +596,16 @@ impl App {
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
                     if let Some(turn) = session.turn_mut(turn_id) {
                         turn.status = TurnStatus::Error {
-                            message: message.clone(),
+                            message: crate::app::error_log::sanitize_message(&message),
                         };
                     }
-                    session.log("turn.error", message.clone());
+                    session.log("turn.error", "Chat turn did not complete");
                 }
                 self.chat.running_turn = None;
-                self.status = format!("Chat error: {message}");
+                self.status = format!(
+                    "Chat error: {}",
+                    crate::app::error_log::sanitize_message(&message)
+                );
             }
             AgentTurnEvent::Cancelled => {
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
@@ -443,9 +616,10 @@ impl App {
                 }
                 self.chat.running_turn = None;
                 self.status = "Chat cancelled".into();
-                self.chat
-                    .persist_active_session(&self.profile_root, self.profiles.is_none());
             }
+        }
+        if save {
+            self.persist_chat_turn_session(session_id);
         }
     }
 

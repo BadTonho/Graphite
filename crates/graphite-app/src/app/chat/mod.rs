@@ -12,6 +12,7 @@ mod layout;
 mod review;
 mod review_view;
 pub(crate) mod state;
+mod task;
 pub(crate) mod ui;
 pub(crate) mod worker;
 
