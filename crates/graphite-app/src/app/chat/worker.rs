@@ -30,8 +30,8 @@ pub(crate) enum ChatUiEvent {
         reply: mpsc::Sender<Result<String, String>>,
     },
     /// An approved `propose_edit` call. The worker waits for the reply, so the model learns
-    /// whether the file was really written.
-    ApplyEdit {
+    /// whether the proposal was queued for review.
+    StageEdit {
         run: Arc<AtomicBool>,
         session_id: String,
         turn_id: u64,
@@ -115,15 +115,19 @@ impl App {
                     &plugin_tools,
                     |name, input| {
                         if name == TOOL_PROPOSE_EDIT {
-                            // Validated here, written by the main thread, which can see the
-                            // editors' unsaved changes.
+                            // Capture the original bytes here and queue the proposal on the UI thread.
                             let outcome = execute_tool(&workspace_root, mode, name, input, &runner);
                             let Some(edit) = outcome.proposed_edit else {
+                                crate::app::error_log::record(
+                                    crate::app::error_log::ErrorSeverity::Medium,
+                                    "chat.review",
+                                    "The edit tool could not prepare a proposal",
+                                );
                                 return Some(Err(outcome.content));
                             };
                             let (tx, rx) = mpsc::channel();
                             if proxy
-                                .send_event(UserEvent::Chat(ChatUiEvent::ApplyEdit {
+                                .send_event(UserEvent::Chat(ChatUiEvent::StageEdit {
                                     run: cancel.clone(),
                                     session_id: session_id.clone(),
                                     turn_id,
@@ -310,7 +314,7 @@ impl App {
                     let _ = reply.send(Err(err));
                 }
             }
-            ChatUiEvent::ApplyEdit {
+            ChatUiEvent::StageEdit {
                 run,
                 session_id,
                 turn_id,
@@ -323,7 +327,7 @@ impl App {
                     .as_ref()
                     .is_some_and(|(_, _, active)| Arc::ptr_eq(active, &run))
                 {
-                    self.apply_chat_proposed_edit(&session_id, turn_id, edit)
+                    self.stage_chat_proposal(&session_id, turn_id, edit)
                 } else {
                     Err("Chat turn has ended".into())
                 };
@@ -376,14 +380,18 @@ impl App {
             AgentTurnEvent::ToolResult {
                 id,
                 name,
-                content,
-                is_error,
+                mut content,
+                mut is_error,
                 proposed_edit,
             } => {
-                // Edits normally arrive through `ApplyEdit`; one carried by a tool result is
-                // applied with the same checks.
                 if let Some(edit) = proposed_edit {
-                    let _ = self.apply_chat_proposed_edit(session_id, turn_id, edit);
+                    match self.stage_chat_proposal(session_id, turn_id, edit) {
+                        Ok(message) => content = message,
+                        Err(message) => {
+                            content = message;
+                            is_error = true;
+                        }
+                    }
                 }
                 if let Some(session) = self.chat.session_by_id_mut(session_id) {
                     if let Some(turn) = session.turn_mut(turn_id) {

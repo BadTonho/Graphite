@@ -26,7 +26,8 @@ pub use message::{
 pub use provider::{stream, ProviderConfig, ProviderKind};
 pub use session::{
     extract_code_blocks, AgentLogEntry, AgentMode, ChatSession, ChatTurn, Checkpoint,
-    CheckpointEntry, CodeBlock, EditReviewStatus, PendingFileEdit, TurnStatus, UsageSummary,
+    CheckpointEntry, CodeBlock, EditReviewStatus, FileProposal, PendingFileEdit, ReviewedFile,
+    TurnStatus, UsageSummary,
 };
 pub use sse::{SseEvent, SseOverflow, SseParser, MAX_SSE_EVENT_BYTES};
 pub use store::{

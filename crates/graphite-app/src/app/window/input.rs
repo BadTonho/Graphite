@@ -61,6 +61,33 @@ impl App {
         true
     }
 
+    fn handle_open_diff_key(&mut self, event: &winit::event::KeyEvent) {
+        if self.chat_review_open() && self.modifiers.control_key() {
+            match &event.logical_key {
+                Key::Named(NamedKey::Enter) => self.decide_chat_review(true),
+                Key::Named(NamedKey::Backspace) => self.decide_chat_review(false),
+                _ => {}
+            }
+            return;
+        }
+        if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
+            self.close_diff_view();
+        } else if matches!(event.logical_key, Key::Named(NamedKey::Tab)) {
+            self.run_ui_command("graphite.diff.toggleLayout");
+        } else {
+            let page = self.diff_visible_rows.get().max(2) as isize - 1;
+            match event.logical_key {
+                Key::Named(NamedKey::ArrowDown) => self.scroll_diff(1),
+                Key::Named(NamedKey::ArrowUp) => self.scroll_diff(-1),
+                Key::Named(NamedKey::PageDown) => self.scroll_diff(page),
+                Key::Named(NamedKey::PageUp) => self.scroll_diff(-page),
+                Key::Named(NamedKey::Home) => self.scroll_diff(isize::MIN / 2),
+                Key::Named(NamedKey::End) => self.scroll_diff(isize::MAX / 2),
+                _ => {}
+            }
+        }
+    }
+
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
         if self.help_modal_key(
             &event.logical_key,
@@ -156,6 +183,13 @@ impl App {
             return;
         }
         if self.handle_command_center_key(&event.logical_key, event.text.as_deref()) {
+            return;
+        }
+        if (self.chat_review_open() || (self.ai_mode.is_some() && self.diff_view.is_some()))
+            && !self.close_confirm
+            && !self.close_window_confirm
+        {
+            self.handle_open_diff_key(event);
             return;
         }
         if self.ai_mode.is_some() && self.handle_ai_focus_key(event) {
@@ -363,22 +397,7 @@ impl App {
             return;
         }
         if self.diff_view.is_some() {
-            if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
-                self.close_diff_view();
-            } else if matches!(event.logical_key, Key::Named(NamedKey::Tab)) {
-                self.run_ui_command("graphite.diff.toggleLayout");
-            } else {
-                let page = self.diff_visible_rows.get().max(2) as isize - 1;
-                match event.logical_key {
-                    Key::Named(NamedKey::ArrowDown) => self.scroll_diff(1),
-                    Key::Named(NamedKey::ArrowUp) => self.scroll_diff(-1),
-                    Key::Named(NamedKey::PageDown) => self.scroll_diff(page),
-                    Key::Named(NamedKey::PageUp) => self.scroll_diff(-page),
-                    Key::Named(NamedKey::Home) => self.scroll_diff(isize::MIN / 2),
-                    Key::Named(NamedKey::End) => self.scroll_diff(isize::MAX / 2),
-                    _ => {}
-                }
-            }
+            self.handle_open_diff_key(event);
             return;
         }
         if self.debug_input_focused {

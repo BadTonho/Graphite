@@ -303,11 +303,14 @@ impl App {
             Rect::new(x, y, w, h),
             lh,
             history,
-            self.chat
-                .active_session()
-                .pending_edits
-                .iter()
-                .any(|e| e.status == graphite_chat::EditReviewStatus::Pending),
+            !self.chat.active_session().proposals.is_empty()
+                || !self.chat.reviewed_in_batch.is_empty()
+                || self
+                    .chat
+                    .active_session()
+                    .pending_edits
+                    .iter()
+                    .any(|e| e.status == graphite_chat::EditReviewStatus::Pending),
             self.chat.pending_approval.is_some(),
             self.chat.attachments.selected(),
             self.chat.composer_menu,
@@ -370,7 +373,16 @@ impl App {
             return false;
         }
         if layout.body.contains(x, y) {
-            self.scroll_chat_transcript(-lines.round() as isize);
+            let capacity = Self::review_rows(layout.body, gpu.renderer.line_height());
+            let count =
+                self.chat.active_session().proposals.len() + self.chat.reviewed_in_batch.len();
+            if let Some(offset) = &mut self.chat.review_list {
+                *offset = offset
+                    .saturating_add_signed(lines.round() as isize)
+                    .min(count.saturating_sub(capacity));
+            } else {
+                self.scroll_chat_transcript(-lines.round() as isize);
+            }
         }
         true
     }
@@ -723,7 +735,31 @@ impl App {
                 self.chat.composer_menu = None;
             }
         }
-        if layout.toolbar[0].contains(x, y) {
+        if self.chat.review_list.is_some()
+            && layout.body.contains(x, y)
+            && (!self.chat.active_session().proposals.is_empty()
+                || !self.chat.reviewed_in_batch.is_empty())
+        {
+            let row = ((y - layout.body.y) / (lh * 1.5)) as usize;
+            let count =
+                self.chat.active_session().proposals.len() + self.chat.reviewed_in_batch.len();
+            let capacity = Self::review_rows(layout.body, lh);
+            let start = self
+                .chat
+                .review_list
+                .unwrap_or_default()
+                .min(count.saturating_sub(capacity));
+            if let Some(id) = self
+                .chat
+                .active_session()
+                .proposals
+                .get(start + row)
+                .filter(|_| row < capacity)
+                .map(|entry| entry.id)
+            {
+                self.open_chat_proposal(id);
+            }
+        } else if layout.toolbar[0].contains(x, y) {
             self.new_chat_session();
         } else if layout.toolbar[1].contains(x, y) {
             self.chat.show_agent_sessions = !self.chat.show_agent_sessions;
@@ -760,11 +796,23 @@ impl App {
             } else if buttons[2].contains(x, y) {
                 self.respond_chat_approval(ApprovalDecision::Deny);
             }
-        } else if let Some([_, accept, discard]) = layout
+        } else if let Some([title, accept, discard]) = layout
             .edits
-            .filter(|[_, a, d]| a.contains(x, y) || d.contains(x, y))
+            .filter(|[title, a, d]| title.contains(x, y) || a.contains(x, y) || d.contains(x, y))
         {
-            if accept.contains(x, y) {
+            if title.contains(x, y) {
+                if self.chat.active_session().proposals.is_empty()
+                    && self.chat.reviewed_in_batch.is_empty()
+                {
+                    self.open_next_chat_review();
+                    return true;
+                }
+                self.chat.review_list = if self.chat.review_list.is_some() {
+                    None
+                } else {
+                    Some(0)
+                };
+            } else if accept.contains(x, y) {
                 self.accept_all_chat_edits();
             } else if discard.contains(x, y) {
                 self.discard_all_chat_edits();

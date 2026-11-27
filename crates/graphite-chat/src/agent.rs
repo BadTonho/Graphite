@@ -54,12 +54,12 @@ pub fn build_system_prompt(mode: AgentMode, ctx: &ChatContext) -> String {
         }
         AgentMode::Edit => {
             prompt.push_str(
-                "Mode: Edit. Use `propose_edit` to stage file updates for user review.\n",
+                "Mode: Edit. Use `propose_edit` to queue complete file updates for user review. A queued proposal has not been written.\n",
             );
         }
         AgentMode::Agent => {
             prompt.push_str(
-                "Mode: Agent. You may inspect files, propose edits with `propose_edit`, and run commands with `run_command` (user-approved).\n",
+                "Mode: Agent. You may inspect files, propose edits with `propose_edit`, and run commands with `run_command` (user-approved). Queued proposals are not on disk until the user applies them.\n",
             );
         }
     }

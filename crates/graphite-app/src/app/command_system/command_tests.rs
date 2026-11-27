@@ -44,6 +44,7 @@ fn target(app: &App) -> CommandTarget {
 }
 fn diff() -> Option<Box<UserEvent>> {
     Some(Box::new(UserEvent::DiffReady(super::scm_ui::DiffView {
+        review: None,
         title: "Simulated diff".into(),
         left_name: "old".into(),
         right_name: "new".into(),

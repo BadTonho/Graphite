@@ -7,7 +7,10 @@ use graphite_chat::{
     ApprovalDecision, ChatSession, PendingToolApproval, ProviderConfig, ToolApprovalPolicy,
 };
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 fn record_storage_error(what: &str, error: &str) {
     crate::app::error_log::record(
@@ -130,6 +133,8 @@ pub(crate) struct ChatState {
     pub input: String,
     pub input_history_cursor: Option<usize>,
     pub scroll: usize,
+    pub(super) review_list: Option<usize>,
+    pub(super) reviewed_in_batch: Vec<PathBuf>,
     pub(super) transcript_offset: usize,
     pub selected_code_block: usize,
     pub pending_approval: Option<(PendingToolApproval, mpsc::Sender<ApprovalDecision>)>,
@@ -169,6 +174,8 @@ impl Default for ChatState {
             input: String::new(),
             input_history_cursor: None,
             scroll: 0,
+            review_list: None,
+            reviewed_in_batch: Vec::new(),
             transcript_offset: 0,
             selected_code_block: 0,
             pending_approval: None,
@@ -212,6 +219,8 @@ impl ChatState {
     }
 
     pub fn clear_outgoing_draft(&mut self) {
+        self.review_list = None;
+        self.reviewed_in_batch.clear();
         self.attachments = ChatAttachments::default();
         self.composer_menu = None;
         self.input.clear();

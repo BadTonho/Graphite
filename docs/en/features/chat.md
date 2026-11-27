@@ -47,10 +47,16 @@ The integrated terminal starts collapsed when entering AI mode. Use **Toggle Ter
   - **Always allow here** applies only to the current workspace. For a terminal command the button reads **Always allow this command**, and only that exact command runs without asking; any other command still asks.
   - In a restricted (untrusted) workspace, nothing is remembered and approvals given in other workspaces are not used.
   - **Chat: Reset Trusted Tools** forgets every remembered approval. Approvals saved by earlier versions applied to every workspace and are no longer used.
-- **Checkpoints & Edits**: Pending file edits can be accepted, discarded, inspected in diff view (`chatEditing.openFileInDiff`), or rolled back via session checkpoints (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
-- **Unsaved changes are protected**: Chat never writes, discards, undoes, or redoes an edit to a file whose editor has unsaved changes. The model is told the edit was not applied, and the status bar asks you to save or revert the file first. Edits that cannot be written to disk are reported to the model and recorded in the high-severity error log instead of being staged. Native plugins writing workspace files follow the same rule.
 
 In the composer, choose **File**, **Selection**, or **Diagnostics** to attach the active editor context to the next message. Each selected attachment is marked in the composer. Inline Chat uses the text selection or the line at the cursor.
+
+## Review proposed file changes
+
+Use **Review files** in the Chat panel to open the diff for a proposal. **Apply** writes the displayed version to disk and refreshes the editor. **Discard** removes the proposal from the queue. Use **Apply all** to apply the listed proposals individually. The results show which files were applied and which still need attention.
+
+Graphite checks the original workspace, disk contents and editor before writing. A file that changed, is read-only, is being saved or has unsaved edits stays pending. Use **Stop** to cancel a turn while retaining proposals already received. Reopen the conversation in the original workspace to continue the review.
+
+Applied file changes create checkpoints for **Undo Edit** and **Redo Edit**. These actions check the file again before writing. The tool approval for proposing an edit is separate from the decision to apply it. Terminal and plugin tools retain their own approval rules.
 
 ## Sessions, Clipboard, and Export
 

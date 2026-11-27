@@ -159,6 +159,30 @@ pub struct PendingFileEdit {
     pub checkpoint_id: u64,
 }
 
+/// A proposal awaiting an explicit user decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileProposal {
+    pub id: u64,
+    pub turn_id: u64,
+    pub workspace: PathBuf,
+    pub path: PathBuf,
+    pub before: Option<String>,
+    pub fingerprint: Option<[u8; 32]>,
+    pub after: String,
+    #[serde(skip)]
+    pub document: Option<(u64, u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<String>,
+}
+
+/// Exact disk snapshots for a reviewed edit, including the original encoding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReviewedFile {
+    pub workspace: PathBuf,
+    pub before: Option<Vec<u8>>,
+    pub after: Vec<u8>,
+}
+
 /// Snapshot of files before an edit batch so checkpoints and undo/redo work deterministically.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Checkpoint {
@@ -174,6 +198,8 @@ pub struct CheckpointEntry {
     pub path: PathBuf,
     pub before: Option<String>,
     pub after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed: Option<ReviewedFile>,
 }
 
 /// Diagnostic trace entry recorded for agent execution.
@@ -211,6 +237,8 @@ pub struct ChatSession {
     pub turns: Vec<ChatTurn>,
     #[serde(default)]
     pub pending_edits: Vec<PendingFileEdit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proposals: Vec<FileProposal>,
     #[serde(default)]
     pub checkpoints: Vec<Checkpoint>,
     #[serde(default)]
@@ -254,6 +282,7 @@ impl ChatSession {
             summary: None,
             turns: Vec::new(),
             pending_edits: Vec::new(),
+            proposals: Vec::new(),
             checkpoints: Vec::new(),
             undone_checkpoints: Vec::new(),
             input_history: Vec::new(),
@@ -388,7 +417,41 @@ impl ChatSession {
         turn.steps.push(Message::tool_results(vec![block]));
     }
 
-    /// Stages a file edit and creates a checkpoint entry for rollback/undo.
+    pub fn queue_proposal(&mut self, mut proposal: FileProposal) {
+        proposal.id = self.next_checkpoint_id;
+        self.next_checkpoint_id += 1;
+        if let Some(previous) = self
+            .proposals
+            .iter_mut()
+            .find(|entry| entry.path == proposal.path && entry.workspace == proposal.workspace)
+        {
+            *previous = proposal;
+        } else {
+            self.proposals.push(proposal);
+        }
+        self.updated_at_epoch_s = now_epoch_s();
+    }
+
+    pub fn record_reviewed_file(&mut self, proposal: &FileProposal, reviewed: ReviewedFile) {
+        self.proposals.retain(|entry| entry.id != proposal.id);
+        if reviewed.before.as_ref() != Some(&reviewed.after) {
+            self.checkpoints.push(Checkpoint {
+                id: proposal.id,
+                turn_id: proposal.turn_id,
+                label: format!("Edit {}", proposal.path.display()),
+                entries: vec![CheckpointEntry {
+                    path: proposal.path.clone(),
+                    before: proposal.before.clone(),
+                    after: Some(proposal.after.clone()),
+                    reviewed: Some(reviewed),
+                }],
+            });
+            self.undone_checkpoints.clear();
+        }
+        self.updated_at_epoch_s = now_epoch_s();
+    }
+
+    /// Records an already-applied edit for compatibility with older session history.
     pub fn stage_edit(
         &mut self,
         turn_id: u64,
@@ -406,6 +469,7 @@ impl ChatSession {
                 path: path.clone(),
                 before: before.clone(),
                 after: Some(after.clone()),
+                reviewed: None,
             }],
         });
         self.undone_checkpoints.clear();

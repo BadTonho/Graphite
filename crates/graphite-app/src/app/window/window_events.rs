@@ -672,6 +672,22 @@ impl ApplicationHandler<UserEvent> for App {
                         return;
                     }
                 }
+                if self.chat_review_open() || (self.ai_mode.is_some() && self.diff_view.is_some()) {
+                    let within_diff = self.gpu.as_ref().is_some_and(|gpu| {
+                        let (width, height) = gpu.renderer.size();
+                        let (x, y, w, h) =
+                            self.diff_area(width, height, gpu.renderer.line_height());
+                        let (mx, my) = (self.mouse.x as f32, self.mouse.y as f32);
+                        mx >= x && mx < x + w && my >= y && my < y + h
+                    });
+                    if within_diff {
+                        self.scroll_diff(lines.round() as isize);
+                        if let Some(gpu) = &self.gpu {
+                            gpu.window.request_redraw();
+                        }
+                        return;
+                    }
+                }
                 if self.handle_chat_wheel(self.mouse.x as f32, self.mouse.y as f32, lines) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();

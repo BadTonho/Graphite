@@ -345,6 +345,7 @@ impl App {
             match scm_graph::load_commit_file_comparison(&root, &commit.hash, &file.path) {
                 Ok((left, right)) => {
                     self.diff_view = Some(super::scm_ui::DiffView {
+                        review: None,
                         title,
                         left_name,
                         right_name,
@@ -367,6 +368,7 @@ impl App {
                 match scm_graph::load_commit_file_comparison(&root, &commit.hash, &file.path) {
                     Ok((left, right)) => {
                         let _ = proxy.send_event(UserEvent::DiffReady(super::scm_ui::DiffView {
+                            review: None,
                             title,
                             left_name,
                             right_name,

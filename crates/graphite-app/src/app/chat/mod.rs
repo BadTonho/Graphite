@@ -9,6 +9,8 @@ pub(crate) mod context;
 pub(crate) mod drawing;
 mod edits;
 mod layout;
+mod review;
+mod review_view;
 pub(crate) mod state;
 pub(crate) mod ui;
 pub(crate) mod worker;
@@ -20,8 +22,7 @@ pub(crate) use worker::ChatUiEvent;
 mod tests {
     use super::*;
     use graphite_chat::{
-        AgentTurnEvent, ApprovalDecision, EditReviewStatus, PendingToolApproval, ProposedEdit,
-        TurnStatus, Usage,
+        AgentTurnEvent, ApprovalDecision, PendingToolApproval, ProposedEdit, TurnStatus, Usage,
     };
     use serde_json::json;
     use std::sync::{atomic::AtomicBool, mpsc, Arc};
@@ -77,7 +78,7 @@ mod tests {
                 is_error: false,
                 proposed_edit: Some(ProposedEdit {
                     path: file.clone(),
-                    before: Some("fn main() { 1 }\n".into()),
+                    before: Some(b"fn main() { 1 }\n".to_vec()),
                     after: "fn main() { 2 }\n".into(),
                 }),
             },
@@ -96,24 +97,14 @@ mod tests {
             approval_reply: None,
         });
 
-        assert_eq!(app.editor().text(), "fn main() { 2 }\n");
-        assert_eq!(
-            app.chat.active_session().pending_edits[0].status,
-            EditReviewStatus::Pending
-        );
-
-        assert!(app.undo_chat_edit());
         assert_eq!(app.editor().text(), "fn main() { 1 }\n");
+        assert_eq!(app.chat.active_session().proposals.len(), 1);
+        assert!(app.accept_chat_edit(&file));
+        assert_eq!(app.editor().text(), "fn main() { 2 }\n");
+        assert!(app.undo_chat_edit());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "fn main() { 1 }\n");
-
         assert!(app.redo_chat_edit());
         assert_eq!(app.editor().text(), "fn main() { 2 }\n");
-
-        assert!(app.accept_chat_edit(&file));
-        assert_eq!(
-            app.chat.active_session().pending_edits[0].status,
-            EditReviewStatus::Accepted
-        );
     }
 
     fn pending_command(app: &mut App, command: &str) -> mpsc::Receiver<ApprovalDecision> {
@@ -207,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn discard_chat_edit_reverts_file_and_open_document() {
+    fn discard_chat_edit_preserves_file_and_open_document() {
         let dir = crate::test_support::TempDir::new();
         let file = dir.path().join("lib.rs");
         std::fs::write(&file, "pub fn a() {}\n").unwrap();
@@ -230,20 +221,17 @@ mod tests {
                 is_error: false,
                 proposed_edit: Some(ProposedEdit {
                     path: file.clone(),
-                    before: Some("pub fn a() {}\n".into()),
+                    before: Some(b"pub fn a() {}\n".to_vec()),
                     after: "pub fn b() {}\n".into(),
                 }),
             },
             approval_reply: None,
         });
-        assert_eq!(app.editor().text(), "pub fn b() {}\n");
-
-        assert!(app.discard_chat_edit(&file));
         assert_eq!(app.editor().text(), "pub fn a() {}\n");
-        assert_eq!(
-            app.chat.active_session().pending_edits[0].status,
-            EditReviewStatus::Discarded
-        );
+        assert!(app.discard_chat_edit(&file));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "pub fn a() {}\n");
+        assert!(app.chat.active_session().proposals.is_empty());
+        assert!(app.chat.active_session().checkpoints.is_empty());
     }
 
     #[test]

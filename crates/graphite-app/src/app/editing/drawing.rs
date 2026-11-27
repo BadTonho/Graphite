@@ -609,6 +609,9 @@ impl App {
             self.draw_multi_diff(r, w, h, lh);
             self.draw_chat_overlays(r, w, h, lh);
         }
+        if self.chat_review_open() {
+            self.draw_diff_view(r, w, h, lh);
+        }
         if !self.zen_mode && self.view_preferences.primary_sidebar_visible {
             let split = self.sidebar_width_px();
             let hovered =
@@ -688,6 +691,9 @@ impl App {
             self.draw_terminal_panel(r, w, h, lh, cw);
         }
         self.draw_chat_overlays(r, w, h, lh);
+        if self.diff_view.is_some() {
+            self.draw_diff_view(r, w, h, lh);
+        }
         r.set_clip(Some([0.0, h - lh, w, h]));
         r.draw_text(
             &self.status,

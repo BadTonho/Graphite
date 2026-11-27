@@ -145,6 +145,24 @@ impl Buffer {
         bytes: &[u8],
         commit: impl FnOnce() -> bool,
     ) -> Result<(), BufferError> {
+        Self::write_bytes_atomically(path, bytes, commit, true)
+    }
+
+    /// Installs a complete new file without replacing a file created in the meantime.
+    pub fn write_new_bytes_with_commit(
+        path: &Path,
+        bytes: &[u8],
+        commit: impl FnOnce() -> bool,
+    ) -> Result<(), BufferError> {
+        Self::write_bytes_atomically(path, bytes, commit, false)
+    }
+
+    fn write_bytes_atomically(
+        path: &Path,
+        bytes: &[u8],
+        commit: impl FnOnce() -> bool,
+        replace: bool,
+    ) -> Result<(), BufferError> {
         // Replace the target only after the complete new contents have been written.
         // Resolve existing symlinks so saving does not replace the link itself.
         let target = match fs::symlink_metadata(path) {
@@ -206,10 +224,14 @@ impl Buffer {
             if !commit() {
                 return Err(io::Error::new(io::ErrorKind::Interrupted, "save cancelled"));
             }
-            fs::rename(&temp_path, &target)?;
+            if replace {
+                fs::rename(&temp_path, &target)?;
+            } else {
+                fs::hard_link(&temp_path, path)?;
+            }
             Ok(())
         })();
-        if result.is_err() {
+        if !replace || result.is_err() {
             let _ = fs::remove_file(&temp_path);
         }
         result?;

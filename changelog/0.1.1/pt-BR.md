@@ -4,6 +4,7 @@
 - Revise e recupere rascunhos locais de arquivos de texto não salvos e abas sem título após um encerramento inesperado.
 - Escolha quais componentes instalar no Windows. Plugins VSIX, Copilot SDK e Foundry Local SDK podem ser selecionados separadamente e vêm marcados por padrão.
 - Alterne entre Editor e IA com um botão na barra de título. No Modo IA, o Chat divide espaço com arquivos editáveis e o terminal integrado fica disponível sob demanda.
+- Revise as propostas de arquivo do Chat antes de gravá-las no disco. Aplique ou descarte por arquivo ou em lote e veja os conflitos de cada arquivo.
 
 ## Melhorias
 

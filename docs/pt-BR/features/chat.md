@@ -47,10 +47,16 @@ O terminal integrado começa recolhido ao entrar no Modo IA. Use **Alternar Term
   - **Sempre permitir aqui** vale apenas para o workspace atual. Para um comando no terminal o botão mostra **Sempre permitir este comando**, e somente aquele comando exato roda sem perguntar; qualquer outro comando continua pedindo aprovação.
   - Em um workspace restrito (não confiável), nada é lembrado e aprovações dadas em outros workspaces não são usadas.
   - **Chat: Redefinir Ferramentas Confiáveis** esquece todas as aprovações lembradas. Aprovações salvas por versões anteriores valiam para todos os workspaces e não são mais usadas.
-- **Pontos de verificação e edições**: Edições pendentes podem ser aceitas, descartadas, inspecionadas em diff (`chatEditing.openFileInDiff`) ou revertidas via pontos de verificação (`workbench.action.chat.undoEdit` / `redoEdit` / `restoreLastCheckpoint`).
-- **Alterações não salvas são protegidas**: O Chat nunca grava, descarta, desfaz ou refaz uma edição em um arquivo cujo editor tem alterações não salvas. O modelo é informado de que a edição não foi aplicada, e a barra de status pede que você salve ou reverta o arquivo antes. Edições que não podem ser gravadas em disco são informadas ao modelo e registradas no log de erros de severidade alta em vez de ficarem pendentes. Plugins nativos que gravam arquivos do workspace seguem a mesma regra.
 
 No compositor, escolha **Arquivo**, **Seleção** ou **Diagnósticos** para anexar contexto do editor ativo à próxima mensagem. Cada anexo escolhido aparece marcado. O Chat Inline usa a seleção ou a linha em que o cursor está.
+
+## Revisar propostas de alteração
+
+Use **Revisar arquivos** no painel Chat para abrir o diff de uma proposta. **Aplicar** grava a versão exibida no disco e atualiza o editor. **Descartar** remove a proposta da fila. Use **Aplicar tudo** para aplicar individualmente as propostas da lista. O resultado mostra quais arquivos foram aplicados e quais ainda requerem atenção.
+
+O Graphite confere o workspace original, o conteúdo em disco e o editor antes de gravar. Um arquivo que mudou, está em somente leitura, está sendo salvo ou tem alterações não salvas continua pendente. Use **Parar** para cancelar o turno e manter as propostas já recebidas. Reabra a conversa no workspace original para retomar a revisão.
+
+Alterações aplicadas criam pontos de verificação para desfazer e refazer. Essas ações conferem o arquivo novamente antes de gravar. A aprovação da ferramenta de proposta é separada da decisão de aplicar. Ferramentas do terminal e de plugins mantêm suas próprias regras de aprovação.
 
 ## Sessões, Área de Transferência e Exportação
 

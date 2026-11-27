@@ -790,6 +790,7 @@ mod scm_sidebar_layout_tests {
 
 #[derive(Clone, Debug)]
 pub(crate) struct DiffView {
+    pub review: Option<(String, u64)>,
     pub title: String,
     pub left_name: String,
     pub right_name: String,
@@ -1193,6 +1194,7 @@ impl App {
                 match (read(&left), read(&right)) {
                     (Ok(left_text), Ok(right_text)) => {
                         let _ = proxy.send_event(UserEvent::DiffReady(DiffView {
+                            review: None,
                             title: translator.text("scm.diff.file_comparison").to_owned(),
                             left_name: left.display().to_string(),
                             right_name: right.display().to_string(),
@@ -1250,6 +1252,7 @@ impl App {
                 let result = (|| {
                     let previous = crate::scm::head_file_text(&root, &path, &translator)?;
                     Ok::<_, String>(DiffView {
+                        review: None,
                         title: translator.text("scm.diff.working_tree_head").to_owned(),
                         left_name: translator
                             .format("scm.diff.head_label", &[("path", &path.display())]),
@@ -2087,7 +2090,9 @@ impl App {
                 );
             }
         }
-        self.draw_diff_view(renderer, width, height, line_height);
+        if !self.chat_review_open() {
+            self.draw_diff_view(renderer, width, height, line_height);
+        }
         if self.process_panel_visible {
             renderer.draw_rect(
                 sidebar_width,

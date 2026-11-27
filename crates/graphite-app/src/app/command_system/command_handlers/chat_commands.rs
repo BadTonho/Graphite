@@ -3,8 +3,9 @@
 use super::*;
 use crate::app::chat::{ChatSurface, SessionsFilter};
 use crate::app::clipboard::{ClipboardAccess, SystemClipboard};
-use crate::scm_changes::ChangeSet;
-use graphite_chat::{ChatSession, EditReviewStatus};
+use graphite_chat::ChatSession;
+#[cfg(test)]
+use graphite_chat::EditReviewStatus;
 use std::path::PathBuf;
 
 const CHAT_FOCUS: &str = "chatInputVisible || sideBarVisible || true";
@@ -172,77 +173,17 @@ fn discard_all_files(app: &mut App, _: &CommandInvocation) -> Result<(), Command
 }
 
 fn accept_active_file(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    let active_path = app
-        .documents
-        .get(app.active_document())
-        .and_then(|d| d.buffer.path())
-        .map(|p| p.to_path_buf());
-    let target = active_path.or_else(|| {
-        app.chat
-            .active_session()
-            .pending_edits
-            .iter()
-            .find(|e| e.status == EditReviewStatus::Pending)
-            .map(|e| e.path.clone())
-    });
-    if let Some(path) = target {
-        app.accept_chat_edit(&path);
-    }
+    app.decide_active_chat_file(true);
     Ok(())
 }
 
 fn discard_active_file(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    let active_path = app
-        .documents
-        .get(app.active_document())
-        .and_then(|d| d.buffer.path())
-        .map(|p| p.to_path_buf());
-    let target = active_path.or_else(|| {
-        app.chat
-            .active_session()
-            .pending_edits
-            .iter()
-            .find(|e| e.status == EditReviewStatus::Pending)
-            .map(|e| e.path.clone())
-    });
-    if let Some(path) = target {
-        app.discard_chat_edit(&path);
-    }
+    app.decide_active_chat_file(false);
     Ok(())
 }
 
 fn open_pending_file_diff(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
-    let pending = app
-        .chat
-        .active_session()
-        .pending_edits
-        .iter()
-        .find(|e| e.status == EditReviewStatus::Pending)
-        .cloned()
-        .or_else(|| app.chat.active_session().pending_edits.last().cloned());
-    if let Some(edit) = pending {
-        let right = PathBuf::from(&edit.path);
-        let dir = export_dir(app);
-        let name = right
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file.txt");
-        let left = dir.join(format!("before-{name}"));
-        std::fs::create_dir_all(&dir)
-            .and_then(|()| std::fs::write(&left, edit.before.as_deref().unwrap_or("")))
-            .map_err(|error| {
-                let message = format!("Could not prepare the chat edit diff: {error}");
-                crate::app::error_log::record(
-                    crate::app::error_log::ErrorSeverity::Low,
-                    "chat.edits",
-                    &message,
-                );
-                CommandError::Failed(message)
-            })?;
-        app.open_diff_paths(left, right);
-    } else {
-        app.open_multi_diff(ChangeSet::All);
-    }
+    app.open_next_chat_review();
     Ok(())
 }
 
@@ -261,6 +202,7 @@ fn clear_history(app: &mut App, _: &CommandInvocation) -> Result<(), CommandErro
         let s = app.chat.active_session_mut();
         s.turns.clear();
         s.pending_edits.clear();
+        s.proposals.clear();
         s.checkpoints.clear();
         s.undone_checkpoints.clear();
         s.log("session.clear", "Cleared conversation turns");
@@ -474,6 +416,11 @@ fn import_chat(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError>
     imported.connection_id = None;
     imported.connection_destination = None;
     imported.opencode_session = None;
+    // Imported history may be inspected, but its saved paths carry no write authority.
+    imported.proposals.clear();
+    imported.pending_edits.clear();
+    imported.checkpoints.clear();
+    imported.undone_checkpoints.clear();
     let id = imported.id.clone();
     if let Some(existing) = app.chat.sessions.iter_mut().find(|s| s.id == id) {
         *existing = imported;

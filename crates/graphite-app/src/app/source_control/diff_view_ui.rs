@@ -56,11 +56,32 @@ pub(crate) fn diff_header_hit(
     }
 }
 
+fn review_buttons(area: Rect, lh: f32, cw: f32, apply: &str, discard: &str) -> (Rect, Rect) {
+    let height = diff_header_height(lh);
+    let width = |label: &str| (label.chars().count() as f32 * cw + PAD * 2.0).min(area.2 * 0.45);
+    let apply = (area.0 + PAD, area.1 + height, width(apply), height);
+    let discard = (apply.0 + apply.2 + PAD, apply.1, width(discard), height);
+    (apply, discard)
+}
+
 impl App {
     /// The editor area the diff view occupies: right of the activity bar and sidebar, below the
     /// menu bar and above the status bar.
     pub(crate) fn diff_area(&self, width: f32, height: f32, line_height: f32) -> Rect {
         let top = self.top_menu_height();
+        if self.chat_review_open() || self.ai_mode.is_some() {
+            let (left, right) = if self.ai_mode.is_some() {
+                (0.0, width)
+            } else {
+                self.editor_column(width)
+            };
+            return (
+                left,
+                top,
+                (right - left).max(0.0),
+                (height - line_height - top).max(0.0),
+            );
+        }
         let bottom = if self.view_preferences.status_bar_visible && !self.zen_mode {
             (height - line_height).max(top)
         } else {
@@ -104,6 +125,23 @@ impl App {
         }
         let area = self.diff_area(width, height, line_height);
         if inside(area, mx, my) {
+            if self.chat_review_open() {
+                let (apply, discard) = review_buttons(
+                    area,
+                    line_height,
+                    char_width,
+                    self.t("chat.review.apply"),
+                    self.t("chat.review.discard"),
+                );
+                if inside(apply, mx, my) {
+                    self.decide_chat_review(true);
+                    return true;
+                }
+                if inside(discard, mx, my) {
+                    self.decide_chat_review(false);
+                    return true;
+                }
+            }
             let label_chars = self.diff_layout_label().chars().count();
             match diff_header_hit(area, line_height, char_width, label_chars, mx, my) {
                 DiffHeaderHit::Close => self.close_diff_view(),
@@ -250,8 +288,34 @@ impl App {
             text,
         );
 
+        let mut titles_y = y + header;
+        if self.chat_review_open() {
+            renderer.draw_rect(x, titles_y, w, header, header_bg);
+            let labels = [self.t("chat.review.apply"), self.t("chat.review.discard")];
+            let (apply, discard) =
+                review_buttons((x, y, w, h), line_height, cw, labels[0], labels[1]);
+            let row_y = titles_y + (header - line_height) * 0.5;
+            for (rect, label) in [apply, discard].into_iter().zip(labels) {
+                renderer.draw_rect(rect.0, rect.1 + 2.0, rect.2, rect.3 - 4.0, button_bg);
+                renderer.draw_text(
+                    &Self::help_menu_visible_label(label, cw, (rect.2 - PAD * 2.0).max(0.0)),
+                    rect.0 + PAD,
+                    row_y,
+                    text,
+                );
+            }
+            if let Some(notice) = self.chat_review_notice() {
+                let notice_x = discard.0 + discard.2 + PAD;
+                renderer.draw_text(
+                    &Self::help_menu_visible_label(notice, cw, (x + w - notice_x - PAD).max(0.0)),
+                    notice_x,
+                    row_y,
+                    text,
+                );
+            }
+            titles_y += header;
+        }
         let pane_width = w / 2.0;
-        let titles_y = y + header;
         renderer.draw_rect(x, titles_y, w, line_height * 1.2, bg);
         if !diff.inline {
             renderer.draw_text(
@@ -481,6 +545,7 @@ mod tests {
 
     fn view(left: &str, right: &str) -> DiffView {
         DiffView {
+            review: None,
             title: "t".into(),
             left_name: "a".into(),
             right_name: "b".into(),

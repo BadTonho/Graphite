@@ -109,25 +109,88 @@ impl App {
             }
         }
         if let Some([title, accept, discard]) = layout.edits {
-            draw_label(r, title, self.t("chat.pending_edits"), lh, cw, foreground());
-            draw_control(
-                r,
-                accept,
-                self.t("chat.accept_all"),
-                lh,
-                cw,
-                ControlStyle::Normal,
-            );
-            draw_control(
-                r,
-                discard,
-                self.t("chat.discard_all"),
-                lh,
-                cw,
-                ControlStyle::Normal,
-            );
+            let label = if session.proposals.is_empty() && self.chat.reviewed_in_batch.is_empty() {
+                self.t("chat.pending_edits").to_owned()
+            } else if self.chat.review_list.is_some() {
+                self.t("chat.review.show_chat").to_owned()
+            } else {
+                self.tf(
+                    "chat.review.files",
+                    &[(
+                        "count",
+                        &(session.proposals.len() + self.chat.reviewed_in_batch.len()),
+                    )],
+                )
+            };
+            draw_control(r, title, &label, lh, cw, ControlStyle::Normal);
+            if !session.proposals.is_empty()
+                || session
+                    .pending_edits
+                    .iter()
+                    .any(|entry| entry.status == graphite_chat::EditReviewStatus::Pending)
+            {
+                draw_control(
+                    r,
+                    accept,
+                    self.t(if session.proposals.is_empty() {
+                        "chat.accept_all"
+                    } else {
+                        "chat.review.apply_all"
+                    }),
+                    lh,
+                    cw,
+                    ControlStyle::Normal,
+                );
+                draw_control(
+                    r,
+                    discard,
+                    self.t("chat.discard_all"),
+                    lh,
+                    cw,
+                    ControlStyle::Normal,
+                );
+            }
         }
-        if session.turns.is_empty() && connection.is_none() {
+        let review_count = session.proposals.len() + self.chat.reviewed_in_batch.len();
+        if let Some(offset) = self.chat.review_list.filter(|_| review_count > 0) {
+            let capacity = Self::review_rows(layout.body, lh);
+            let start = offset.min(review_count.saturating_sub(capacity));
+            let pending = session.proposals.iter().map(|entry| {
+                let path = entry
+                    .path
+                    .strip_prefix(&entry.workspace)
+                    .unwrap_or(&entry.path);
+                let kind = if entry.issue.is_some() {
+                    "chat.review.pending_issue"
+                } else if entry.before.is_some() {
+                    "chat.review.modified"
+                } else {
+                    "chat.review.new"
+                };
+                (path, kind, true)
+            });
+            let applied = self
+                .chat
+                .reviewed_in_batch
+                .iter()
+                .map(|path| (path.as_path(), "chat.review.batch_applied", false));
+            for (index, (path, kind, clickable)) in pending
+                .chain(applied)
+                .skip(start)
+                .take(capacity)
+                .enumerate()
+            {
+                let row = layout
+                    .body
+                    .row(layout.body.y + index as f32 * lh * 1.5, lh * 1.5);
+                let label = format!("{}  {}", self.t(kind), path.display());
+                if clickable {
+                    draw_control(r, row, &label, lh, cw, ControlStyle::Normal);
+                } else {
+                    draw_label(r, row, &label, lh, cw, foreground());
+                }
+            }
+        } else if session.turns.is_empty() && connection.is_none() {
             if layout.setup.bottom() <= layout.body.bottom() {
                 let width = text_capacity(layout.setup_heading, cw);
                 for (i, line) in wrap_text(self.t("chat.no_connection"), width)

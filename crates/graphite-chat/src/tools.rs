@@ -157,7 +157,7 @@ pub struct PendingToolApproval {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProposedEdit {
     pub path: PathBuf,
-    pub before: Option<String>,
+    pub before: Option<Vec<u8>>,
     pub after: String,
 }
 
@@ -611,7 +611,17 @@ fn run_propose_edit(workspace_root: &Path, input: &Value) -> ToolExecutionResult
             }
         }
     };
-    let before = fs::read_to_string(&path).ok();
+    let before = match fs::read(&path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return ToolExecutionResult {
+                content: format!("Could not read the proposed edit target: {error}"),
+                is_error: true,
+                proposed_edit: None,
+            }
+        }
+    };
     let action = if before.is_some() {
         "Staged update"
     } else {
@@ -707,7 +717,7 @@ mod tests {
         assert!(!staged.is_error);
         assert_eq!(
             staged.proposed_edit.as_ref().unwrap().before.as_deref(),
-            Some("fn main() {\n    println!(\"alpha\");\n}\n")
+            Some(b"fn main() {\n    println!(\"alpha\");\n}\n".as_slice())
         );
 
         let cmd = execute_tool(

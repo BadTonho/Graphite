@@ -61,6 +61,7 @@ impl App {
 
     fn merge_show_diff(&mut self, input: &str, left: String, right: String, right_name: String) {
         self.diff_view = Some(super::scm_ui::DiffView {
+            review: None,
             title: self.tf("merge.compare_title", &[("input", &input)]),
             left_name: self.t("merge.pane.base").to_owned(),
             right_name,

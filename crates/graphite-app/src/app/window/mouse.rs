@@ -123,6 +123,11 @@ impl App {
             return;
         }
 
+        if (self.chat_review_open() || self.ai_mode.is_some())
+            && self.click_diff_view(mx, my, window_width, window_height, lh, cw)
+        {
+            return;
+        }
         if self.ai_mode.is_some() {
             if self.handle_chat_click(mx, my, window_width, window_height, lh) {
                 return;

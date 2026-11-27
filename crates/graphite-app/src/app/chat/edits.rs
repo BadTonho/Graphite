@@ -5,11 +5,6 @@
 //! the user, to the model, and to the error log instead of being recorded as applied.
 
 use super::*;
-use graphite_chat::{write_proposed_edit, ProposedEdit};
-
-/// Error-log source for chat edit writes.
-const EDIT_LOG_SOURCE: &str = "chat.edits";
-
 impl App {
     /// Whether `path` is open in an editor whose text has not been saved.
     pub(crate) fn open_document_has_unsaved_changes(&self, path: &Path) -> bool {
@@ -23,72 +18,6 @@ impl App {
     }
 
     /// The first of `paths` that is open with unsaved changes.
-    fn first_unsaved_path<'a>(
-        &self,
-        mut paths: impl Iterator<Item = &'a Path>,
-    ) -> Option<&'a Path> {
-        paths.find(|path| self.open_document_has_unsaved_changes(path))
-    }
-
-    fn unsaved_changes_message(path: &Path) -> String {
-        format!(
-            "{} has unsaved changes in the editor. Save or revert them first.",
-            path.display()
-        )
-    }
-
-    /// Applies an edit proposed by the model: refuses files with unsaved editor changes, writes
-    /// the file, updates its editor, and stages the change for review. The returned text is what
-    /// the model is told.
-    pub(crate) fn apply_chat_proposed_edit(
-        &mut self,
-        session_id: &str,
-        turn_id: u64,
-        edit: ProposedEdit,
-    ) -> Result<String, String> {
-        if self.open_document_has_unsaved_changes(&edit.path) {
-            let message = Self::unsaved_changes_message(&edit.path);
-            self.status = message.clone();
-            if let Some(session) = self.chat.session_by_id_mut(session_id) {
-                session.log("edit.blocked", message.clone());
-            }
-            return Err(format!(
-                "{message} The edit was not applied. Ask the user to save or revert the file, \
-                 then propose the edit again."
-            ));
-        }
-        // The file is read again here: it may have changed since the model proposed the edit.
-        let before = std::fs::read_to_string(&edit.path).ok();
-        if let Err(error) = write_proposed_edit(&edit.path, &edit.after) {
-            let message = format!("Could not write {}: {error}", edit.path.display());
-            crate::app::error_log::record(
-                crate::app::error_log::ErrorSeverity::High,
-                EDIT_LOG_SOURCE,
-                &message,
-            );
-            self.status = message.clone();
-            if let Some(session) = self.chat.session_by_id_mut(session_id) {
-                session.log("edit.failed", message.clone());
-            }
-            return Err(format!("{message}. The edit was not applied."));
-        }
-        self.sync_open_document_text(&edit.path, Some(&edit.after));
-        let action = if before.is_some() {
-            "Updated"
-        } else {
-            "Created"
-        };
-        let content = format!(
-            "{action} {} ({} bytes). The user can keep, discard, or undo the change.",
-            edit.path.display(),
-            edit.after.len()
-        );
-        if let Some(session) = self.chat.session_by_id_mut(session_id) {
-            session.stage_edit(turn_id, edit.path, before, edit.after);
-        }
-        Ok(content)
-    }
-
     /// Updates an already-open document buffer when a file on disk is updated or reverted by chat.
     /// Callers check [`Self::open_document_has_unsaved_changes`] first: this replaces the text.
     pub(crate) fn sync_open_document_text(&mut self, path: &Path, new_text: Option<&str>) {
@@ -122,6 +51,16 @@ impl App {
     }
 
     pub(crate) fn accept_chat_edit(&mut self, path: &Path) -> bool {
+        if let Some(id) = self
+            .chat
+            .active_session()
+            .proposals
+            .iter()
+            .find(|proposal| same_file_path(&proposal.path, path))
+            .map(|proposal| proposal.id)
+        {
+            return self.apply_chat_proposal(id);
+        }
         let accepted = self.chat.active_session_mut().accept_edit(path);
         if accepted {
             self.chat
@@ -132,19 +71,42 @@ impl App {
     }
 
     pub(crate) fn discard_chat_edit(&mut self, path: &Path) -> bool {
-        if self.open_document_has_unsaved_changes(path) {
-            self.status = Self::unsaved_changes_message(path);
-            return false;
+        if let Some(id) = self
+            .chat
+            .active_session()
+            .proposals
+            .iter()
+            .find(|proposal| same_file_path(&proposal.path, path))
+            .map(|proposal| proposal.id)
+        {
+            return self.discard_chat_proposal(id);
         }
-        let Some(before) = self.chat.active_session_mut().discard_edit(path) else {
+        let Some(entry) = self
+            .chat
+            .active_session()
+            .pending_edits
+            .iter()
+            .find(|entry| {
+                entry.path == path && entry.status == graphite_chat::EditReviewStatus::Pending
+            })
+            .cloned()
+        else {
             return false;
         };
-        let failed = self.restore_files([(path.to_path_buf(), before)]);
-        self.finish_rollback(failed, format!("Discarded changes to {}", path.display()));
+        if !self.restore_legacy_chat_file(path, Some(&entry.after), entry.before.as_deref()) {
+            return false;
+        }
+        self.chat.active_session_mut().discard_edit(path);
+        self.persist_chat_review();
+        self.refresh_scm_async();
+        self.status = self.t("chat.review.discarded").into();
         true
     }
 
     pub(crate) fn accept_all_chat_edits(&mut self) -> usize {
+        if !self.chat.active_session().proposals.is_empty() {
+            return self.apply_all_chat_proposals();
+        }
         let count = self.chat.active_session_mut().accept_all_edits();
         self.chat
             .persist_active_session(&self.profile_root, self.profiles.is_none());
@@ -153,100 +115,33 @@ impl App {
     }
 
     pub(crate) fn discard_all_chat_edits(&mut self) -> usize {
-        let session = self.chat.active_session();
-        let pending = session
+        if !self.chat.active_session().proposals.is_empty() {
+            let count = self.chat.active_session().proposals.len();
+            self.chat.active_session_mut().proposals.clear();
+            self.persist_chat_review();
+            self.status = self.tf("chat.review.discarded_many", &[("count", &count)]);
+            return count;
+        }
+        let paths: Vec<_> = self
+            .chat
+            .active_session()
             .pending_edits
             .iter()
             .filter(|edit| edit.status == graphite_chat::EditReviewStatus::Pending)
-            .map(|edit| edit.path.as_path());
-        if let Some(path) = self.first_unsaved_path(pending) {
-            self.status = Self::unsaved_changes_message(path);
-            return 0;
-        }
-        let reverted = self.chat.active_session_mut().discard_all_edits();
-        let count = reverted.len();
-        let failed = self.restore_files(reverted);
-        self.finish_rollback(failed, format!("Discarded {count} file edit(s)"));
-        count
+            .map(|edit| edit.path.clone())
+            .collect();
+        paths
+            .iter()
+            .filter(|path| self.discard_chat_edit(path))
+            .count()
     }
 
     pub(crate) fn undo_chat_edit(&mut self) -> bool {
-        let Some(last) = self.chat.active_session().checkpoints.last() else {
-            return false;
-        };
-        if let Some(path) = self.first_unsaved_path(last.entries.iter().map(|e| e.path.as_path())) {
-            self.status = Self::unsaved_changes_message(path);
-            return false;
-        }
-        let Some(cp) = self.chat.active_session_mut().undo_checkpoint() else {
-            return false;
-        };
-        let failed = self.restore_files(
-            cp.entries
-                .iter()
-                .map(|e| (e.path.clone(), e.before.clone())),
-        );
-        self.finish_rollback(failed, format!("Undid {}", cp.label));
-        true
+        self.restore_chat_checkpoint(true)
     }
 
     pub(crate) fn redo_chat_edit(&mut self) -> bool {
-        let Some(next) = self.chat.active_session().undone_checkpoints.last() else {
-            return false;
-        };
-        if let Some(path) = self.first_unsaved_path(next.entries.iter().map(|e| e.path.as_path())) {
-            self.status = Self::unsaved_changes_message(path);
-            return false;
-        }
-        let Some(cp) = self.chat.active_session_mut().redo_checkpoint() else {
-            return false;
-        };
-        let failed =
-            self.restore_files(cp.entries.iter().map(|e| (e.path.clone(), e.after.clone())));
-        self.finish_rollback(failed, format!("Redid {}", cp.label));
-        true
-    }
-
-    /// Writes (or removes, for `None`) each file and updates its editor. Returns the files that
-    /// could not be restored; each failure is recorded in the error log.
-    fn restore_files(
-        &mut self,
-        files: impl IntoIterator<Item = (PathBuf, Option<String>)>,
-    ) -> Vec<PathBuf> {
-        let mut failed = Vec::new();
-        for (path, content) in files {
-            let result = match content.as_deref() {
-                Some(text) => write_proposed_edit(&path, text),
-                None => match std::fs::remove_file(&path) {
-                    Ok(()) => Ok(()),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    Err(error) => Err(error.to_string()),
-                },
-            };
-            match result {
-                Ok(()) => self.sync_open_document_text(&path, content.as_deref()),
-                Err(error) => {
-                    crate::app::error_log::record(
-                        crate::app::error_log::ErrorSeverity::High,
-                        EDIT_LOG_SOURCE,
-                        format!("Could not restore {}: {error}", path.display()),
-                    );
-                    failed.push(path);
-                }
-            }
-        }
-        failed
-    }
-
-    fn finish_rollback(&mut self, failed: Vec<PathBuf>, done: String) {
-        self.chat
-            .persist_active_session(&self.profile_root, self.profiles.is_none());
-        self.refresh_scm_async();
-        self.status = match failed.as_slice() {
-            [] => done,
-            [path] => format!("Could not restore {}", path.display()),
-            paths => format!("Could not restore {} files", paths.len()),
-        };
+        self.restore_chat_checkpoint(false)
     }
 }
 
@@ -254,6 +149,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::app::chat::ChatUiEvent;
+    use graphite_chat::ProposedEdit;
     use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
     struct Turn {
@@ -279,13 +175,13 @@ mod tests {
 
     fn apply(turn: &mut Turn, path: &Path, after: &str) -> Result<String, String> {
         let (tx, rx) = mpsc::channel();
-        turn.app.handle_chat_ui_event(ChatUiEvent::ApplyEdit {
+        turn.app.handle_chat_ui_event(ChatUiEvent::StageEdit {
             run: turn.run.clone(),
             session_id: turn.session_id.clone(),
             turn_id: turn.turn_id,
             edit: ProposedEdit {
                 path: path.to_path_buf(),
-                before: None,
+                before: std::fs::read(path).ok(),
                 after: after.into(),
             },
             reply: tx,
@@ -294,111 +190,188 @@ mod tests {
     }
 
     #[test]
-    fn edit_is_written_staged_and_reported_with_the_content_on_disk() {
+    fn review_uses_an_in_memory_diff_and_preserves_file_format() {
         let dir = crate::test_support::TempDir::new();
         let file = dir.path().join("a.rs");
-        std::fs::write(&file, "old\n").unwrap();
+        let original = b"\xef\xbb\xbfold\r\n";
+        std::fs::write(&file, original).unwrap();
         let mut turn = running_turn(dir.path());
         turn.app.open_file(file.clone());
 
         let reply = apply(&mut turn, &file, "new\n").unwrap();
+        assert!(reply.contains("queued"), "{reply}");
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        assert_eq!(turn.app.editor().text(), "old\n");
+        assert!(turn.app.chat.active_session().checkpoints.is_empty());
 
-        assert!(reply.starts_with("Updated"), "{reply}");
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "new\n");
+        turn.app.open_next_chat_review();
+        let diff = turn.app.diff_view.as_ref().unwrap();
+        assert_eq!((&diff.left[..], &diff.right[..]), ("old\n", "new\n"));
+        turn.app.decide_chat_review(true);
+        assert!(turn.app.diff_view.is_none());
+        assert_eq!(std::fs::read(&file).unwrap(), b"\xef\xbb\xbfnew\r\n");
         assert_eq!(turn.app.editor().text(), "new\n");
-        let staged = &turn.app.chat.active_session().pending_edits[0];
-        assert_eq!(staged.before.as_deref(), Some("old\n"));
+        assert!(!turn.app.documents[turn.app.active_document()].is_dirty());
+        assert!(turn.app.undo_chat_edit());
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        assert!(turn.app.redo_chat_edit());
     }
 
     #[test]
-    fn edit_never_overwrites_unsaved_editor_changes() {
+    fn a_conflict_in_a_batch_keeps_manual_changes_and_applies_other_files() {
         let dir = crate::test_support::TempDir::new();
         let file = dir.path().join("a.rs");
-        std::fs::write(&file, "saved\n").unwrap();
+        let other = dir.path().join("b.rs");
+        let created_elsewhere = dir.path().join("c.rs");
+        std::fs::write(&file, "original").unwrap();
         let mut turn = running_turn(dir.path());
         turn.app.open_file(file.clone());
-        turn.app.editor_mut().insert("unsaved ");
-        let typed = turn.app.editor().text();
+        apply(&mut turn, &file, "from the model").unwrap();
+        apply(&mut turn, &other, "created").unwrap();
+        apply(&mut turn, &created_elsewhere, "from the model").unwrap();
+        assert!(!other.exists());
+        turn.app.editor_mut().insert("typed ");
+        std::fs::write(&created_elsewhere, "external").unwrap();
 
-        let error = apply(&mut turn, &file, "from the model\n").unwrap_err();
-
-        assert!(error.contains("unsaved changes"), "{error}");
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "saved\n");
-        assert_eq!(turn.app.editor().text(), typed);
-        assert!(turn.app.documents[turn.app.active_document()]
-            .buffer
-            .is_dirty());
-        assert!(turn.app.chat.active_session().pending_edits.is_empty());
+        assert_eq!(turn.app.apply_all_chat_proposals(), 1);
+        assert_eq!(turn.app.editor().text(), "typed original");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), "created");
+        assert_eq!(
+            std::fs::read_to_string(&created_elsewhere).unwrap(),
+            "external"
+        );
+        let session = turn.app.chat.active_session();
+        assert_eq!(session.proposals.len(), 2);
+        assert!(session.proposals.iter().all(|entry| entry.issue.is_some()));
+        assert_eq!(session.checkpoints.len(), 1);
+        assert_eq!(turn.app.discard_all_chat_edits(), 2);
+        assert_eq!(turn.app.editor().text(), "typed original");
     }
 
     #[test]
-    fn failed_write_is_reported_and_not_staged() {
+    fn a_replaced_diff_cannot_apply_or_discard_a_newer_proposal() {
         let dir = crate::test_support::TempDir::new();
-        // A directory cannot be written as a file.
+        let file = dir.path().join("a.rs");
+        let mut turn = running_turn(dir.path());
+        apply(&mut turn, &file, "old proposal").unwrap();
+        turn.app.open_next_chat_review();
+        apply(&mut turn, &file, "new proposal").unwrap();
+
+        turn.app.decide_chat_review(true);
+        turn.app.decide_chat_review(false);
+        assert!(!file.exists());
+        assert!(turn.app.chat_review_notice().is_some());
+        turn.app.open_next_chat_review();
+        turn.app.decide_chat_review(true);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "new proposal");
+        assert!(turn.app.undo_chat_edit());
+        assert!(!file.exists());
+        assert!(turn.app.redo_chat_edit());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "new proposal");
+    }
+
+    #[test]
+    fn undo_and_redo_preserve_intervening_disk_and_editor_changes() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("a.rs");
+        std::fs::write(&file, "old").unwrap();
+        let mut turn = running_turn(dir.path());
+        turn.app.open_file(file.clone());
+        apply(&mut turn, &file, "new").unwrap();
+        assert!(turn.app.accept_chat_edit(&file));
+
+        std::fs::write(&file, "external").unwrap();
+        assert!(!turn.app.undo_chat_edit());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "external");
+        std::fs::write(&file, "new").unwrap();
+        assert!(turn.app.undo_chat_edit());
+        turn.app.editor_mut().insert("typed ");
+        assert!(!turn.app.redo_chat_edit());
+        assert_eq!(turn.app.editor().text(), "typed old");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    }
+
+    #[test]
+    fn cancelled_turns_keep_existing_proposals_and_reject_late_edits() {
+        let dir = crate::test_support::TempDir::new();
+        let file = dir.path().join("a.rs");
+        let mut turn = running_turn(dir.path());
+        apply(&mut turn, &file, "before cancellation").unwrap();
+        turn.app.cancel_chat_turn();
+        assert!(apply(&mut turn, &file, "late").is_err());
+        assert!(!file.exists());
+        assert_eq!(
+            turn.app.chat.active_session().proposals[0].after,
+            "before cancellation"
+        );
+    }
+
+    #[test]
+    fn a_directory_or_outside_path_is_not_written() {
+        let dir = crate::test_support::TempDir::new();
+        let external = crate::test_support::TempDir::new();
         let target = dir.path().join("folder");
         std::fs::create_dir(&target).unwrap();
         let mut turn = running_turn(dir.path());
+        let outside = external.path().join("outside.txt");
+        assert!(apply(&mut turn, &outside, "text").is_err());
+        assert!(!outside.exists());
 
-        let error = apply(&mut turn, &target, "text").unwrap_err();
-
-        assert!(error.contains("Could not write"), "{error}");
-        assert!(turn.app.chat.active_session().pending_edits.is_empty());
+        apply(&mut turn, &target, "text").unwrap();
+        assert!(!turn.app.accept_chat_edit(&target));
+        assert!(target.is_dir());
+        assert!(turn.app.chat.active_session().proposals[0].issue.is_some());
         assert!(turn.app.chat.active_session().checkpoints.is_empty());
     }
-
     #[test]
-    fn edit_after_the_turn_ended_is_refused() {
+    fn queued_proposals_survive_reloading_and_require_the_original_workspace() {
         let dir = crate::test_support::TempDir::new();
+        let other = crate::test_support::TempDir::new();
         let file = dir.path().join("a.rs");
+        std::fs::write(&file, "before").unwrap();
         let mut turn = running_turn(dir.path());
-        turn.app.chat.running_turn = None;
+        apply(&mut turn, &file, "after").unwrap();
+        let serialized = turn.app.chat.active_session().export_json().unwrap();
 
-        assert!(apply(&mut turn, &file, "text").is_err());
-        assert!(!file.exists());
+        let mut app = App::new_with_options(other.path().to_path_buf(), None, true);
+        *app.chat.active_session_mut() =
+            graphite_chat::ChatSession::import_json(&serialized).unwrap();
+        let id = app.chat.active_session().proposals[0].id;
+        assert!(!app.apply_chat_proposal(id));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "before");
+
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        *app.chat.active_session_mut() =
+            graphite_chat::ChatSession::import_json(&serialized).unwrap();
+        assert!(app.apply_chat_proposal(id));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "after");
     }
 
     #[test]
-    fn undo_redo_and_discard_keep_unsaved_editor_changes() {
+    fn prior_session_history_still_loads_and_checks_the_file_before_rollback() {
         let dir = crate::test_support::TempDir::new();
         let file = dir.path().join("a.rs");
-        std::fs::write(&file, "one\n").unwrap();
-        let mut turn = running_turn(dir.path());
-        turn.app.open_file(file.clone());
-        apply(&mut turn, &file, "two\n").unwrap();
-        turn.app.editor_mut().insert("typed ");
-        let typed = turn.app.editor().text();
-
-        assert!(!turn.app.undo_chat_edit());
-        assert!(!turn.app.discard_chat_edit(&file));
-        assert_eq!(turn.app.discard_all_chat_edits(), 0);
-
-        assert_eq!(turn.app.editor().text(), typed);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "two\n");
-        assert!(turn.app.status.contains("unsaved changes"));
-        let session = turn.app.chat.active_session();
-        assert_eq!(session.checkpoints.len(), 1);
-        assert_eq!(
-            session.pending_edits[0].status,
-            graphite_chat::EditReviewStatus::Pending
+        std::fs::write(&file, "legacy already applied").unwrap();
+        let mut app = App::new_with_options(dir.path().to_path_buf(), None, true);
+        let session = app.chat.active_session_mut();
+        let turn = session.start_turn("old saved conversation");
+        session.stage_edit(
+            turn,
+            file.clone(),
+            Some("before".into()),
+            "legacy already applied".into(),
         );
-    }
+        let serialized = session.export_json().unwrap();
+        assert!(!serialized.contains("\"proposals\""));
+        *session = graphite_chat::ChatSession::import_json(&serialized).unwrap();
+        assert!(session.proposals.is_empty());
 
-    #[test]
-    fn rollback_reports_a_file_that_could_not_be_restored() {
-        let dir = crate::test_support::TempDir::new();
-        let file = dir.path().join("a.rs");
-        let mut turn = running_turn(dir.path());
-        apply(&mut turn, &file, "created\n").unwrap();
-        // Replace the created file with a directory, so restoring "no file" fails.
-        std::fs::remove_file(&file).unwrap();
-        std::fs::create_dir(&file).unwrap();
-
-        assert!(turn.app.undo_chat_edit());
-
-        assert!(
-            turn.app.status.starts_with("Could not restore"),
-            "{}",
-            turn.app.status
-        );
+        std::fs::write(&file, "edited later").unwrap();
+        assert!(!app.undo_chat_edit());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "edited later");
+        std::fs::write(&file, "legacy already applied").unwrap();
+        assert!(app.undo_chat_edit());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "before");
     }
 }
