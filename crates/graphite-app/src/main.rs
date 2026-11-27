@@ -104,6 +104,7 @@ struct App {
     documents: document_store::DocumentStore,
 
     editor_groups: app::editor_groups::EditorGroups,
+    ai_mode: Option<app::workbench_mode::AiMode>,
     mouse: PhysicalPosition<f64>,
     modifiers: ModifiersState,
     keymap: keybindings::Keymap,
@@ -667,6 +668,7 @@ impl App {
                 },
             ),
             editor_groups: app::editor_groups::EditorGroups::new(initial_document_id),
+            ai_mode: None,
             mouse: PhysicalPosition::new(0.0, 0.0),
             modifiers: ModifiersState::empty(),
             keymap,

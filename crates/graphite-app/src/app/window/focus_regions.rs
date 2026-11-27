@@ -48,6 +48,16 @@ pub(crate) fn next_region(
 impl App {
     /// Regions that are visible right now, in F6 order: editor, terminal, explorer.
     pub(crate) fn available_focus_regions(&self) -> Vec<FocusRegion> {
+        if self.ai_mode.is_some() {
+            let mut regions = vec![FocusRegion::Chat];
+            if self.ai_file_group().is_some() {
+                regions.push(FocusRegion::Editor);
+            }
+            if self.terminal_visible {
+                regions.push(FocusRegion::Terminal);
+            }
+            return regions;
+        }
         let mut regions = vec![FocusRegion::Editor];
         if self.terminal_visible && self.view_preferences.panel_visible {
             regions.push(FocusRegion::Terminal);

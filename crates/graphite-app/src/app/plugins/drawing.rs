@@ -811,6 +811,9 @@ impl App {
     }
 
     pub(crate) fn sync_graphite_detail_webview(&mut self) {
+        if self.ai_mode.is_some() {
+            return;
+        }
         let Some((group, repository)) = self.plugins.active_graphite_detail.clone() else {
             self.graphite_detail_webview = None;
             self.graphite_detail_webview_target = None;

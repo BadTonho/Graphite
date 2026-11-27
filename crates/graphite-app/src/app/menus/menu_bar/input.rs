@@ -4,11 +4,22 @@ use super::*;
 
 impl App {
     pub(crate) fn top_menu_height(&self) -> f32 {
-        if self.zen_mode {
+        if self.zen_mode && self.ai_mode.is_none() {
             return 0.0;
         }
-        // Match the tab strip's 1.5 line height, including display scaling.
+        self.full_titlebar_height()
+    }
+
+    fn full_titlebar_height(&self) -> f32 {
         self.font_size * self.sidebar_scale_factor * 2.1
+    }
+
+    pub(super) fn mode_button_rect(&self, mut slot: MenuItemRectLike) -> MenuItemRectLike {
+        let height = self.full_titlebar_height();
+        let inset = (3.0 * self.sidebar_scale_factor).min(height * 0.5);
+        slot.y = inset;
+        slot.height = height - 2.0 * inset;
+        slot
     }
 
     pub(crate) fn command_center_rects(
@@ -132,16 +143,26 @@ impl App {
     }
 
     pub(crate) fn titlebar_control_click(&mut self, x: f32, y: f32) -> bool {
-        let Some(width) = self.gpu.as_ref().map(|gpu| gpu.renderer.size().0) else {
+        let Some((width, char_width)) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| (gpu.renderer.size().0, gpu.renderer.char_width()))
+        else {
             return false;
         };
-        let layout = self.titlebar_layout(width, self.font_size * 0.6);
+        let layout = self.titlebar_layout(width, char_width);
         if layout.update_button.is_some_and(|rect| rect.contains(x, y)) {
             self.click_titlebar_update_button();
             return true;
         }
-        if let Some(control) =
-            super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y)
+        if self.click_mode_button(layout.mode_button, x, y) {
+            return true;
+        }
+        if let Some(control) = (self.ai_mode.is_none())
+            .then(|| {
+                super::titlebar_layout_controls::layout_control_at(&layout.layout_controls, x, y)
+            })
+            .flatten()
         {
             let anchor = layout
                 .layout_controls
@@ -154,6 +175,14 @@ impl App {
         let target = layout.controls.at(x, y);
         let Some(target) = target else { return false };
         self.titlebar_control_action(target);
+        true
+    }
+
+    pub(super) fn click_mode_button(&mut self, slot: MenuItemRectLike, x: f32, y: f32) -> bool {
+        if !self.mode_button_rect(slot).contains(x, y) {
+            return false;
+        }
+        self.run_ui_command("graphite.workbench.toggleMode");
         true
     }
 
@@ -211,6 +240,9 @@ impl App {
             return false;
         };
         let layout = self.titlebar_layout(width, char_width);
+        if self.zen_mode && self.ai_mode.is_none() {
+            return self.click_mode_button(layout.mode_button, x, y);
+        }
         if y >= layout.height {
             return false;
         }

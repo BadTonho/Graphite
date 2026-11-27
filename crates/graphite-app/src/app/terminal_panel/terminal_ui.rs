@@ -10,10 +10,19 @@ impl App {
             }
         }
         self.terminal_visible = !self.terminal_visible;
-        if self.terminal_visible {
-            self.view_preferences.panel_visible = true;
+        if self.ai_mode.is_some() {
+            let region = if self.terminal_visible {
+                crate::app::focus_regions::FocusRegion::Terminal
+            } else {
+                crate::app::focus_regions::FocusRegion::Chat
+            };
+            self.focus_region(region);
+        } else {
+            if self.terminal_visible {
+                self.view_preferences.panel_visible = true;
+            }
+            self.terminal_focused = self.terminal_visible && !self.terminal_problems;
         }
-        self.terminal_focused = self.terminal_visible && !self.terminal_problems;
         self.terminal_problems = false;
         self.resize_terminal();
     }
@@ -111,11 +120,15 @@ impl App {
         match self.spawn_terminal_session() {
             Ok(index) => {
                 self.terminal_visible = true;
-                self.view_preferences.panel_visible = true;
+                if self.ai_mode.is_some() {
+                    self.focus_region(crate::app::focus_regions::FocusRegion::Terminal);
+                } else {
+                    self.view_preferences.panel_visible = true;
+                    self.terminal_focused = true;
+                }
                 self.terminal_problems = false;
                 self.active_terminal = index;
                 self.focused_terminal = index;
-                self.terminal_focused = true;
                 self.resize_terminal();
             }
             Err(error) => {
@@ -233,11 +246,16 @@ impl App {
         let lh = gpu.renderer.line_height().max(1.0);
         let cw = gpu.renderer.char_width().max(1.0);
         let (w, h) = gpu.renderer.size();
-        let panel_width = self.panel_bounds(w, h, lh).width;
-        let panel_h = drawing_helpers::terminal_panel_height_with_delta(
-            h,
-            self.view_preferences.panel_height_delta,
-        );
+        let bounds = self.panel_bounds(w, h, lh);
+        let panel_width = bounds.width;
+        let panel_h = if self.ai_mode.is_some() {
+            bounds.height
+        } else {
+            drawing_helpers::terminal_panel_height_with_delta(
+                h,
+                self.view_preferences.panel_height_delta,
+            )
+        };
         let rows = ((panel_h - super::terminal_drawing::TERMINAL_HEADER_HEIGHT - 4.0) / lh).max(1.0)
             as u16;
         let columns = (((panel_width - super::terminal_drawing::TERMINAL_GUTTER_WIDTH - PAD)
@@ -269,7 +287,11 @@ impl App {
     }
 
     pub(crate) fn terminal_resize_handle_bounds(&self) -> Option<(f32, f32, f32)> {
-        if self.zen_mode || !self.view_preferences.panel_visible || !self.terminal_visible {
+        if self.ai_mode.is_some()
+            || self.zen_mode
+            || !self.view_preferences.panel_visible
+            || !self.terminal_visible
+        {
             return None;
         }
         let gpu = self.gpu.as_ref()?;

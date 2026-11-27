@@ -532,7 +532,16 @@ pub(super) fn register(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, handler) in commands {
-        add(registry, id, title, "Workbench", ALL, "true", None, handler);
+        add(
+            registry,
+            id,
+            title,
+            "Workbench",
+            ALL,
+            "!graphiteAiMode",
+            None,
+            handler,
+        );
     }
 }
 

@@ -482,6 +482,10 @@ pub(crate) fn accessibility_tree(
     }
 }
 
+pub(crate) const MODE_SELECTOR_NODE: NodeId = NodeId(6);
+pub(crate) const AI_CHAT_NODE: NodeId = NodeId(7);
+pub(crate) const AI_CLOSE_FILE_NODE: NodeId = NodeId(8);
+
 impl App {
     /// Build one accessible editor and tab list for each visible group.
     pub(crate) fn grouped_accessibility_tree(
@@ -499,7 +503,8 @@ impl App {
         let root = NodeId(0);
         let mut root_node = Node::new(Role::Window);
         root_node.set_label(self.t("accessibility.app_name"));
-        let toolbar = (!self.zen_mode
+        let toolbar = (self.ai_mode.is_none()
+            && !self.zen_mode
             && self.activity_bar_preferences.position
                 != crate::config::ActivityBarPosition::Hidden)
             .then(activity_toolbar_node);
@@ -560,7 +565,15 @@ impl App {
             children.push(toolbar);
         }
         children.extend(rects.iter().map(|rect| group_node(rect.id)));
-        children.extend([NodeId(3), NodeId(4)]);
+        children.extend([NodeId(3), MODE_SELECTOR_NODE]);
+        if self.ai_mode.is_some() {
+            children.push(AI_CHAT_NODE);
+            if self.ai_file_group().is_some() {
+                children.push(AI_CLOSE_FILE_NODE);
+            }
+        } else {
+            children.push(NodeId(4));
+        }
         if panel.is_some() {
             children.push(NodeId(5));
         }
@@ -1604,10 +1617,28 @@ impl App {
         terminal.set_label(self.t("accessibility.toggle_terminal"));
         terminal.add_action(Action::Click);
         nodes.push((NodeId(3), terminal));
-        let mut problems = Node::new(Role::Button);
-        problems.set_label(self.t("accessibility.show_diagnostics"));
-        problems.add_action(Action::Click);
-        nodes.push((NodeId(4), problems));
+        let mut selector = Node::new(Role::Button);
+        selector.set_label(self.t("command.graphite.workbench.toggleMode"));
+        selector.add_action(Action::Click);
+        nodes.push((MODE_SELECTOR_NODE, selector));
+        if self.ai_mode.is_some() {
+            let mut chat = Node::new(Role::TextInput);
+            chat.set_label(self.t("workbench.mode.chat"));
+            chat.set_value(self.chat.input.as_str());
+            chat.add_action(Action::Focus);
+            nodes.push((AI_CHAT_NODE, chat));
+            if self.ai_file_group().is_some() {
+                let mut close = Node::new(Role::Button);
+                close.set_label(self.t("workbench.mode.close_file"));
+                close.add_action(Action::Click);
+                nodes.push((AI_CLOSE_FILE_NODE, close));
+            }
+        } else {
+            let mut problems = Node::new(Role::Button);
+            problems.set_label(self.t("accessibility.show_diagnostics"));
+            problems.add_action(Action::Click);
+            nodes.push((NodeId(4), problems));
+        }
         if let Some(panel) = panel {
             let mut node = Node::new(Role::Label);
             node.set_label(panel);
@@ -1627,6 +1658,10 @@ impl App {
                 run_breakpoint_prompt_input_node()
             } else if panel_focus {
                 NodeId(5)
+            } else if self.ai_mode.is_some()
+                && (self.chat.focused || self.ai_file_group().is_none())
+            {
+                AI_CHAT_NODE
             } else {
                 editor_node(self.editor_groups.focused())
             },

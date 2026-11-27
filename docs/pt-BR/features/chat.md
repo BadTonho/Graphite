@@ -20,6 +20,14 @@ O Graphite inclui um assistente conversacional e agente de workspace integrado c
 
 Os modelos gratuitos de chat restritos ao cliente OpenCode ficam indisponíveis no Graphite. O Graphite usa um identificador de sessão do OpenCode separado para cada conversa. A disponibilidade das ferramentas depende do modelo escolhido. [Integrações do OpenCode](https://opencode.ai/docs/console/harnesses)
 
+## Modos Editor e IA
+
+O Graphite abre no **Editor**. Clique no botão de modo na barra de título. Ele mostra **IA** no Editor e **Editor** no Modo IA. Você também pode usar **Alternar entre Editor e IA** na paleta de comandos. O Modo IA coloca o Chat na área principal e mantém a mesma conversa, os anexos, o rascunho e a resposta em andamento. O Explorador e as abas de código ficam disponíveis no Editor.
+
+Use **Abrir Arquivo** ou a abertura rápida no Modo IA para mostrar um arquivo editável ao lado do Chat. Em janelas estreitas, os painéis ficam empilhados. O arquivo usa o mesmo documento e histórico de desfazer do Modo Editor. **Fechar painel** devolve o espaço ao Chat e mantém o arquivo e as alterações não salvas disponíveis no Editor. Ao voltar, o Editor restaura a aba ativa e sua vista.
+
+O terminal integrado começa recolhido ao entrar no Modo IA. Use **Alternar Terminal** para abri-lo. As sessões de terminal continuam durante a troca.
+
 ## Superfícies e Navegação
 
 - **Barra Lateral Secundária** (`Ctrl+Alt+I`, `Exibir -> Chat` ou `chat.action.focus`): Exibe o Chat ao lado das visualizações de extensões. Abra a **Estrutura** pela paleta de comandos.

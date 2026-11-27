@@ -926,5 +926,9 @@
   "sync_menu.days_ago": "Sincronizado há {count} d",
   "sync_menu.turn_on_repository": "Ativar sincronização com repositório privado...",
   "sync_menu.backend_gist": "Gist privado",
-  "sync_menu.backend_repository": "Repositório privado"
+  "sync_menu.backend_repository": "Repositório privado",
+  "workbench.mode.editor": "Editor",
+  "workbench.mode.ai": "IA",
+  "workbench.mode.close_file": "Fechar painel",
+  "workbench.mode.chat": "Chat de IA"
 }

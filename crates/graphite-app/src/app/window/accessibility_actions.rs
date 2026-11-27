@@ -19,7 +19,29 @@ impl App {
 
     fn process_accessibility_action(&mut self, request: ActionRequest) {
         let id = request.target_node.0;
-        if request.action == Action::Click && self.plugin_accessibility_click(id) {
+        match request.target_node {
+            super::accessibility::MODE_SELECTOR_NODE if request.action == Action::Click => {
+                self.run_ui_command("graphite.workbench.toggleMode");
+                return;
+            }
+            super::accessibility::AI_CHAT_NODE
+                if self.ai_mode.is_some() && request.action == Action::Focus =>
+            {
+                self.focus_ai_chat();
+                return;
+            }
+            super::accessibility::AI_CLOSE_FILE_NODE
+                if self.ai_mode.is_some() && request.action == Action::Click =>
+            {
+                self.close_ai_file_panel();
+                return;
+            }
+            _ => {}
+        }
+        if self.ai_mode.is_none()
+            && request.action == Action::Click
+            && self.plugin_accessibility_click(id)
+        {
             return;
         }
         if request.target_node == super::accessibility::command_center_back_node() {
@@ -274,6 +296,9 @@ impl App {
             return;
         }
         if let Some(group) = super::accessibility::editor_target(request.target_node) {
+            if self.ai_mode.is_some() && self.ai_file_group() != Some(group) {
+                return;
+            }
             let Some((views, active)) = self.editor_groups.views(group) else {
                 return;
             };
@@ -286,7 +311,11 @@ impl App {
                         view,
                         serde_json::Value::Null,
                     );
-                    self.terminal_focused = false;
+                    if self.ai_mode.is_some() {
+                        self.focus_region(crate::app::focus_regions::FocusRegion::Editor);
+                    } else {
+                        self.terminal_focused = false;
+                    }
                 }
                 (Action::SetValue, Some(ActionData::Value(value))) => self.run_view_command_args(
                     "graphite.editor.setValue",

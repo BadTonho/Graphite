@@ -49,6 +49,27 @@ fn titlebar_geometry_keeps_icon_menus_and_controls_separate_at_common_scales() {
 }
 
 #[test]
+fn one_mode_button_toggles_from_both_edges_and_stays_centered() {
+    let temp = crate::test_support::TempDir::new();
+    let mut app = App::new_with_options(temp.path().to_path_buf(), None, true);
+    for (width, scale) in [(900.0, 1.0), (1200.0, 1.5), (480.0, 1.25)] {
+        app.sidebar_scale_factor = scale;
+        let layout = app.titlebar_layout(width, 9.0 * scale);
+        let button = app.mode_button_rect(layout.mode_button);
+        let (_, (x, _, w, _)) = layout.layout_controls.last().unwrap();
+        assert!(x + w < button.x);
+        assert!(button.x + button.width < layout.controls.minimize.x);
+        assert!((button.y * 2.0 + button.height - layout.height).abs() < 0.01);
+        let y = button.y + button.height * 0.5;
+        assert!(!app.click_mode_button(layout.mode_button, button.x + button.width, y));
+        assert!(app.click_mode_button(layout.mode_button, button.x + 1.0, y));
+        assert!(app.ai_mode.is_some());
+        assert!(app.click_mode_button(layout.mode_button, button.x + button.width - 1.0, y));
+        assert!(app.ai_mode.is_none());
+    }
+}
+
+#[test]
 fn narrow_titlebar_moves_remaining_menus_into_a_bounded_overflow_menu() {
     let layout_600 = layout(600.0, 1.0);
     let more = layout_600

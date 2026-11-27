@@ -6,7 +6,8 @@ impl App {
     /// Focus is explicit because the editor stays visible next to the Plugins
     /// sidebar. Transient overlays always win over the sidebar.
     pub(crate) fn plugin_owns_keyboard(&self) -> bool {
-        self.plugins.visible
+        self.ai_mode.is_none()
+            && self.plugins.visible
             && self.plugins.focused
             && !self.zen_mode
             && !self.scm.visible

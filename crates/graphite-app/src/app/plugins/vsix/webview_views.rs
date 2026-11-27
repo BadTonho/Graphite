@@ -380,7 +380,11 @@ impl App {
 
     /// The webview views of the active container with their absolute overlay rectangles.
     fn active_webview_slots(&self) -> Vec<(WebviewSlot, [f64; 4])> {
-        if self.zen_mode || self.command_palette.is_some() || !self.vsix_workspace_trusted() {
+        if self.ai_mode.is_some()
+            || self.zen_mode
+            || self.command_palette.is_some()
+            || !self.vsix_workspace_trusted()
+        {
             return Vec::new();
         }
         let Some((width, height, lh)) = self.gpu.as_ref().map(|gpu| {

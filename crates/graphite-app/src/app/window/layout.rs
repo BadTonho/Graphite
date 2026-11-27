@@ -214,6 +214,14 @@ impl App {
         height: f32,
         line_height: f32,
     ) -> Vec<GroupRect> {
+        if self.ai_mode.is_some() {
+            return self
+                .ai_layout(width, height, line_height)
+                .file
+                .map(|(_, editor)| editor)
+                .into_iter()
+                .collect();
+        }
         let has_panel = self.has_panel();
         let panel =
             if !has_panel || self.view_preferences.panel_position == config::PanelPosition::Right {
@@ -274,6 +282,9 @@ impl App {
 
     /// Whether a panel (terminal, problems, debug console and the like) takes space.
     pub(crate) fn has_panel(&self) -> bool {
+        if self.ai_mode.is_some() {
+            return self.terminal_visible;
+        }
         self.view_preferences.panel_visible
             && (self.terminal_visible || self.phase6_panel_visible())
     }
@@ -327,6 +338,9 @@ impl App {
     }
 
     pub(crate) fn panel_bounds(&self, width: f32, height: f32, line_height: f32) -> GroupRect {
+        if self.ai_mode.is_some() {
+            return self.ai_layout(width, height, line_height).terminal;
+        }
         let (column_left, column_right) = self.editor_column(width);
         if self.view_preferences.panel_position == config::PanelPosition::Right {
             // Next to the editor column, on the side of the window the column does not reach.
@@ -388,7 +402,7 @@ impl App {
     }
 
     pub(crate) fn editor_tab_strip_height(&self, line_height: f32) -> f32 {
-        if self.view_preferences.tabs_visible && !self.zen_mode {
+        if self.ai_mode.is_none() && self.view_preferences.tabs_visible && !self.zen_mode {
             line_height * 1.5
         } else {
             0.0
@@ -404,7 +418,19 @@ impl App {
         self.group_rectangles(width, height, line_height)
             .into_iter()
             .find(|rect| rect.id == self.editor_groups.focused())
-            .expect("focused group has a rectangle")
+            .unwrap_or_else(|| {
+                assert!(self.ai_mode.is_some(), "focused group has a rectangle");
+                self.ai_layout(width, height, line_height).file.map_or(
+                    GroupRect {
+                        id: self.editor_groups.focused(),
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    },
+                    |(_, editor)| editor,
+                )
+            })
     }
 
     pub(crate) fn keep_cursor_visible(

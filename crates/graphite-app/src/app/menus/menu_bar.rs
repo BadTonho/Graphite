@@ -157,6 +157,7 @@ pub(crate) struct TitlebarLayout {
         super::titlebar_layout_controls::Rect,
     ); 4],
     pub(crate) update_button: Option<MenuItemRectLike>,
+    mode_button: MenuItemRectLike,
     command_center: CommandCenterRects,
     menus: Vec<MenuItemRect>,
     overflowed: Vec<WorkbenchMenu>,
@@ -200,8 +201,17 @@ impl TitlebarLayout {
                 height,
             },
         };
+        let gap = 4.0 * scale;
+        let button_right = (controls.minimize.x - gap).max(0.0);
+        let button_width = (6.0 * char_width + 16.0 * scale).min(button_right);
+        let mode_button = MenuItemRectLike {
+            x: button_right - button_width,
+            y: 0.0,
+            width: button_width,
+            height,
+        };
         let layout_controls = super::titlebar_layout_controls::layout_control_rects(
-            controls.minimize.x,
+            mode_button.x - gap,
             height,
             scale,
         );
@@ -301,6 +311,7 @@ impl TitlebarLayout {
             controls,
             layout_controls,
             update_button,
+            mode_button,
             command_center,
             menus: menu_rects,
             overflowed,
@@ -388,6 +399,7 @@ fn resize_direction_for_titlebar(
     if on_top_edge
         && !on_corner
         && (layout.icon.contains(x, y)
+            || layout.mode_button.contains(x, y)
             || layout.command_center.back.contains(x, y)
             || layout.command_center.forward.contains(x, y)
             || layout.command_center.field.contains(x, y)

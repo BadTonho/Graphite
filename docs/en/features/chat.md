@@ -20,6 +20,14 @@ Graphite includes an integrated conversational assistant and workspace agent bui
 
 OpenCode free-tier chat models that are restricted to the OpenCode client are unavailable in Graphite. Graphite uses a separate OpenCode session identifier for each conversation. Tool availability depends on the selected model. [OpenCode harnesses](https://opencode.ai/docs/console/harnesses)
 
+## Editor and AI workbench modes
+
+Graphite starts in **Editor** mode. Click the mode button in the title bar. It shows **AI** in Editor mode and **Editor** in AI mode. You can also run **Toggle Editor / AI Mode** from the Command Palette. AI mode puts Chat in the main area, with the same conversation, attachments, draft and reply in progress. The Explorer and editor tabs are available in Editor mode.
+
+Use **Open File** or Quick Open in AI mode to show an editable file beside Chat. Narrow windows stack the two panes. The file uses the same document and undo history as Editor mode. **Close panel** returns the space to Chat and keeps the file and any unsaved changes available in Editor mode. Switching back restores the active editor tab and its view.
+
+The integrated terminal starts collapsed when entering AI mode. Use **Toggle Terminal** to open it. Terminal sessions continue when switching modes.
+
 ## Surfaces and Navigation
 
 - **Secondary Side Bar** (`Ctrl+Alt+I`, `View -> Chat`, or `chat.action.focus`): Shows Chat alongside extension views. Open **Outline** from the command palette.

@@ -11,7 +11,12 @@ impl App {
         if self.chat.visible {
             self.draw_chat_panel(r, w, h, lh, cw);
         }
-        if let Some(inline) = &self.chat.inline_chat {
+        if let Some(inline) = self
+            .chat
+            .inline_chat
+            .as_ref()
+            .filter(|_| self.ai_mode.is_none())
+        {
             self.draw_inline_chat(r, w, h, lh, cw, inline);
         }
         if let Some(dialog) = &self.chat.provider_dialog {

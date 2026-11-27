@@ -804,7 +804,7 @@ impl App {
         self.group_rectangles(width, height, lh)
             .into_iter()
             .find(|rect| rect.id == group)
-            .unwrap()
+            .unwrap_or_else(|| self.focused_group_rect(width, height, lh))
     }
     pub(crate) fn command_view_ref(&self) -> &View {
         self.command_runtime

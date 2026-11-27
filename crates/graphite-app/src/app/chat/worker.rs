@@ -667,6 +667,10 @@ impl App {
     }
 
     pub(crate) fn open_chat_sidebar(&mut self) {
+        if self.ai_mode.is_some() {
+            self.focus_ai_chat();
+            return;
+        }
         self.secondary_plugin = None;
         self.chat.visible = true;
         self.chat.focused = true;

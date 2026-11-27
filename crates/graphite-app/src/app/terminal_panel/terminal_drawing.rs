@@ -402,7 +402,7 @@ impl App {
         line_height: f32,
         cell_width: f32,
     ) {
-        if !self.view_preferences.panel_visible {
+        if self.ai_mode.is_none() && !self.view_preferences.panel_visible {
             return;
         }
         let bounds = self.panel_bounds(width, height, line_height);

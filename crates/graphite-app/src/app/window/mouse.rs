@@ -123,7 +123,39 @@ impl App {
             return;
         }
 
-        if self.handle_commit_hover_click(mx, my) {
+        if self.ai_mode.is_some() {
+            if self.handle_chat_click(mx, my, window_width, window_height, lh) {
+                return;
+            }
+            let layout = self.ai_layout(window_width, window_height, lh);
+            if layout
+                .file
+                .is_some_and(|(header, _)| self.ai_file_close_hit(header, mx, my, cw))
+            {
+                self.close_ai_file_panel();
+                return;
+            }
+            if self.terminal_visible
+                && my >= layout.terminal.y
+                && my < layout.terminal.y + layout.terminal.height
+            {
+                self.focus_region(crate::app::focus_regions::FocusRegion::Terminal);
+                self.handle_terminal_panel_click(
+                    mx,
+                    my,
+                    layout.terminal.x,
+                    layout.terminal.y,
+                    layout.terminal.width,
+                    lh,
+                    cw,
+                    prev_terminal_toolbar_menu,
+                );
+                if !self.terminal_visible {
+                    self.focus_ai_chat();
+                }
+                return;
+            }
+            self.click_editor_group(mx, my, window_width, window_height, lh, cw);
             return;
         }
 
@@ -468,141 +500,152 @@ impl App {
                 }
             }
         } else {
-            let Some(rect) = self
-                .group_rectangles(window_width, window_height, lh)
-                .into_iter()
-                .find(|rect| {
-                    mx >= rect.x
-                        && mx < rect.x + rect.width
-                        && my >= rect.y
-                        && my < rect.y + rect.height
-                })
-            else {
-                return;
-            };
-            self.focus_editor_group(rect.id);
-            self.terminal_focused = false;
-            self.explorer_focused = false;
-            let tab_strip = self.editor_tab_strip_height(lh);
-            if self.view_preferences.minimap_visible
-                && mx >= rect.x + rect.width - 72.0_f32.min(rect.width * 0.22)
-                && my >= rect.y + tab_strip
-            {
-                let document = self.active_document();
-                let lines = self.documents[document].buffer.len_lines();
-                let visible = (rect.height / lh).max(1.0) as usize;
-                let ratio = ((my - rect.y - tab_strip) / (rect.height - tab_strip).max(1.0))
-                    .clamp(0.0, 1.0);
-                self.editor_groups.active_view_mut().scroll_line =
-                    ((lines.saturating_sub(visible)) as f32 * ratio) as usize;
-                self.reveal_cursor = false;
-                return;
-            }
-            if tab_strip > 0.0 && my < rect.y + tab_strip {
-                let mut x = rect.x;
-                let views: Vec<(graphite_text::ViewId, DocumentId)> = self
-                    .editor_groups
-                    .views(rect.id)
-                    .unwrap()
-                    .0
-                    .iter()
-                    .map(|view| (view.id, view.document))
-                    .collect();
-                for (view_id, document) in views {
-                    let Some(document) = self.resolve_document(document) else {
-                        continue;
-                    };
-                    let width = super::group_drawing::tab_width(
-                        &self.documents[document],
-                        cw,
-                        &self.translator,
-                    );
-                    if mx >= x && mx < x + width {
-                        let (close_left, close_right) =
-                            super::group_drawing::tab_close_area(x, width, cw);
-                        if mx >= close_left && mx < close_right {
-                            self.close_editor_tab(view_id);
-                        } else {
-                            self.activate_editor_document(document);
-                        }
-                        return;
-                    }
-                    x += width;
-                }
-                self.focus_editor_group(rect.id);
-                if !self.graphite_detail_tab_click(rect.id, mx) {
-                    self.installed_detail_tab_click(rect.id, mx);
-                }
-                return;
-            }
-            if self.active_notebook().is_some() {
-                self.notebook_click(mx, my, rect);
-                return;
-            }
-            let text_x = self.text_origin_x(rect, cw);
-            if self.word_wrap() {
-                let row = self.editor_groups.active_view_mut().scroll_line
-                    + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
-                let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
-                let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
-                let document = self.active_document();
-                let tab = &mut self.documents[document];
-                let offset = super::visual_lines::document_offset(
-                    &tab.buffer,
-                    row,
-                    col,
-                    columns,
-                    tab.indentation.tab_size,
-                    self.wrapping_indent,
+            self.click_editor_group(mx, my, window_width, window_height, lh, cw);
+        }
+    }
+
+    fn click_editor_group(
+        &mut self,
+        mx: f32,
+        my: f32,
+        window_width: f32,
+        window_height: f32,
+        lh: f32,
+        cw: f32,
+    ) {
+        let Some(rect) = self
+            .group_rectangles(window_width, window_height, lh)
+            .into_iter()
+            .find(|rect| {
+                mx >= rect.x
+                    && mx < rect.x + rect.width
+                    && my >= rect.y
+                    && my < rect.y + rect.height
+            })
+        else {
+            return;
+        };
+        self.focus_editor_group(rect.id);
+        self.focus_region(crate::app::focus_regions::FocusRegion::Editor);
+        let tab_strip = self.editor_tab_strip_height(lh);
+        if self.view_preferences.minimap_visible
+            && mx >= rect.x + rect.width - 72.0_f32.min(rect.width * 0.22)
+            && my >= rect.y + tab_strip
+        {
+            let document = self.active_document();
+            let lines = self.documents[document].buffer.len_lines();
+            let visible = (rect.height / lh).max(1.0) as usize;
+            let ratio =
+                ((my - rect.y - tab_strip) / (rect.height - tab_strip).max(1.0)).clamp(0.0, 1.0);
+            self.editor_groups.active_view_mut().scroll_line =
+                ((lines.saturating_sub(visible)) as f32 * ratio) as usize;
+            self.reveal_cursor = false;
+            return;
+        }
+        if tab_strip > 0.0 && my < rect.y + tab_strip {
+            let mut x = rect.x;
+            let views: Vec<(graphite_text::ViewId, DocumentId)> = self
+                .editor_groups
+                .views(rect.id)
+                .unwrap()
+                .0
+                .iter()
+                .map(|view| (view.id, view.document))
+                .collect();
+            for (view_id, document) in views {
+                let Some(document) = self.resolve_document(document) else {
+                    continue;
+                };
+                let width = super::group_drawing::tab_width(
+                    &self.documents[document],
+                    cw,
+                    &self.translator,
                 );
-                if self.multi_cursor_modifier_pressed() {
-                    self.run_ui_command_args(
-                        "graphite.editor.addCursor",
-                        serde_json::json!({"index":offset}),
-                    );
-                    self.selecting = false;
-                } else {
-                    if self.view_preferences.column_selection_mode {
-                        self.column_selection_anchor = Some((row, col));
+                if mx >= x && mx < x + width {
+                    let (close_left, close_right) =
+                        super::group_drawing::tab_close_area(x, width, cw);
+                    if mx >= close_left && mx < close_right {
+                        self.close_editor_tab(view_id);
+                    } else {
+                        self.activate_editor_document(document);
                     }
-                    self.run_ui_command_args(
-                        "graphite.editor.setSelection",
-                        serde_json::json!({"anchor":offset,"head":offset}),
-                    );
-                    self.selecting = true;
-                }
-                return;
-            }
-            let body_row = ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
-            // A click on the lens row above a line runs its lens.
-            if let Some(lens_line) = self.editor_row_lens_line(body_row) {
-                if self.run_code_lens_on_line(lens_line) {
                     return;
                 }
+                x += width;
             }
-            let line = self.editor_line_at_row(body_row);
+            self.focus_editor_group(rect.id);
+            if !self.graphite_detail_tab_click(rect.id, mx) {
+                self.installed_detail_tab_click(rect.id, mx);
+            }
+            return;
+        }
+        if self.active_notebook().is_some() {
+            self.notebook_click(mx, my, rect);
+            return;
+        }
+        let text_x = self.text_origin_x(rect, cw);
+        if self.word_wrap() {
+            let row = self.editor_groups.active_view_mut().scroll_line
+                + ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
             let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
+            let columns = (((rect.x + rect.width - text_x).max(cw)) / cw) as usize;
+            let document = self.active_document();
+            let tab = &mut self.documents[document];
+            let offset = super::visual_lines::document_offset(
+                &tab.buffer,
+                row,
+                col,
+                columns,
+                tab.indentation.tab_size,
+                self.wrapping_indent,
+            );
             if self.multi_cursor_modifier_pressed() {
-                let b = self.editor();
-                let line = line.min(b.len_lines() - 1);
-                let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
-                let offset = b.line_start_char(line) + col.min(width);
                 self.run_ui_command_args(
                     "graphite.editor.addCursor",
                     serde_json::json!({"index":offset}),
                 );
                 self.selecting = false;
+            } else {
+                if self.view_preferences.column_selection_mode {
+                    self.column_selection_anchor = Some((row, col));
+                }
+                self.run_ui_command_args(
+                    "graphite.editor.setSelection",
+                    serde_json::json!({"anchor":offset,"head":offset}),
+                );
+                self.selecting = true;
+            }
+            return;
+        }
+        let body_row = ((my - rect.y - tab_strip).max(0.0) / lh) as usize;
+        // A click on the lens row above a line runs its lens.
+        if let Some(lens_line) = self.editor_row_lens_line(body_row) {
+            if self.run_code_lens_on_line(lens_line) {
                 return;
             }
-            if self.view_preferences.column_selection_mode {
-                self.column_selection_anchor = Some((line, col));
-            }
-            self.run_ui_command_args(
-                "graphite.editor.setCursor",
-                serde_json::json!({"line":line,"column":col}),
-            );
-            self.selecting = true;
         }
+        let line = self.editor_line_at_row(body_row);
+        let col = (((mx - text_x) / cw).round().max(0.0)) as usize;
+        if self.multi_cursor_modifier_pressed() {
+            let b = self.editor();
+            let line = line.min(b.len_lines() - 1);
+            let width = b.line(line).trim_end_matches(['\n', '\r']).chars().count();
+            let offset = b.line_start_char(line) + col.min(width);
+            self.run_ui_command_args(
+                "graphite.editor.addCursor",
+                serde_json::json!({"index":offset}),
+            );
+            self.selecting = false;
+            return;
+        }
+        if self.view_preferences.column_selection_mode {
+            self.column_selection_anchor = Some((line, col));
+        }
+        self.run_ui_command_args(
+            "graphite.editor.setCursor",
+            serde_json::json!({"line":line,"column":col}),
+        );
+        self.selecting = true;
     }
 
     pub(crate) fn drag_select(&mut self) {

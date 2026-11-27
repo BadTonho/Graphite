@@ -4,13 +4,14 @@ use super::*;
 
 impl App {
     pub(crate) fn draw_workbench_menu(&self, renderer: &mut Renderer) {
-        if self.zen_mode {
-            return;
-        }
         let (width, _) = renderer.size();
         let line_height = renderer.line_height();
         let char_width = renderer.char_width();
         let layout = self.titlebar_layout(width, char_width);
+        if self.zen_mode && self.ai_mode.is_none() {
+            self.draw_mode_button(renderer, layout.mode_button);
+            return;
+        }
         let menu_height = layout.height;
         let background = rgb(Theme::color(Theme::SIDEBAR, 0x252526));
         let border = rgb(Theme::color(Theme::DIM, 0x454545));
@@ -137,8 +138,55 @@ impl App {
         self.draw_github_dialog(renderer);
         self.draw_command_center_controls(renderer, &layout);
         self.draw_titlebar_controls(renderer, layout.controls);
-        self.draw_layout_controls(renderer, &layout.layout_controls, layout.height);
+        if self.ai_mode.is_none() {
+            self.draw_layout_controls(renderer, &layout.layout_controls, layout.height);
+        }
         self.draw_titlebar_update_button(renderer, &layout);
+        self.draw_mode_button(renderer, layout.mode_button);
+    }
+
+    fn draw_mode_button(&self, renderer: &mut Renderer, slot: MenuItemRectLike) {
+        let rect = self.mode_button_rect(slot);
+        let hovered = rect.contains(self.mouse.x as f32, self.mouse.y as f32);
+        let background = if hovered {
+            Theme::ACTIVE_ROW
+        } else {
+            Theme::SIDEBAR
+        };
+        renderer.set_clip(Some([
+            rect.x,
+            rect.y,
+            rect.x + rect.width,
+            rect.y + rect.height,
+        ]));
+        renderer.draw_rect(
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            rgb(Theme::color(background, 0x37373d)),
+        );
+        draw_outline_rect(
+            renderer,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            rgb(Theme::color(Theme::DIM, 0x454545)),
+        );
+        let label = self.t(if self.ai_mode.is_some() {
+            "workbench.mode.editor"
+        } else {
+            "workbench.mode.ai"
+        });
+        let text_width = label.chars().count() as f32 * renderer.char_width();
+        renderer.draw_text(
+            label,
+            rect.x + ((rect.width - text_width) * 0.5).max(0.0),
+            rect.y + (rect.height - renderer.line_height()) * 0.5,
+            rgb(Theme::color(Theme::TEXT, 0xd4d4d4)),
+        );
+        renderer.set_clip(None);
     }
 
     pub(crate) fn titlebar_update_button(&self) -> Option<TitlebarUpdateButton> {

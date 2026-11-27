@@ -50,6 +50,10 @@ impl App {
 
     /// Opens `path`, with the custom editor an extension offers for it by default, if any.
     pub(crate) fn open_file(&mut self, path: PathBuf) {
+        if self.ai_mode.is_some() {
+            self.open_file_in_ai(path);
+            return;
+        }
         if self.documents.id_for_path(&path).is_none() {
             if let Some(view_type) = self.default_notebook_type(&path) {
                 // The notebook serializer reads the file; the notebook opens when it answers.
@@ -69,11 +73,21 @@ impl App {
 
     /// Opens `path` in the text editor.
     pub(crate) fn open_file_as_text(&mut self, path: PathBuf) {
-        self.editor_groups
-            .active_view_mut()
-            .smart_selection_history
-            .clear();
-        self.editor_groups.active_view_mut().smart_selection_guard = None;
+        if self.ai_mode.is_some() {
+            self.open_file_in_ai(path);
+        } else {
+            self.open_text_document(path);
+        }
+    }
+
+    pub(crate) fn open_text_document(&mut self, path: PathBuf) {
+        if self.ai_mode.is_none() {
+            self.editor_groups
+                .active_view_mut()
+                .smart_selection_history
+                .clear();
+            self.editor_groups.active_view_mut().smart_selection_guard = None;
+        }
         if let Some(index) = self.documents.id_for_path(&path) {
             if index != self.active_document() {
                 self.push_navigation_location();
@@ -148,7 +162,8 @@ impl App {
                 };
                 let mut tab = tab;
                 super::notebook_ui::attach_notebook(&mut tab);
-                if self.documents.len() == 1
+                if self.ai_mode.is_none()
+                    && self.documents.len() == 1
                     && self.editor_groups.group_count() == 1
                     && self.documents[self.active_document()]
                         .buffer
@@ -173,7 +188,12 @@ impl App {
                         let text = super::custom_editors::hex_view(&bytes);
                         self.open_read_only_view(path, &text);
                     }
-                    Err(_) => {
+                    Err(error) => {
+                        crate::app::error_log::record(
+                            crate::app::error_log::ErrorSeverity::High,
+                            "editor.open_file",
+                            &error.to_string(),
+                        );
                         self.status = self.tf(
                             "document.open_failed",
                             &[("path", &path.display()), ("error", &e)],

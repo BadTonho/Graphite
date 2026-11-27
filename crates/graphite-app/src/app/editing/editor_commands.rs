@@ -415,6 +415,10 @@ impl App {
     }
 
     pub(crate) fn close_active_tab(&mut self) {
+        if self.ai_mode.is_some() {
+            self.close_ai_file_panel();
+            return;
+        }
         if let Some((group, repository)) = self.plugins.active_graphite_detail.clone() {
             self.close_graphite_detail(group, &repository);
             return;

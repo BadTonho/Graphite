@@ -1,6 +1,66 @@
 use super::*;
 
 impl App {
+    fn handle_ai_focus_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if self.close_window_confirm || self.close_confirm {
+            let command = match (&event.logical_key, self.close_window_confirm) {
+                (Key::Character(key), true) if key.eq_ignore_ascii_case("s") => {
+                    Some("graphite.window.saveAndClose")
+                }
+                (Key::Character(key), true) if key.eq_ignore_ascii_case("d") => {
+                    Some("graphite.window.discardAndClose")
+                }
+                (Key::Named(NamedKey::Escape), true) => Some("graphite.window.cancelClose"),
+                (Key::Character(key), false) if key.eq_ignore_ascii_case("s") => {
+                    Some("graphite.close.save")
+                }
+                (Key::Character(key), false) if key.eq_ignore_ascii_case("d") => {
+                    Some("graphite.close.discard")
+                }
+                (Key::Named(NamedKey::Escape), false) => Some("graphite.close.cancel"),
+                _ => None,
+            };
+            if let Some(command) = command {
+                self.run_ui_command(command);
+            }
+            return true;
+        }
+        if self.command_palette.is_some() {
+            self.handle_command_palette(event);
+            return true;
+        }
+        if self.quick_open.is_some() {
+            self.handle_quick_open(event);
+            return true;
+        }
+        if self.go_picker.is_some() {
+            self.handle_go_picker(event);
+            return true;
+        }
+        if self.ai_file_group().is_some() && !self.chat.focused && !self.terminal_focused {
+            return false;
+        }
+        let ctrl = self.modifiers.control_key();
+        let alt = self.modifiers.alt_key();
+        if ctrl
+            && !alt
+            && !self.modifiers.shift_key()
+            && matches!(&event.logical_key, Key::Character(key) if key.eq_ignore_ascii_case("o"))
+        {
+            self.open_file_dialog();
+            return true;
+        }
+        if (ctrl || alt || self.modifiers.shift_key()) && self.handle_custom_keybinding(event) {
+            return true;
+        }
+        if self.terminal_focused {
+            self.handle_terminal_key(event);
+        } else {
+            self.handle_chat_key(&event.logical_key, event.text.as_deref(), ctrl, alt);
+        }
+        true
+    }
+
     pub(crate) fn handle_key(&mut self, event: &winit::event::KeyEvent) {
         if self.help_modal_key(
             &event.logical_key,
@@ -96,6 +156,9 @@ impl App {
             return;
         }
         if self.handle_command_center_key(&event.logical_key, event.text.as_deref()) {
+            return;
+        }
+        if self.ai_mode.is_some() && self.handle_ai_focus_key(event) {
             return;
         }
         if self.activity_bar_menu_key(&event.logical_key) {

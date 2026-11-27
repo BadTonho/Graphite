@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 const CHAT_FOCUS: &str = "chatInputVisible || sideBarVisible || true";
 const EDITOR_OR_CHAT: &str = "true";
+const INLINE_EDITOR_OR_CHAT: &str = "!graphiteAiMode";
 
 type Entry = (
     &'static str,
@@ -1309,49 +1310,49 @@ pub(super) fn register(registry: &mut CommandRegistry) {
             "inlineChat.focus",
             "Start Inline Chat",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_focus,
         ),
         (
             "inlineChat.fixDiagnostics",
             "Fix Diagnostics with Inline Chat",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_fix_diagnostics,
         ),
         (
             "inlineChat.dismissEditorAffordance",
             "Dismiss Inline Chat",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_close,
         ),
         (
             "inlineChat2.close",
             "Close Inline Chat",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_close,
         ),
         (
             "inlineChat2.keep",
             "Accept Inline Chat Changes",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_keep,
         ),
         (
             "inlineChat2.continueInChat",
             "Continue Inline Chat in Side Bar",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_continue,
         ),
         (
             "inlineChat2.rephrase",
             "Rephrase Inline Chat Prompt",
             "Inline Chat",
-            EDITOR_OR_CHAT,
+            INLINE_EDITOR_OR_CHAT,
             inline_rephrase,
         ),
         // Agent Sessions

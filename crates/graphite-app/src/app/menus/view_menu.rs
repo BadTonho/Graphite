@@ -891,6 +891,28 @@ impl App {
 
     fn execute_view_action(&mut self, action: ViewAction, extension_index: Option<usize>) {
         use ViewAction as A;
+        if self.ai_mode.is_some()
+            && matches!(
+                action,
+                A::SplitUp
+                    | A::SplitDown
+                    | A::SplitLeft
+                    | A::SplitRight
+                    | A::TwoColumns
+                    | A::ThreeColumns
+                    | A::TwoRows
+                    | A::ThreeRows
+                    | A::Grid
+                    | A::TwoRowsRight
+                    | A::TwoColumnsBottom
+                    | A::Single
+                    | A::FlipLayout
+                    | A::MoveEditorNewWindow
+                    | A::CopyEditorNewWindow
+            )
+        {
+            return;
+        }
         match action {
             A::Palette => self.open_command_palette(),
             A::OpenView => self.open_command_palette(),

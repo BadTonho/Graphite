@@ -12,6 +12,14 @@ impl App {
         let (w, h) = r.size();
         let (lh, cw) = (r.line_height(), r.char_width());
         let sidebar_lh = lh;
+        if self.ai_mode.is_some() {
+            self.draw_ai_workbench(r, w, h, lh, cw);
+            gpu.accessibility
+                .update_if_active(|| self.grouped_accessibility_tree(w, h, lh));
+            Self::present_workbench_frame(&mut gpu);
+            self.gpu = Some(gpu);
+            return;
+        }
         let (editor_left, editor_right) = self.editor_column(w);
         let editor_width = (editor_right - editor_left).max(0.0);
 
@@ -660,12 +668,50 @@ impl App {
         self.draw_error_notification(r);
         self.draw_workspace_trust_banner(r);
 
+        Self::present_workbench_frame(&mut gpu);
+        self.gpu = Some(gpu);
+    }
+
+    fn draw_ai_workbench(&mut self, r: &mut Renderer, w: f32, h: f32, lh: f32, cw: f32) {
+        let layout = self.ai_layout(w, h, lh);
+        if let Some((header, editor)) = layout.file {
+            if self.reveal_cursor {
+                let visible = (editor.height / lh).max(1.0) as usize;
+                self.keep_cursor_visible(visible, w, h, lh, cw);
+                self.reveal_cursor = false;
+            }
+            self.clamp_horizontal_scroll(w, h, lh, cw);
+            self.draw_editor_groups(r, &[editor], lh, cw);
+            self.draw_ai_file_header(r, header, lh);
+        }
+        if self.terminal_visible {
+            self.draw_terminal_panel(r, w, h, lh, cw);
+        }
+        self.draw_chat_overlays(r, w, h, lh);
+        r.set_clip(Some([0.0, h - lh, w, h]));
+        r.draw_text(
+            &self.status,
+            PAD,
+            h - lh,
+            rgb(Theme::color(Theme::DIM, 0x858585)),
+        );
+        r.set_clip(None);
+        self.draw_quick_input(r, w, lh, cw);
+        self.draw_terminal_toolbar_menu(r);
+        self.draw_workbench_menu(r);
+        self.draw_help_modal(r);
+        self.draw_unsaved_modal(r);
+        self.draw_error_notification(r);
+        self.draw_workspace_trust_banner(r);
+    }
+
+    fn present_workbench_frame(gpu: &mut crate::Gpu) {
+        let r = &mut gpu.renderer;
         r.set_clear_color(rgb(Theme::color(Theme::BG, 0xffffff)));
         r.present();
         // A full glyph or image atlas was emptied: the next frame shows what this one left out.
         if r.take_redraw_request() {
             gpu.window.request_redraw();
         }
-        self.gpu = Some(gpu);
     }
 }

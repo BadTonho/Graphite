@@ -11,7 +11,7 @@ impl App {
     /// Opens `path` as a preview tab. An existing preview tab in the focused group is
     /// replaced. Files that are already open are simply activated, as with `open_file`.
     pub(crate) fn open_file_preview(&mut self, path: PathBuf) {
-        if self.documents.id_for_path(&path).is_some() {
+        if self.ai_mode.is_some() || self.documents.id_for_path(&path).is_some() {
             self.open_file(path);
             return;
         }

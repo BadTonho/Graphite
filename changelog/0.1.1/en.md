@@ -3,6 +3,7 @@
 - Connect Chat to OpenAI, Claude, OpenCode Console, OpenCode Go, Gemini, OpenRouter, or an OpenAI-compatible service. Chats keep their original provider and model, API keys use the system credential store, and editor context can be attached to individual messages.
 - Review and recover local drafts for unsaved text files and untitled tabs after an unexpected exit.
 - Choose which components to install on Windows. VSIX Plugins, Copilot SDK and Foundry Local SDK can be selected independently and are all enabled by default.
+- Switch between Editor and AI mode with one title bar button. AI mode shows Chat, opens editable files alongside the conversation, and provides an integrated terminal on demand.
 
 ## Improvements
 

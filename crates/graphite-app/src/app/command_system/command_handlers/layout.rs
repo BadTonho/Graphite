@@ -4,6 +4,16 @@ use crate::app::titlebar_layout_controls::LayoutControl;
 pub(super) fn register(registry: &mut CommandRegistry) {
     add(
         registry,
+        "graphite.workbench.toggleMode",
+        "Toggle Editor / AI Mode",
+        "Workbench",
+        ALL,
+        "true",
+        None,
+        toggle_workbench_mode,
+    );
+    add(
+        registry,
         "graphite.layout.customize",
         "Customize Layout...",
         "Workbench",
@@ -152,6 +162,10 @@ fn toggle_primary_sidebar(
 }
 
 fn toggle_panel(app: &mut App, _invocation: &CommandInvocation) -> Result<(), CommandError> {
+    if app.ai_mode.is_some() {
+        app.toggle_terminal();
+        return Ok(());
+    }
     app.view_preferences.panel_visible = !app.view_preferences.panel_visible;
     app.save_view_preferences_for_command();
     Ok(())
@@ -228,5 +242,10 @@ fn set_notifications_bottom_right(
 
 fn set_notifications_top_right(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
     set_notifications_position(app, crate::config::NotificationPosition::TopRight);
+    Ok(())
+}
+
+fn toggle_workbench_mode(app: &mut App, _: &CommandInvocation) -> Result<(), CommandError> {
+    app.toggle_workbench_mode();
     Ok(())
 }

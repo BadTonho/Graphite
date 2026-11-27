@@ -115,7 +115,7 @@ impl App {
                 rgb(Theme::color(Theme::DIM, 0x616161)),
             );
             let mut x = rect.x;
-            if self.view_preferences.tabs_visible && !self.zen_mode {
+            if tab_height > 0.0 {
                 let detail_active_here = self
                     .plugins
                     .active_graphite_detail
@@ -302,7 +302,7 @@ impl App {
                 body_height,
                 rgb(chrome.gutter_border),
             );
-            if self.view_preferences.tabs_visible && !self.zen_mode {
+            if tab_height > 0.0 {
                 r.draw_rect(
                     rect.x,
                     rect.y + tab_height,

@@ -3,6 +3,7 @@
 - Conecte o Chat à OpenAI, ao Claude, ao OpenCode Console, ao OpenCode Go, ao Gemini, ao OpenRouter ou a um serviço compatível com OpenAI. As conversas mantêm o provedor e o modelo originais, as chaves usam o cofre do sistema e o contexto do editor pode ser anexado a mensagens individuais.
 - Revise e recupere rascunhos locais de arquivos de texto não salvos e abas sem título após um encerramento inesperado.
 - Escolha quais componentes instalar no Windows. Plugins VSIX, Copilot SDK e Foundry Local SDK podem ser selecionados separadamente e vêm marcados por padrão.
+- Alterne entre Editor e IA com um botão na barra de título. No Modo IA, o Chat divide espaço com arquivos editáveis e o terminal integrado fica disponível sob demanda.
 
 ## Melhorias
 

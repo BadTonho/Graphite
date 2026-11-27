@@ -301,7 +301,11 @@ impl super::App {
             "mergeEditorVisible".into(),
             self.merge_editor.is_some().to_string(),
         );
-        global.insert("pluginsVisible".into(), self.plugins.visible.to_string());
+        global.insert("graphiteAiMode".into(), self.ai_mode.is_some().to_string());
+        global.insert(
+            "pluginsVisible".into(),
+            (self.ai_mode.is_none() && self.plugins.visible).to_string(),
+        );
         global.insert("pluginsFocus".into(), self.plugins.focused.to_string());
         global.insert(
             "findReplace".into(),
@@ -360,6 +364,8 @@ impl super::App {
             || self.snippet_query.is_some();
         let plugin_keyboard = self.plugin_owns_keyboard();
         let focused = self.editor_groups.active_view().id;
+        let ai_editor_focused = self.ai_mode.is_none()
+            || (self.ai_file_group() == Some(self.editor_groups.focused()) && !self.chat.focused);
         for view in self.editor_groups.all_views() {
             let document = &self.documents[view.document];
             let editor = document.buffer.view(&view.selection_state);
@@ -374,6 +380,7 @@ impl super::App {
                     (
                         "editorTextFocus".into(),
                         (view.id == focused
+                            && ai_editor_focused
                             && document.notebook.is_none()
                             && !self.terminal_focused
                             && !self.explorer_focused

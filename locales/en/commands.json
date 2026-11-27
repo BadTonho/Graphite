@@ -938,5 +938,6 @@
   "command.workbench.action.editor.changeEOL": "Change End of Line Sequence",
   "command.workbench.action.editor.changeEncoding": "Change File Encoding",
   "command.workbench.action.previewColorTheme": "Preview Color Theme",
-  "command.workbench.action.tryNewDefaultThemes": "Try New Default Themes"
+  "command.workbench.action.tryNewDefaultThemes": "Try New Default Themes",
+  "command.graphite.workbench.toggleMode": "Toggle Editor / AI Mode"
 }

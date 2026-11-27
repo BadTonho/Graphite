@@ -23,6 +23,73 @@ fn background_check_interval(
     }
 }
 
+impl App {
+    fn scroll_ai_panel(&mut self, delta: MouseScrollDelta, lines: f32) {
+        let Some((width, height, lh)) = self.gpu.as_ref().map(|gpu| {
+            let (width, height) = gpu.renderer.size();
+            (width, height, gpu.renderer.line_height())
+        }) else {
+            return;
+        };
+        let (x, y) = (self.mouse.x as f32, self.mouse.y as f32);
+        let layout = self.ai_layout(width, height, lh);
+        let contains = |rect: super::editor_groups::GroupRect| {
+            x >= rect.x && y >= rect.y && x < rect.x + rect.width && y < rect.y + rect.height
+        };
+        if self.terminal_visible && contains(layout.terminal) {
+            if let Some(terminal) = self.terminals.get(self.focused_terminal) {
+                terminal.scroll((lines * 3.0) as i32);
+            }
+        } else if layout.file.is_some_and(|(_, editor)| contains(editor)) {
+            self.scroll_workbench_editor(delta, lines);
+        }
+    }
+
+    fn scroll_workbench_editor(&mut self, delta: MouseScrollDelta, lines: f32) {
+        // A sideways swipe, or the wheel with Shift held, scrolls the text sideways.
+        let char_width = self
+            .gpu
+            .as_ref()
+            .map_or(8.0, |gpu| gpu.renderer.char_width());
+        let mut sideways = match delta {
+            MouseScrollDelta::LineDelta(x, _) => -x * 3.0,
+            MouseScrollDelta::PixelDelta(p) => -(p.x as f32) / char_width,
+        };
+        let mut lines = lines;
+        if self.modifiers.shift_key() {
+            sideways += lines;
+            lines = 0.0;
+        }
+        if sideways != 0.0 {
+            self.scroll_columns_by(sideways.round() as isize);
+        }
+        let tab = &self.documents[self.active_document()];
+        let max = if self.word_wrap() {
+            if let Some(gpu) = &self.gpu {
+                let (width, height) = gpu.renderer.size();
+                let cw = gpu.renderer.char_width();
+                let rect = self.focused_group_rect(width, height, gpu.renderer.line_height());
+                let columns = (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
+                super::visual_lines::document_position(
+                    &tab.buffer,
+                    tab.buffer.len_chars(),
+                    columns,
+                    tab.indentation.tab_size,
+                    self.wrapping_indent,
+                )
+                .0
+            } else {
+                0
+            }
+        } else {
+            tab.buffer.len_lines().saturating_sub(1)
+        } as f32;
+        self.editor_groups.active_view_mut().scroll_line =
+            (self.editor_groups.active_view_mut().scroll_line as f32 + lines).clamp(0.0, max)
+                as usize;
+    }
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let saving = self.saving.pending();
@@ -402,6 +469,17 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     return;
                 }
+                if self.ai_mode.is_some() {
+                    let before = self.editor_state();
+                    self.click();
+                    if before != self.editor_state() {
+                        self.invalidate_lsp_requests();
+                    }
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if let Some(sash) = self.sash_at(self.mouse.x as f32, self.mouse.y as f32) {
                     if self.sash_double_click(sash, std::time::Instant::now()) {
                         self.reset_sash(sash);
@@ -600,6 +678,13 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     return;
                 }
+                if self.ai_mode.is_some() {
+                    self.scroll_ai_panel(delta, lines);
+                    if let Some(gpu) = &self.gpu {
+                        gpu.window.request_redraw();
+                    }
+                    return;
+                }
                 if self.settings_editor_scroll(lines) {
                     if let Some(gpu) = &self.gpu {
                         gpu.window.request_redraw();
@@ -743,49 +828,7 @@ impl ApplicationHandler<UserEvent> for App {
                 } else if self.active_notebook().is_some() {
                     self.notebook_scroll(lines);
                 } else {
-                    // A sideways swipe, or the wheel with Shift held, scrolls the text sideways.
-                    let char_width = self
-                        .gpu
-                        .as_ref()
-                        .map_or(8.0, |gpu| gpu.renderer.char_width());
-                    let mut sideways = match delta {
-                        MouseScrollDelta::LineDelta(x, _) => -x * 3.0,
-                        MouseScrollDelta::PixelDelta(p) => -(p.x as f32) / char_width,
-                    };
-                    let mut lines = lines;
-                    if self.modifiers.shift_key() {
-                        sideways += lines;
-                        lines = 0.0;
-                    }
-                    if sideways != 0.0 {
-                        self.scroll_columns_by(sideways.round() as isize);
-                    }
-                    let tab = &self.documents[self.active_document()];
-                    let max = if self.word_wrap() {
-                        if let Some(gpu) = &self.gpu {
-                            let (width, height) = gpu.renderer.size();
-                            let cw = gpu.renderer.char_width();
-                            let rect =
-                                self.focused_group_rect(width, height, gpu.renderer.line_height());
-                            let columns =
-                                (((rect.width - self.gutter_width(cw)).max(cw)) / cw) as usize;
-                            super::visual_lines::document_position(
-                                &tab.buffer,
-                                tab.buffer.len_chars(),
-                                columns,
-                                tab.indentation.tab_size,
-                                self.wrapping_indent,
-                            )
-                            .0
-                        } else {
-                            0
-                        }
-                    } else {
-                        tab.buffer.len_lines().saturating_sub(1)
-                    } as f32;
-                    self.editor_groups.active_view_mut().scroll_line =
-                        (self.editor_groups.active_view_mut().scroll_line as f32 + lines)
-                            .clamp(0.0, max) as usize;
+                    self.scroll_workbench_editor(delta, lines);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
@@ -797,11 +840,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.note_screencast_shortcut(&event);
                 let editor_state = self.editor_state();
+                let was_ai_mode = self.ai_mode.is_some();
 
                 self.handle_key(&event);
 
                 if editor_state != self.editor_state() {
-                    self.reveal_cursor = true;
+                    self.reveal_cursor = was_ai_mode == self.ai_mode.is_some();
                     self.invalidate_lsp_requests();
                 }
                 self.sync_lsp_active();

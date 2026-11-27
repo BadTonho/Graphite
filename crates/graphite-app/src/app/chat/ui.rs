@@ -56,6 +56,10 @@ impl App {
     }
 
     pub(crate) fn toggle_chat_sidebar(&mut self) {
+        if self.ai_mode.is_some() {
+            self.focus_ai_chat();
+            return;
+        }
         if self.chat.visible && self.chat.surface == ChatSurface::SideBar {
             self.chat.visible = false;
             self.chat.focused = false;
@@ -65,6 +69,10 @@ impl App {
     }
 
     pub(crate) fn open_chat_in_editor(&mut self) {
+        if self.ai_mode.is_some() {
+            self.focus_ai_chat();
+            return;
+        }
         self.chat.visible = true;
         self.chat.focused = true;
         self.chat.surface = ChatSurface::Editor;
@@ -73,6 +81,10 @@ impl App {
     }
 
     pub(crate) fn open_quick_chat(&mut self) {
+        if self.ai_mode.is_some() {
+            self.focus_ai_chat();
+            return;
+        }
         self.chat.visible = true;
         self.chat.focused = true;
         self.chat.surface = ChatSurface::QuickChat;
@@ -251,6 +263,10 @@ impl App {
         height: f32,
         lh: f32,
     ) -> (f32, f32, f32, f32) {
+        if self.ai_mode.is_some() {
+            let chat = self.ai_layout(width, height, lh).chat;
+            return (chat.x, chat.y, chat.width, chat.height);
+        }
         match self.chat.surface {
             ChatSurface::SideBar => {
                 if self.secondary_plugin.is_some() {
@@ -390,7 +406,7 @@ impl App {
         if self.handle_provider_dialog_key(key, text, ctrl) {
             return true;
         }
-        if self.handle_inline_chat_key(key, text, ctrl, alt) {
+        if self.ai_mode.is_none() && self.handle_inline_chat_key(key, text, ctrl, alt) {
             return true;
         }
         if !self.chat.visible || !self.chat.focused {
@@ -427,7 +443,9 @@ impl App {
                     self.cancel_chat_turn();
                 } else if self.chat.surface == ChatSurface::QuickChat {
                     self.close_quick_chat();
-                } else {
+                } else if self.ai_file_group().is_some() {
+                    self.focus_region(crate::app::focus_regions::FocusRegion::Editor);
+                } else if self.ai_mode.is_none() {
                     self.chat.focused = false;
                 }
                 true
@@ -653,7 +671,12 @@ impl App {
             return true;
         }
 
-        if let Some(inline) = &self.chat.inline_chat {
+        if let Some(inline) = self
+            .chat
+            .inline_chat
+            .as_ref()
+            .filter(|_| self.ai_mode.is_none())
+        {
             let rect = self.focused_group_rect(width, height, lh);
             let ix = rect.x + PAD * 2.0;
             let iy = rect.y + lh * 2.0;

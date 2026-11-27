@@ -4,7 +4,7 @@ use super::*;
 mod window;
 pub(crate) use window::{
     accessibility, activity_bar, bar_drag, clipboard, context_keys, focus_regions, layout, sashes,
-    theme, titlebar_layout_controls,
+    theme, titlebar_layout_controls, workbench_mode,
 };
 mod menus;
 pub(crate) use menus::{
