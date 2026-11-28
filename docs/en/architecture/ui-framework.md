@@ -15,7 +15,7 @@ Graphite/
     ├── Cargo.toml    Own workspace, own Cargo.lock
     ├── crates/       core, layout, render, animation, a11y, platform, workspace-checks
     ├── docs/en/  docs/pt-BR/
-    ├── AGENTS.md  LICENSE  README.md
+    ├── AGENTS.md  LICENSE-MIT  LICENSE-APACHE  README.md
 ```
 
 - The root `Cargo.toml` lists `framework` under `exclude`, so the framework never inherits Graphite's workspace settings, dependency versions or lock file.
@@ -44,6 +44,10 @@ A Graphite commit never contains Vitral files, only that pointer.
 - **One direction only:** Graphite may depend on the framework; the framework never depends on Graphite or on any code outside its repository. The `vitral_workspace_is_self_contained` test enforces this.
 - **Errors:** the framework does not write logs. It returns errors, and Graphite records them through `app::error_log` at the right severity tier.
 - **Text:** the framework has no translations. Graphite passes the strings it displays.
+
+## Adoption
+
+Graphite adopts Vitral component by component, starting at Vitral's stage 3 (basic components; see the [Vitral roadmap](https://github.com/BadTonho/vitral/blob/main/docs/en/roadmap/roadmap.md)). Graphite is Vitral's first real application, so problems in the API show up early, while Vitral's general-purpose rule keeps editor-only needs out of its core crates. Editor-specific widgets stay in Graphite or in optional Vitral crates.
 
 ## Checks
 
