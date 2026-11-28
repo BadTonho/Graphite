@@ -491,11 +491,9 @@ mod transport_tests {
         session
             .send_request("initialize", serde_json::json!({}))
             .unwrap();
-        let reply = loop {
-            match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
-                AdapterEvent::Message(message) => break message,
-                other => panic!("{other:?}"),
-            }
+        let reply = match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+            AdapterEvent::Message(message) => message,
+            other => panic!("{other:?}"),
         };
         assert_eq!(reply["command"], "initialize");
         session.stop().unwrap();

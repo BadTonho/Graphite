@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(windows)]
 use crate::process_util::HideConsole;
 use std::process::Command;
 

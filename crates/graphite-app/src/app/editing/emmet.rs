@@ -145,17 +145,12 @@ impl App {
             return false;
         };
         let end = cursor;
-        if self
-            .editor_mut()
+        self.editor_mut()
             .apply_transaction(&[graphite_text::TextReplacement {
                 range: start..end,
                 text: expanded,
             }])
-            .is_err()
-        {
-            return false;
-        }
-        true
+            .is_ok()
     }
 }
 
