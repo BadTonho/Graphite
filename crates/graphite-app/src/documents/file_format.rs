@@ -83,9 +83,10 @@ pub(crate) fn decode(bytes: &[u8], translator: &Translator) -> Result<DecodedFil
                 return Err(translator.text("file.error.incomplete_utf16").into());
             }
             let units = body
-                .chunks_exact(2)
-                .map(|pair| {
-                    let pair = [pair[0], pair[1]];
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&pair| {
                     if encoding == Encoding::Utf16Le {
                         u16::from_le_bytes(pair)
                     } else {

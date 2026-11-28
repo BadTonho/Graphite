@@ -43,7 +43,7 @@ pub(crate) fn class_for_token_type(name: &str) -> Option<Class> {
 pub(crate) fn decode_data(data: &[u32], legend: &[String]) -> Option<Tokens> {
     let mut lines = Tokens::new();
     let (mut line, mut start) = (0usize, 0u32);
-    for token in data.chunks_exact(5) {
+    for token in data.as_chunks::<5>().0 {
         let (delta_line, delta_start, length, kind) = (token[0], token[1], token[2], token[3]);
         if delta_line > 0 {
             line = line.checked_add(delta_line as usize)?;

@@ -622,7 +622,9 @@ pub(super) fn dispatch(
                     .filter_map(|number| u32::try_from(number.as_u64()?).ok())
                     .collect();
                 let marks = numbers
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter_map(|range| {
                         Some(Mark {
                             start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),
@@ -972,7 +974,9 @@ second"],
             .insert("k".into(), style(&json!({"backgroundColor": "#112233"})));
         let flat: Vec<u32> = vec![1, 1, 1, 4, 0, 1, 1, 2];
         let marks: Vec<Mark> = flat
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter_map(|range| {
                 Some(Mark {
                     start: (range[0].checked_sub(1)?, range[1].checked_sub(1)?),

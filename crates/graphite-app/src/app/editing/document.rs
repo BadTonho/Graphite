@@ -192,7 +192,7 @@ impl App {
                         crate::app::error_log::record(
                             crate::app::error_log::ErrorSeverity::High,
                             "editor.open_file",
-                            &error.to_string(),
+                            error.to_string(),
                         );
                         self.status = self.tf(
                             "document.open_failed",

@@ -265,7 +265,7 @@ fn is_monochrome_rgba(rgba: &[u8]) -> bool {
     let mut single_color = true;
     let mut saw_visible = false;
 
-    for px in rgba.chunks_exact(4) {
+    for px in rgba.as_chunks::<4>().0 {
         if px[3] < 16 {
             continue;
         }

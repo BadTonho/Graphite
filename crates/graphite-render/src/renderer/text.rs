@@ -199,8 +199,10 @@ impl Renderer {
         let coverage: Vec<u8> = match image.content {
             SwashContent::Mask => image.data.clone(),
             // Color glyphs (emoji): use the alpha channel only in v0.1.
-            SwashContent::Color => image.data.chunks_exact(4).map(|p| p[3]).collect(),
-            SwashContent::SubpixelMask => image.data.chunks_exact(4).map(|p| p[1]).collect(),
+            SwashContent::Color => image.data.as_chunks::<4>().0.iter().map(|p| p[3]).collect(),
+            SwashContent::SubpixelMask => {
+                image.data.as_chunks::<4>().0.iter().map(|p| p[1]).collect()
+            }
         };
         let Some(slot) = self.glyphs.allocate(w, h) else {
             return Rasterized::NoRoom;

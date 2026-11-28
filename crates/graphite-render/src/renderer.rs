@@ -712,12 +712,7 @@ mod tests {
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |_| {});
         device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
-        let pixels = slice
-            .get_mapped_range()
-            .ok()?
-            .chunks_exact(4)
-            .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
-            .collect();
+        let pixels = slice.get_mapped_range().ok()?.as_chunks::<4>().0.to_vec();
         Some(pixels)
     }
 
