@@ -26,10 +26,33 @@ pub(crate) fn system_entry(
 /// Keeps the GitHub token of a profile in the system credential store.
 pub(crate) struct GitHubTokenVault;
 
+#[cfg(all(not(test), any(windows, target_os = "linux")))]
 const GITHUB_SERVICE: &str = "Graphite GitHub";
+#[cfg(all(not(test), any(windows, target_os = "linux")))]
 const GITHUB_ID: &str = "github";
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(test)]
+impl graphite_auth::TokenVault for GitHubTokenVault {
+    fn get(&self, profile: &Path) -> Result<Option<String>, String> {
+        test_vault().get(profile)
+    }
+
+    fn set(&self, profile: &Path, token: &str) -> Result<(), String> {
+        test_vault().set(profile, token)
+    }
+
+    fn remove(&self, profile: &Path) -> Result<(), String> {
+        test_vault().remove(profile)
+    }
+}
+
+#[cfg(test)]
+fn test_vault() -> &'static graphite_auth::MemoryVault {
+    static VAULT: std::sync::OnceLock<graphite_auth::MemoryVault> = std::sync::OnceLock::new();
+    VAULT.get_or_init(graphite_auth::MemoryVault::default)
+}
+
+#[cfg(all(not(test), any(windows, target_os = "linux")))]
 impl graphite_auth::TokenVault for GitHubTokenVault {
     fn get(&self, profile: &Path) -> Result<Option<String>, String> {
         match system_entry(GITHUB_SERVICE, profile, GITHUB_ID)?.get_password() {
@@ -53,7 +76,7 @@ impl graphite_auth::TokenVault for GitHubTokenVault {
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(all(not(test), not(any(windows, target_os = "linux"))))]
 impl graphite_auth::TokenVault for GitHubTokenVault {
     fn get(&self, _: &Path) -> Result<Option<String>, String> {
         Ok(None)
