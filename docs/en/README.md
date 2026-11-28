@@ -10,6 +10,7 @@ Portuguese translation: [../pt-BR/README.md](../pt-BR/README.md)
   - [Internal services and simulated host](architecture/services-host.md)
   - [Asynchronous saving](architecture/async-saving.md)
   - [Extension compatibility](architecture/extension-compat.md)
+  - [Vitral UI framework workspace](architecture/ui-framework.md)
 - **Features**
   - [v0.1 — Core editor](features/v0.1-editor.md)
   - [v0.2 — Editing and customization](features/v0.2-editor.md)

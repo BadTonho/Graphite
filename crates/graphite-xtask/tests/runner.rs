@@ -1,4 +1,6 @@
-use graphite_xtask::{run_steps, verification_steps, verification_succeeded, workspace_root, Step};
+use graphite_xtask::{
+    run_steps, verification_steps, verification_succeeded, workspace_root, Step, FRAMEWORK_MANIFEST,
+};
 use std::{ffi::OsString, process::Command};
 
 fn helper(name: &'static str, arg: &str) -> Step {
@@ -68,7 +70,7 @@ fn successful_checks_and_invalid_cli_have_correct_exit_status() {
 fn verification_builds_process_fixtures_before_running_workspace_tests() {
     let steps = verification_steps();
     let args: Vec<Vec<OsString>> = steps.into_iter().map(|step| step.args).collect();
-    assert_eq!(args.len(), 4);
+    assert_eq!(args.len(), 7);
     assert_eq!(
         args[0],
         ["fmt", "--all", "--", "--check"].map(OsString::from)
@@ -85,4 +87,17 @@ fn verification_builds_process_fixtures_before_running_workspace_tests() {
         ]
         .map(OsString::from)
     );
+}
+
+#[test]
+fn verification_also_checks_the_framework_workspace() {
+    let steps = verification_steps();
+    let framework: Vec<_> = steps
+        .iter()
+        .filter(|step| step.args.iter().any(|arg| arg == FRAMEWORK_MANIFEST))
+        .map(|step| step.args[0].clone())
+        .collect();
+    // The framework is a git submodule, so the manifest may be missing in a checkout made
+    // without it; only the commands are checked here.
+    assert_eq!(framework, ["fmt", "clippy", "test"].map(OsString::from));
 }

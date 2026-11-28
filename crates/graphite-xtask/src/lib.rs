@@ -27,6 +27,9 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The UI framework's own workspace, relative to the repository root.
+pub const FRAMEWORK_MANIFEST: &str = "framework/Cargo.toml";
+
 pub fn verification_steps() -> Vec<Step> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     [
@@ -51,6 +54,41 @@ pub fn verification_steps() -> Vec<Step> {
                 "--no-fail-fast",
                 "--",
                 "--test-threads=4",
+            ],
+        ),
+        // The UI framework is a separate Cargo workspace, so the commands above skip it.
+        (
+            "Framework formatting",
+            vec![
+                "fmt",
+                "--all",
+                "--manifest-path",
+                FRAMEWORK_MANIFEST,
+                "--",
+                "--check",
+            ],
+        ),
+        (
+            "Framework Clippy",
+            vec![
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--manifest-path",
+                FRAMEWORK_MANIFEST,
+                "--",
+                "-D",
+                "warnings",
+            ],
+        ),
+        (
+            "Framework tests",
+            vec![
+                "test",
+                "--workspace",
+                "--no-fail-fast",
+                "--manifest-path",
+                FRAMEWORK_MANIFEST,
             ],
         ),
     ]

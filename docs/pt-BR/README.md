@@ -10,6 +10,7 @@ Original em inglês: [../en/README.md](../en/README.md)
   - [Serviços internos e host simulado](architecture/services-host.md)
   - [Salvamento assíncrono](architecture/async-saving.md)
   - [Compatibilidade com extensões](architecture/extension-compat.md)
+  - [Workspace do framework de UI Vitral](architecture/ui-framework.md)
 - **Funcionalidades**
   - [v0.1 — Editor base](features/v0.1-editor.md)
   - [v0.2 — Edição e personalização](features/v0.2-editor.md)

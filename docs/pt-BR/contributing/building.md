@@ -41,6 +41,7 @@ Consulte [Testes de regressão](testing.md) para a matriz de cobertura, comandos
 - Execute os testes relevantes e `cargo test --workspace` antes de concluir alterações de código; use `cargo build --workspace` para validar a compilação. Informe verificações que falharam ou não foram executadas, o motivo e a plataforma testada. Alterações apenas de documentação não precisam de novos testes, salvo quando alterarem comportamento executável.
 - Os testes nativos são executados localmente no sistema disponível. Verifique manualmente interações de janela ou GPU que não puderem ser automatizadas com confiabilidade e informe o que permanecer pendente.
 - Mantenha os crates focados; divida um crate quando ele misturar responsabilidades.
+- O framework de UI em `framework/` (o Vitral, um submódulo git; baixe-o com `git submodule update --init framework`) é um workspace Cargo separado que não pode depender do Graphite. Quando ele mudar, execute também `cargo test --workspace --manifest-path framework/Cargo.toml`; veja [Workspace do framework de UI](../architecture/ui-framework.md).
 - Atualize a documentação em `docs/en/` **e** o arquivo correspondente em `docs/pt-BR/` na mesma mudança.
 - Suporte Windows e Linux; use `#[cfg(...)]` quando código específico de plataforma for inevitável.
 - Nunca faça commit de segredos (veja a [política de segurança](../security/policy.md)).

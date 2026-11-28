@@ -41,7 +41,7 @@ These rules are mandatory for all development, file operations, documentation, a
 
 ## 8. Native Tests and Regression Prevention
 - Add or update meaningful automated tests for new or changed behavior and for each bug fix, covering relevant success and failure cases. Tests must verify observable behavior and avoid reliance on personal files, network services, or external language servers.
-- Run the relevant tests and `cargo test --workspace` before completing a code change; run `cargo build --workspace` when build validation is applicable. Do not claim success when a required check fails or was not run.
+- Run the relevant tests and `cargo test --workspace` before completing a code change; run `cargo build --workspace` when build validation is applicable. When `framework/` changes, also run `cargo test --workspace --manifest-path framework/Cargo.toml`, since it is a separate workspace that the root commands skip. Do not claim success when a required check fails or was not run.
 - Use isolated temporary test data and preserve Windows and Linux compatibility. Testing both operating systems in the same run is not required.
 - Document-only or configuration-only changes need tests only when they change executable behavior. If a test or manual UI/GPU check cannot be performed, report the reason and the affected platform explicitly.
 
@@ -63,3 +63,11 @@ These rules are mandatory for all development, file operations, documentation, a
   4. **`low` (`low.jsonl`) — Lowest:** Non-critical / minor feature failures or stalls (secondary UI preview/tooltip glitch, optional metadata/schema fetch timeout, silent background task/check failure).
 - **Security & Privacy:** Never log tokens, API keys, credentials, auth headers, or raw user file contents; all error messages must pass through sanitization before being written to disk.
 - **Compliance:** Any new or modified error path in code must record the failure through `app::error_log` at the appropriate severity tier.
+
+---
+
+## 11. UI Framework Separation
+- `framework/` is a git submodule holding Vitral, a general-purpose UI framework with its own repository (`BadTonho/vitral`). It is a separate Cargo workspace (excluded from the root workspace) with its own `AGENTS.md`, which applies to everything inside it.
+- The framework must never depend on Graphite crates or on any code outside its repository; `vitral_workspace_is_self_contained` enforces this. Graphite may depend on the framework.
+- Framework changes are committed and pushed inside `framework/`, in the Vitral repository. Graphite commits only record the submodule pointer (`git add framework`), never Vitral files.
+- See `docs/en/architecture/ui-framework.md`.

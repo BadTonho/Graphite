@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# The UI framework is its own workspace (it will move to a separate repository).
+exclude = ["framework"]
 
 [workspace.package]
 version = "0.1.0"

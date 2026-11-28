@@ -38,6 +38,7 @@ See [Regression testing](testing.md) for the coverage matrix, targeted test comm
 - Run relevant tests and `cargo test --workspace` before completing a code change; use `cargo build --workspace` to validate the build. Report failed or unrun checks, their reason and the platform tested. Document-only changes do not need new tests unless they change executable behavior.
 - Native tests run locally on the available operating system. Verify window or GPU interactions manually when they cannot be reliably automated and report any remaining gaps.
 - Keep crates focused; split a crate when it mixes concerns.
+- The UI framework in `framework/` (Vitral, a git submodule; fetch it with `git submodule update --init framework`) is a separate Cargo workspace that must not depend on Graphite. Run `cargo test --workspace --manifest-path framework/Cargo.toml` too when it changes; see [UI framework workspace](../architecture/ui-framework.md).
 - Update docs in `docs/en/` **and** the matching file in `docs/pt-BR/` in the same change.
 - Support both Windows and Linux; use `#[cfg(...)]` when platform code is unavoidable.
 - Never commit secrets (see [security policy](../security/policy.md)).

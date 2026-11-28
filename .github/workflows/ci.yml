@@ -16,7 +16,11 @@ jobs:
         os: [windows-latest, ubuntu-latest]
 
     steps:
+      # framework/ is the public Vitral repository as a git submodule, checked out at the
+      # commit Graphite pins.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
@@ -82,3 +86,14 @@ jobs:
 
       - name: Run workspace tests
         run: cargo test --workspace -- --test-threads=4
+
+      # The UI framework is its own Cargo workspace, so the steps above skip it.
+      - name: Check framework formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --manifest-path framework/Cargo.toml -- --check
+
+      - name: Lint framework
+        run: cargo clippy --workspace --all-targets --manifest-path framework/Cargo.toml -- -D warnings
+
+      - name: Run framework tests
+        run: cargo test --workspace --manifest-path framework/Cargo.toml

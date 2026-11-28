@@ -10,7 +10,7 @@ Run from the repository root:
 cargo run -p graphite-xtask -- verify
 ```
 
-The local verifier checks formatting, runs Clippy with warnings denied, builds the workspace (including process helpers), and runs workspace tests with four threads. It runs every step even after failure, preserves command output and prints durations and a final PASS/FAIL summary. Exit code 0 means all four automated steps passed; failures or unavailable tools return 1, and invalid arguments return 2. It does not install tools, rewrite source files, launch the app or trigger CI. Cargo may populate its normal build/dependency caches; a fully offline first build is not guaranteed.
+The local verifier checks formatting, runs Clippy with warnings denied, builds the workspace (including process helpers), and runs workspace tests with four threads. It then checks formatting, runs Clippy and runs the tests of the separate UI framework workspace in `framework/` (see [UI framework workspace](../architecture/ui-framework.md)). It runs every step even after failure, preserves command output and prints durations and a final PASS/FAIL summary. Exit code 0 means all seven automated steps passed; failures or unavailable tools return 1, and invalid arguments return 2. It does not install tools, rewrite source files, launch the app or trigger CI. Cargo may populate its normal build/dependency caches; a fully offline first build is not guaranteed.
 
 Requires the existing Rust/native build prerequisites plus the `rustfmt` and `clippy` toolchain components. Use the same command on Windows and Linux. No Python, PowerShell or additional Rust dependencies are needed by the verifier. Run it after a completed change; use filtered tests during development and the existing manual CI before releases.
 
